@@ -105,6 +105,21 @@ The scheduler is a pure function of (skill model state, recent session history) 
 (ordered list of phase/activity choices). This is the key seam for testability: given a fixed skill
 state, the scheduler's output is deterministic and unit-testable without any UI or timing involved.
 
+### 6a. Pre-session config and adaptive content length
+
+Before a session starts, the learner picks (PLAN.md's slider screen):
+- **duration** (15-30 min) — scales the total time budget every phase's share comes out of.
+- **learn vs. practice** — gates whether `teach` runs at all (off near the "practice" extreme) and
+  scales its time share (bigger share = more repetition on the new-ish key = "push harder").
+- **focus vs. general** — sizes the key pool `practice` draws from: the full active set at "general",
+  shrinking toward just the weakest few at "focus" (reuses the warmup recommender with a bigger `n`).
+
+This produces a `SessionSkeleton`: the phase sequence, each phase's time budget, and its key focus —
+but **no typing content yet**. Content is generated lazily, one step at a time, right before that step
+starts, sized to the session's *current* estimated WPM (starts from the learner's historical average,
+then blends in each completed step's real WPM). That's what lets a later step's content length adapt
+to how fast today is actually going, without the earlier, already-decided phase durations changing.
+
 ## 7. Module contract (for modularity requirement)
 
 Every lesson, practice drill, game, and evaluation is a self-contained module implementing one interface, e.g.:

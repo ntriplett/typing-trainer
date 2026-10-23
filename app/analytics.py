@@ -145,3 +145,20 @@ def daily_trend(conn, learner_id: int, days: int | None = None, now: datetime | 
             }
         )
     return trend
+
+
+# A true beginner on home row, before any data exists to estimate from.
+# Content length scales off this until the first real step reports a WPM.
+DEFAULT_STARTING_WPM = 10.0
+
+
+def estimate_starting_wpm(conn, learner_id: int, default: float = DEFAULT_STARTING_WPM) -> float:
+    """A reasonable guess for how fast today's first step's content
+    should assume the learner types, before any of today's own data
+    exists -- the historical average across all past days, or the
+    beginner default if there's no history yet.
+    """
+    trend = daily_trend(conn, learner_id)
+    if not trend:
+        return default
+    return sum(day["avg_wpm"] for day in trend) / len(trend)

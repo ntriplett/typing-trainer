@@ -3,11 +3,14 @@
 Two things live here today:
   - the original walking-skeleton hello-world endpoint/page (kept as-is,
     still a useful smoke-test surface)
-  - a real session flow: start a scheduler-built plan, serve each step's
-    generated content, and accept completed keystrokes to score + persist
+  - a real session flow: build a scheduler skeleton from the learner's
+    pre-session choices, generate each step's content lazily (so later
+    steps can adapt to today's observed typing speed), and accept
+    completed keystrokes to score + persist
 
-v1 simplification, called out explicitly: the in-progress plan for a
-session lives in memory (_SESSION_PLANS), not the DB. A server restart
+v1 simplification, called out explicitly: the in-progress session
+runtime (skeleton + generated-content cache + the running WPM estimate)
+lives in memory (_SESSION_PLANS), not the DB. A server restart
 mid-session loses where you were -- acceptable for now since sessions
 are short and this is for interactive/manual testing; the durable
 record (key_stat, keystroke_log, session/session_event rows) is
@@ -16,21 +19,21 @@ written on every step completion regardless.
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import analytics, bigram_model, db, scheduler, skill_model
 from app.activities import get_activity
-from app.activities.base import KeystrokeEvent
+from app.activities.base import ActivityContent, KeystrokeEvent
 from app.activities.hello_world import HelloWorldActivity
 from app.models import KeyStat
-from app.scheduler import SessionPlan
+from app.scheduler import SessionConfig, SessionSkeleton, StepPlan
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 DB_PATH = Path(__file__).resolve().parent.parent / "typing.db"
@@ -55,8 +58,25 @@ async def no_cache_static_assets(request, call_next):
         response.headers["Cache-Control"] = "no-store"
     return response
 
-# session_id -> the plan built for it. See module docstring re: v1 scope.
-_SESSION_PLANS: dict[int, SessionPlan] = {}
+
+@dataclass
+class SessionRuntime:
+    """Everything the server needs to keep track of mid-session.
+
+    `estimated_wpm` is mutable on purpose -- complete_step() updates it
+    after every scored step, and get_step_content() reads the current
+    value when it generates a not-yet-seen step. That's the whole
+    mechanism behind "later lessons adapt to how fast things are going."
+    """
+
+    skeleton: SessionSkeleton
+    estimated_wpm: float
+    learner_id: int
+    content_cache: dict[int, ActivityContent] = field(default_factory=dict)
+
+
+# session_id -> its runtime. See module docstring re: v1 scope.
+_SESSION_PLANS: dict[int, SessionRuntime] = {}
 
 
 def get_db():
@@ -129,14 +149,12 @@ def analytics_trend(days: int | None = None, conn=Depends(get_db)) -> list[dict]
 # --- session API --------------------------------------------------------------
 
 
-def _serialize_step(step) -> dict:
-    return {
-        "phase": step.phase,
-        "activity_id": step.activity_id,
-        "focus_keys": step.focus_keys,
-        "duration_s": step.duration_s,
-        "content": asdict(step.content),
-    }
+class SessionConfigIn(BaseModel):
+    """The pre-session slider screen's choices."""
+
+    duration_minutes: int = Field(default=15, ge=5, le=60)
+    learn_vs_practice: float = Field(default=0.5, ge=0.0, le=1.0)
+    focus_vs_general: float = Field(default=0.3, ge=0.0, le=1.0)
 
 
 class KeystrokeIn(BaseModel):
@@ -150,50 +168,95 @@ class CompleteStepRequest(BaseModel):
     keystrokes: list[KeystrokeIn]
 
 
-# A short, same-shape plan for manually testing the full flow without
-# typing hundreds of characters per phase. Real sessions use the
-# scheduler's normal defaults (PLAN.md Section 6); this is purely a
-# dev/testing convenience, not a different pedagogy.
-QUICK_TEST_PHASE_SECONDS = {"warmup": 8, "teach": 8, "practice": 10, "eval": 8, "game": 10}
+def _serialize_skeleton_step(step: StepPlan) -> dict:
+    return {
+        "phase": step.phase,
+        "activity_id": step.activity_id,
+        "focus_keys": step.focus_keys,
+        "duration_s": step.duration_s,
+    }
 
 
 @app.post("/api/session/start")
-def start_session(quick: bool = False, conn=Depends(get_db)) -> dict:
+def start_session(
+    config: SessionConfigIn = SessionConfigIn(), quick: bool = False, conn=Depends(get_db)
+) -> dict:
     learner_id = ensure_learner(conn)
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     bigram_stats = db.list_bigram_stats(conn, learner_id)
 
-    plan = scheduler.build_session_plan(
-        key_stats,
-        now=datetime.now(UTC),
-        bigram_stats=bigram_stats,
-        phase_seconds=QUICK_TEST_PHASE_SECONDS if quick else None,
+    # `quick` is a dev/testing convenience (PLAN.md's "very short smoke
+    # session"), not a different pedagogy: it just shrinks the total
+    # time budget everything else scales from.
+    session_config = SessionConfig(
+        duration_minutes=2 if quick else config.duration_minutes,
+        learn_vs_practice=config.learn_vs_practice,
+        focus_vs_general=config.focus_vs_general,
     )
+    skeleton = scheduler.build_session_skeleton(
+        key_stats, session_config, now=datetime.now(UTC), bigram_stats=bigram_stats
+    )
+
+    estimated_wpm = analytics.estimate_starting_wpm(conn, learner_id)
     session = db.start_session(conn, learner_id)
-    _SESSION_PLANS[session.id] = plan
+    runtime = SessionRuntime(skeleton=skeleton, estimated_wpm=estimated_wpm, learner_id=learner_id)
+    _SESSION_PLANS[session.id] = runtime
+
+    first_content = scheduler.generate_step_content(skeleton.steps[0], estimated_wpm)
+    runtime.content_cache[0] = first_content
 
     return {
         "session_id": session.id,
-        "active_keys": plan.active_keys,
-        "game_options": plan.game_options,
-        "steps": [_serialize_step(s) for s in plan.steps],
+        "active_keys": skeleton.active_keys,
+        "game_options": skeleton.game_options,
+        "estimated_wpm": estimated_wpm,
+        "steps": [_serialize_skeleton_step(s) for s in skeleton.steps],
+        "first_step_content": asdict(first_content),
     }
+
+
+@app.get("/api/session/{session_id}/steps/{step_index}/content")
+def get_step_content(session_id: int, step_index: int) -> dict:
+    """Generate (if not already cached) and return one step's actual
+    typing content, sized to the session's CURRENT WPM estimate rather
+    than whatever it was when the session started -- this is what lets
+    a later step's content length reflect how today has actually gone.
+    """
+    runtime = _SESSION_PLANS.get(session_id)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired session")
+    if step_index < 0 or step_index >= len(runtime.skeleton.steps):
+        raise HTTPException(status_code=404, detail="Unknown step index")
+
+    if step_index not in runtime.content_cache:
+        step = runtime.skeleton.steps[step_index]
+        runtime.content_cache[step_index] = scheduler.generate_step_content(
+            step, runtime.estimated_wpm
+        )
+
+    return {"content": asdict(runtime.content_cache[step_index])}
 
 
 @app.post("/api/session/{session_id}/steps/{step_index}/complete")
 def complete_step(
     session_id: int, step_index: int, body: CompleteStepRequest, conn=Depends(get_db)
 ) -> dict:
-    plan = _SESSION_PLANS.get(session_id)
-    if plan is None:
+    runtime = _SESSION_PLANS.get(session_id)
+    if runtime is None:
         raise HTTPException(status_code=404, detail="Unknown or expired session")
-    if step_index < 0 or step_index >= len(plan.steps):
+    if step_index < 0 or step_index >= len(runtime.skeleton.steps):
         raise HTTPException(status_code=404, detail="Unknown step index")
 
-    step = plan.steps[step_index]
+    step = runtime.skeleton.steps[step_index]
+    if step_index not in runtime.content_cache:
+        runtime.content_cache[step_index] = scheduler.generate_step_content(
+            step, runtime.estimated_wpm
+        )
+    content = runtime.content_cache[step_index]
+
     activity = get_activity(step.activity_id)
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
-    result = activity.score(step.content, keystrokes)
+    result = activity.score(content, keystrokes)
 
     learner_id = ensure_learner(conn)
     now = datetime.now(UTC)
@@ -205,15 +268,25 @@ def complete_step(
         )
     db.end_session_event(conn, event.id, summary_stats=asdict(result))
 
-    _apply_keystrokes_to_skill_model(conn, learner_id, step.content.keys, keystrokes, now)
+    _apply_keystrokes_to_skill_model(conn, learner_id, content.keys, keystrokes, now)
     _apply_keystrokes_to_bigram_model(conn, learner_id, keystrokes)
 
-    session_complete = step_index == len(plan.steps) - 1
+    # Blend this step's real WPM into the running estimate so the next
+    # not-yet-generated step reflects it. Guarded against an empty/zero
+    # result (e.g. "End this step now" with nothing typed yet).
+    if result.attempts > 0 and result.wpm > 0:
+        runtime.estimated_wpm = 0.5 * runtime.estimated_wpm + 0.5 * result.wpm
+
+    session_complete = step_index == len(runtime.skeleton.steps) - 1
     if session_complete:
         db.end_session(conn, session_id)
         del _SESSION_PLANS[session_id]
 
-    return {"result": asdict(result), "session_complete": session_complete}
+    return {
+        "result": asdict(result),
+        "session_complete": session_complete,
+        "estimated_wpm": runtime.estimated_wpm,
+    }
 
 
 def _apply_keystrokes_to_skill_model(

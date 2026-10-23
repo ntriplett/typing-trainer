@@ -1,5 +1,7 @@
-"""Integration tests for the real session flow: start a scheduler-built
-plan, submit keystrokes for a step, confirm scoring + persistence.
+"""Integration tests for the real session flow: build a skeleton from
+the learner's config, fetch each step's lazily-generated content,
+submit keystrokes, confirm scoring + persistence + the running WPM
+estimate updates.
 
 Each test gets its own temp SQLite file (via monkeypatching app.main.DB_PATH)
 so tests don't share state through a real typing.db on disk.
@@ -21,6 +23,18 @@ def isolated_db(tmp_path, monkeypatch):
     yield
 
 
+def _content_for(session_id: int, index: int, start_response: dict) -> dict:
+    """Step 0's content comes back with /start; every other step is
+    fetched lazily via the content endpoint, exactly as the front-end
+    would.
+    """
+    if index == 0:
+        return start_response["first_step_content"]
+    resp = client.get(f"/api/session/{session_id}/steps/{index}/content")
+    assert resp.status_code == 200
+    return resp.json()["content"]
+
+
 def _keystrokes_for(content: dict, all_correct: bool = True) -> list[dict]:
     """Build a keystroke list that exercises every char in the prompt."""
     result = []
@@ -38,54 +52,95 @@ def _keystrokes_for(content: dict, all_correct: bool = True) -> list[dict]:
     return result
 
 
-def test_start_session_returns_a_full_plan():
+def test_start_session_returns_a_skeleton_and_first_step_content():
     resp = client.post("/api/session/start")
     assert resp.status_code == 200
     data = resp.json()
 
     assert isinstance(data["session_id"], int)
     assert len(data["active_keys"]) == INITIAL_ACTIVE_KEY_COUNT
+    assert data["estimated_wpm"] > 0
     phases = [s["phase"] for s in data["steps"]]
-    # brand-new learner: warmup + teach (room to grow) + practice + game, no eval yet
+    # brand-new learner, default config: warmup + teach (room to grow) + practice + game, no eval yet
     assert phases == ["warmup", "teach", "practice", "game"]
+    # skeleton steps carry no content -- that's generated lazily
     for step in data["steps"]:
-        assert step["content"]["prompt"]
+        assert "content" not in step
+    assert data["first_step_content"]["prompt"]
+
+
+def test_config_duration_affects_total_time_budget():
+    short = client.post("/api/session/start", json={"duration_minutes": 15}).json()
+    long = client.post("/api/session/start", json={"duration_minutes": 30}).json()
+    short_total = sum(s["duration_s"] for s in short["steps"])
+    long_total = sum(s["duration_s"] for s in long["steps"])
+    assert long_total > short_total
+
+
+def test_config_learn_vs_practice_zero_skips_teach():
+    data = client.post("/api/session/start", json={"learn_vs_practice": 0.0}).json()
+    assert "teach" not in [s["phase"] for s in data["steps"]]
 
 
 def test_quick_mode_produces_much_shorter_prompts():
     normal = client.post("/api/session/start").json()
     quick = client.post("/api/session/start?quick=1").json()
+    assert len(quick["first_step_content"]["prompt"]) < len(normal["first_step_content"]["prompt"])
 
-    normal_len = len(normal["steps"][0]["content"]["prompt"])
-    quick_len = len(quick["steps"][0]["content"]["prompt"])
-    assert quick_len < normal_len
+
+def test_get_step_content_generates_and_caches():
+    start = client.post("/api/session/start").json()
+    session_id = start["session_id"]
+
+    first = client.get(f"/api/session/{session_id}/steps/1/content").json()
+    second = client.get(f"/api/session/{session_id}/steps/1/content").json()
+    assert first == second  # cached, not regenerated differently each call
 
 
 def test_complete_step_scores_and_is_not_session_complete_yet():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]
-    step0 = start["steps"][0]
+    content0 = _content_for(session_id, 0, start)
 
     resp = client.post(
         f"/api/session/{session_id}/steps/0/complete",
-        json={"keystrokes": _keystrokes_for(step0["content"])},
+        json={"keystrokes": _keystrokes_for(content0)},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["session_complete"] is False
     assert data["result"]["accuracy"] == 1.0
     assert data["result"]["reward_signal"] == "nailed_it"
+    assert "estimated_wpm" in data
+
+
+def test_fast_typing_raises_the_estimated_wpm_for_later_steps():
+    start = client.post("/api/session/start").json()
+    session_id = start["session_id"]
+    content0 = _content_for(session_id, 0, start)
+
+    # Blazing fast, fully correct -- should pull the estimate up a lot
+    # from the beginner default.
+    keystrokes = [
+        {"expected_char": ch, "typed_char": ch, "correct": True, "latency_ms": 50}
+        for ch in content0["prompt"]
+        if ch != " "
+    ]
+    resp = client.post(
+        f"/api/session/{session_id}/steps/0/complete", json={"keystrokes": keystrokes}
+    )
+    assert resp.json()["estimated_wpm"] > start["estimated_wpm"]
 
 
 def test_completing_a_step_persists_key_stats():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]
-    step0 = start["steps"][0]
-    focus_key = step0["focus_keys"][0]
+    content0 = _content_for(session_id, 0, start)
+    focus_key = start["steps"][0]["focus_keys"][0]
 
     client.post(
         f"/api/session/{session_id}/steps/0/complete",
-        json={"keystrokes": _keystrokes_for(step0["content"])},
+        json={"keystrokes": _keystrokes_for(content0)},
     )
 
     with db.open_db(main.DB_PATH) as conn:
@@ -98,11 +153,11 @@ def test_completing_a_step_persists_key_stats():
 def test_completing_a_step_persists_bigram_stats():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]
-    step0 = start["steps"][0]
+    content0 = _content_for(session_id, 0, start)
 
     client.post(
         f"/api/session/{session_id}/steps/0/complete",
-        json={"keystrokes": _keystrokes_for(step0["content"])},
+        json={"keystrokes": _keystrokes_for(content0)},
     )
 
     with db.open_db(main.DB_PATH) as conn:
@@ -112,15 +167,16 @@ def test_completing_a_step_persists_bigram_stats():
 
 
 def test_full_session_runs_through_every_step_and_ends():
-    start = client.post("/api/session/start").json()
+    start = client.post("/api/session/start?quick=1").json()
     session_id = start["session_id"]
     steps = start["steps"]
 
     last_response = None
-    for i, step in enumerate(steps):
+    for i in range(len(steps)):
+        content = _content_for(session_id, i, start)
         last_response = client.post(
             f"/api/session/{session_id}/steps/{i}/complete",
-            json={"keystrokes": _keystrokes_for(step["content"])},
+            json={"keystrokes": _keystrokes_for(content)},
         )
         assert last_response.status_code == 200
 
@@ -136,11 +192,11 @@ def test_full_session_runs_through_every_step_and_ends():
 def test_complete_step_with_mistakes_scores_lower_and_does_not_crash():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]
-    step0 = start["steps"][0]
+    content0 = _content_for(session_id, 0, start)
 
     resp = client.post(
         f"/api/session/{session_id}/steps/0/complete",
-        json={"keystrokes": _keystrokes_for(step0["content"], all_correct=False)},
+        json={"keystrokes": _keystrokes_for(content0, all_correct=False)},
     )
     assert resp.status_code == 200
     assert resp.json()["result"]["accuracy"] == 0.0
@@ -159,6 +215,11 @@ def test_out_of_range_step_index_returns_404():
     resp = client.post(
         f"/api/session/{session_id}/steps/999/complete", json={"keystrokes": []}
     )
+    assert resp.status_code == 404
+
+
+def test_content_endpoint_404s_for_unknown_session():
+    resp = client.get("/api/session/999999/steps/0/content")
     assert resp.status_code == 404
 
 

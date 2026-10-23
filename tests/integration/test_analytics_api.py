@@ -25,7 +25,7 @@ def _run_one_step():
     step0 = start["steps"][0]
     keystrokes = [
         {"expected_char": ch, "typed_char": ch, "correct": True, "latency_ms": 200}
-        for ch in step0["content"]["prompt"]
+        for ch in start["first_step_content"]["prompt"]
         if ch != " "
     ]
     client.post(f"/api/session/{session_id}/steps/0/complete", json={"keystrokes": keystrokes})

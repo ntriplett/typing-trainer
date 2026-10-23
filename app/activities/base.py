@@ -60,7 +60,11 @@ class Activity(Protocol):
     def is_eligible(self, active_keys: list[str]) -> bool: ...
 
     def generate(
-        self, active_keys: list[str], duration_s: int, rng: random.Random | None = None
+        self,
+        active_keys: list[str],
+        duration_s: int,
+        rng: random.Random | None = None,
+        chars_per_second: float = 2.0,
     ) -> ActivityContent: ...
 
     def score(

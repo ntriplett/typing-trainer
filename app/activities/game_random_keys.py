@@ -34,10 +34,14 @@ class GameRandomKeys:
         return len(active_keys) >= 1
 
     def generate(
-        self, active_keys: list[str], duration_s: int, rng: random.Random | None = None
+        self,
+        active_keys: list[str],
+        duration_s: int,
+        rng: random.Random | None = None,
+        chars_per_second: float = 2.0,
     ) -> ActivityContent:
         keys = pick_two_keys(active_keys, rng)
-        prompt = build_random_sequence(keys, duration_s, rng)
+        prompt = build_random_sequence(keys, duration_s, rng, chars_per_second=chars_per_second)
         return ActivityContent(
             activity_id=self.id,
             kind=self.kind,
