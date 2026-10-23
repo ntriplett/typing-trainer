@@ -32,6 +32,14 @@ class ActivityContent:
     keys: list[str]
     prompt: str
     instructions: str = ""
+    # Structured multi-part lesson (diagram / anchor-check / isolated
+    # drill / combo, per micro_lesson.py), for teach variants that are
+    # more than "type this string." A flat list of plain dicts rather
+    # than a nested dataclass, so new experimental shapes don't need a
+    # schema change here -- the front-end renders generically on `kind`.
+    # None for every existing (flat-prompt) activity; unused fields cost
+    # nothing since this is just a JSON response, not a DB column.
+    micro_steps: list[dict] | None = None
 
 
 @dataclass(frozen=True, slots=True)

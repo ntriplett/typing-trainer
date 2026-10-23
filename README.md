@@ -9,7 +9,8 @@ strategy, and build order).
 
 ## Status
 
-Early scaffolding — see PLAN.md Section 10 for the build order. Not yet runnable.
+Runnable: `python launcher/start.py` starts the server and opens the app. See PLAN.md Section 10 for
+the build order and PLAN.md Section 11b for known issues.
 
 ## Development
 
@@ -17,5 +18,6 @@ Early scaffolding — see PLAN.md Section 10 for the build order. Not yet runnab
 python3 -m venv .venv
 source .venv/bin/activate   # or .venv\Scripts\activate on Windows
 pip install -e ".[dev]"
+playwright install chromium   # one-time, for the e2e test suite (tests/e2e/)
 pytest
 ```

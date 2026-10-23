@@ -1,0 +1,137 @@
+/* Demo-quality styling -- more visual care than the plain session UI
+   since this IS the thing being reviewed, but still no external
+   libraries/dependencies (PLAN.md Section 11a: real polish is a later
+   pass; this just needs to read clearly for comparison purposes). */
+
+#setup-screen .config-row {
+  margin: 1rem 0;
+  max-width: 28rem;
+}
+
+#setup-screen label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 0.3rem;
+}
+
+#setup-screen select {
+  width: 100%;
+  font-size: 1rem;
+  padding: 0.3rem;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.big-button {
+  font-size: 1.1rem;
+  padding: 0.5rem 1.5rem;
+}
+
+#diagram-area {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+}
+
+#hand-diagram {
+  width: 100%;
+  max-width: 640px;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
+
+.dkey-rect {
+  fill: #fff;
+  stroke: #999;
+  stroke-width: 1.5;
+  rx: 6;
+}
+
+.dkey-rect.dkey-highlight {
+  fill: #ffe066;
+  stroke: #d1a300;
+  stroke-width: 2.5;
+}
+
+.dkey-rect.dkey-home {
+  stroke: #4a90d9;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.dkey-label {
+  font-family: monospace;
+  font-size: 18px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: #333;
+  pointer-events: none;
+}
+
+.dfinger {
+  fill: #ccc;
+  stroke: #999;
+  stroke-width: 1;
+}
+
+.dfinger.dfinger-active {
+  fill: #2e9e44;
+  stroke: #1d6e2d;
+  stroke-width: 2;
+}
+
+.dreach-arrow {
+  stroke: #4a90d9;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+  fill: none;
+  marker-end: url(#arrowhead);
+}
+
+#step-instructions {
+  font-size: 1.1rem;
+  min-height: 2.5rem;
+}
+
+#lesson-prompt-viewport {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+  min-height: 3rem;
+}
+
+#lesson-prompt {
+  font-family: monospace;
+  font-size: 1.5rem;
+}
+
+#lesson-prompt .pending {
+  color: #aaa;
+}
+
+#lesson-prompt .current {
+  background: #ffe066;
+  border-radius: 2px;
+}
+
+#lesson-prompt .correct {
+  color: #2e9e44;
+}
+
+#lesson-prompt .incorrect {
+  color: #d1343b;
+  text-decoration: underline;
+}
+
+#lesson-prompt .space {
+  display: inline-block;
+  width: 0.7em;
+}
+
+#micro-step-progress {
+  font-weight: bold;
+  text-transform: uppercase;
+}

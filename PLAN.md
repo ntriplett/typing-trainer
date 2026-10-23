@@ -249,13 +249,20 @@ The look stays plain/functional for now, but the architecture must not block a l
 
 ## 11b. Known issues (deferred)
 
-- **Analysis page intermittent white screen**: the 4 charts (keyboard heatmap, fingers, bigrams, trend)
-  sometimes don't render on load even with the no-store cache fix in place — a hard refresh isn't
-  reliably needed anymore, but a blank load still happens sometimes. Not yet root-caused. Likely
-  candidate: `analysis.js`'s `Promise.all([...])` over the 4 fetches means if any single endpoint call
-  fails or the timing is off, *none* of the panels render — worth checking with real browser devtools
-  (console errors, network tab) rather than guessing further. Deferred at your call; revisit when doing
-  the JS/E2E test pass (Section 10 build order still lacks real front-end test coverage).
+- **Intermittent blank/stuck front-end renders — broader than first thought.** Originally logged as
+  "analysis page sometimes shows a white screen." The new Playwright e2e suite (`tests/e2e/`) now
+  reproduces it reliably enough to quantify: a repeated-reload probe
+  (`test_repeated_reloads_of_the_analysis_page_consistently_render`) saw the keyboard heatmap fail to
+  appear on 5 of 8 fresh loads in one run. Across repeated full-suite runs, **which** test fails shifts
+  around — sometimes `test_keyboard_heatmap_renders_on_a_fresh_learner`, sometimes `test_finger_bars_...`,
+  sometimes `test_all_four_panels_...`, and once even a *session-flow* test
+  (`test_plan_preview_marks_steps_done_as_the_session_progresses`) unrelated to the analysis page. That
+  last one is the important new data point: this may not be specific to `analysis.js`'s `Promise.all`
+  over its 4 fetches (the original suspicion) — it could be a more general timing/race condition in how
+  pages initialize. Three analysis-page e2e tests are marked `xfail(strict=False)` so they keep running
+  (and will visibly XPASS if someone fixes it) without blocking the suite. Still not root-caused, still
+  deferred at your call — worth real browser devtools (console errors, network tab, maybe a Performance
+  recording across a few reloads) rather than guessing further when this gets picked back up.
 
 ## 12. Workflow
 

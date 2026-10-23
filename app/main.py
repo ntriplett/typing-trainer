@@ -19,6 +19,7 @@ written on every step completion regardless.
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,13 +31,20 @@ from pydantic import BaseModel, Field
 
 from app import analytics, bigram_model, db, scheduler, skill_model
 from app.activities import get_activity
-from app.activities.base import ActivityContent, KeystrokeEvent
+from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
+from app.activities.teach_demos import get_demo_activity, list_demo_activities
 from app.models import KeyStat
 from app.scheduler import SessionConfig, SessionSkeleton, StepPlan
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-DB_PATH = Path(__file__).resolve().parent.parent / "typing.db"
+# Overridable via env var so a separately-spawned server process (e.g.
+# a Playwright e2e test's live server) can point at an isolated temp
+# DB without touching the dev typing.db -- monkeypatching DB_PATH only
+# works for in-process tests (TestClient), not a real subprocess.
+DB_PATH = Path(
+    os.environ.get("TYPING_TRAINER_DB_PATH", str(Path(__file__).resolve().parent.parent / "typing.db"))
+)
 
 app = FastAPI(title="Typing Trainer")
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
@@ -120,6 +128,60 @@ def analysis_page() -> FileResponse:
     return FileResponse(WEB_DIR / "analysis.html")
 
 
+@app.get("/teach-demo")
+def teach_demo_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "teach_demo.html")
+
+
+# --- teach-demo API -------------------------------------------------------------
+#
+# Demo-only: 3 experimental "teach" variants (app/activities/teach_demos.py)
+# for comparing pedagogical approaches. Deliberately stateless -- nothing
+# here touches the DB or the real learner's key_stat/session history,
+# since this is for review/comparison, not real progress.
+
+
+class KeystrokeIn(BaseModel):
+    expected_char: str
+    typed_char: str
+    correct: bool
+    latency_ms: int
+
+
+class DemoCompleteRequest(BaseModel):
+    keys: list[str]
+    keystrokes: list[KeystrokeIn]
+
+
+@app.get("/api/teach-demo/modules")
+def teach_demo_modules() -> list[dict]:
+    return list_demo_activities()
+
+
+@app.get("/api/teach-demo/{activity_id}/content")
+def teach_demo_content(activity_id: str, focus_key: str, allowed_keys: str = "") -> dict:
+    try:
+        activity = get_demo_activity(activity_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown demo module") from None
+
+    allowed = [k for k in allowed_keys.split(",") if k]
+    content = activity.generate([focus_key], allowed, duration_s=60, chars_per_second=2.0)
+    return asdict(content)
+
+
+@app.post("/api/teach-demo/{activity_id}/complete")
+def teach_demo_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
+    try:
+        get_demo_activity(activity_id)  # validates the id; scoring itself is generic
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown demo module") from None
+
+    keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
+    result = score_attempt(activity_id, body.keys, keystrokes)
+    return asdict(result)
+
+
 # --- analytics API -------------------------------------------------------------
 
 
@@ -157,13 +219,6 @@ class SessionConfigIn(BaseModel):
     duration_minutes: int = Field(default=15, ge=5, le=60)
     learn_vs_practice: float = Field(default=0.5, ge=0.0, le=1.0)
     focus_vs_general: float = Field(default=0.3, ge=0.0, le=1.0)
-
-
-class KeystrokeIn(BaseModel):
-    expected_char: str
-    typed_char: str
-    correct: bool
-    latency_ms: int
 
 
 class CompleteStepRequest(BaseModel):
