@@ -1,37 +1,27 @@
-/* Placeholder styling only — the real visual/theme pass is deferred
-   (PLAN.md Section 11a). This just keeps the skeleton legible. */
-
-body {
-  font-family: sans-serif;
-  display: flex;
-  justify-content: center;
-  margin-top: 4rem;
-}
-
-main {
-  text-align: center;
-}
+/* Shared base styles. The look (fonts, colors, frames, buttons) lives in
+   theme.css, loaded after this on every page. */
 
 /* Shared per-character typing states, used by both the real session
    prompt (#prompt) and the teach-demo prompt (#lesson-prompt) -- same
    colors, same meaning, no reason for each page to redefine them. */
 
 .pending {
-  color: #aaa;
+  color: #a8957a;
 }
 
 .current {
-  color: #000;
-  background: #ffe066;
-  border-radius: 2px;
+  color: #3b2417;
+  background: #f6d465;
+  box-shadow: 0 3px 0 #b5862a;
 }
 
 .correct {
-  color: #2e9e44;
+  color: #4f7a2a;
 }
 
 .incorrect {
-  color: #d1343b;
+  color: #b8432f;
+  background: #f6d6c8;
   text-decoration: underline;
 }
 
@@ -43,11 +33,6 @@ main {
 /* Shared secondary/caption text style, used on the analysis and
    teach-demo pages. */
 .hint {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.big-button {
-  font-size: 1.1rem;
-  padding: 0.5rem 1.5rem;
+  color: #6b4a2e;
+  font-size: 0.95rem;
 }

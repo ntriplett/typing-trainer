@@ -1,0 +1,10 @@
+<!-- Pixel plank button, 9-slice (slice 3). Original placeholder art. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges">
+  <rect x="1" y="1" width="8" height="8" fill="#e8b33e"/>
+  <rect x="1" y="0" width="8" height="1" fill="#3b2417"/>
+  <rect x="1" y="9" width="8" height="1" fill="#3b2417"/>
+  <rect x="0" y="1" width="1" height="8" fill="#3b2417"/>
+  <rect x="9" y="1" width="1" height="8" fill="#3b2417"/>
+  <rect x="1" y="1" width="8" height="1" fill="#f6d465"/>
+  <rect x="1" y="7" width="8" height="2" fill="#b5862a"/>
+</svg>

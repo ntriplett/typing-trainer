@@ -2,8 +2,8 @@
 // config, fetch the skeleton + first step, render each step's prompt
 // (fetching its content lazily, right before it's needed), capture
 // keystrokes with timing, submit for scoring, show the result, advance.
-// Deliberately plain visually -- no polish yet (PLAN.md Section 11a
-// defers that); this exists to prove the whole flow works.
+// Each scored step also pays coins (PLAN.md 11c), shown here and in the
+// shared header (header.js).
 
 const MAX_CHARS_PER_LINE = 24; // ~5 blocks of 4 chars + inter-block gaps
 const IDLE_PAUSE_MS = 5000; // no keystroke in this long -> the session timer pauses
@@ -23,6 +23,7 @@ let stepFinished = false; // guards against double-submitting the same step
 let consecutiveWrong = 0;
 let locked = false;
 const stepResults = [];
+let sessionCoins = 0; // total coins earned this session, for the summary
 
 // Overall session timer: counts up only while actively typing (paused
 // when idle for IDLE_PAUSE_MS), compared against the skeleton's total
@@ -42,6 +43,7 @@ const lockMessageEl = document.getElementById("lock-message");
 const promptEl = document.getElementById("prompt");
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
+const resultCoinsEl = document.getElementById("result-coins");
 const endNowButton = document.getElementById("end-now-button");
 const planPreviewEl = document.getElementById("plan-preview");
 const timeRemainingEl = document.getElementById("time-remaining");
@@ -343,6 +345,7 @@ async function finishStep() {
     (data.session_complete
       ? "Click below to see your session summary."
       : "Click below to move on to the next lesson.");
+  showCoins(data.coins_earned || [], data.coin_balance);
   stepResultEl.hidden = false;
   renderPlanPreview();
 
@@ -353,6 +356,14 @@ async function finishStep() {
   if (data.session_complete) {
     stopSessionTimer();
   }
+}
+
+function showCoins(earned, balance) {
+  const total = earned.reduce((sum, c) => sum + c.amount, 0);
+  sessionCoins += total;
+  resultCoinsEl.hidden = total === 0;
+  resultCoinsEl.innerHTML = `<span class="coin-icon"></span>+${total} coins`;
+  if (earned.length && window.Header) Header.celebrate(earned, balance);
 }
 
 // This is the end-of-lesson signal: once a step's keystrokes are
@@ -384,6 +395,8 @@ function showSummary() {
   stopSessionTimer();
   sessionScreen.hidden = true;
   completeScreen.hidden = false;
+  document.getElementById("session-coins").innerHTML =
+    `<span class="coin-icon"></span>You earned ${sessionCoins.toLocaleString()} coins!`;
   const list = document.getElementById("summary-list");
   list.innerHTML = stepResults
     .map(

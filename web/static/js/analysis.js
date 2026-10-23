@@ -98,7 +98,7 @@ function renderBigrams(bigrams) {
 function renderTrend(trend) {
   const svg = document.getElementById("trend-chart");
   if (trend.length === 0) {
-    svg.innerHTML = `<text x="300" y="100" text-anchor="middle" fill="#999">No sessions yet.</text>`;
+    svg.innerHTML = `<text x="300" y="100" text-anchor="middle" fill="#6b4a2e">No sessions yet.</text>`;
     return;
   }
 
@@ -115,8 +115,8 @@ function renderTrend(trend) {
     .join(" ");
 
   svg.innerHTML = `
-    <polyline points="${wpmPoints}" fill="none" stroke="#4a90d9" stroke-width="2" />
-    <polyline points="${accuracyPoints}" fill="none" stroke="#e08e45" stroke-width="2" />
+    <polyline points="${wpmPoints}" fill="none" stroke="#6b8e3a" stroke-width="2" />
+    <polyline points="${accuracyPoints}" fill="none" stroke="#d9822b" stroke-width="2" />
   `;
 }
 

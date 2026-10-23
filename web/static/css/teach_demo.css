@@ -20,7 +20,7 @@
   padding: 0.3rem;
 }
 
-/* .hint and .big-button are shared with other pages -- defined once in app.css. */
+/* .hint is defined once in app.css; .big-button in theme.css. */
 
 #diagram-area {
   display: flex;
@@ -31,8 +31,8 @@
 #hand-diagram {
   width: 100%;
   max-width: 640px;
-  background: #fafafa;
-  border: 1px solid #ddd;
+  background: var(--parchment);
+  border: 3px solid var(--wood-light);
   border-radius: 8px;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .dkey-label {
-  font-family: monospace;
+  font-family: var(--font-type);
   font-size: 18px;
   text-anchor: middle;
   dominant-baseline: central;
@@ -90,13 +90,13 @@
 }
 
 #lesson-prompt-viewport {
-  border: 1px solid #ddd;
+  border: 3px solid var(--wood-light);
   padding: 0.5rem;
   min-height: 3rem;
 }
 
 #lesson-prompt {
-  font-family: monospace;
+  font-family: var(--font-type);
   font-size: 1.5rem;
 }
 

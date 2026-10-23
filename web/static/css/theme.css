@@ -1,0 +1,351 @@
+/* Cozy theme (PLAN.md Section 11c): warm, autumn, sandy, cheerful,
+   nature-focused, with a 16-bit pixel flair. Loaded on every page after
+   app.css. Frames and buttons are 9-slice pixel SVGs in
+   /static/assets/ui/ (original placeholder art), so any element gets the
+   look just by adding a class. */
+
+@font-face {
+  font-family: "Pixelify Sans";
+  src: url("/static/assets/fonts/PixelifySans.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Mono";
+  src: url("/static/assets/fonts/AtkinsonHyperlegibleMono.ttf") format("truetype");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+:root {
+  --ink: #3b2417;
+  --ink-soft: #6b4a2e;
+  --sand: #f3e2bf;
+  --parchment: #fbf1dc;
+  --wood: #8b5a2b;
+  --wood-dark: #5c3a1a;
+  --wood-light: #b07a43;
+  --leaf-orange: #d9822b;
+  --leaf-red: #b8432f;
+  --leaf-gold: #e8b33e;
+  --moss: #6b8e3a;
+  --moss-dark: #4a6627;
+  --sky: #a8d5e2;
+
+  --font-ui: "Pixelify Sans", system-ui, sans-serif;
+  --font-type: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+}
+
+/* --- base ---------------------------------------------------------------------- */
+
+/* Pages toggle screens with the hidden attribute; never let a themed
+   display rule (flex, grid, inline-block) override it. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  background: var(--sand) url("/static/assets/ui/sand.svg") repeat;
+  background-size: 32px 32px;
+  image-rendering: pixelated;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 1.15rem;
+  line-height: 1.5;
+  /* Pixelify Sans' "fi" ligature reads as "A" ("fingers" -> "Angers"). */
+  font-variant-ligatures: none;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  width: min(880px, calc(100% - 32px));
+  margin: 1.5rem auto 3rem;
+  text-align: left;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.5rem;
+}
+
+h1 {
+  font-size: 2rem;
+  color: var(--wood-dark);
+  text-shadow: 2px 2px 0 var(--leaf-gold);
+}
+
+a {
+  color: var(--leaf-red);
+}
+
+/* --- windows (pixel wood frame around parchment) ---------------------------- */
+
+.panel {
+  border: 12px solid transparent;
+  border-image: url("/static/assets/ui/panel.svg") 4 fill / 12px stretch;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel > :last-child {
+  margin-bottom: 0;
+}
+
+.panel-title {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 1.3rem;
+  color: var(--wood-dark);
+}
+
+/* --- buttons (pixel planks) --------------------------------------------------- */
+
+button,
+.button {
+  font-family: var(--font-ui);
+  font-variant-ligatures: none;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--parchment);
+  text-shadow: 2px 2px 0 var(--ink);
+  text-decoration: none;
+  display: inline-block;
+  border: 9px solid transparent;
+  border-image: url("/static/assets/ui/button.svg") 3 fill / 9px stretch;
+  background: none;
+  padding: 0.1rem 0.6rem 0.25rem;
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+button:hover,
+.button:hover {
+  filter: brightness(1.08);
+}
+
+button:active,
+.button:active {
+  transform: translateY(2px);
+}
+
+button:disabled {
+  filter: grayscale(0.8) brightness(0.95);
+  cursor: not-allowed;
+  transform: none;
+}
+
+button:focus-visible,
+.button:focus-visible {
+  outline: 3px dashed var(--leaf-gold);
+  outline-offset: 2px;
+}
+
+.button-go {
+  border-image-source: url("/static/assets/ui/button-green.svg");
+}
+
+.button-gold {
+  border-image-source: url("/static/assets/ui/button-gold.svg");
+  color: var(--ink);
+  text-shadow: 1px 1px 0 var(--parchment);
+}
+
+.big-button {
+  font-size: 1.35rem;
+  padding: 0.2rem 1rem 0.35rem;
+}
+
+/* Small text-only button, for low-emphasis actions. */
+.link-button {
+  border: none;
+  border-image: none;
+  color: var(--leaf-red);
+  text-shadow: none;
+  text-decoration: underline;
+  padding: 0;
+}
+
+/* --- top bar (shared header, built by header.js) ------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 16px;
+  background: var(--wood-dark);
+  border-bottom: 4px solid var(--ink);
+  box-shadow: inset 0 -4px 0 var(--wood), inset 0 4px 0 var(--wood);
+  color: var(--parchment);
+}
+
+.topbar .brand {
+  color: var(--parchment);
+  text-decoration: none;
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-shadow: 2px 2px 0 var(--ink);
+  white-space: nowrap;
+}
+
+.topbar .brand::before {
+  content: "";
+  display: inline-block;
+  width: 21px;
+  height: 21px;
+  margin-right: 0.4rem;
+  vertical-align: -3px;
+  background: url("/static/assets/ui/leaf.svg") no-repeat center / contain;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.coin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.6rem;
+  background: var(--ink);
+  border: 3px solid var(--wood-light);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--leaf-gold);
+  min-width: 4.5rem;
+  justify-content: flex-end;
+}
+
+.coin-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background: url("/static/assets/ui/coin.svg") no-repeat center / contain;
+  flex: none;
+}
+
+.coin-pill.bump {
+  animation: coin-bump 0.4s steps(4);
+}
+
+@keyframes coin-bump {
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.topbar-avatar {
+  display: block;
+  border: 3px solid var(--wood-light);
+  background: var(--ink);
+  line-height: 0;
+}
+
+/* Avatars are pixel art: never smooth them when scaled. */
+.avatar-canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+/* --- coin toast ("+85" floating up) ------------------------------------------ */
+
+.coin-toast {
+  position: fixed;
+  top: 3.5rem;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  pointer-events: none;
+}
+
+.coin-toast-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  background: var(--parchment);
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--wood);
+  font-weight: 700;
+  animation: toast-rise 2.4s steps(12) forwards;
+}
+
+@keyframes toast-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  15%,
+  75% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+/* --- small shared bits -------------------------------------------------------- */
+
+.coins-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 700;
+  color: var(--wood-dark);
+}
+
+.error-text {
+  color: var(--leaf-red);
+  font-weight: 600;
+}
+
+/* Gentle falling leaves; purely decorative (home page). */
+.leaves {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: -1;
+}
+
+.leaves span {
+  position: absolute;
+  top: -30px;
+  width: 21px;
+  height: 21px;
+  background: url("/static/assets/ui/leaf.svg") no-repeat center / contain;
+  animation: leaf-fall linear infinite;
+  opacity: 0.85;
+}
+
+@keyframes leaf-fall {
+  to {
+    transform: translate(60px, 110vh) rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaves {
+    display: none;
+  }
+  .coin-pill.bump,
+  .coin-toast-item {
+    animation: none;
+  }
+}

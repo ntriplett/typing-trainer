@@ -2,15 +2,48 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Typing Trainer</title>
   <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/home.css" />
 </head>
 <body>
+  <div class="leaves" aria-hidden="true">
+    <span style="left: 8%; animation-duration: 14s; animation-delay: -2s"></span>
+    <span style="left: 27%; animation-duration: 18s; animation-delay: -9s"></span>
+    <span style="left: 52%; animation-duration: 16s; animation-delay: -5s"></span>
+    <span style="left: 74%; animation-duration: 20s; animation-delay: -13s"></span>
+    <span style="left: 91%; animation-duration: 15s; animation-delay: -7s"></span>
+  </div>
   <main>
-    <h1>Typing Trainer</h1>
-    <p><a href="/session">Start a practice session →</a></p>
-    <p><a href="/analysis">View progress →</a></p>
-    <p><a href="/teach-demo">Compare teach modules (demo) →</a></p>
+    <section class="panel home-hero">
+      <canvas id="home-avatar" class="avatar-canvas" width="192" height="192"></canvas>
+      <div class="home-text">
+        <h1>Typing Trainer</h1>
+        <p id="home-greeting">Welcome back, traveler!</p>
+        <p>Every lesson earns coins. Spend them in the store on hats, clothes, pets, and new places.</p>
+        <nav class="home-actions">
+          <a class="button button-go big-button" href="/session">Start practicing</a>
+          <a class="button button-gold big-button" href="/store">Visit the store</a>
+          <a class="button big-button" href="/analysis">My progress</a>
+        </nav>
+      </div>
+    </section>
+    <p class="home-footnote"><a href="/teach-demo">Compare teach modules (demo)</a></p>
   </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script>
+    Header.ready.then((me) => {
+      if (!me) return;
+      // Gentle idle bob: the same renderer games will use for poses.
+      const canvas = document.getElementById("home-avatar");
+      let frame = 0;
+      drawAvatar(canvas, me.avatar);
+      setInterval(() => drawAvatar(canvas, me.avatar, { frame: ++frame }), 600);
+    });
+  </script>
 </body>
 </html>

@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <title>Typing Trainer — Session</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
   <link rel="stylesheet" href="/static/css/session.css" />
 </head>
 <body>
   <main>
-    <h1>Typing Trainer</h1>
-
-    <div id="start-screen">
+    <div id="start-screen" class="panel">
+      <h1>Practice time!</h1>
       <p>Ready for a practice session? Pick how today should go:</p>
 
       <div class="config-row">
@@ -30,11 +31,11 @@
 
       <label><input type="checkbox" id="quick-test-checkbox" /> Quick test (short lessons, for trying things out)</label>
 
-      <p><button id="start-button" class="big-button">Start session</button></p>
+      <p><button id="start-button" class="big-button button-go">Start session</button></p>
     </div>
 
     <div id="session-screen" hidden>
-      <div id="progress-bar">
+      <div id="progress-bar" class="panel">
         <div id="plan-preview"></div>
         <div id="progress-bar-row">
           <span id="time-remaining"></span>
@@ -42,17 +43,20 @@
         </div>
       </div>
 
-      <p id="phase-label"></p>
-      <p id="instructions"></p>
-      <p id="progress"></p>
-      <p id="lock-message" hidden>🔒 Get this one right to keep going!</p>
-      <div id="prompt-viewport">
-        <div id="prompt"></div>
-      </div>
-      <div id="step-result" hidden>
-        <h2 id="result-headline"></h2>
-        <p id="result-summary"></p>
-        <button id="next-button">Next lesson →</button>
+      <div class="panel typing-panel">
+        <p id="phase-label"></p>
+        <p id="instructions"></p>
+        <p id="progress"></p>
+        <p id="lock-message" hidden>🔒 Get this one right to keep going!</p>
+        <div id="prompt-viewport">
+          <div id="prompt"></div>
+        </div>
+        <div id="step-result" hidden>
+          <h2 id="result-headline"></h2>
+          <p id="result-summary"></p>
+          <p id="result-coins" class="coins-inline" hidden></p>
+          <button id="next-button" class="button-go">Next lesson →</button>
+        </div>
       </div>
 
       <nav id="session-nav">
@@ -62,15 +66,19 @@
       </nav>
     </div>
 
-    <div id="complete-screen" hidden>
+    <div id="complete-screen" class="panel" hidden>
       <h2>🎉 Session complete!</h2>
+      <p id="session-coins" class="coins-inline"></p>
       <ul id="summary-list"></ul>
       <nav>
         <button id="complete-home-button">Home</button>
-        <button id="complete-new-session-button">Start another session</button>
+        <button id="complete-new-session-button" class="button-go">Start another session</button>
       </nav>
     </div>
   </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/header.js"></script>
   <script src="/static/js/session.js"></script>
 </body>
 </html>

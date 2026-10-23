@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Store</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/store.css" />
+</head>
+<body>
+  <main>
+    <h1>The Acorn Store</h1>
+    <p>Spend the coins you earn from typing. Click anything to try it on!</p>
+
+    <div class="store-layout">
+      <section class="panel dressing-room">
+        <h2 class="panel-title">Dressing room</h2>
+        <canvas id="preview-avatar" class="avatar-canvas" width="256" height="256"></canvas>
+        <p id="preview-label">This is you!</p>
+        <button id="preview-reset" class="link-button" hidden>Stop trying on</button>
+      </section>
+
+      <section class="store-shelves">
+        <p id="store-message" class="error-text" role="status"></p>
+        <div id="store-items"></div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/store.js"></script>
+</body>
+</html>

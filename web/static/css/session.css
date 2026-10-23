@@ -1,23 +1,25 @@
-/* Placeholder styling only -- real visual/theme pass is deferred
-   (PLAN.md Section 11a). Just enough to read the prompt clearly and
-   prove the interaction works. */
+/* Session page layout. Frames, fonts, and palette come from theme.css;
+   the typing prompt uses the legible --font-type, never the pixel font. */
 
 #prompt-viewport {
-  height: 8.8rem; /* 4 lines at the line-height below */
+  height: 9.6rem; /* 4 lines at the line-height below */
   overflow-y: auto;
   scroll-behavior: smooth;
-  border: 1px solid #ddd;
-  padding: 0.25rem 0.5rem;
+  background: #fffaf0;
+  border: 3px solid var(--wood-light);
+  box-shadow: inset 3px 3px 0 #efe2c4;
+  padding: 0.25rem 0.75rem;
 }
 
 #prompt {
-  font-family: monospace;
-  font-size: 1.5rem;
+  font-family: var(--font-type);
+  font-size: 1.7rem;
+  font-weight: 500;
 }
 
 .prompt-line {
   display: flex;
-  line-height: 2.2rem;
+  line-height: 2.4rem;
   white-space: pre;
 }
 
@@ -25,84 +27,83 @@
    teach-demo prompt -- defined once in app.css. */
 
 #prompt .locked {
-  background: #ffb3b3;
+  background: #f2b8a8;
 }
 
 /* --- pre-session config sliders --- */
 
 .config-row {
   margin: 0.75rem 0;
-  max-width: 24rem;
+  max-width: 26rem;
 }
 
 .config-row label {
   display: block;
-  font-size: 0.9rem;
+  font-size: 1rem;
   margin-bottom: 0.2rem;
 }
 
 .config-row input[type="range"] {
   width: 100%;
+  accent-color: var(--leaf-orange);
 }
 
-/* .big-button is shared with the teach-demo page -- defined once in app.css. */
+input[type="checkbox"] {
+  accent-color: var(--moss);
+}
+
+/* .big-button is shared with other pages -- defined once in theme.css. */
 
 /* --- in-session progress bar --- */
-
-#progress-bar {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 1rem;
-}
 
 #plan-preview {
   display: flex;
   gap: 0.4rem;
   margin-bottom: 0.4rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   text-transform: uppercase;
   flex-wrap: wrap;
 }
 
 #plan-preview .plan-phase {
-  padding: 0.1rem 0.5rem;
-  border-radius: 3px;
-  background: #eee;
-  color: #888;
+  padding: 0.05rem 0.5rem;
+  background: var(--sand);
+  border: 2px solid #d8c7a0;
+  color: var(--ink-soft);
 }
 
 #plan-preview .plan-phase.done {
-  background: #d7f0dc;
-  color: #2e9e44;
+  background: #dfe8c4;
+  border-color: var(--moss);
+  color: var(--moss-dark);
 }
 
 #plan-preview .plan-phase.current {
-  background: #ffe066;
-  color: #000;
+  background: var(--leaf-gold);
+  border-color: var(--ink);
+  color: var(--ink);
   font-weight: bold;
 }
 
 #progress-bar-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.9rem;
-  color: #444;
+  font-size: 1rem;
 }
 
 #time-remaining.paused::after {
   content: " (paused)";
-  color: #999;
+  color: var(--ink-soft);
 }
 
 #lock-message {
-  color: #c0392b;
+  color: var(--leaf-red);
   font-weight: bold;
 }
 
 #progress {
-  color: #666;
-  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
 }
 
 #result-headline {
@@ -113,15 +114,27 @@
   margin-top: 1rem;
 }
 
+#result-coins,
+#session-coins {
+  display: flex;
+  font-size: 1.2rem;
+  margin: 0 0 0.75rem;
+}
+
 #phase-label {
   font-weight: bold;
   text-transform: uppercase;
+  color: var(--leaf-red);
+  margin: 0;
 }
 
-#session-nav {
-  margin-top: 1.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #ddd;
+#instructions {
+  margin-top: 0.2rem;
+}
+
+#session-nav,
+#complete-screen nav {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }

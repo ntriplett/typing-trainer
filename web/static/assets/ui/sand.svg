@@ -1,0 +1,8 @@
+<!-- Sandy page texture tile. Original placeholder art. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8" shape-rendering="crispEdges">
+  <rect width="8" height="8" fill="#f3e2bf"/>
+  <rect x="1" y="2" width="1" height="1" fill="#e8d3a8"/>
+  <rect x="5" y="1" width="1" height="1" fill="#f8ecd0"/>
+  <rect x="6" y="5" width="1" height="1" fill="#e8d3a8"/>
+  <rect x="2" y="6" width="1" height="1" fill="#f8ecd0"/>
+</svg>
