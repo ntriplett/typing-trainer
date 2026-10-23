@@ -111,11 +111,28 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 @contextmanager
 def open_db(db_path: str | Path) -> Iterator[sqlite3.Connection]:
-    """Open a connection, ensure schema exists, close on exit."""
+    """Open a connection, ensure schema exists, commit once on clean exit,
+    close on exit.
+
+    Every write function below used to call conn.commit() itself. That's
+    fine at one call per request, but a single step-completion request
+    writes one row per keystroke (log_keystroke) plus one row per
+    consecutive letter pair (upsert_bigram_stat) -- for a 180-keystroke
+    step, roughly 360 individual commits, each a synchronous disk fsync.
+    That's what turned "submit this step" into a multi-second request
+    (confirmed by profiling: ~7s server-side for 180 keystrokes, almost
+    entirely commit overhead, not application logic). Batching the
+    whole request into one transaction/commit here, and dropping the
+    per-call commits, doesn't change what gets persisted -- a request
+    that raises skips the commit and rolls back on close() exactly as
+    before -- it just stops paying the fsync cost hundreds of times
+    per request.
+    """
     conn = connect(db_path)
     try:
         init_schema(conn)
         yield conn
+        conn.commit()
     finally:
         conn.close()
 
@@ -128,7 +145,6 @@ def create_learner(conn: sqlite3.Connection, name: str) -> Learner:
     cur = conn.execute(
         "INSERT INTO learner (name, created_at) VALUES (?, ?)", (name, created_at)
     )
-    conn.commit()
     return Learner(id=cur.lastrowid, name=name, created_at=_parse_dt(created_at))
 
 
@@ -168,7 +184,6 @@ def upsert_key_stat(conn: sqlite3.Connection, stat: KeyStat) -> None:
             stat.mastered_at.isoformat() if stat.mastered_at else None,
         ),
     )
-    conn.commit()
 
 
 def get_key_stat(conn: sqlite3.Connection, learner_id: int, key: str) -> KeyStat | None:
@@ -213,7 +228,6 @@ def upsert_bigram_stat(conn: sqlite3.Connection, stat: BigramStat) -> None:
         """,
         (stat.learner_id, stat.key1, stat.key2, stat.ema_time_ms, stat.accuracy_rolling, stat.sample_count),
     )
-    conn.commit()
 
 
 def get_bigram_stat(conn: sqlite3.Connection, learner_id: int, key1: str, key2: str) -> BigramStat | None:
@@ -251,7 +265,6 @@ def start_session(conn: sqlite3.Connection, learner_id: int) -> Session:
         "INSERT INTO session (learner_id, started_at) VALUES (?, ?)",
         (learner_id, started_at),
     )
-    conn.commit()
     return Session(
         id=cur.lastrowid, learner_id=learner_id, started_at=_parse_dt(started_at), ended_at=None
     )
@@ -261,7 +274,6 @@ def end_session(conn: sqlite3.Connection, session_id: int) -> None:
     conn.execute(
         "UPDATE session SET ended_at = ? WHERE id = ?", (_now_iso(), session_id)
     )
-    conn.commit()
 
 
 def log_session_event(
@@ -280,7 +292,6 @@ def log_session_event(
         """,
         (session_id, phase, activity_id, started_at, stats_json),
     )
-    conn.commit()
     return SessionEvent(
         id=cur.lastrowid,
         session_id=session_id,
@@ -304,7 +315,6 @@ def end_session_event(
         conn.execute(
             "UPDATE session_event SET ended_at = ? WHERE id = ?", (_now_iso(), event_id)
         )
-    conn.commit()
 
 
 def log_keystroke(
@@ -324,7 +334,6 @@ def log_keystroke(
         """,
         (session_event_id, seq, expected_char, typed_char, int(correct), latency_ms, _now_iso()),
     )
-    conn.commit()
 
 
 def list_keystrokes_for_event(
@@ -385,4 +394,3 @@ def upsert_streak(conn: sqlite3.Connection, streak: Streak) -> None:
             streak.last_active_date,
         ),
     )
-    conn.commit()
