@@ -15,12 +15,18 @@ function showTab(name) {
   document.querySelectorAll(".tab-panel").forEach((p) => (p.hidden = p.id !== `tab-${name}`));
 }
 
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} returned ${r.status}`);
+  return r.json();
+}
+
 async function loadAll() {
   const [keys, fingers, bigrams, trend] = await Promise.all([
-    fetch("/api/analytics/keys").then((r) => r.json()),
-    fetch("/api/analytics/fingers").then((r) => r.json()),
-    fetch("/api/analytics/bigrams").then((r) => r.json()),
-    fetch("/api/analytics/trend").then((r) => r.json()),
+    fetchJson("/api/analytics/keys"),
+    fetchJson("/api/analytics/fingers"),
+    fetchJson("/api/analytics/bigrams"),
+    fetchJson("/api/analytics/trend"),
   ]);
   renderKeyboard(keys);
   renderFingers(fingers);
@@ -114,4 +120,10 @@ function renderTrend(trend) {
   `;
 }
 
-loadAll();
+// A failed fetch used to leave every panel silently blank (PLAN.md 11b);
+// say so instead, so a server error is visible rather than a white page.
+loadAll().catch((err) => {
+  console.error(err);
+  document.getElementById("keyboard").innerHTML =
+    `<p class="hint">Couldn't load progress data (${err.message}). Try reloading.</p>`;
+});

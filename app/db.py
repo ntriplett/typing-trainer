@@ -97,8 +97,18 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open a connection with sane defaults (foreign keys on, Row factory)."""
-    conn = sqlite3.connect(db_path)
+    """Open a connection with sane defaults (foreign keys on, Row factory).
+
+    check_same_thread=False: FastAPI runs a sync generator dependency
+    (main.get_db) on threadpool workers, so a request's connect, endpoint
+    body, and commit/close can each land on a *different* thread. With
+    sqlite3's default thread check that raised ProgrammingError at random
+    under concurrent requests -- the root cause of the intermittent blank
+    analysis page (its 4 parallel fetches) and of silently failed commits.
+    Safe here because each connection belongs to exactly one request and
+    is never used by two threads at once.
+    """
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

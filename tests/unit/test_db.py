@@ -161,3 +161,31 @@ def test_streak_upsert_round_trips(conn):
     assert fetched.current_streak_days == 3
     assert fetched.longest_streak == 5
     assert fetched.last_active_date == "2026-10-23"
+
+
+def test_connection_is_usable_from_a_different_thread(tmp_path):
+    """Regression for PLAN.md 11b: FastAPI may open a request's
+    connection on one threadpool worker and use/commit/close it on
+    another. That used to raise sqlite3.ProgrammingError at random.
+    """
+    import threading
+
+    db_path = tmp_path / "t.db"
+    ctx = db.open_db(db_path)
+    conn = ctx.__enter__()
+    errors = []
+
+    def use_then_close():
+        try:
+            db.create_learner(conn, "Sam")
+            ctx.__exit__(None, None, None)
+        except Exception as exc:  # noqa: BLE001 -- surfaced via assert below
+            errors.append(exc)
+
+    worker = threading.Thread(target=use_then_close)
+    worker.start()
+    worker.join()
+
+    assert errors == []
+    with db.open_db(db_path) as check:
+        assert db.get_learner(check, 1).name == "Sam"

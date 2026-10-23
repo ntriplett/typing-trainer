@@ -256,25 +256,19 @@ The look stays plain/functional for now, but the architecture must not block a l
 - Each `Activity`'s rendering is already isolated to its own front-end module (Sec. 7/9), so a game can
   get a full graphics upgrade later without touching other activities or the scheduler.
 
-## 11b. Known issues (deferred)
+## 11b. Known issues
 
-- **Intermittent blank/stuck front-end renders — broader than first thought.** Originally logged as
-  "analysis page sometimes shows a white screen." The new Playwright e2e suite (`tests/e2e/`) now
-  reproduces it reliably enough to quantify: a repeated-reload probe
-  (`test_repeated_reloads_of_the_analysis_page_consistently_render`) saw the keyboard heatmap fail to
-  appear on 5 of 8 fresh loads in one run. Across repeated full-suite runs, **which** test fails shifts
-  around — sometimes `test_keyboard_heatmap_renders_on_a_fresh_learner`, sometimes `test_finger_bars_...`,
-  sometimes `test_all_four_panels_...`, and once even a *session-flow* test
-  (`test_plan_preview_marks_steps_done_as_the_session_progresses`) unrelated to the analysis page. That
-  last one is the important new data point: this may not be specific to `analysis.js`'s `Promise.all`
-  over its 4 fetches (the original suspicion) — it could be a more general timing/race condition in how
-  pages initialize. Also reproduced in real GitHub Actions CI (not just locally): the first CI run of
-  the e2e suite failed on `test_keyboard_heatmap_renders_on_a_fresh_learner` with the same 30s
-  `wait_for_function` timeout. All 4 analysis-page e2e tests are marked `xfail(strict=False)` so they
-  keep running (and will visibly XPASS if someone fixes it) without blocking the suite. Still not
-  root-caused, still deferred at your call — worth real browser devtools (console errors, network tab,
-  maybe a Performance recording across a few reloads) rather than guessing further when this gets picked
-  back up.
+- **FIXED (2026-10-23): intermittent blank/stuck front-end renders.** Root cause was server-side, not
+  the front-end: FastAPI runs the sync `get_db` generator dependency on threadpool workers, so one
+  request's connect, endpoint body, and commit/close could land on different threads, and sqlite3's
+  default `check_same_thread=True` raised `ProgrammingError` at random. The analysis page's 4 parallel
+  fetches made it most visible (any 500 -> `Promise.all` rejects -> blank page), but any endpoint could
+  hit it -- including failing at commit time, i.e. silently dropping writes. Fix: `check_same_thread=False`
+  in `db.connect` (safe: one connection per request, never shared concurrently), a cross-thread regression
+  test in `tests/unit/test_db.py`, the e2e xfails removed, and `analysis.js` now shows an error message
+  instead of a blank page if a fetch fails.
+- **Launcher smoke e2e tests use the real port 8420**, so they error at setup if the app is already
+  running locally. Not a code bug; stop the local app before running `tests/e2e`.
 
 ## 12. Workflow
 
