@@ -247,6 +247,16 @@ The look stays plain/functional for now, but the architecture must not block a l
 - Each `Activity`'s rendering is already isolated to its own front-end module (Sec. 7/9), so a game can
   get a full graphics upgrade later without touching other activities or the scheduler.
 
+## 11b. Known issues (deferred)
+
+- **Analysis page intermittent white screen**: the 4 charts (keyboard heatmap, fingers, bigrams, trend)
+  sometimes don't render on load even with the no-store cache fix in place — a hard refresh isn't
+  reliably needed anymore, but a blank load still happens sometimes. Not yet root-caused. Likely
+  candidate: `analysis.js`'s `Promise.all([...])` over the 4 fetches means if any single endpoint call
+  fails or the timing is off, *none* of the panels render — worth checking with real browser devtools
+  (console errors, network tab) rather than guessing further. Deferred at your call; revisit when doing
+  the JS/E2E test pass (Section 10 build order still lacks real front-end test coverage).
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every
