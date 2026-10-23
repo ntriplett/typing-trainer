@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import bigram_model, db, scheduler, skill_model
+from app import analytics, bigram_model, db, scheduler, skill_model
 from app.activities import get_activity
 from app.activities.base import KeystrokeEvent
 from app.activities.hello_world import HelloWorldActivity
@@ -74,6 +74,39 @@ def index() -> FileResponse:
 @app.get("/session")
 def session_page() -> FileResponse:
     return FileResponse(WEB_DIR / "session.html")
+
+
+@app.get("/analysis")
+def analysis_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "analysis.html")
+
+
+# --- analytics API -------------------------------------------------------------
+
+
+@app.get("/api/analytics/keys")
+def analytics_keys(conn=Depends(get_db)) -> list[dict]:
+    learner_id = ensure_learner(conn)
+    return analytics.key_report(conn, learner_id)
+
+
+@app.get("/api/analytics/fingers")
+def analytics_fingers(conn=Depends(get_db)) -> dict:
+    learner_id = ensure_learner(conn)
+    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    return {finger: asdict(stat) for finger, stat in analytics.finger_stats(key_stats).items()}
+
+
+@app.get("/api/analytics/bigrams")
+def analytics_bigrams(limit: int = 10, conn=Depends(get_db)) -> list[dict]:
+    learner_id = ensure_learner(conn)
+    return [asdict(b) for b in analytics.worst_bigrams(conn, learner_id, limit=limit)]
+
+
+@app.get("/api/analytics/trend")
+def analytics_trend(days: int | None = None, conn=Depends(get_db)) -> list[dict]:
+    learner_id = ensure_learner(conn)
+    return analytics.daily_trend(conn, learner_id, days=days)
 
 
 # --- session API --------------------------------------------------------------
