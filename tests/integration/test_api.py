@@ -32,6 +32,12 @@ def test_hello_world_activity_endpoint():
     assert "Hello, typer!" in body["message"]
 
 
+def test_analysis_page_is_served():
+    resp = client.get("/analysis")
+    assert resp.status_code == 200
+    assert "Progress" in resp.text
+
+
 def test_static_js_is_served():
     resp = client.get("/static/js/app.js")
     assert resp.status_code == 200

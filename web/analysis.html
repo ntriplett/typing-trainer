@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Progress</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/analysis.css" />
+</head>
+<body>
+  <main>
+    <h1>Typing Trainer — Progress</h1>
+    <p><a href="/">← Home</a> · <a href="/session">Start a session →</a></p>
+
+    <nav id="tabs">
+      <button data-tab="heatmap" class="tab-button active">Keyboard</button>
+      <button data-tab="fingers" class="tab-button">Fingers</button>
+      <button data-tab="bigrams" class="tab-button">Letter Pairs</button>
+      <button data-tab="trend" class="tab-button">Trend</button>
+    </nav>
+
+    <section id="tab-heatmap" class="tab-panel">
+      <h2>Keyboard heatmap</h2>
+      <p class="hint">Color shows accuracy: red is weak, green is strong, gray is not started yet.</p>
+      <div id="keyboard"></div>
+    </section>
+
+    <section id="tab-fingers" class="tab-panel" hidden>
+      <h2>Finger accuracy</h2>
+      <div id="finger-bars"></div>
+    </section>
+
+    <section id="tab-bigrams" class="tab-panel" hidden>
+      <h2>Toughest letter pairs</h2>
+      <table id="bigram-table">
+        <thead>
+          <tr><th>Pair</th><th>Accuracy</th><th>Speed (ms)</th><th>Samples</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-trend" class="tab-panel" hidden>
+      <h2>Progress over time</h2>
+      <svg id="trend-chart" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      <p class="legend"><span class="swatch wpm"></span> WPM &nbsp; <span class="swatch accuracy"></span> Accuracy</p>
+    </section>
+  </main>
+  <script src="/static/js/analysis.js"></script>
+</body>
+</html>

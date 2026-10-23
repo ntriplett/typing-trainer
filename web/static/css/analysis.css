@@ -1,0 +1,132 @@
+/* Placeholder styling only -- real visual/theme pass is deferred
+   (PLAN.md Section 11a). Plain HTML/CSS/SVG, no charting library. */
+
+#tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.tab-button.active {
+  font-weight: bold;
+  border-bottom: 3px solid #4a90d9;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+/* --- keyboard heatmap --- */
+
+#keyboard {
+  font-family: monospace;
+}
+
+.kb-row {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.kb-key {
+  width: 2.2rem;
+  height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.kb-key.not-started {
+  background: #ccc;
+  color: #666;
+}
+
+/* --- finger bars --- */
+
+.finger-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.finger-label {
+  width: 8rem;
+  font-size: 0.9rem;
+}
+
+.finger-bar-track {
+  flex: 1;
+  background: #eee;
+  border-radius: 3px;
+  height: 1rem;
+  overflow: hidden;
+}
+
+.finger-bar-fill {
+  height: 100%;
+  background: #4a90d9;
+}
+
+.finger-value {
+  width: 3rem;
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+/* --- bigram table --- */
+
+#bigram-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+#bigram-table th,
+#bigram-table td {
+  text-align: left;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid #eee;
+}
+
+/* --- trend chart --- */
+
+#trend-chart {
+  width: 100%;
+  height: 200px;
+  background: #fafafa;
+  border: 1px solid #ddd;
+}
+
+.legend {
+  font-size: 0.85rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.swatch.wpm {
+  background: #4a90d9;
+}
+
+.swatch.accuracy {
+  background: #e08e45;
+}
