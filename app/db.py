@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
-from app.models import BigramStat, KeystrokeLog, KeyStat, Learner, Session, SessionEvent, Streak
+from app.models import BigramStat, CoinEntry, KeystrokeLog, KeyStat, Learner, Session, SessionEvent, Streak
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS learner (
@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS streak (
     longest_streak INTEGER NOT NULL DEFAULT 0,
     last_active_date TEXT
 );
+
+-- Append-only: +earn / -spend rows, balance = SUM(amount) (PLAN.md 11c).
+CREATE TABLE IF NOT EXISTS coin_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    ref TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_coin_ledger_learner ON coin_ledger(learner_id);
 """
 
 
@@ -404,3 +415,55 @@ def upsert_streak(conn: sqlite3.Connection, streak: Streak) -> None:
             streak.last_active_date,
         ),
     )
+
+
+# --- coins --------------------------------------------------------------------
+
+
+def add_coins(
+    conn: sqlite3.Connection, learner_id: int, amount: int, reason: str, ref: str | None = None
+) -> CoinEntry:
+    """Append one ledger row. Positive earns, negative spends."""
+    created_at = _now_iso()
+    cur = conn.execute(
+        "INSERT INTO coin_ledger (learner_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, amount, reason, ref, created_at),
+    )
+    return CoinEntry(
+        id=cur.lastrowid,
+        learner_id=learner_id,
+        amount=amount,
+        reason=reason,
+        ref=ref,
+        created_at=_parse_dt(created_at),
+    )
+
+
+def get_coin_balance(conn: sqlite3.Connection, learner_id: int) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS balance FROM coin_ledger WHERE learner_id = ?",
+        (learner_id,),
+    ).fetchone()
+    return row["balance"]
+
+
+def list_coin_history(
+    conn: sqlite3.Connection, learner_id: int, limit: int = 50
+) -> list[CoinEntry]:
+    """Newest first. Ordered by id, not created_at, so rows written in
+    the same instant keep their insertion order."""
+    rows = conn.execute(
+        "SELECT * FROM coin_ledger WHERE learner_id = ? ORDER BY id DESC LIMIT ?",
+        (learner_id, limit),
+    ).fetchall()
+    return [
+        CoinEntry(
+            id=row["id"],
+            learner_id=row["learner_id"],
+            amount=row["amount"],
+            reason=row["reason"],
+            ref=row["ref"],
+            created_at=_parse_dt(row["created_at"]),
+        )
+        for row in rows
+    ]

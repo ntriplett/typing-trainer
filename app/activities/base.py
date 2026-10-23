@@ -80,6 +80,8 @@ class Activity(Protocol):
         self, content: ActivityContent, keystrokes: list[KeystrokeEvent]
     ) -> ActivityResult: ...
 
+    def coins(self, content: ActivityContent, result: ActivityResult) -> int: ...
+
 
 # --- shared helpers used by every v1 module ----------------------------------
 #
@@ -182,3 +184,16 @@ def score_attempt(
         avg_latency_ms=avg_latency_ms,
         reward_signal=reward_signal,
     )
+
+
+def default_coins(content: ActivityContent, result: ActivityResult) -> int:
+    """The default coin rule (PLAN.md Section 11c): accuracy as a percent,
+    scaled by how much of the prompt was actually typed -- 85% on a
+    finished step pays 85, but ending a step halfway pays half. Modules
+    with their own economics (e.g. a game) define coins() differently.
+
+    Wrong keystrokes still advance the cursor (session.js), so attempts
+    is a fair proxy for how far through the prompt the learner got.
+    """
+    completion = min(1.0, result.attempts / len(content.prompt)) if content.prompt else 1.0
+    return round(result.accuracy * 100 * completion)

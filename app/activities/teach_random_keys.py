@@ -19,6 +19,7 @@ from app.activities.base import (
     ActivityResult,
     KeystrokeEvent,
     build_blocked_sequence,
+    default_coins,
     score_attempt,
 )
 
@@ -53,3 +54,6 @@ class TeachRandomKeys:
         self, content: ActivityContent, keystrokes: list[KeystrokeEvent]
     ) -> ActivityResult:
         return score_attempt(self.id, content.keys, keystrokes)
+
+    def coins(self, content: ActivityContent, result: ActivityResult) -> int:
+        return default_coins(content, result)

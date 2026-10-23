@@ -189,3 +189,37 @@ def test_connection_is_usable_from_a_different_thread(tmp_path):
     assert errors == []
     with db.open_db(db_path) as check:
         assert db.get_learner(check, 1).name == "Sam"
+
+
+# --- coin ledger -------------------------------------------------------------
+
+
+def test_coin_balance_starts_at_zero(conn):
+    learner = db.create_learner(conn, "Sam")
+    assert db.get_coin_balance(conn, learner.id) == 0
+
+
+def test_coin_balance_sums_earns_and_spends(conn):
+    learner = db.create_learner(conn, "Sam")
+    db.add_coins(conn, learner.id, 85, "lesson", ref="event:1")
+    db.add_coins(conn, learner.id, 50, "mastered_key", ref="d")
+    db.add_coins(conn, learner.id, -100, "purchase", ref="straw_hat")
+    assert db.get_coin_balance(conn, learner.id) == 35
+
+
+def test_coin_history_is_newest_first(conn):
+    learner = db.create_learner(conn, "Sam")
+    db.add_coins(conn, learner.id, 85, "lesson")
+    db.add_coins(conn, learner.id, -20, "purchase", ref="apple")
+    history = db.list_coin_history(conn, learner.id)
+    assert [(e.amount, e.reason, e.ref) for e in history] == [(-20, "purchase", "apple"), (85, "lesson", None)]
+
+
+def test_coins_never_mix_between_learners(conn):
+    sam = db.create_learner(conn, "Sam")
+    alex = db.create_learner(conn, "Alex")
+    db.add_coins(conn, sam.id, 100, "lesson")
+    db.add_coins(conn, alex.id, 7, "lesson")
+    assert db.get_coin_balance(conn, sam.id) == 100
+    assert db.get_coin_balance(conn, alex.id) == 7
+    assert [e.amount for e in db.list_coin_history(conn, alex.id)] == [7]

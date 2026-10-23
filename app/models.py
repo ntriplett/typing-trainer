@@ -85,3 +85,17 @@ class Streak:
     current_streak_days: int
     longest_streak: int
     last_active_date: str | None  # ISO date (YYYY-MM-DD)
+
+
+@dataclass(frozen=True, slots=True)
+class CoinEntry:
+    """One row of the coin ledger: +amount earned or -amount spent.
+    The balance is never stored -- it's the SUM over these rows.
+    """
+
+    id: int
+    learner_id: int
+    amount: int
+    reason: str  # e.g. "lesson", "mastered_key", "purchase"
+    ref: str | None  # what it was for: a session event, a key, an item id
+    created_at: datetime

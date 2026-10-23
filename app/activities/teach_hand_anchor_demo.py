@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from app.activities.base import ActivityContent, ActivityResult, KeystrokeEvent, score_attempt
+from app.activities.base import ActivityContent, ActivityResult, KeystrokeEvent, default_coins, score_attempt
 from app.activities.micro_lesson import (
     build_anchor_check_step,
     build_combo_step,
@@ -66,3 +66,6 @@ class TeachHandAnchorDemo:
         self, content: ActivityContent, keystrokes: list[KeystrokeEvent]
     ) -> ActivityResult:
         return score_attempt(self.id, content.keys, keystrokes)
+
+    def coins(self, content: ActivityContent, result: ActivityResult) -> int:
+        return default_coins(content, result)

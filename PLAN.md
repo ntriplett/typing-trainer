@@ -270,6 +270,43 @@ The look stays plain/functional for now, but the architecture must not block a l
 - **Launcher smoke e2e tests use the real port 8420**, so they error at setup if the app is already
   running locally. Not a code bug; stop the local app before running `tests/e2e`.
 
+## 11c. Gamification round 1: coins, avatar, store, cozy theme (agreed 2026-10-23)
+
+**MVP scope**: coins, coin display, simple layered avatar, a small store, and a warm sandy pixel theme.
+Profiles come right after (11d). Games that reuse the dressed avatar come after that.
+
+- **Coins** (the cozy name for points). Each `Activity` owns its coin rule via `coins(result)`; the default
+  is `round(accuracy * 100 * fraction_of_prompt_completed)`, so 85% on a finished step = 85 coins and
+  ending a step early doesn't pay full. Target is ~50-100 per 1-2 min step, ~1K per 15-min session.
+  Bonus rules (session complete, new key mastered, daily streak) are separate and added over time.
+- **Ledger, not a balance column**: `coin_ledger(learner_id, amount, reason, ref, created_at)`, with +earn
+  and -spend rows; balance = SUM. Gives history and auditability.
+- **Store catalog lives in code** (`app/store.py`, like the activity registry): `StoreItem(id, name, slot,
+  price, sprite, starter)`. Slots: body, hat, shirt, pet, background. Starting avatars are free hidden
+  `starter` items in the `body` slot, so the avatar is just "everything equipped" and there's no learner
+  schema migration. Tables: `owned_item(learner_id, item_id, purchased_at)`,
+  `equipped_item(learner_id, slot, item_id)`.
+- **Avatar renderer is a standalone front-end module** taking `{equipped, pose}` (only "idle" for now),
+  layered per slot, so future games can draw the same dressed avatar in other poses (e.g. casting a
+  fishing rod).
+- **Learner isolation**: every new table is keyed by `learner_id` and every query filters on it; tests
+  assert two learners' coins and items never mix. MVP stays single-learner (id 1) but routes through one
+  `current_learner` dependency so cookie-based profiles slot in later.
+- **API**: `GET /api/me`, `GET /api/store`, `POST /api/store/buy/{id}`, `POST /api/store/equip/{id}`,
+  `POST /api/store/unequip/{slot}`; step completion response gains `coins_earned: [{amount, reason}]`.
+- **Theme**: shared `theme.css` (sandy palette, pixel-bordered "windows", wood/parchment buttons) plus a
+  shared header (coin counter and avatar) on every page. Bundled OFL pixel font for headings/UI; the
+  typing prompt stays in a clean monospace for legibility. Art: free/open-licensed or AI-made, with
+  code-drawn pixel placeholders until then.
+
+## 11d. Profiles (next round)
+
+No passwords. With no profile selected (cookie), show a pick-from-dropdown or create screen. Create asks
+for a name, an avatar choice, and a quick placement (known keys, rough WPM). The last-picked profile is
+remembered per browser via cookie, so losing the cookie just means picking again. Top-right profile button
+opens details plus "log out / switch". Two kids can play at once in separate browsers on the same PC. One
+DB, all tables keyed by `learner_id`.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

@@ -20,6 +20,7 @@ from app.activities.base import (
     KeystrokeEvent,
     combined_pool,
     build_mixed_sequence,
+    default_coins,
     score_attempt,
 )
 
@@ -61,3 +62,6 @@ class EvalRandomKeys:
         self, content: ActivityContent, keystrokes: list[KeystrokeEvent]
     ) -> ActivityResult:
         return score_attempt(self.id, content.keys, keystrokes)
+
+    def coins(self, content: ActivityContent, result: ActivityResult) -> int:
+        return default_coins(content, result)
