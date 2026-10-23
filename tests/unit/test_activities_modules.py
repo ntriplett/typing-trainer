@@ -63,11 +63,14 @@ def test_teach_uses_blocked_not_randomized_pattern():
     content = teach.generate(ACTIVE_KEYS, duration_s=30, rng=random.Random(1))
     key_a, key_b = content.keys
     # blocked means each key appears as its own contiguous run, e.g. "ffff jjjj",
-    # not interleaved -- so the prompt is exactly two space-separated blocks.
+    # not interleaved -- so the prompt is exactly two space-separated blocks,
+    # each entirely one repeated character (exact length scales with duration_s).
     blocks = content.prompt.split(" ")
     assert len(blocks) == 2
-    assert blocks[0] == key_a * 4
-    assert blocks[1] == key_b * 4
+    assert blocks[0] == key_a * len(blocks[0])
+    assert blocks[1] == key_b * len(blocks[1])
+    assert len(blocks[0]) >= 4
+    assert len(blocks[1]) >= 4
 
 
 def test_warmup_and_practice_use_randomized_not_blocked_pattern():

@@ -45,6 +45,11 @@
   width: 0.7em;
 }
 
+#progress {
+  color: #666;
+  font-size: 0.9rem;
+}
+
 #result-headline {
   margin-bottom: 0.25rem;
 }

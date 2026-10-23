@@ -34,7 +34,7 @@ class TeachRandomKeys:
         self, active_keys: list[str], duration_s: int, rng: random.Random | None = None
     ) -> ActivityContent:
         keys = pick_two_keys(active_keys, rng)
-        prompt = build_blocked_sequence(keys)
+        prompt = build_blocked_sequence(keys, duration_s)
         return ActivityContent(
             activity_id=self.id,
             kind=self.kind,

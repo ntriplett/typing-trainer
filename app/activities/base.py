@@ -103,11 +103,20 @@ def build_random_sequence(
     return " ".join(chunks)
 
 
-def build_blocked_sequence(keys: list[str], repeats: int = 4) -> str:
+def build_blocked_sequence(
+    keys: list[str], duration_s: int, chars_per_second: float = 2.0, min_repeats: int = 4
+) -> str:
     """A teaching-style sequence: each key repeated in its own block,
     e.g. ["f", "j"] -> "ffff jjjj" -- deliberately not randomized, since
     a first introduction should isolate one motion at a time.
+
+    Scales with the time available like build_random_sequence does --
+    this used to ignore duration_s entirely, which made a "teach" step
+    finish almost instantly compared to every other phase (same time
+    budget, wildly different amount of actual typing).
     """
+    total_chars = max(min_repeats * len(keys), int(duration_s * chars_per_second))
+    repeats = max(min_repeats, total_chars // len(keys))
     return " ".join(key * repeats for key in keys)
 
 

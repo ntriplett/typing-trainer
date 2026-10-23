@@ -52,6 +52,15 @@ def test_start_session_returns_a_full_plan():
         assert step["content"]["prompt"]
 
 
+def test_quick_mode_produces_much_shorter_prompts():
+    normal = client.post("/api/session/start").json()
+    quick = client.post("/api/session/start?quick=1").json()
+
+    normal_len = len(normal["steps"][0]["content"]["prompt"])
+    quick_len = len(quick["steps"][0]["content"]["prompt"])
+    assert quick_len < normal_len
+
+
 def test_complete_step_scores_and_is_not_session_complete_yet():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]

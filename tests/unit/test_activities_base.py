@@ -46,8 +46,19 @@ def test_build_random_sequence_scales_with_duration():
 
 
 def test_build_blocked_sequence_groups_each_key_together():
-    seq = build_blocked_sequence(["f", "j"], repeats=3)
+    seq = build_blocked_sequence(["f", "j"], duration_s=3, min_repeats=3)
     assert seq == "fff jjj"
+
+
+def test_build_blocked_sequence_scales_with_duration():
+    short = build_blocked_sequence(["f", "j"], duration_s=4)
+    long = build_blocked_sequence(["f", "j"], duration_s=60)
+    assert len(long.replace(" ", "")) > len(short.replace(" ", ""))
+
+
+def test_build_blocked_sequence_never_goes_below_min_repeats():
+    seq = build_blocked_sequence(["f", "j"], duration_s=1, min_repeats=4)
+    assert seq == "ffff jjjj"
 
 
 def test_score_attempt_all_correct_is_nailed_it():

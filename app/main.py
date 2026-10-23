@@ -133,14 +133,24 @@ class CompleteStepRequest(BaseModel):
     keystrokes: list[KeystrokeIn]
 
 
+# A short, same-shape plan for manually testing the full flow without
+# typing hundreds of characters per phase. Real sessions use the
+# scheduler's normal defaults (PLAN.md Section 6); this is purely a
+# dev/testing convenience, not a different pedagogy.
+QUICK_TEST_PHASE_SECONDS = {"warmup": 8, "teach": 8, "practice": 10, "eval": 8, "game": 10}
+
+
 @app.post("/api/session/start")
-def start_session(conn=Depends(get_db)) -> dict:
+def start_session(quick: bool = False, conn=Depends(get_db)) -> dict:
     learner_id = ensure_learner(conn)
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     bigram_stats = db.list_bigram_stats(conn, learner_id)
 
     plan = scheduler.build_session_plan(
-        key_stats, now=datetime.now(UTC), bigram_stats=bigram_stats
+        key_stats,
+        now=datetime.now(UTC),
+        bigram_stats=bigram_stats,
+        phase_seconds=QUICK_TEST_PHASE_SECONDS if quick else None,
     )
     session = db.start_session(conn, learner_id)
     _SESSION_PLANS[session.id] = plan

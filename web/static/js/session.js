@@ -23,6 +23,7 @@ let lineOfChar = []; // which visual line each char index belongs to
 let position = 0;
 let keystrokes = [];
 let lastKeyTime = 0;
+let stepFinished = false; // guards against double-submitting the same step
 const stepResults = [];
 
 const startScreen = document.getElementById("start-screen");
@@ -30,21 +31,29 @@ const sessionScreen = document.getElementById("session-screen");
 const completeScreen = document.getElementById("complete-screen");
 const phaseLabel = document.getElementById("phase-label");
 const instructionsEl = document.getElementById("instructions");
+const progressEl = document.getElementById("progress");
 const promptEl = document.getElementById("prompt");
-const promptViewport = document.getElementById("prompt-viewport");
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
+const endNowButton = document.getElementById("end-now-button");
 
 document.getElementById("start-button").addEventListener("click", startSession);
 document.getElementById("next-button").addEventListener("click", advanceStep);
-document.getElementById("skip-button").addEventListener("click", skipStep);
-document.getElementById("home-button").addEventListener("click", () => {
-  window.location.href = "/";
+endNowButton.addEventListener("click", endStepNow);
+document.getElementById("home-button").addEventListener("click", goHome);
+document.getElementById("complete-home-button").addEventListener("click", goHome);
+document.getElementById("complete-new-session-button").addEventListener("click", () => {
+  window.location.reload();
 });
 window.addEventListener("keydown", handleKeydown);
 
+function goHome() {
+  window.location.href = "/";
+}
+
 async function startSession() {
-  const res = await fetch("/api/session/start", { method: "POST" });
+  const quick = document.getElementById("quick-test-checkbox").checked;
+  const res = await fetch(`/api/session/start${quick ? "?quick=1" : ""}`, { method: "POST" });
   const data = await res.json();
   sessionId = data.session_id;
   steps = data.steps;
@@ -63,11 +72,22 @@ function renderStep() {
   position = 0;
   keystrokes = [];
   lastKeyTime = performance.now();
+  stepFinished = false;
 
   phaseLabel.textContent = step.phase;
   instructionsEl.textContent = step.content.instructions;
   stepResultEl.hidden = true;
+  endNowButton.hidden = false;
   renderPrompt();
+  renderProgress();
+}
+
+function renderProgress() {
+  // Visible characters only -- spaces are part of the typed stream but
+  // not meaningful to count for the learner.
+  const total = promptChars.filter((c) => c !== " ").length;
+  const done = promptChars.slice(0, position).filter((c) => c !== " ").length;
+  progressEl.textContent = `${done} / ${total}`;
 }
 
 // Groups characters into visual lines of BLOCKS_PER_LINE space-separated
@@ -145,6 +165,7 @@ function handleKeydown(e) {
 
   position += 1;
   renderPrompt();
+  renderProgress();
 
   if (position >= promptChars.length) {
     finishStep();
@@ -152,6 +173,10 @@ function handleKeydown(e) {
 }
 
 async function finishStep() {
+  if (stepFinished) return; // handles a keystroke racing with "End now"
+  stepFinished = true;
+  endNowButton.hidden = true;
+
   const res = await fetch(`/api/session/${sessionId}/steps/${stepIndex}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -191,16 +216,11 @@ function advanceStep() {
   renderStep();
 }
 
-// Skipping does not submit whatever was typed so far -- it's a "never
-// mind this step" control, not a shortcut to score it. (A later nav
-// pass can log a dedicated "skipped" event if that's worth tracking.)
-function skipStep() {
-  if (stepIndex >= steps.length - 1) {
-    showSummary();
-    return;
-  }
-  stepIndex += 1;
-  renderStep();
+// "End this step now" scores whatever was actually typed so far rather
+// than discarding it -- a deliberate "I'm done with this one" control,
+// not a way to skip being scored.
+function endStepNow() {
+  finishStep();
 }
 
 function showSummary() {
