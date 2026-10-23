@@ -18,11 +18,20 @@
     <div id="session-screen" hidden>
       <p id="phase-label"></p>
       <p id="instructions"></p>
-      <p id="prompt"></p>
-      <div id="step-result" hidden>
-        <p id="result-summary"></p>
-        <button id="next-button">Next</button>
+      <div id="prompt-viewport">
+        <div id="prompt"></div>
       </div>
+      <div id="step-result" hidden>
+        <h2 id="result-headline"></h2>
+        <p id="result-summary"></p>
+        <button id="next-button">Next lesson →</button>
+      </div>
+
+      <nav id="session-nav">
+        <button id="skip-button">Skip this step</button>
+        <button id="home-button">Home</button>
+        <!-- more nav controls (pause, settings, etc.) land here later -->
+      </nav>
     </div>
 
     <div id="complete-screen" hidden>

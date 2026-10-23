@@ -1,26 +1,67 @@
 /* Placeholder styling only -- real visual/theme pass is deferred
-   (PLAN.md Section 11a). Just enough to read the prompt clearly. */
+   (PLAN.md Section 11a). Just enough to read the prompt clearly and
+   prove the interaction works. */
+
+#prompt-viewport {
+  height: 8.8rem; /* 4 lines at the line-height below */
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  border: 1px solid #ddd;
+  padding: 0.25rem 0.5rem;
+}
 
 #prompt {
   font-family: monospace;
   font-size: 1.5rem;
-  letter-spacing: 0.05em;
 }
 
-#prompt .correct {
-  color: green;
-}
-
-#prompt .incorrect {
-  color: red;
-  text-decoration: underline;
+.prompt-line {
+  display: flex;
+  line-height: 2.2rem;
+  white-space: pre;
 }
 
 #prompt .pending {
-  color: #888;
+  color: #aaa;
+}
+
+#prompt .current {
+  color: #000;
+  background: #ffe066;
+  border-radius: 2px;
+}
+
+#prompt .correct {
+  color: #2e9e44;
+}
+
+#prompt .incorrect {
+  color: #d1343b;
+  text-decoration: underline;
+}
+
+#prompt .space {
+  display: inline-block;
+  width: 0.7em;
+}
+
+#result-headline {
+  margin-bottom: 0.25rem;
+}
+
+#step-result {
+  margin-top: 1rem;
 }
 
 #phase-label {
   font-weight: bold;
   text-transform: uppercase;
+}
+
+#session-nav {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #ddd;
+  display: flex;
+  gap: 0.75rem;
 }

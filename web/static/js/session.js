@@ -4,11 +4,22 @@
 // polish yet (PLAN.md Section 11a defers that); this exists to prove
 // the scheduler + all 5 activity modules actually work when driven by
 // real typing in a real browser.
+//
+// Prompt rendering (shared by every phase, not just warmup): each
+// character is tracked individually as "pending" / "current" /
+// "correct" / "incorrect", and grouped into visual lines of 5 blocks
+// (the prompt's existing space-separated 4-char chunks) so the text
+// wraps into a fixed 4-line window and auto-scrolls as typing advances,
+// instead of running on as one long unbroken block.
+
+const BLOCKS_PER_LINE = 5;
 
 let sessionId = null;
 let steps = [];
 let stepIndex = 0;
 let promptChars = [];
+let charStates = []; // "pending" | "correct" | "incorrect", parallel to promptChars
+let lineOfChar = []; // which visual line each char index belongs to
 let position = 0;
 let keystrokes = [];
 let lastKeyTime = 0;
@@ -20,11 +31,16 @@ const completeScreen = document.getElementById("complete-screen");
 const phaseLabel = document.getElementById("phase-label");
 const instructionsEl = document.getElementById("instructions");
 const promptEl = document.getElementById("prompt");
+const promptViewport = document.getElementById("prompt-viewport");
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
 
 document.getElementById("start-button").addEventListener("click", startSession);
 document.getElementById("next-button").addEventListener("click", advanceStep);
+document.getElementById("skip-button").addEventListener("click", skipStep);
+document.getElementById("home-button").addEventListener("click", () => {
+  window.location.href = "/";
+});
 window.addEventListener("keydown", handleKeydown);
 
 async function startSession() {
@@ -42,6 +58,8 @@ async function startSession() {
 function renderStep() {
   const step = steps[stepIndex];
   promptChars = step.content.prompt.split("");
+  charStates = promptChars.map(() => "pending");
+  lineOfChar = computeLineAssignments(promptChars);
   position = 0;
   keystrokes = [];
   lastKeyTime = performance.now();
@@ -52,15 +70,53 @@ function renderStep() {
   renderPrompt();
 }
 
+// Groups characters into visual lines of BLOCKS_PER_LINE space-separated
+// chunks. A chunk boundary is a literal space character in the prompt
+// (the server already groups output into ~4-char chunks); every 5th
+// chunk starts a new line. The space itself stays part of whichever
+// line precedes it, same as any other character in the typed stream.
+function computeLineAssignments(chars) {
+  const lines = [];
+  let line = 0;
+  let blocksInLine = 0;
+  for (const ch of chars) {
+    lines.push(line);
+    if (ch === " ") {
+      blocksInLine += 1;
+      if (blocksInLine >= BLOCKS_PER_LINE) {
+        blocksInLine = 0;
+        line += 1;
+      }
+    }
+  }
+  return lines;
+}
+
 function renderPrompt() {
-  const html = promptChars
-    .map((ch, i) => {
-      const cls = i < position ? "correct" : i === position ? "pending" : "pending";
-      const display = ch === " " ? "&nbsp;" : ch;
-      return `<span class="${cls}">${display}</span>`;
-    })
+  const lineCount = lineOfChar.length ? lineOfChar[lineOfChar.length - 1] + 1 : 0;
+  const rows = [];
+  for (let l = 0; l < lineCount; l++) rows.push([]);
+
+  promptChars.forEach((ch, i) => {
+    const state = i === position ? "current" : charStates[i];
+    const cls = ch === " " ? `space ${state}` : state;
+    const content = ch === " " ? "" : escapeHtml(ch);
+    rows[lineOfChar[i]].push(`<span class="${cls}" data-index="${i}">${content}</span>`);
+  });
+
+  promptEl.innerHTML = rows
+    .map((spans) => `<div class="prompt-line">${spans.join("")}</div>`)
     .join("");
-  promptEl.innerHTML = html;
+
+  const currentLine = lineOfChar[Math.min(position, lineOfChar.length - 1)];
+  const lineEl = promptEl.children[currentLine];
+  if (lineEl) {
+    lineEl.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+}
+
+function escapeHtml(ch) {
+  return ch === "<" ? "&lt;" : ch === "&" ? "&amp;" : ch;
 }
 
 function handleKeydown(e) {
@@ -77,13 +133,15 @@ function handleKeydown(e) {
   const now = performance.now();
   const latencyMs = Math.round(now - lastKeyTime);
   lastKeyTime = now;
+  const correct = typed === expected;
 
   keystrokes.push({
     expected_char: expected,
     typed_char: typed,
-    correct: typed === expected,
+    correct,
     latency_ms: latencyMs,
   });
+  charStates[position] = correct ? "correct" : "incorrect";
 
   position += 1;
   renderPrompt();
@@ -102,17 +160,41 @@ async function finishStep() {
   const data = await res.json();
   stepResults.push({ phase: steps[stepIndex].phase, ...data.result });
 
+  document.getElementById("result-headline").textContent = headlineFor(data.result.reward_signal);
   resultSummaryEl.textContent =
-    `${steps[stepIndex].phase}: ${Math.round(data.result.accuracy * 100)}% accuracy, ` +
-    `${data.result.wpm.toFixed(1)} WPM — ${data.result.reward_signal}`;
+    `${Math.round(data.result.accuracy * 100)}% accuracy, ${data.result.wpm.toFixed(1)} WPM. ` +
+    (data.session_complete
+      ? "Click below to see your session summary."
+      : "Click below to move on to the next lesson.");
   stepResultEl.hidden = false;
 
-  if (data.session_complete) {
-    document.getElementById("next-button").textContent = "See summary";
-  }
+  document.getElementById("next-button").textContent = data.session_complete
+    ? "See summary →"
+    : "Next lesson →";
+}
+
+// This is the end-of-lesson signal: once a step's keystrokes are
+// scored, a clear "you're done, here's how it went" state replaces the
+// typing view until the learner chooses to continue.
+function headlineFor(rewardSignal) {
+  if (rewardSignal === "nailed_it") return "🎉 Great job!";
+  if (rewardSignal === "solid") return "✅ Nice work!";
+  return "💪 Good effort — keep practicing!";
 }
 
 function advanceStep() {
+  if (stepIndex >= steps.length - 1) {
+    showSummary();
+    return;
+  }
+  stepIndex += 1;
+  renderStep();
+}
+
+// Skipping does not submit whatever was typed so far -- it's a "never
+// mind this step" control, not a shortcut to score it. (A later nav
+// pass can log a dedicated "skipped" event if that's worth tracking.)
+function skipStep() {
   if (stepIndex >= steps.length - 1) {
     showSummary();
     return;
