@@ -17,8 +17,9 @@ from datetime import datetime
 
 from app.activities import activities_by_kind
 from app.activities.base import ActivityContent
-from app.models import KeyStat
-from app.skill_model import KEY_ORDER, active_keys, weakest_keys
+from app.models import BigramStat, KeyStat
+from app.recommender import recommend_warmup_keys
+from app.skill_model import KEY_ORDER, active_keys
 
 # A learner is considered to have "enough practice" on a key for an eval
 # to be meaningful once it's been attempted this many times. Deliberately
@@ -92,10 +93,12 @@ def build_session_plan(
     now: datetime,
     rng: random.Random | None = None,
     phase_seconds: dict[str, int] | None = None,
+    bigram_stats: list[BigramStat] | None = None,
 ) -> SessionPlan:
     """The fixed arc (warmup -> teach/practice[/eval] -> game) with dynamic
     content, per PLAN.md Section 6:
-      - warmup always runs, focused on the current weakest active keys
+      - warmup always runs, focused on keys the recommender ranks weakest
+        right now (key + finger weakness, bumped by known-weak bigrams)
       - teach runs only if there's a next key still to unlock
       - practice always runs, focused on the full active set
       - eval runs only when the active set has had enough fresh practice
@@ -105,7 +108,9 @@ def build_session_plan(
     seconds = {**DEFAULT_PHASE_SECONDS, **(phase_seconds or {})}
 
     active = active_keys(key_stats)
-    weakest = weakest_keys(key_stats, active, n=min(2, len(active)))
+    weakest = recommend_warmup_keys(
+        key_stats, active, n=min(2, len(active)), bigram_stats=bigram_stats
+    )
     has_room_to_grow = len(active) < len(KEY_ORDER)
     run_teach = has_room_to_grow
     run_eval = _should_run_eval(key_stats, active)

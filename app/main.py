@@ -137,8 +137,11 @@ class CompleteStepRequest(BaseModel):
 def start_session(conn=Depends(get_db)) -> dict:
     learner_id = ensure_learner(conn)
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    bigram_stats = db.list_bigram_stats(conn, learner_id)
 
-    plan = scheduler.build_session_plan(key_stats, now=datetime.now(UTC))
+    plan = scheduler.build_session_plan(
+        key_stats, now=datetime.now(UTC), bigram_stats=bigram_stats
+    )
     session = db.start_session(conn, learner_id)
     _SESSION_PLANS[session.id] = plan
 
