@@ -1,5 +1,5 @@
-"""Unit tests for the shared activity helpers: key picking, prompt
-generation, and the common scoring function.
+"""Unit tests for the shared activity helpers: the dual focus/allowed
+pool mix, blocked-sequence generation, and the common scoring function.
 """
 
 import random
@@ -9,39 +9,51 @@ import pytest
 from app.activities.base import (
     KeystrokeEvent,
     build_blocked_sequence,
-    build_random_sequence,
-    pick_two_keys,
+    build_mixed_sequence,
+    combined_pool,
     score_attempt,
 )
 
 
-def test_pick_two_keys_returns_two_distinct_when_available():
-    chosen = pick_two_keys(["f", "j", "d"], rng=random.Random(1))
-    assert len(chosen) == 2
-    assert chosen[0] != chosen[1]
-    assert set(chosen) <= {"f", "j", "d"}
+def test_combined_pool_dedupes_and_preserves_order():
+    assert combined_pool(["f", "j"], ["j", "d"]) == ["f", "j", "d"]
 
 
-def test_pick_two_keys_repeats_single_key_when_only_one_active():
-    chosen = pick_two_keys(["f"], rng=random.Random(1))
-    assert chosen == ["f", "f"]
-
-
-def test_pick_two_keys_raises_when_no_active_keys():
+def test_combined_pool_raises_when_both_empty():
     with pytest.raises(ValueError):
-        pick_two_keys([], rng=random.Random(1))
+        combined_pool([], [])
 
 
-def test_build_random_sequence_only_uses_given_keys():
-    seq = build_random_sequence(["f", "j"], duration_s=5, rng=random.Random(1))
-    letters = seq.replace(" ", "")
-    assert set(letters) <= {"f", "j"}
-    assert len(letters) > 0
+def test_build_mixed_sequence_only_uses_the_two_given_pools():
+    seq = build_mixed_sequence(["f", "j"], ["d", "k"], focus_ratio=0.5, duration_s=10, rng=random.Random(1))
+    letters = set(seq.replace(" ", ""))
+    assert letters <= {"f", "j", "d", "k"}
 
 
-def test_build_random_sequence_scales_with_duration():
-    short = build_random_sequence(["f", "j"], duration_s=5, rng=random.Random(1))
-    long = build_random_sequence(["f", "j"], duration_s=60, rng=random.Random(1))
+def test_build_mixed_sequence_respects_the_ratio_at_the_extremes():
+    all_focus = build_mixed_sequence(["f"], ["j"], focus_ratio=1.0, duration_s=20, rng=random.Random(1))
+    assert set(all_focus.replace(" ", "")) == {"f"}
+
+    all_allowed = build_mixed_sequence(["f"], ["j"], focus_ratio=0.0, duration_s=20, rng=random.Random(1))
+    assert set(all_allowed.replace(" ", "")) == {"j"}
+
+
+def test_build_mixed_sequence_falls_back_to_the_nonempty_pool():
+    only_focus = build_mixed_sequence(["f", "j"], [], focus_ratio=0.5, duration_s=20, rng=random.Random(1))
+    assert set(only_focus.replace(" ", "")) <= {"f", "j"}
+
+    only_allowed = build_mixed_sequence([], ["d", "k"], focus_ratio=0.5, duration_s=20, rng=random.Random(1))
+    assert set(only_allowed.replace(" ", "")) <= {"d", "k"}
+
+
+def test_build_mixed_sequence_raises_when_both_pools_empty():
+    with pytest.raises(ValueError):
+        build_mixed_sequence([], [], focus_ratio=0.5, duration_s=10, rng=random.Random(1))
+
+
+def test_build_mixed_sequence_scales_with_duration():
+    short = build_mixed_sequence(["f"], ["j"], 0.5, duration_s=5, rng=random.Random(1))
+    long = build_mixed_sequence(["f"], ["j"], 0.5, duration_s=60, rng=random.Random(1))
     assert len(long.replace(" ", "")) > len(short.replace(" ", ""))
 
 

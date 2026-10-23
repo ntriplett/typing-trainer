@@ -57,11 +57,12 @@ class Activity(Protocol):
     id: str
     kind: Kind
 
-    def is_eligible(self, active_keys: list[str]) -> bool: ...
+    def is_eligible(self, focus_keys: list[str], allowed_keys: list[str]) -> bool: ...
 
     def generate(
         self,
-        active_keys: list[str],
+        focus_keys: list[str],
+        allowed_keys: list[str],
         duration_s: int,
         rng: random.Random | None = None,
         chars_per_second: float = 2.0,
@@ -73,34 +74,49 @@ class Activity(Protocol):
 
 
 # --- shared helpers used by every v1 module ----------------------------------
+#
+# Every lesson gets two key pools, not one (your call): `focus_keys` are
+# what this lesson should actively work on (new/weak keys), `allowed_keys`
+# are everything that's been introduced and is safe filler -- "it
+# shouldn't use any letters in other lessons that weren't taught yet."
+# Each activity kind picks its own focus_ratio (how much of its content
+# draws from focus vs. allowed) when calling build_mixed_sequence.
 
 
-def pick_two_keys(active_keys: list[str], rng: random.Random | None = None) -> list[str]:
-    """Pick 2 distinct keys to focus an activity on.
-
-    Falls back gracefully if fewer than 2 keys are active yet (early in
-    a learner's journey) by repeating the single available key.
+def combined_pool(focus_keys: list[str], allowed_keys: list[str]) -> list[str]:
+    """Fallback when one pool is empty -- never produce content from
+    nothing when the other pool has something to offer.
     """
-    rng = rng or random.Random()
-    if len(active_keys) >= 2:
-        return rng.sample(active_keys, 2)
-    if len(active_keys) == 1:
-        return [active_keys[0], active_keys[0]]
-    raise ValueError("Need at least 1 active key to build an activity")
+    pool = list(dict.fromkeys(focus_keys + allowed_keys))  # dedup, keep order
+    if not pool:
+        raise ValueError("Need at least 1 focus or allowed key to build an activity")
+    return pool
 
 
-def build_random_sequence(
-    keys: list[str], duration_s: int, rng: random.Random | None = None, chars_per_second: float = 2.0
+def build_mixed_sequence(
+    focus_keys: list[str],
+    allowed_keys: list[str],
+    focus_ratio: float,
+    duration_s: int,
+    rng: random.Random | None = None,
+    chars_per_second: float = 2.0,
 ) -> str:
-    """A simple space-separated pseudo-word sequence drawn from `keys`.
-
-    Length scales with the time available. Real pseudo-word generation
-    (pronounceable clusters, per PLAN.md Section 2) can replace this
-    later without changing the module contract.
+    """A space-separated pseudo-word sequence mixing two pools: each
+    character is drawn from `focus_keys` with probability `focus_ratio`,
+    otherwise from `allowed_keys` -- e.g. warmup's 75% focus / 25%
+    allowed. Falls back to whichever pool is non-empty if the other is.
     """
     rng = rng or random.Random()
+    focus_pool = focus_keys or allowed_keys
+    allowed_pool = allowed_keys or focus_keys
+    if not focus_pool and not allowed_pool:
+        raise ValueError("Need at least 1 focus or allowed key to build an activity")
+
     length = max(10, int(duration_s * chars_per_second))
-    chars = [rng.choice(keys) for _ in range(length)]
+    chars = [
+        rng.choice(focus_pool if rng.random() < focus_ratio else allowed_pool)
+        for _ in range(length)
+    ]
     # group into chunks of 4 so it reads like short "words" rather than
     # one unbroken string
     chunks = ["".join(chars[i : i + 4]) for i in range(0, len(chars), 4)]

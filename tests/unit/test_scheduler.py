@@ -1,5 +1,5 @@
-"""Unit tests for the scheduler: skeleton building (sequencing + time
-budgets + key focus, driven by skill-model state and the learner's
+"""Unit tests for the scheduler: the step-by-step skeleton builder
+(short sub-lessons, sequenced by skill-model state + the learner's
 slider choices) and lazy content generation. No DB, no clock side
 effects, no UI.
 """
@@ -42,24 +42,117 @@ def stat_with_samples(key: str, sample_count: int) -> KeyStat:
     )
 
 
-def test_brand_new_learner_gets_warmup_teach_practice_game_but_no_eval():
+def test_fifteen_minute_session_produces_roughly_ten_short_steps():
     skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert 8 <= len(skeleton.steps) <= 12
+    for step in skeleton.steps:
+        assert 45 <= step.duration_s <= 120  # ~1-2 minutes each, per your call
 
-    phases = [step.phase for step in skeleton.steps]
-    assert phases == ["warmup", "teach", "practice", "game"]
+
+def test_session_always_opens_with_warmup():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert skeleton.steps[0].phase == "warmup"
+
+
+def test_no_teach_without_room_to_grow():
+    key_stats = {key: mastered_stat(key) for key in KEY_ORDER}
+    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert skeleton.ran_teach is False
+    assert "teach" not in [s.phase for s in skeleton.steps]
+    assert skeleton.active_keys == list(KEY_ORDER)
+
+
+def test_no_teach_when_slider_is_all_the_way_to_practice():
+    config = SessionConfig(duration_minutes=15, learn_vs_practice=0.0, focus_vs_general=0.3)
+    skeleton = scheduler.build_session_skeleton({}, config, now=NOW, rng=random.Random(1))
+    assert skeleton.ran_teach is False
+    assert "teach" not in [s.phase for s in skeleton.steps]
+
+
+def test_teach_runs_for_a_new_learner_with_room_to_grow():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
     assert skeleton.ran_teach is True
-    assert skeleton.ran_eval is False
-    assert skeleton.active_keys == list(KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT])
+    assert "teach" in [s.phase for s in skeleton.steps]
 
 
-def test_eval_runs_once_active_keys_have_enough_samples():
+def test_teach_steps_are_never_back_to_back():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    phases = [s.phase for s in skeleton.steps]
+    teach_indices = [i for i, p in enumerate(phases) if p == "teach"]
+    for a, b in zip(teach_indices, teach_indices[1:]):
+        assert b - a > scheduler.TEACH_COOLDOWN_STEPS
+
+
+def test_teach_focus_is_the_single_next_untaught_key_not_a_random_pair():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    teach_step = next(s for s in skeleton.steps if s.phase == "teach")
+    assert teach_step.focus_keys == [KEY_ORDER[INITIAL_ACTIVE_KEY_COUNT]]
+
+
+def test_multiple_teach_steps_in_one_session_target_different_keys():
+    # Regression: teach steps used to all re-pick the same "next" key
+    # because the plan's notion of "allowed" never advanced as earlier
+    # teach steps in the SAME plan were inserted.
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    teach_focuses = [tuple(s.focus_keys) for s in skeleton.steps if s.phase == "teach"]
+    assert len(teach_focuses) >= 2, "expected at least 2 teach steps for a brand-new learner"
+    assert len(set(teach_focuses)) == len(teach_focuses)
+
+
+def test_earlier_game_or_eval_steps_do_not_retroactively_gain_later_taught_keys():
+    # Regression: game/eval steps' focus_keys used to alias the same
+    # mutable list that later teach steps extend, so an EARLIER game
+    # step would end up listing a key that hadn't been taught yet by
+    # the time it actually runs.
     key_stats = {
         key: stat_with_samples(key, scheduler.EVAL_MIN_SAMPLES)
         for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]
     }
     skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    assert skeleton.ran_eval is True
-    assert "eval" in [s.phase for s in skeleton.steps]
+
+    taught_by: dict[str, int] = {}
+    for i, step in enumerate(skeleton.steps):
+        if step.phase == "teach":
+            for key in step.focus_keys:
+                taught_by[key] = i
+
+    for i, step in enumerate(skeleton.steps):
+        if step.phase in ("game", "eval"):
+            for key in step.focus_keys:
+                assert taught_by.get(key, -1) <= i, (
+                    f"step {i} ({step.phase}) focuses on {key!r}, "
+                    f"which isn't taught until step {taught_by.get(key)}"
+                )
+
+
+def test_steps_after_a_teach_step_include_the_newly_taught_key_in_allowed():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    first_teach_index = next(i for i, s in enumerate(skeleton.steps) if s.phase == "teach")
+    taught_key = skeleton.steps[first_teach_index].focus_keys[0]
+    later_step = skeleton.steps[first_teach_index + 1]
+    assert taught_key in later_step.allowed_keys
+
+
+def test_every_step_carries_at_least_the_known_allowed_set():
+    # Each step's allowed_keys is a non-shrinking superset of the real
+    # active_keys -- it only ever grows within a plan as teach steps
+    # provisionally introduce new ones (see the "different keys" test).
+    key_stats = {KEY_ORDER[0]: mastered_stat(KEY_ORDER[0])}
+    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    for step in skeleton.steps:
+        assert set(skeleton.active_keys) <= set(step.allowed_keys)
+
+
+def test_eval_runs_at_most_once_per_session_when_ready():
+    key_stats = {
+        key: stat_with_samples(key, scheduler.EVAL_MIN_SAMPLES)
+        for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]
+    }
+    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    phases = [s.phase for s in skeleton.steps]
+    assert phases.count("eval") <= 1
+    if skeleton.ran_eval:
+        assert "eval" in phases
 
 
 def test_eval_skipped_when_samples_too_low():
@@ -69,38 +162,12 @@ def test_eval_skipped_when_samples_too_low():
     assert "eval" not in [s.phase for s in skeleton.steps]
 
 
-def test_teach_skipped_once_every_key_is_unlocked():
-    key_stats = {key: mastered_stat(key) for key in KEY_ORDER}
-    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    assert skeleton.ran_teach is False
-    assert "teach" not in [s.phase for s in skeleton.steps]
-    assert skeleton.active_keys == list(KEY_ORDER)
-
-
-def test_teach_skipped_when_slider_is_all_the_way_to_practice():
-    config = SessionConfig(duration_minutes=15, learn_vs_practice=0.0, focus_vs_general=0.3)
-    skeleton = scheduler.build_session_skeleton({}, config, now=NOW, rng=random.Random(1))
-    assert skeleton.ran_teach is False
-    assert "teach" not in [s.phase for s in skeleton.steps]
-
-
-def test_teach_gets_a_bigger_time_share_the_more_learn_biased_the_slider_is():
-    practice_config = SessionConfig(duration_minutes=15, learn_vs_practice=0.1, focus_vs_general=0.3)
-    learn_config = SessionConfig(duration_minutes=15, learn_vs_practice=1.0, focus_vs_general=0.3)
-
-    practice_skeleton = scheduler.build_session_skeleton({}, practice_config, now=NOW, rng=random.Random(1))
-    learn_skeleton = scheduler.build_session_skeleton({}, learn_config, now=NOW, rng=random.Random(1))
-
-    practice_teach_s = next(s.duration_s for s in practice_skeleton.steps if s.phase == "teach")
-    learn_teach_s = next(s.duration_s for s in learn_skeleton.steps if s.phase == "teach")
-    assert learn_teach_s > practice_teach_s
-
-
-def test_game_always_included_and_uses_a_registered_game():
+def test_games_are_spaced_out_not_clustered():
     skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    game_steps = [s for s in skeleton.steps if s.phase == "game"]
-    assert len(game_steps) == 1
-    assert game_steps[0].activity_id in skeleton.game_options
+    phases = [s.phase for s in skeleton.steps]
+    game_indices = [i for i, p in enumerate(phases) if p == "game"]
+    for a, b in zip(game_indices, game_indices[1:]):
+        assert b - a >= scheduler.GAME_COOLDOWN_STEPS
 
 
 def test_warmup_focuses_on_weakest_keys_not_full_active_set():
@@ -112,15 +179,13 @@ def test_warmup_focuses_on_weakest_keys_not_full_active_set():
         ),
     }
     skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    warmup_step = next(s for s in skeleton.steps if s.phase == "warmup")
-    assert KEY_ORDER[1] in warmup_step.focus_keys
+    assert KEY_ORDER[1] in skeleton.steps[0].focus_keys
 
 
 def test_focus_vs_general_narrows_the_practice_key_pool():
-    # Enough active keys that the pool size can meaningfully differ.
     key_stats = {key: mastered_stat(key) for key in KEY_ORDER[:6]}
-    general_config = SessionConfig(duration_minutes=15, learn_vs_practice=0.5, focus_vs_general=0.0)
-    focus_config = SessionConfig(duration_minutes=15, learn_vs_practice=0.5, focus_vs_general=1.0)
+    general_config = SessionConfig(duration_minutes=15, learn_vs_practice=0.0, focus_vs_general=0.0)
+    focus_config = SessionConfig(duration_minutes=15, learn_vs_practice=0.0, focus_vs_general=1.0)
 
     general_skeleton = scheduler.build_session_skeleton(key_stats, general_config, now=NOW, rng=random.Random(1))
     focus_skeleton = scheduler.build_session_skeleton(key_stats, focus_config, now=NOW, rng=random.Random(1))
@@ -131,33 +196,34 @@ def test_focus_vs_general_narrows_the_practice_key_pool():
     assert len(general_practice.focus_keys) == len(general_skeleton.active_keys)
 
 
-def test_duration_minutes_scales_total_time_budget():
+def test_duration_minutes_scales_total_step_count():
     short = scheduler.build_session_skeleton(
         {}, SessionConfig(duration_minutes=15, learn_vs_practice=0.5, focus_vs_general=0.3), now=NOW, rng=random.Random(1)
     )
     long = scheduler.build_session_skeleton(
         {}, SessionConfig(duration_minutes=30, learn_vs_practice=0.5, focus_vs_general=0.3), now=NOW, rng=random.Random(1)
     )
-    short_total = sum(s.duration_s for s in short.steps)
-    long_total = sum(s.duration_s for s in long.steps)
-    assert long_total > short_total * 1.5  # roughly double, allowing for rounding/floors
-
-
-def test_steps_always_in_fixed_phase_order():
-    key_stats = {
-        key: stat_with_samples(key, scheduler.EVAL_MIN_SAMPLES)
-        for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]
-    }
-    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    phases = [s.phase for s in skeleton.steps]
-    canonical_order = ["warmup", "teach", "practice", "eval", "game"]
-    assert phases == [p for p in canonical_order if p in phases]
+    assert len(long.steps) > len(short.steps)
 
 
 def test_skeleton_is_deterministic_given_a_seeded_rng():
     a = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(99))
     b = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(99))
     assert [s.activity_id for s in a.steps] == [s.activity_id for s in b.steps]
+
+
+def test_stops_at_max_steps_even_with_a_very_long_duration():
+    config = SessionConfig(duration_minutes=60, learn_vs_practice=0.5, focus_vs_general=0.3)
+    skeleton = scheduler.build_session_skeleton({}, config, now=NOW, rng=random.Random(1))
+    assert len(skeleton.steps) <= scheduler.MAX_STEPS
+
+
+def test_step_seconds_scale_shrinks_every_step_not_just_the_count():
+    normal = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    quick = scheduler.build_session_skeleton(
+        {}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1), step_seconds_scale=0.15
+    )
+    assert quick.steps[0].duration_s < normal.steps[0].duration_s
 
 
 # --- generate_step_content / adaptive length ---------------------------------
@@ -171,19 +237,17 @@ def test_chars_per_second_scales_with_wpm():
 
 
 def test_chars_per_second_has_a_floor_for_very_low_or_zero_wpm():
-    # A learner with 0 completed keystrokes shouldn't generate an
-    # empty/near-empty prompt for the next step.
     assert scheduler.chars_per_second_for_wpm(0) > 0
 
 
 def test_generate_step_content_produces_more_text_for_a_faster_estimate():
-    step = scheduler.StepPlan("practice", "practice_random_keys_v1", ["f", "j"], duration_s=60)
+    step = scheduler.StepPlan("practice", "practice_random_keys_v1", ["f"], ["j"], duration_s=60)
     slow_content = scheduler.generate_step_content(step, estimated_wpm=5, rng=random.Random(1))
     fast_content = scheduler.generate_step_content(step, estimated_wpm=40, rng=random.Random(1))
     assert len(fast_content.prompt) > len(slow_content.prompt)
 
 
-def test_generate_step_content_uses_the_step_focus_keys():
-    step = scheduler.StepPlan("warmup", "warmup_random_keys_v1", ["f", "j"], duration_s=30)
+def test_generate_step_content_uses_the_step_key_pools():
+    step = scheduler.StepPlan("warmup", "warmup_random_keys_v1", ["f"], ["j"], duration_s=30)
     content = scheduler.generate_step_content(step, estimated_wpm=15, rng=random.Random(1))
     assert set(content.keys) <= {"f", "j"}

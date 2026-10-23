@@ -51,3 +51,13 @@ def test_static_assets_are_never_cached():
     # but the browser is still running old code."
     resp = client.get("/static/js/session.js")
     assert resp.headers["cache-control"] == "no-store"
+
+
+def test_page_routes_are_never_cached_either():
+    # FileResponse has the same heuristic-caching problem as StaticFiles
+    # -- this is what made analysis.html specifically need a hard
+    # refresh after edits (the page route itself wasn't covered by the
+    # earlier /static/-only fix).
+    for path in ("/", "/session", "/analysis"):
+        resp = client.get(path)
+        assert resp.headers["cache-control"] == "no-store", path

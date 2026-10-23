@@ -1,4 +1,4 @@
-"""Game v1: a placeholder "game" that is really just the same random-key
+"""Game v1: a placeholder "game" that is really just the same mixed-pool
 typing drill as the others, tagged kind="game" instead of real game
 mechanics.
 
@@ -19,10 +19,14 @@ from app.activities.base import (
     ActivityContent,
     ActivityResult,
     KeystrokeEvent,
-    build_random_sequence,
-    pick_two_keys,
+    combined_pool,
+    build_mixed_sequence,
     score_attempt,
 )
+
+# A fun/general reinforcement break, not another drill -- lighter focus
+# than practice.
+FOCUS_RATIO = 0.4
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,24 +34,28 @@ class GameRandomKeys:
     id: str = "game_random_keys_v1"
     kind: str = "game"
 
-    def is_eligible(self, active_keys: list[str]) -> bool:
-        return len(active_keys) >= 1
+    def is_eligible(self, focus_keys: list[str], allowed_keys: list[str]) -> bool:
+        return len(focus_keys) + len(allowed_keys) >= 1
 
     def generate(
         self,
-        active_keys: list[str],
+        focus_keys: list[str],
+        allowed_keys: list[str],
         duration_s: int,
         rng: random.Random | None = None,
         chars_per_second: float = 2.0,
     ) -> ActivityContent:
-        keys = pick_two_keys(active_keys, rng)
-        prompt = build_random_sequence(keys, duration_s, rng, chars_per_second=chars_per_second)
+        prompt = build_mixed_sequence(
+            focus_keys, allowed_keys, FOCUS_RATIO, duration_s, rng, chars_per_second=chars_per_second
+        )
+        keys = combined_pool(focus_keys, allowed_keys)
+        label = " and ".join(sorted(set(keys)))
         return ActivityContent(
             activity_id=self.id,
             kind=self.kind,
             keys=keys,
             prompt=prompt,
-            instructions=f"Game placeholder: type {' and '.join(sorted(set(keys)))} as they show up.",
+            instructions=f"Game placeholder: type {label} as they show up.",
         )
 
     def score(

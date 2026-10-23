@@ -227,3 +227,63 @@ def test_weakest_keys_respects_n():
         k: make_stat(key=k, confidence=0.5, accuracy_rolling=0.9) for k in ["a", "b", "c"]
     }
     assert len(sm.weakest_keys(stats, ["a", "b", "c"], n=2)) == 2
+
+
+# --- key_state / keys_in_state / next_keys_to_teach --------------------------
+
+
+def test_key_state_untaught_when_never_attempted():
+    assert sm.key_state(None) == "untaught"
+    assert sm.key_state(make_stat(unlocked_at=None)) == "untaught"
+
+
+def test_key_state_teaching_when_unlocked_but_too_few_samples():
+    stat = make_stat(unlocked_at=NOW, accuracy_rolling=1.0, sample_count=sm.MIN_SAMPLES_FOR_LEARNED - 1)
+    assert sm.key_state(stat) == "teaching"
+
+
+def test_key_state_teaching_when_accuracy_not_yet_established():
+    stat = make_stat(unlocked_at=NOW, accuracy_rolling=None, sample_count=50)
+    assert sm.key_state(stat) == "teaching"
+
+
+def test_key_state_learning_when_enough_samples_but_below_threshold():
+    stat = make_stat(
+        unlocked_at=NOW, accuracy_rolling=0.79, sample_count=sm.MIN_SAMPLES_FOR_LEARNED
+    )
+    assert sm.key_state(stat) == "learning"
+
+
+def test_key_state_learned_at_or_above_threshold():
+    stat = make_stat(
+        unlocked_at=NOW, accuracy_rolling=0.80, sample_count=sm.MIN_SAMPLES_FOR_LEARNED
+    )
+    assert sm.key_state(stat) == "learned"
+
+
+def test_key_state_can_regress_from_learned_back_to_learning():
+    # Live snapshot, not a one-way ratchet -- distinct from is_mastered()/mastered_at.
+    stat = make_stat(unlocked_at=NOW, accuracy_rolling=0.60, sample_count=50)
+    assert sm.key_state(stat) == "learning"
+
+
+def test_keys_in_state_filters_by_state():
+    stats = {
+        "f": make_stat(key="f", unlocked_at=NOW, accuracy_rolling=0.9, sample_count=20),  # learned
+        "j": make_stat(key="j", unlocked_at=NOW, accuracy_rolling=0.5, sample_count=20),  # learning
+        "d": make_stat(key="d", unlocked_at=NOW, accuracy_rolling=None, sample_count=0),  # teaching
+    }
+    assert sm.keys_in_state(stats, "learned", key_order=("f", "j", "d")) == ["f"]
+    assert sm.keys_in_state(stats, "learning", key_order=("f", "j", "d")) == ["j"]
+    assert sm.keys_in_state(stats, "teaching", key_order=("f", "j", "d")) == ["d"]
+    assert sm.keys_in_state(stats, "untaught", key_order=("f", "j", "d", "k")) == ["k"]
+
+
+def test_next_keys_to_teach_returns_first_not_in_allowed_in_key_order():
+    allowed = [sm.KEY_ORDER[0]]
+    result = sm.next_keys_to_teach(allowed, n=2)
+    assert result == [sm.KEY_ORDER[1], sm.KEY_ORDER[2]]
+
+
+def test_next_keys_to_teach_empty_when_everything_allowed():
+    assert sm.next_keys_to_teach(list(sm.KEY_ORDER), n=1) == []

@@ -120,6 +120,33 @@ starts, sized to the session's *current* estimated WPM (starts from the learner'
 then blends in each completed step's real WPM). That's what lets a later step's content length adapt
 to how fast today is actually going, without the earlier, already-decided phase durations changing.
 
+### 6b. Short sub-lessons, key states, and the focus/allowed split
+
+Each step is a **1-2 minute sub-lesson**, not one long block per phase kind — a 15-minute session ends
+up with roughly 10 of them, built one at a time by a priority rule (eval if ready → teach if there's
+room and it's been a couple of steps → game if it's been a few steps → practice otherwise), so the
+sequence can be anything from "warmup, teach, practice, teach, game, practice, eval, practice, game" on
+up, not a fixed shape.
+
+Every key has a live **state**, derived from its stats, not stored separately:
+- **untaught** — never introduced
+- **teaching** — introduced, but not enough attempts yet to trust an accuracy reading
+- **learning** — enough attempts to trust it, but accuracy below 80%
+- **learned** — accuracy at or above 80%
+
+(This is a lighter, separate bar from `is_mastered()`/`mastered_at`, which still gates *when the next
+key ever gets introduced* across sessions. The 4 states are for *this session's* lesson-building.)
+
+Every activity gets **two key pools**, not one: `focus_keys` (what this step should actively work on —
+new or weak keys) and `allowed_keys` (everything introduced so far, safe as filler). A lesson never
+draws a character from outside `allowed_keys` — "it shouldn't use any letters in other lessons that
+weren't taught yet." Each module mixes the two in its own ratio: teach is ~100% focus (one new key at
+a time, blocked pattern, ignoring allowed entirely); warmup leans 75% focus / 25% allowed; practice is
+balanced 50/50; eval leans 70% allowed / 30% focus (a broad check, not another drill on the newest key);
+game is 60% allowed / 40% focus. Within one plan, once a teach step is inserted its key is immediately
+added to the *allowed* pool for every subsequent step — so a practice step right after teaching `d` can
+actually use `d`, and a later teach step targets the next new key instead of repeating the same one.
+
 ## 7. Module contract (for modularity requirement)
 
 Every lesson, practice drill, game, and evaluation is a self-contained module implementing one interface, e.g.:

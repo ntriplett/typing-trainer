@@ -61,8 +61,11 @@ def test_start_session_returns_a_skeleton_and_first_step_content():
     assert len(data["active_keys"]) == INITIAL_ACTIVE_KEY_COUNT
     assert data["estimated_wpm"] > 0
     phases = [s["phase"] for s in data["steps"]]
-    # brand-new learner, default config: warmup + teach (room to grow) + practice + game, no eval yet
-    assert phases == ["warmup", "teach", "practice", "game"]
+    # brand-new learner, default config: ~10 short steps, opening with warmup,
+    # with at least one teach step since there's plenty of room to grow
+    assert phases[0] == "warmup"
+    assert "teach" in phases
+    assert 8 <= len(phases) <= 12
     # skeleton steps carry no content -- that's generated lazily
     for step in data["steps"]:
         assert "content" not in step
@@ -86,6 +89,7 @@ def test_quick_mode_produces_much_shorter_prompts():
     normal = client.post("/api/session/start").json()
     quick = client.post("/api/session/start?quick=1").json()
     assert len(quick["first_step_content"]["prompt"]) < len(normal["first_step_content"]["prompt"])
+    assert quick["steps"][0]["duration_s"] < normal["steps"][0]["duration_s"]
 
 
 def test_get_step_content_generates_and_caches():

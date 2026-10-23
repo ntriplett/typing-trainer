@@ -43,19 +43,21 @@ app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
 
 @app.middleware("http")
-async def no_cache_static_assets(request, call_next):
-    """StaticFiles sends Last-Modified/ETag but no Cache-Control, which
+async def no_cache_responses(request, call_next):
+    """Neither StaticFiles nor FileResponse set Cache-Control, which
     leaves browsers free to apply heuristic caching -- silently reusing
-    an old copy of a .js/.css file without even a conditional request.
-    That's exactly what produced the "I fixed the bug but the browser
-    is still running the old code" confusion (twice). Force no-store
-    for everything under /static/ while this is actively changing;
+    an old response without even a conditional request. That's produced
+    the "I fixed the bug but the browser is still showing the old
+    version" confusion more than once, and it wasn't limited to JS/CSS
+    under /static/: the page routes themselves (/, /session, /analysis)
+    are just as cacheable, which is exactly what made the analysis page
+    (served from analysis.html) need a hard refresh after being edited.
+    Force no-store on every response while this is actively changing;
     revisit with real cache-busting (versioned filenames) once the
     front-end stabilizes.
     """
     response = await call_next(request)
-    if request.url.path.startswith("/static/"):
-        response.headers["Cache-Control"] = "no-store"
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -186,15 +188,20 @@ def start_session(
     bigram_stats = db.list_bigram_stats(conn, learner_id)
 
     # `quick` is a dev/testing convenience (PLAN.md's "very short smoke
-    # session"), not a different pedagogy: it just shrinks the total
-    # time budget everything else scales from.
+    # session"), not a different pedagogy: it shrinks both the total
+    # time budget AND each step's length, so a smoke test isn't just
+    # fewer ~1-2 minute steps at the normal length.
     session_config = SessionConfig(
         duration_minutes=2 if quick else config.duration_minutes,
         learn_vs_practice=config.learn_vs_practice,
         focus_vs_general=config.focus_vs_general,
     )
     skeleton = scheduler.build_session_skeleton(
-        key_stats, session_config, now=datetime.now(UTC), bigram_stats=bigram_stats
+        key_stats,
+        session_config,
+        now=datetime.now(UTC),
+        bigram_stats=bigram_stats,
+        step_seconds_scale=0.15 if quick else 1.0,
     )
 
     estimated_wpm = analytics.estimate_starting_wpm(conn, learner_id)

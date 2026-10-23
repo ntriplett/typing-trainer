@@ -1,8 +1,6 @@
-"""Warmup v1: a quick, low-stakes repetition drill on 2 random keys.
-
-Deliberately dumb (random keys, not yet the scheduler's actual weakest
-keys) -- this exists to prove the module contract end to end. Once the
-scheduler exists, it'll pass in the real weakest-keys list instead.
+"""Warmup v1: a quick, low-stakes drill mostly on the current focus
+keys, with a bit of the broader allowed set mixed in so it doesn't
+feel like an isolated drill.
 """
 
 from __future__ import annotations
@@ -14,10 +12,13 @@ from app.activities.base import (
     ActivityContent,
     ActivityResult,
     KeystrokeEvent,
-    build_random_sequence,
-    pick_two_keys,
+    combined_pool,
+    build_mixed_sequence,
     score_attempt,
 )
+
+# Your call: warmup is mostly focus keys, a little general review.
+FOCUS_RATIO = 0.75
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,24 +26,28 @@ class WarmupRandomKeys:
     id: str = "warmup_random_keys_v1"
     kind: str = "warmup"
 
-    def is_eligible(self, active_keys: list[str]) -> bool:
-        return len(active_keys) >= 1
+    def is_eligible(self, focus_keys: list[str], allowed_keys: list[str]) -> bool:
+        return len(focus_keys) + len(allowed_keys) >= 1
 
     def generate(
         self,
-        active_keys: list[str],
+        focus_keys: list[str],
+        allowed_keys: list[str],
         duration_s: int,
         rng: random.Random | None = None,
         chars_per_second: float = 2.0,
     ) -> ActivityContent:
-        keys = pick_two_keys(active_keys, rng)
-        prompt = build_random_sequence(keys, duration_s, rng, chars_per_second=chars_per_second)
+        prompt = build_mixed_sequence(
+            focus_keys, allowed_keys, FOCUS_RATIO, duration_s, rng, chars_per_second=chars_per_second
+        )
+        keys = combined_pool(focus_keys, allowed_keys)
+        focus_label = " and ".join(sorted(set(focus_keys))) or " and ".join(sorted(set(allowed_keys)))
         return ActivityContent(
             activity_id=self.id,
             kind=self.kind,
             keys=keys,
             prompt=prompt,
-            instructions=f"Quick warmup on {' and '.join(sorted(set(keys)))} -- just get your fingers moving.",
+            instructions=f"Quick warmup on {focus_label} -- just get your fingers moving.",
         )
 
     def score(

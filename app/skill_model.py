@@ -22,6 +22,7 @@ design but fixing its two known gaps:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from app.models import KeyStat
 
@@ -188,6 +189,66 @@ def active_keys(
         result.append(key)
 
     return result
+
+
+KeyState = Literal["untaught", "teaching", "learning", "learned"]
+
+# A lighter bar than full mastery (ACCURACY_FLOOR=0.95, MIN_SAMPLES_FOR_MASTERY=20):
+# this is "good enough to not be the primary focus anymore," not "fully fluent."
+# Deliberately separate from is_mastered()/mastered_at, which still gates when the
+# *next* key ever gets introduced (active_keys(), unchanged) -- these 4 states are
+# for the lesson planner's own "what should this lesson draw from" decisions.
+MIN_SAMPLES_FOR_LEARNED = 10
+LEARNED_ACCURACY_THRESHOLD = 0.80
+
+
+def key_state(stat: KeyStat | None) -> KeyState:
+    """Where a key sits in the teach -> practice pipeline, per your spec:
+      - untaught: never introduced
+      - teaching: introduced, but not enough attempts yet to trust an
+        accuracy reading (still the direct-instruction phase)
+      - learning: enough attempts to trust it, but accuracy below the
+        "learned" bar
+      - learned: accuracy at or above the bar
+
+    This is a live snapshot, not a one-way ratchet -- a "learned" key
+    whose accuracy later drops is reported as "learning" again (that's
+    the signal the lesson planner uses to re-focus on it), unlike
+    is_mastered()/mastered_at's permanent "ever reached" bookkeeping.
+    """
+    if stat is None or stat.unlocked_at is None:
+        return "untaught"
+    if stat.accuracy_rolling is None or stat.sample_count < MIN_SAMPLES_FOR_LEARNED:
+        return "teaching"
+    if stat.accuracy_rolling >= LEARNED_ACCURACY_THRESHOLD:
+        return "learned"
+    return "learning"
+
+
+def keys_in_state(
+    key_stats: dict[str, KeyStat], state: KeyState, key_order: tuple[str, ...] = KEY_ORDER
+) -> list[str]:
+    return [k for k in key_order if key_state(key_stats.get(k)) == state]
+
+
+def next_keys_to_teach(
+    allowed_keys: list[str], n: int = 1, key_order: tuple[str, ...] = KEY_ORDER
+) -> list[str]:
+    """The next `n` keys in sequence that aren't in `allowed_keys` yet --
+    what a "teach" lesson's focus should be, per your spec: "a teaching
+    session should really just work on those [focus] letters," one new
+    key at a time by default rather than a random pair.
+
+    Takes the already-computed allowed/active list rather than
+    re-deriving "introduced" from raw key_stats: active_keys()'s
+    initial keys count as introduced from the start, even before
+    mark_unlocked() has persisted an unlocked_at for them (that only
+    happens once a step actually touches them) -- key_state()'s
+    unlocked_at-based "untaught" check would wrongly call those keys
+    untaught in the meantime.
+    """
+    allowed_set = set(allowed_keys)
+    return [k for k in key_order if k not in allowed_set][:n]
 
 
 def weakest_keys(key_stats: dict[str, KeyStat], keys: list[str], n: int) -> list[str]:
