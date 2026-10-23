@@ -21,10 +21,7 @@
   border-bottom: 3px solid #4a90d9;
 }
 
-.hint {
-  color: #666;
-  font-size: 0.9rem;
-}
+/* .hint is shared with the teach-demo page -- defined once in app.css. */
 
 /* --- keyboard heatmap --- */
 

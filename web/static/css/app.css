@@ -39,3 +39,15 @@ main {
   display: inline-block;
   width: 0.7em;
 }
+
+/* Shared secondary/caption text style, used on the analysis and
+   teach-demo pages. */
+.hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.big-button {
+  font-size: 1.1rem;
+  padding: 0.5rem 1.5rem;
+}

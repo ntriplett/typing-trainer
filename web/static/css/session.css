@@ -45,10 +45,7 @@
   width: 100%;
 }
 
-.big-button {
-  font-size: 1.1rem;
-  padding: 0.5rem 1.5rem;
-}
+/* .big-button is shared with the teach-demo page -- defined once in app.css. */
 
 /* --- in-session progress bar --- */
 

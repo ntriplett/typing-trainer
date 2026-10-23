@@ -20,15 +20,7 @@
   padding: 0.3rem;
 }
 
-.hint {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.big-button {
-  font-size: 1.1rem;
-  padding: 0.5rem 1.5rem;
-}
+/* .hint and .big-button are shared with other pages -- defined once in app.css. */
 
 #diagram-area {
   display: flex;
