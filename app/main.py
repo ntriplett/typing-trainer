@@ -38,6 +38,23 @@ DB_PATH = Path(__file__).resolve().parent.parent / "typing.db"
 app = FastAPI(title="Typing Trainer")
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
+
+@app.middleware("http")
+async def no_cache_static_assets(request, call_next):
+    """StaticFiles sends Last-Modified/ETag but no Cache-Control, which
+    leaves browsers free to apply heuristic caching -- silently reusing
+    an old copy of a .js/.css file without even a conditional request.
+    That's exactly what produced the "I fixed the bug but the browser
+    is still running the old code" confusion (twice). Force no-store
+    for everything under /static/ while this is actively changing;
+    revisit with real cache-busting (versioned filenames) once the
+    front-end stabilizes.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 # session_id -> the plan built for it. See module docstring re: v1 scope.
 _SESSION_PLANS: dict[int, SessionPlan] = {}
 

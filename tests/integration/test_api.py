@@ -42,3 +42,12 @@ def test_static_js_is_served():
     resp = client.get("/static/js/app.js")
     assert resp.status_code == 200
     assert "hello-world" in resp.text
+
+
+def test_static_assets_are_never_cached():
+    # StaticFiles alone doesn't set Cache-Control, which lets browsers
+    # heuristically reuse a stale .js/.css file without even checking
+    # for updates -- the real cause behind two rounds of "I fixed it
+    # but the browser is still running old code."
+    resp = client.get("/static/js/session.js")
+    assert resp.headers["cache-control"] == "no-store"
