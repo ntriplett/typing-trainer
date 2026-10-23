@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import db, scheduler, skill_model
+from app import bigram_model, db, scheduler, skill_model
 from app.activities import get_activity
 from app.activities.base import KeystrokeEvent
 from app.activities.hello_world import HelloWorldActivity
@@ -143,6 +143,7 @@ def complete_step(
     db.end_session_event(conn, event.id, summary_stats=asdict(result))
 
     _apply_keystrokes_to_skill_model(conn, learner_id, step.content.keys, keystrokes, now)
+    _apply_keystrokes_to_bigram_model(conn, learner_id, keystrokes)
 
     session_complete = step_index == len(plan.steps) - 1
     if session_complete:
@@ -178,3 +179,19 @@ def _apply_keystrokes_to_skill_model(
 
     for stat in touched.values():
         db.upsert_key_stat(conn, stat)
+
+
+def _apply_keystrokes_to_bigram_model(
+    conn, learner_id: int, keystrokes: list[KeystrokeEvent]
+) -> None:
+    """Fold this step's consecutive keystroke pairs into bigram_stat.
+
+    One batch at the end of the step, not a write per keystroke (PLAN.md
+    Section 2's research basis doesn't call for live bigram adaptation --
+    this is detail-level data for the analysis page and recommender).
+    """
+    for key1, key2, correct, latency_ms in bigram_model.bigrams_from_keystrokes(keystrokes):
+        existing = db.get_bigram_stat(conn, learner_id, key1, key2)
+        stat = existing if existing is not None else bigram_model.new_bigram_stat(learner_id, key1, key2)
+        updated = bigram_model.record_bigram_attempt(stat, correct=correct, latency_ms=latency_ms)
+        db.upsert_bigram_stat(conn, updated)

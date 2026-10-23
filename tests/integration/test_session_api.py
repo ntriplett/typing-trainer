@@ -86,6 +86,22 @@ def test_completing_a_step_persists_key_stats():
         assert stat.unlocked_at is not None
 
 
+def test_completing_a_step_persists_bigram_stats():
+    start = client.post("/api/session/start").json()
+    session_id = start["session_id"]
+    step0 = start["steps"][0]
+
+    client.post(
+        f"/api/session/{session_id}/steps/0/complete",
+        json={"keystrokes": _keystrokes_for(step0["content"])},
+    )
+
+    with db.open_db(main.DB_PATH) as conn:
+        pairs = db.list_bigram_stats(conn, 1)
+        assert len(pairs) > 0
+        assert all(p.accuracy_rolling == 1.0 for p in pairs)  # all-correct keystrokes in this test
+
+
 def test_full_session_runs_through_every_step_and_ends():
     start = client.post("/api/session/start").json()
     session_id = start["session_id"]

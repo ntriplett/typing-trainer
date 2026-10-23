@@ -31,6 +31,24 @@ class KeyStat:
 
 
 @dataclass(frozen=True, slots=True)
+class BigramStat:
+    """Detail-level stat for a 2-key transition (e.g. typing 'e' then 'i').
+
+    Unlike KeyStat, this doesn't gate anything (no unlocked_at/mastered_at)
+    -- it's purely descriptive, for the analysis page and as a secondary
+    signal for the recommender. Updated in a batch at the end of each
+    activity step, not per keystroke (see app/bigram_model.py).
+    """
+
+    learner_id: int
+    key1: str
+    key2: str
+    ema_time_ms: float | None
+    accuracy_rolling: float | None
+    sample_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class Session:
     id: int
     learner_id: int

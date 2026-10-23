@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterator
 
-from app.models import KeystrokeLog, KeyStat, Learner, Session, SessionEvent, Streak
+from app.models import BigramStat, KeystrokeLog, KeyStat, Learner, Session, SessionEvent, Streak
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS learner (
@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS key_stat (
     unlocked_at TEXT,
     mastered_at TEXT,
     PRIMARY KEY (learner_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS bigram_stat (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    key1 TEXT NOT NULL,
+    key2 TEXT NOT NULL,
+    ema_time_ms REAL,
+    accuracy_rolling REAL,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learner_id, key1, key2)
 );
 
 CREATE TABLE IF NOT EXISTS session (
@@ -185,6 +195,50 @@ def _row_to_key_stat(row: sqlite3.Row) -> KeyStat:
         sample_count=row["sample_count"],
         unlocked_at=_parse_dt(row["unlocked_at"]),
         mastered_at=_parse_dt(row["mastered_at"]),
+    )
+
+
+# --- bigram_stat ---------------------------------------------------------------
+
+
+def upsert_bigram_stat(conn: sqlite3.Connection, stat: BigramStat) -> None:
+    conn.execute(
+        """
+        INSERT INTO bigram_stat (learner_id, key1, key2, ema_time_ms, accuracy_rolling, sample_count)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(learner_id, key1, key2) DO UPDATE SET
+            ema_time_ms = excluded.ema_time_ms,
+            accuracy_rolling = excluded.accuracy_rolling,
+            sample_count = excluded.sample_count
+        """,
+        (stat.learner_id, stat.key1, stat.key2, stat.ema_time_ms, stat.accuracy_rolling, stat.sample_count),
+    )
+    conn.commit()
+
+
+def get_bigram_stat(conn: sqlite3.Connection, learner_id: int, key1: str, key2: str) -> BigramStat | None:
+    row = conn.execute(
+        "SELECT * FROM bigram_stat WHERE learner_id = ? AND key1 = ? AND key2 = ?",
+        (learner_id, key1, key2),
+    ).fetchone()
+    return _row_to_bigram_stat(row) if row else None
+
+
+def list_bigram_stats(conn: sqlite3.Connection, learner_id: int) -> list[BigramStat]:
+    rows = conn.execute(
+        "SELECT * FROM bigram_stat WHERE learner_id = ?", (learner_id,)
+    ).fetchall()
+    return [_row_to_bigram_stat(row) for row in rows]
+
+
+def _row_to_bigram_stat(row: sqlite3.Row) -> BigramStat:
+    return BigramStat(
+        learner_id=row["learner_id"],
+        key1=row["key1"],
+        key2=row["key2"],
+        ema_time_ms=row["ema_time_ms"],
+        accuracy_rolling=row["accuracy_rolling"],
+        sample_count=row["sample_count"],
     )
 
 

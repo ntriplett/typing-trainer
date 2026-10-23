@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app import db
-from app.models import KeyStat, Streak
+from app.models import BigramStat, KeyStat, Streak
 
 
 @pytest.fixture()
@@ -22,7 +22,10 @@ def test_schema_creates_all_tables(conn):
         row["name"]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
     }
-    assert {"learner", "key_stat", "session", "session_event", "keystroke_log", "streak"} <= tables
+    assert {
+        "learner", "key_stat", "bigram_stat", "session", "session_event",
+        "keystroke_log", "streak",
+    } <= tables
 
 
 def test_create_and_get_learner(conn):
@@ -93,6 +96,46 @@ def test_list_key_stats_returns_all_keys_for_learner(conn):
         )
     stats = db.list_key_stats(conn, learner.id)
     assert {s.key for s in stats} == {"f", "j", "d"}
+
+
+def test_bigram_stat_upsert_then_update(conn):
+    learner = db.create_learner(conn, "Sam")
+    stat = BigramStat(
+        learner_id=learner.id, key1="e", key2="i", ema_time_ms=300.0, accuracy_rolling=0.9, sample_count=5
+    )
+    db.upsert_bigram_stat(conn, stat)
+
+    fetched = db.get_bigram_stat(conn, learner.id, "e", "i")
+    assert fetched.ema_time_ms == 300.0
+    assert fetched.sample_count == 5
+
+    updated = BigramStat(
+        learner_id=learner.id, key1="e", key2="i", ema_time_ms=220.0, accuracy_rolling=0.95, sample_count=12
+    )
+    db.upsert_bigram_stat(conn, updated)
+    fetched_again = db.get_bigram_stat(conn, learner.id, "e", "i")
+    assert fetched_again.ema_time_ms == 220.0
+    assert fetched_again.sample_count == 12
+
+
+def test_bigram_stat_is_directional():
+    with db.open_db(":memory:") as conn:
+        learner = db.create_learner(conn, "Sam")
+        db.upsert_bigram_stat(
+            conn, BigramStat(learner_id=learner.id, key1="e", key2="i", ema_time_ms=200.0, accuracy_rolling=1.0, sample_count=1)
+        )
+        assert db.get_bigram_stat(conn, learner.id, "i", "e") is None
+        assert db.get_bigram_stat(conn, learner.id, "e", "i") is not None
+
+
+def test_list_bigram_stats_returns_all_pairs_for_learner(conn):
+    learner = db.create_learner(conn, "Sam")
+    for k1, k2 in (("e", "i"), ("t", "h"), ("a", "n")):
+        db.upsert_bigram_stat(
+            conn, BigramStat(learner_id=learner.id, key1=k1, key2=k2, ema_time_ms=300.0, accuracy_rolling=0.9, sample_count=3)
+        )
+    pairs = {(s.key1, s.key2) for s in db.list_bigram_stats(conn, learner.id)}
+    assert pairs == {("e", "i"), ("t", "h"), ("a", "n")}
 
 
 def test_streak_defaults_to_zero_when_absent(conn):
