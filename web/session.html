@@ -11,15 +11,41 @@
     <h1>Typing Trainer</h1>
 
     <div id="start-screen">
-      <p>Ready for a short practice session?</p>
+      <p>Ready for a practice session? Pick how today should go:</p>
+
+      <div class="config-row">
+        <label for="duration-slider">Session length: <output id="duration-value">15</output> min</label>
+        <input type="range" id="duration-slider" min="15" max="30" step="1" value="15" />
+      </div>
+
+      <div class="config-row">
+        <label for="learn-practice-slider">Practice ↔ Learn: <output id="learn-practice-value">Balanced</output></label>
+        <input type="range" id="learn-practice-slider" min="0" max="100" step="5" value="50" />
+      </div>
+
+      <div class="config-row">
+        <label for="focus-slider">General ↔ Problem letters: <output id="focus-value">A bit of both</output></label>
+        <input type="range" id="focus-slider" min="0" max="100" step="5" value="30" />
+      </div>
+
       <label><input type="checkbox" id="quick-test-checkbox" /> Quick test (short lessons, for trying things out)</label>
-      <p><button id="start-button">Start session</button></p>
+
+      <p><button id="start-button" class="big-button">Start session</button></p>
     </div>
 
     <div id="session-screen" hidden>
+      <div id="progress-bar">
+        <div id="plan-preview"></div>
+        <div id="progress-bar-row">
+          <span id="time-remaining"></span>
+          <span id="step-progress"></span>
+        </div>
+      </div>
+
       <p id="phase-label"></p>
       <p id="instructions"></p>
       <p id="progress"></p>
+      <p id="lock-message" hidden>🔒 Get this one right to keep going!</p>
       <div id="prompt-viewport">
         <div id="prompt"></div>
       </div>

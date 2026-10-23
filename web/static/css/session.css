@@ -45,6 +45,85 @@
   width: 0.7em;
 }
 
+#prompt .locked {
+  background: #ffb3b3;
+}
+
+/* --- pre-session config sliders --- */
+
+.config-row {
+  margin: 0.75rem 0;
+  max-width: 24rem;
+}
+
+.config-row label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
+.config-row input[type="range"] {
+  width: 100%;
+}
+
+.big-button {
+  font-size: 1.1rem;
+  padding: 0.5rem 1.5rem;
+}
+
+/* --- in-session progress bar --- */
+
+#progress-bar {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+#plan-preview {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  flex-wrap: wrap;
+}
+
+#plan-preview .plan-phase {
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  background: #eee;
+  color: #888;
+}
+
+#plan-preview .plan-phase.done {
+  background: #d7f0dc;
+  color: #2e9e44;
+}
+
+#plan-preview .plan-phase.current {
+  background: #ffe066;
+  color: #000;
+  font-weight: bold;
+}
+
+#progress-bar-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+#time-remaining.paused::after {
+  content: " (paused)";
+  color: #999;
+}
+
+#lock-message {
+  color: #c0392b;
+  font-weight: bold;
+}
+
 #progress {
   color: #666;
   font-size: 0.9rem;

@@ -1,25 +1,17 @@
-// Runs one scheduler-built session end to end: fetch the plan, render
-// each step's prompt, capture keystrokes with timing, submit for
-// scoring, show the result, advance. Deliberately plain -- no visual
-// polish yet (PLAN.md Section 11a defers that); this exists to prove
-// the scheduler + all 5 activity modules actually work when driven by
-// real typing in a real browser.
-//
-// Prompt rendering (shared by every phase, not just warmup): each
-// character is tracked individually as "pending" / "current" /
-// "correct" / "incorrect", wrapped into a fixed-width scrolling window.
-// The DOM for a step's prompt is built ONCE, and each keystroke only
-// touches the 1-2 spans that actually changed -- rebuilding the whole
-// prompt's HTML on every keystroke was the earlier design, and it
-// visibly bogs down on a long (200-600+ char) prompt: a backlog of
-// full-DOM rebuilds + scroll animations piles up on the main thread,
-// which is what made finishing the last character feel like a delayed,
-// "time-based" wait instead of an instant reaction.
+// Runs one scheduler-built session end to end: collect the pre-session
+// config, fetch the skeleton + first step, render each step's prompt
+// (fetching its content lazily, right before it's needed), capture
+// keystrokes with timing, submit for scoring, show the result, advance.
+// Deliberately plain visually -- no polish yet (PLAN.md Section 11a
+// defers that); this exists to prove the whole flow works.
 
 const MAX_CHARS_PER_LINE = 24; // ~5 blocks of 4 chars + inter-block gaps
+const IDLE_PAUSE_MS = 5000; // no keystroke in this long -> the session timer pauses
+const WRONG_STREAK_LOCKOUT = 5; // this many consecutive misses -> must get the next one right
 
 let sessionId = null;
-let steps = [];
+let skeleton = []; // [{phase, activity_id, focus_keys, duration_s}], no content
+let contentCache = {}; // stepIndex -> ActivityContent
 let stepIndex = 0;
 let promptChars = [];
 let lineOfChar = []; // which visual line each char index belongs to
@@ -28,7 +20,17 @@ let position = 0;
 let keystrokes = [];
 let lastKeyTime = 0;
 let stepFinished = false; // guards against double-submitting the same step
+let consecutiveWrong = 0;
+let locked = false;
 const stepResults = [];
+
+// Overall session timer: counts up only while actively typing (paused
+// when idle for IDLE_PAUSE_MS), compared against the skeleton's total
+// planned time budget.
+let totalBudgetMs = 0;
+let activeElapsedMs = 0;
+let timerIntervalId = null;
+const TIMER_TICK_MS = 200;
 
 const startScreen = document.getElementById("start-screen");
 const sessionScreen = document.getElementById("session-screen");
@@ -36,10 +38,14 @@ const completeScreen = document.getElementById("complete-screen");
 const phaseLabel = document.getElementById("phase-label");
 const instructionsEl = document.getElementById("instructions");
 const progressEl = document.getElementById("progress");
+const lockMessageEl = document.getElementById("lock-message");
 const promptEl = document.getElementById("prompt");
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
 const endNowButton = document.getElementById("end-now-button");
+const planPreviewEl = document.getElementById("plan-preview");
+const timeRemainingEl = document.getElementById("time-remaining");
+const stepProgressEl = document.getElementById("step-progress");
 
 document.getElementById("start-button").addEventListener("click", startSession);
 document.getElementById("next-button").addEventListener("click", advanceStep);
@@ -51,38 +57,125 @@ document.getElementById("complete-new-session-button").addEventListener("click",
 });
 window.addEventListener("keydown", handleKeydown);
 
+// --- pre-session config sliders ----------------------------------------------
+
+const durationSlider = document.getElementById("duration-slider");
+const learnPracticeSlider = document.getElementById("learn-practice-slider");
+const focusSlider = document.getElementById("focus-slider");
+
+durationSlider.addEventListener("input", () => {
+  document.getElementById("duration-value").textContent = durationSlider.value;
+});
+learnPracticeSlider.addEventListener("input", () => {
+  document.getElementById("learn-practice-value").textContent = learnPracticeLabel(
+    Number(learnPracticeSlider.value)
+  );
+});
+focusSlider.addEventListener("input", () => {
+  document.getElementById("focus-value").textContent = focusLabel(Number(focusSlider.value));
+});
+
+function learnPracticeLabel(v) {
+  if (v <= 20) return "Mostly practice";
+  if (v >= 80) return "Push new letters hard";
+  return "Balanced";
+}
+
+function focusLabel(v) {
+  if (v <= 20) return "General practice";
+  if (v >= 80) return "Focus on problem letters";
+  return "A bit of both";
+}
+
 function goHome() {
   window.location.href = "/";
 }
 
+// --- session lifecycle ---------------------------------------------------------
+
 async function startSession() {
   const quick = document.getElementById("quick-test-checkbox").checked;
-  const res = await fetch(`/api/session/start${quick ? "?quick=1" : ""}`, { method: "POST" });
+  const config = {
+    duration_minutes: Number(durationSlider.value),
+    learn_vs_practice: Number(learnPracticeSlider.value) / 100,
+    focus_vs_general: Number(focusSlider.value) / 100,
+  };
+
+  const res = await fetch(`/api/session/start${quick ? "?quick=1" : ""}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
   const data = await res.json();
+
   sessionId = data.session_id;
-  steps = data.steps;
+  skeleton = data.steps;
+  contentCache = { 0: data.first_step_content };
   stepIndex = 0;
+  totalBudgetMs = skeleton.reduce((sum, s) => sum + s.duration_s, 0) * 1000;
+  activeElapsedMs = 0;
 
   startScreen.hidden = true;
   sessionScreen.hidden = false;
-  renderStep();
+  startSessionTimer();
+  await renderStep();
 }
 
-function renderStep() {
-  const step = steps[stepIndex];
-  promptChars = step.content.prompt.split("");
+function startSessionTimer() {
+  stopSessionTimer();
+  renderTimeRemaining(); // show the full budget immediately, don't wait for the first tick
+  timerIntervalId = setInterval(() => {
+    const idle = performance.now() - lastKeyTime > IDLE_PAUSE_MS;
+    timeRemainingEl.classList.toggle("paused", idle);
+    if (!idle) {
+      activeElapsedMs += TIMER_TICK_MS;
+    }
+    renderTimeRemaining();
+  }, TIMER_TICK_MS);
+}
+
+function stopSessionTimer() {
+  if (timerIntervalId !== null) {
+    clearInterval(timerIntervalId);
+    timerIntervalId = null;
+  }
+}
+
+function renderTimeRemaining() {
+  const remainingMs = Math.max(0, totalBudgetMs - activeElapsedMs);
+  const totalSeconds = Math.round(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  timeRemainingEl.textContent = `${minutes}:${String(seconds).padStart(2, "0")} left`;
+}
+
+async function fetchStepContent(index) {
+  if (contentCache[index]) return contentCache[index];
+  const res = await fetch(`/api/session/${sessionId}/steps/${index}/content`);
+  const data = await res.json();
+  contentCache[index] = data.content;
+  return data.content;
+}
+
+async function renderStep() {
+  const content = await fetchStepContent(stepIndex);
+  promptChars = content.prompt.split("");
   lineOfChar = computeLineAssignments(promptChars);
   position = 0;
   keystrokes = [];
   lastKeyTime = performance.now();
   stepFinished = false;
+  consecutiveWrong = 0;
+  locked = false;
+  lockMessageEl.hidden = true;
 
-  phaseLabel.textContent = step.phase;
-  instructionsEl.textContent = step.content.instructions;
+  phaseLabel.textContent = skeleton[stepIndex].phase;
+  instructionsEl.textContent = content.instructions;
   stepResultEl.hidden = true;
   endNowButton.hidden = false;
   buildPromptDom();
   renderProgress();
+  renderPlanPreview();
 }
 
 function renderProgress() {
@@ -93,11 +186,24 @@ function renderProgress() {
   progressEl.textContent = `${done} / ${total}`;
 }
 
+function renderPlanPreview() {
+  planPreviewEl.innerHTML = skeleton
+    .map((step, i) => {
+      const status = i < stepIndex || (i === stepIndex && !stepResultEl.hidden)
+        ? "done"
+        : i === stepIndex
+          ? "current"
+          : "";
+      return `<span class="plan-phase ${status}">${step.phase}</span>`;
+    })
+    .join("");
+  stepProgressEl.textContent = `Step ${stepIndex + 1} of ${skeleton.length}`;
+}
+
 // A hard wrap every MAX_CHARS_PER_LINE characters, independent of
 // where the prompt's own word/block spaces fall. A pure space-boundary
-// wrap (the earlier approach) breaks badly for content shaped like
-// teach's "ffff....f jjjj....j" -- only 2 chunks total, how ever long
-// each one is, so it never wraps at all.
+// wrap breaks badly for content shaped like teach's "ffff....f jjjj....j"
+// -- only 2 chunks total, however long each one is, so it never wraps.
 function computeLineAssignments(chars) {
   const lines = [];
   let line = 0;
@@ -114,8 +220,9 @@ function computeLineAssignments(chars) {
 }
 
 // Builds the prompt's DOM exactly once per step and keeps a flat
-// charSpans[] array so later keystrokes can update individual spans
-// directly instead of re-rendering everything.
+// charSpans[] array so keystrokes can update individual spans directly
+// instead of re-rendering everything (full-rebuild-per-keystroke was
+// the earlier design and visibly bogs down on a long prompt).
 function buildPromptDom() {
   const lineCount = lineOfChar.length ? lineOfChar[lineOfChar.length - 1] + 1 : 0;
   const rows = [];
@@ -136,13 +243,13 @@ function buildPromptDom() {
 
 function setCurrentSpan(index) {
   if (index < charSpans.length) {
-    charSpans[index].classList.add("current");
+    charSpans[index].classList.add(locked ? "locked" : "current");
   }
 }
 
 function clearCurrentSpan(index) {
   if (index < charSpans.length) {
-    charSpans[index].classList.remove("current");
+    charSpans[index].classList.remove("current", "locked");
   }
 }
 
@@ -165,17 +272,37 @@ function handleKeydown(e) {
 
   const expected = promptChars[position];
   const typed = e.key;
-  const now = performance.now();
-  const latencyMs = Math.round(now - lastKeyTime);
-  lastKeyTime = now;
   const correct = typed === expected;
 
-  keystrokes.push({
-    expected_char: expected,
-    typed_char: typed,
-    correct,
-    latency_ms: latencyMs,
-  });
+  // Latency is measured against the PREVIOUS keystroke's timestamp,
+  // so capture "now" before overwriting lastKeyTime with it (also the
+  // same timestamp the idle-pause timer uses to detect activity).
+  const now = performance.now();
+  const latencyMs = Math.round(now - lastKeyTime) || 1;
+  lastKeyTime = now;
+
+  if (locked) {
+    // Prevent-smashing lockout: ignore anything that isn't the correct
+    // character for the current position -- no keystroke recorded,
+    // no advancing, until the learner actually gets it right.
+    if (!correct) return;
+    locked = false;
+    lockMessageEl.hidden = true;
+    consecutiveWrong = 0;
+  } else if (!correct) {
+    consecutiveWrong += 1;
+    if (consecutiveWrong >= WRONG_STREAK_LOCKOUT) {
+      locked = true;
+      lockMessageEl.hidden = false;
+      clearCurrentSpan(position);
+      setCurrentSpan(position);
+      return; // this miss itself still doesn't advance; next miss is ignored until correct
+    }
+  } else {
+    consecutiveWrong = 0;
+  }
+
+  keystrokes.push({ expected_char: expected, typed_char: typed, correct, latency_ms: latencyMs });
 
   const previousLine = lineOfChar[position];
   clearCurrentSpan(position);
@@ -200,6 +327,7 @@ async function finishStep() {
   if (stepFinished) return; // handles a keystroke racing with "End now"
   stepFinished = true;
   endNowButton.hidden = true;
+  lockMessageEl.hidden = true;
 
   const res = await fetch(`/api/session/${sessionId}/steps/${stepIndex}/complete`, {
     method: "POST",
@@ -207,7 +335,7 @@ async function finishStep() {
     body: JSON.stringify({ keystrokes }),
   });
   const data = await res.json();
-  stepResults.push({ phase: steps[stepIndex].phase, ...data.result });
+  stepResults.push({ phase: skeleton[stepIndex].phase, ...data.result });
 
   document.getElementById("result-headline").textContent = headlineFor(data.result.reward_signal);
   resultSummaryEl.textContent =
@@ -216,10 +344,15 @@ async function finishStep() {
       ? "Click below to see your session summary."
       : "Click below to move on to the next lesson.");
   stepResultEl.hidden = false;
+  renderPlanPreview();
 
   document.getElementById("next-button").textContent = data.session_complete
     ? "See summary →"
     : "Next lesson →";
+
+  if (data.session_complete) {
+    stopSessionTimer();
+  }
 }
 
 // This is the end-of-lesson signal: once a step's keystrokes are
@@ -231,13 +364,13 @@ function headlineFor(rewardSignal) {
   return "💪 Good effort — keep practicing!";
 }
 
-function advanceStep() {
-  if (stepIndex >= steps.length - 1) {
+async function advanceStep() {
+  if (stepIndex >= skeleton.length - 1) {
     showSummary();
     return;
   }
   stepIndex += 1;
-  renderStep();
+  await renderStep();
 }
 
 // "End this step now" scores whatever was actually typed so far rather
@@ -248,6 +381,7 @@ function endStepNow() {
 }
 
 function showSummary() {
+  stopSessionTimer();
   sessionScreen.hidden = true;
   completeScreen.hidden = false;
   const list = document.getElementById("summary-list");
