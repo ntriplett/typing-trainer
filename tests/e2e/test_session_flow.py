@@ -10,31 +10,7 @@ import re
 
 from playwright.sync_api import Page, expect
 
-
-def start_quick_session(page: Page, live_server: str) -> None:
-    page.goto(f"{live_server}/session")
-    page.check("#quick-test-checkbox")
-    page.click("#start-button")
-    expect(page.locator("#session-screen")).to_be_visible()
-
-
-def type_current_step_prompt(page: Page) -> None:
-    """Type the full, correct prompt for whichever step is active."""
-    page.wait_for_function("typeof stepIndex !== 'undefined' && !!contentCache[stepIndex]")
-    prompt = page.evaluate("contentCache[stepIndex].prompt")
-    page.keyboard.type(prompt)
-
-
-def run_full_quick_session(page: Page, live_server: str) -> None:
-    start_quick_session(page, live_server)
-    for _ in range(30):  # generous upper bound; real sessions are ~10 steps
-        type_current_step_prompt(page)
-        expect(page.locator("#step-result")).to_be_visible()
-        is_last = "summary" in page.locator("#next-button").inner_text().lower()
-        page.click("#next-button")
-        if is_last:
-            break
-    expect(page.locator("#complete-screen")).to_be_visible()
+from .conftest import run_full_quick_session, start_quick_session, type_current_step_prompt
 
 
 def test_start_screen_shows_the_three_config_sliders(page: Page, live_server):

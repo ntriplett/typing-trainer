@@ -7,29 +7,13 @@
 // --- the hand/keyboard diagram -------------------------------------------------
 //
 // Built from scratch each time a step needs one, driven purely by
-// that step's `highlight_key` / `home_key` -- same finger-assignment
-// data as the backend (app/finger_map.py, app/activities/micro_lesson.py)
-// duplicated here since this is demo-only UI, not worth a shared-data
-// endpoint yet.
+// that step's `highlight_key` / `home_key`. KEY_TO_FINGER and
+// HOME_KEY_FOR_FINGER come from keyboard_data.js (shared with
+// analysis.js), loaded before this script; TOP_ROW/HOME_ROW below are
+// just the 2 rows this diagram actually draws.
 
-const TOP_ROW = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
-const HOME_ROW = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"];
-
-const KEY_TO_FINGER = {
-  q: "left_pinky", a: "left_pinky", z: "left_pinky",
-  w: "left_ring", s: "left_ring", x: "left_ring",
-  e: "left_middle", d: "left_middle", c: "left_middle",
-  r: "left_index", f: "left_index", v: "left_index", t: "left_index", g: "left_index", b: "left_index",
-  y: "right_index", h: "right_index", n: "right_index", u: "right_index", j: "right_index", m: "right_index",
-  i: "right_middle", k: "right_middle", ",": "right_middle",
-  o: "right_ring", l: "right_ring", ".": "right_ring",
-  p: "right_pinky", ";": "right_pinky", "/": "right_pinky",
-};
-
-const HOME_KEY_FOR_FINGER = {
-  left_pinky: "a", left_ring: "s", left_middle: "d", left_index: "f",
-  right_index: "j", right_middle: "k", right_ring: "l", right_pinky: ";",
-};
+const TOP_ROW = KEYBOARD_ROWS[1];
+const HOME_ROW = KEYBOARD_ROWS[2];
 
 const KEY_WIDTH = 52;
 const KEY_HEIGHT = 40;

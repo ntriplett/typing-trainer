@@ -39,9 +39,9 @@ def test_analysis_page_is_served():
 
 
 def test_static_js_is_served():
-    resp = client.get("/static/js/app.js")
+    resp = client.get("/static/js/session.js")
     assert resp.status_code == 200
-    assert "hello-world" in resp.text
+    assert "fetchStepContent" in resp.text
 
 
 def test_static_assets_are_never_cached():
@@ -58,6 +58,6 @@ def test_page_routes_are_never_cached_either():
     # -- this is what made analysis.html specifically need a hard
     # refresh after edits (the page route itself wasn't covered by the
     # earlier /static/-only fix).
-    for path in ("/", "/session", "/analysis"):
+    for path in ("/", "/session", "/analysis", "/teach-demo"):
         resp = client.get(path)
         assert resp.headers["cache-control"] == "no-store", path

@@ -2,8 +2,7 @@
 most need warmup/practice attention right now.
 
 Combines three signals, from lowest to highest granularity:
-  - per-key weakness (confidence + accuracy, same convention as
-    skill_model.weakest_keys)
+  - per-key weakness (confidence + accuracy)
   - per-finger weakness (so a key on an overall-weak finger edges out
     an equally-weak key on a strong finger)
   - known problem letter-pairs (a key that shows up in a low-accuracy
@@ -14,7 +13,9 @@ Pure function over already-fetched skill-model state -- no DB. Kept
 separate from scheduler.py so "how do we decide what's weak" can grow
 (more signals, different weighting) without touching the scheduler's
 phase-sequencing logic, and separate from skill_model.py since this is
-about *ranking/choosing*, not the underlying per-key/per-bigram math.
+about *ranking/choosing*, not the underlying per-key/per-bigram math
+(this module is the single home for that ranking logic now -- it used
+to be duplicated with a skill_model.weakest_keys(), which was removed).
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ BIGRAM_PRIORITY_BONUS = 0.15
 
 
 def _key_weakness(key: str, key_stats: dict[str, KeyStat]) -> float:
-    """Lower = weaker, matching skill_model.weakest_keys's convention."""
+    """Lower = weaker."""
     stat = key_stats.get(key)
     if stat is None:
         return 0.0

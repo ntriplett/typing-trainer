@@ -15,8 +15,6 @@ write per keystroke.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.activities.base import KeystrokeEvent
 from app.models import BigramStat
 

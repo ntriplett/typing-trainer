@@ -149,20 +149,29 @@ actually use `d`, and a later teach step targets the next new key instead of rep
 
 ## 7. Module contract (for modularity requirement)
 
-Every lesson, practice drill, game, and evaluation is a self-contained module implementing one interface, e.g.:
+Every lesson, practice drill, game, and evaluation is a self-contained module implementing one interface
+(as actually built in `app/activities/base.py`, Section 6b's `focus_keys`/`allowed_keys` split):
 
 ```python
 class Activity(Protocol):
     id: str
-    kind: Literal["teach", "practice", "eval", "game"]
-    def is_eligible(self, skill_state: SkillState) -> bool: ...
-    def generate(self, skill_state: SkillState, duration_s: int) -> ActivityContent: ...
+    kind: Kind  # "warmup" | "teach" | "practice" | "eval" | "game"
+    def is_eligible(self, focus_keys: list[str], allowed_keys: list[str]) -> bool: ...
+    def generate(
+        self, focus_keys: list[str], allowed_keys: list[str], duration_s: int,
+        rng: random.Random | None = None, chars_per_second: float = 2.0,
+    ) -> ActivityContent: ...
     def score(self, content: ActivityContent, keystrokes: list[KeystrokeEvent]) -> ActivityResult: ...
 ```
 
 - The scheduler only ever talks to this interface — it never knows the internals of a specific game.
-- New activities are added by registering a module in `activity_catalog`; nothing else changes.
-- Front-end renders generically from `ActivityContent`'s declared type (text-prompt, game-canvas, etc.).
+- New activities are added by registering a module in `app/activities/__init__.py`'s `REGISTRY`; nothing
+  else changes. (Experimental/demo variants, like the 3 teach-demo modules in Section 6b, are registered
+  separately in their own demo registry instead, so they can't be picked up by the live scheduler.)
+- `ActivityContent` can optionally carry `micro_steps` (a list of plain dicts) for a structured
+  multi-part lesson instead of one flat prompt — `None` for every ordinary flat-prompt activity.
+- Front-end renders generically from `ActivityContent`'s declared shape (flat prompt vs. `micro_steps`,
+  `kind`, etc.).
 
 ## 8. Test strategy
 
@@ -259,10 +268,13 @@ The look stays plain/functional for now, but the architecture must not block a l
   (`test_plan_preview_marks_steps_done_as_the_session_progresses`) unrelated to the analysis page. That
   last one is the important new data point: this may not be specific to `analysis.js`'s `Promise.all`
   over its 4 fetches (the original suspicion) — it could be a more general timing/race condition in how
-  pages initialize. Three analysis-page e2e tests are marked `xfail(strict=False)` so they keep running
-  (and will visibly XPASS if someone fixes it) without blocking the suite. Still not root-caused, still
-  deferred at your call — worth real browser devtools (console errors, network tab, maybe a Performance
-  recording across a few reloads) rather than guessing further when this gets picked back up.
+  pages initialize. Also reproduced in real GitHub Actions CI (not just locally): the first CI run of
+  the e2e suite failed on `test_keyboard_heatmap_renders_on_a_fresh_learner` with the same 30s
+  `wait_for_function` timeout. All 4 analysis-page e2e tests are marked `xfail(strict=False)` so they
+  keep running (and will visibly XPASS if someone fixes it) without blocking the suite. Still not
+  root-caused, still deferred at your call — worth real browser devtools (console errors, network tab,
+  maybe a Performance recording across a few reloads) rather than guessing further when this gets picked
+  back up.
 
 ## 12. Workflow
 

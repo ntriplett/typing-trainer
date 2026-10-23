@@ -31,6 +31,14 @@ ALL_FINGERS: tuple[str, ...] = (
     "right_index", "right_middle", "right_ring", "right_pinky",
 )
 
+# Home row, left to right -- each of these 8 keys is exactly the key
+# its own finger rests on.
+HOME_ROW_KEYS: tuple[str, ...] = ("a", "s", "d", "f", "j", "k", "l", ";")
+
+# Derived from KEY_TO_FINGER + HOME_ROW_KEYS rather than listed again by
+# hand, so it can't drift out of sync with the finger assignments above.
+HOME_KEY_FOR_FINGER: dict[str, str] = {KEY_TO_FINGER[key]: key for key in HOME_ROW_KEYS}
+
 
 def finger_for_key(key: str) -> str | None:
     return KEY_TO_FINGER.get(key)

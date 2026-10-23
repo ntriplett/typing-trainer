@@ -251,19 +251,8 @@ def next_keys_to_teach(
     return [k for k in key_order if k not in allowed_set][:n]
 
 
-def weakest_keys(key_stats: dict[str, KeyStat], keys: list[str], n: int) -> list[str]:
-    """The `n` keys (from `keys`) most in need of warmup/review right now.
-
-    Ranked by a simple weakness score: lower confidence and lower
-    accuracy are both "weaker." Keys never attempted sort as weakest
-    (confidence/accuracy of 0), since they need the most attention.
-    """
-
-    def weakness_score(key: str) -> float:
-        stat = key_stats.get(key)
-        if stat is None:
-            return 0.0
-        accuracy = stat.accuracy_rolling if stat.accuracy_rolling is not None else 0.0
-        return min(stat.confidence, 1.0) + accuracy
-
-    return sorted(keys, key=weakness_score)[:n]
+# Per-key weakness ranking used to live here as weakest_keys(); it's now
+# app.recommender's _key_weakness() instead (recommend_warmup_keys()
+# does everything this did, plus finger- and bigram-level signals), so
+# there was no longer a reason to keep two copies of the same scoring
+# logic in two modules.

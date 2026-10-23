@@ -108,28 +108,8 @@
   font-size: 1.5rem;
 }
 
-#lesson-prompt .pending {
-  color: #aaa;
-}
-
-#lesson-prompt .current {
-  background: #ffe066;
-  border-radius: 2px;
-}
-
-#lesson-prompt .correct {
-  color: #2e9e44;
-}
-
-#lesson-prompt .incorrect {
-  color: #d1343b;
-  text-decoration: underline;
-}
-
-#lesson-prompt .space {
-  display: inline-block;
-  width: 0.7em;
-}
+/* .pending/.current/.correct/.incorrect/.space are shared with the
+   real session prompt -- defined once in app.css. */
 
 #micro-step-progress {
   font-weight: bold;

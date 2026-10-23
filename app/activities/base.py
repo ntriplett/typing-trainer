@@ -138,7 +138,7 @@ def build_blocked_sequence(
     e.g. ["f", "j"] -> "ffff jjjj" -- deliberately not randomized, since
     a first introduction should isolate one motion at a time.
 
-    Scales with the time available like build_random_sequence does --
+    Scales with the time available like build_mixed_sequence does --
     this used to ignore duration_s entirely, which made a "teach" step
     finish almost instantly compared to every other phase (same time
     budget, wildly different amount of actual typing).

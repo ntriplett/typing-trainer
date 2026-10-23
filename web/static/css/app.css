@@ -11,3 +11,31 @@ body {
 main {
   text-align: center;
 }
+
+/* Shared per-character typing states, used by both the real session
+   prompt (#prompt) and the teach-demo prompt (#lesson-prompt) -- same
+   colors, same meaning, no reason for each page to redefine them. */
+
+.pending {
+  color: #aaa;
+}
+
+.current {
+  color: #000;
+  background: #ffe066;
+  border-radius: 2px;
+}
+
+.correct {
+  color: #2e9e44;
+}
+
+.incorrect {
+  color: #d1343b;
+  text-decoration: underline;
+}
+
+.space {
+  display: inline-block;
+  width: 0.7em;
+}

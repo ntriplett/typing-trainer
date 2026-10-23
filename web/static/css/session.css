@@ -21,29 +21,8 @@
   white-space: pre;
 }
 
-#prompt .pending {
-  color: #aaa;
-}
-
-#prompt .current {
-  color: #000;
-  background: #ffe066;
-  border-radius: 2px;
-}
-
-#prompt .correct {
-  color: #2e9e44;
-}
-
-#prompt .incorrect {
-  color: #d1343b;
-  text-decoration: underline;
-}
-
-#prompt .space {
-  display: inline-block;
-  width: 0.7em;
-}
+/* .pending/.current/.correct/.incorrect/.space are shared with the
+   teach-demo prompt -- defined once in app.css. */
 
 #prompt .locked {
   background: #ffb3b3;

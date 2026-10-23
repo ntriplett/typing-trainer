@@ -34,6 +34,7 @@ from app.activities import get_activity
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
 from app.activities.teach_demos import get_demo_activity, list_demo_activities
+from app.finger_map import KEY_TO_FINGER
 from app.models import KeyStat
 from app.scheduler import SessionConfig, SessionSkeleton, StepPlan
 
@@ -164,6 +165,9 @@ def teach_demo_content(activity_id: str, focus_key: str, allowed_keys: str = "")
         activity = get_demo_activity(activity_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Unknown demo module") from None
+
+    if focus_key not in KEY_TO_FINGER:
+        raise HTTPException(status_code=400, detail=f"Unknown key: {focus_key!r}")
 
     allowed = [k for k in allowed_keys.split(",") if k]
     content = activity.generate([focus_key], allowed, duration_s=60, chars_per_second=2.0)

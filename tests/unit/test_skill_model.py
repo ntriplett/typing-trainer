@@ -203,32 +203,6 @@ def test_mark_unlocked_sets_timestamp_only_once():
     assert unchanged.unlocked_at == NOW
 
 
-# --- weakest_keys ---------------------------------------------------------------
-
-
-def test_weakest_keys_ranks_never_attempted_as_weakest():
-    stats = {"a": make_stat(key="a", confidence=1.0, accuracy_rolling=1.0)}
-    weakest = sm.weakest_keys(stats, ["a", "b"], n=1)
-    assert weakest == ["b"]
-
-
-def test_weakest_keys_ranks_lower_confidence_and_accuracy_first():
-    stats = {
-        "a": make_stat(key="a", confidence=1.0, accuracy_rolling=1.0),
-        "b": make_stat(key="b", confidence=0.3, accuracy_rolling=0.7),
-        "c": make_stat(key="c", confidence=0.9, accuracy_rolling=0.95),
-    }
-    weakest = sm.weakest_keys(stats, ["a", "b", "c"], n=2)
-    assert weakest == ["b", "c"]
-
-
-def test_weakest_keys_respects_n():
-    stats = {
-        k: make_stat(key=k, confidence=0.5, accuracy_rolling=0.9) for k in ["a", "b", "c"]
-    }
-    assert len(sm.weakest_keys(stats, ["a", "b", "c"], n=2)) == 2
-
-
 # --- key_state / keys_in_state / next_keys_to_teach --------------------------
 
 

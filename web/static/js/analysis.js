@@ -2,25 +2,9 @@
 // trend), each rendered with plain HTML/CSS/SVG -- no charting
 // library (PLAN.md Section 11a still defers real visual polish; this
 // just needs to show the data clearly).
-
-const KEYBOARD_ROWS = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-  ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-  ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
-  ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
-];
-
-const FINGER_LABELS = {
-  left_pinky: "Left pinky",
-  left_ring: "Left ring",
-  left_middle: "Left middle",
-  left_index: "Left index",
-  right_index: "Right index",
-  right_middle: "Right middle",
-  right_ring: "Right ring",
-  right_pinky: "Right pinky",
-};
-const FINGER_ORDER = Object.keys(FINGER_LABELS);
+//
+// KEYBOARD_ROWS/FINGER_LABELS/FINGER_ORDER come from keyboard_data.js,
+// loaded before this script.
 
 document.querySelectorAll(".tab-button").forEach((btn) => {
   btn.addEventListener("click", () => showTab(btn.dataset.tab));

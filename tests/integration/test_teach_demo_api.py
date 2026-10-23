@@ -40,6 +40,17 @@ def test_get_content_for_unknown_module_404s():
     assert resp.status_code == 404
 
 
+def test_get_content_for_invalid_focus_key_400s_instead_of_crashing():
+    # Regression: an empty or unrecognized focus_key used to reach
+    # finger_for_key() and raise an unhandled ValueError -> 500.
+    for bad_key in ("", "zz", "not-a-key"):
+        resp = client.get(
+            "/api/teach-demo/teach_hand_anchor_demo_v1/content",
+            params={"focus_key": bad_key},
+        )
+        assert resp.status_code == 400, bad_key
+
+
 def test_get_content_works_with_no_allowed_keys():
     resp = client.get(
         "/api/teach-demo/teach_staged_combo_demo_v1/content", params={"focus_key": "r"}

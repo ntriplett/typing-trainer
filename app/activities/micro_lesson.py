@@ -32,24 +32,10 @@ from __future__ import annotations
 
 import random
 
-from app.finger_map import KEY_TO_FINGER
-
-# Each finger's resting ("home") key -- derived from finger_map.KEY_TO_FINGER,
-# since the home row keys are exactly the keys mapped to themselves as
-# their own finger's anchor.
-HOME_KEY_FOR_FINGER: dict[str, str] = {
-    "left_pinky": "a",
-    "left_ring": "s",
-    "left_middle": "d",
-    "left_index": "f",
-    "right_index": "j",
-    "right_middle": "k",
-    "right_ring": "l",
-    "right_pinky": ";",
-}
+from app.finger_map import HOME_KEY_FOR_FINGER, HOME_ROW_KEYS, KEY_TO_FINGER
 
 # Home row in physical left-to-right order, for the anchor-check step.
-HOME_ROW_ORDER: tuple[str, ...] = ("a", "s", "d", "f", "j", "k", "l", ";")
+HOME_ROW_ORDER = HOME_ROW_KEYS
 
 
 def finger_for_key(key: str) -> str:

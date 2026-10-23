@@ -1,8 +1,9 @@
-"""Shared fixture for real-browser e2e tests: spawns the actual FastAPI
-app as a subprocess (the same way the launcher does), pointed at an
-isolated temp DB via TYPING_TRAINER_DB_PATH, and tears it down after
-each test. Playwright's `page` fixture (from pytest-playwright) picks
-up the `base_url` fixture below automatically for relative page.goto().
+"""Shared fixture + helpers for real-browser e2e tests: spawns the
+actual FastAPI app as a subprocess (the same way the launcher does),
+pointed at an isolated temp DB via TYPING_TRAINER_DB_PATH, and tears it
+down after each test. `live_server` gives tests the base URL to build
+absolute page.goto() calls from (pytest-playwright's own `base_url`
+fixture is session-scoped and can't depend on our function-scoped one).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Page, expect
 
 HOST = "127.0.0.1"
 PORT = 8421
@@ -78,4 +80,33 @@ def live_server(tmp_path):
         proc.wait(timeout=5)
         _wait_for(lambda: not _port_in_use(HOST, PORT), timeout_s=5.0)
 
+
+# --- shared session-flow helpers, used across test_session_flow.py, ---
+# --- test_analysis_page.py (needs real data to show), etc. -------------
+
+
+def start_quick_session(page: Page, live_server: str) -> None:
+    page.goto(f"{live_server}/session")
+    page.check("#quick-test-checkbox")
+    page.click("#start-button")
+    expect(page.locator("#session-screen")).to_be_visible()
+
+
+def type_current_step_prompt(page: Page) -> None:
+    """Type the full, correct prompt for whichever step is active."""
+    page.wait_for_function("typeof stepIndex !== 'undefined' && !!contentCache[stepIndex]")
+    prompt = page.evaluate("contentCache[stepIndex].prompt")
+    page.keyboard.type(prompt)
+
+
+def run_full_quick_session(page: Page, live_server: str) -> None:
+    start_quick_session(page, live_server)
+    for _ in range(30):  # generous upper bound; real sessions are ~10 steps
+        type_current_step_prompt(page)
+        expect(page.locator("#step-result")).to_be_visible()
+        is_last = "summary" in page.locator("#next-button").inner_text().lower()
+        page.click("#next-button")
+        if is_last:
+            break
+    expect(page.locator("#complete-screen")).to_be_visible()
 
