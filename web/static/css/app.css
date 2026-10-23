@@ -1,0 +1,13 @@
+/* Placeholder styling only — the real visual/theme pass is deferred
+   (PLAN.md Section 11a). This just keeps the skeleton legible. */
+
+body {
+  font-family: sans-serif;
+  display: flex;
+  justify-content: center;
+  margin-top: 4rem;
+}
+
+main {
+  text-align: center;
+}

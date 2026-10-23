@@ -20,7 +20,7 @@ dev = [
 testpaths = ["tests"]
 
 [tool.setuptools]
-packages = ["app", "app.activities"]
+packages = ["app", "app.activities", "launcher"]
 
 [build-system]
 requires = ["setuptools>=68"]
