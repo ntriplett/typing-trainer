@@ -7,19 +7,23 @@
 //
 // Prompt rendering (shared by every phase, not just warmup): each
 // character is tracked individually as "pending" / "current" /
-// "correct" / "incorrect", and grouped into visual lines of 5 blocks
-// (the prompt's existing space-separated 4-char chunks) so the text
-// wraps into a fixed 4-line window and auto-scrolls as typing advances,
-// instead of running on as one long unbroken block.
+// "correct" / "incorrect", wrapped into a fixed-width scrolling window.
+// The DOM for a step's prompt is built ONCE, and each keystroke only
+// touches the 1-2 spans that actually changed -- rebuilding the whole
+// prompt's HTML on every keystroke was the earlier design, and it
+// visibly bogs down on a long (200-600+ char) prompt: a backlog of
+// full-DOM rebuilds + scroll animations piles up on the main thread,
+// which is what made finishing the last character feel like a delayed,
+// "time-based" wait instead of an instant reaction.
 
-const BLOCKS_PER_LINE = 5;
+const MAX_CHARS_PER_LINE = 24; // ~5 blocks of 4 chars + inter-block gaps
 
 let sessionId = null;
 let steps = [];
 let stepIndex = 0;
 let promptChars = [];
-let charStates = []; // "pending" | "correct" | "incorrect", parallel to promptChars
 let lineOfChar = []; // which visual line each char index belongs to
+let charSpans = []; // DOM span for each char index, built once per step
 let position = 0;
 let keystrokes = [];
 let lastKeyTime = 0;
@@ -67,7 +71,6 @@ async function startSession() {
 function renderStep() {
   const step = steps[stepIndex];
   promptChars = step.content.prompt.split("");
-  charStates = promptChars.map(() => "pending");
   lineOfChar = computeLineAssignments(promptChars);
   position = 0;
   keystrokes = [];
@@ -78,7 +81,7 @@ function renderStep() {
   instructionsEl.textContent = step.content.instructions;
   stepResultEl.hidden = true;
   endNowButton.hidden = false;
-  renderPrompt();
+  buildPromptDom();
   renderProgress();
 }
 
@@ -90,53 +93,65 @@ function renderProgress() {
   progressEl.textContent = `${done} / ${total}`;
 }
 
-// Groups characters into visual lines of BLOCKS_PER_LINE space-separated
-// chunks. A chunk boundary is a literal space character in the prompt
-// (the server already groups output into ~4-char chunks); every 5th
-// chunk starts a new line. The space itself stays part of whichever
-// line precedes it, same as any other character in the typed stream.
+// A hard wrap every MAX_CHARS_PER_LINE characters, independent of
+// where the prompt's own word/block spaces fall. A pure space-boundary
+// wrap (the earlier approach) breaks badly for content shaped like
+// teach's "ffff....f jjjj....j" -- only 2 chunks total, how ever long
+// each one is, so it never wraps at all.
 function computeLineAssignments(chars) {
   const lines = [];
   let line = 0;
-  let blocksInLine = 0;
-  for (const ch of chars) {
-    lines.push(line);
-    if (ch === " ") {
-      blocksInLine += 1;
-      if (blocksInLine >= BLOCKS_PER_LINE) {
-        blocksInLine = 0;
-        line += 1;
-      }
+  let lineLength = 0;
+  for (const _ch of chars) {
+    if (lineLength >= MAX_CHARS_PER_LINE) {
+      line += 1;
+      lineLength = 0;
     }
+    lines.push(line);
+    lineLength += 1;
   }
   return lines;
 }
 
-function renderPrompt() {
+// Builds the prompt's DOM exactly once per step and keeps a flat
+// charSpans[] array so later keystrokes can update individual spans
+// directly instead of re-rendering everything.
+function buildPromptDom() {
   const lineCount = lineOfChar.length ? lineOfChar[lineOfChar.length - 1] + 1 : 0;
   const rows = [];
-  for (let l = 0; l < lineCount; l++) rows.push([]);
+  for (let l = 0; l < lineCount; l++) rows.push(document.createElement("div"));
+  rows.forEach((row) => row.classList.add("prompt-line"));
 
-  promptChars.forEach((ch, i) => {
-    const state = i === position ? "current" : charStates[i];
-    const cls = ch === " " ? `space ${state}` : state;
-    const content = ch === " " ? "" : escapeHtml(ch);
-    rows[lineOfChar[i]].push(`<span class="${cls}" data-index="${i}">${content}</span>`);
+  charSpans = promptChars.map((ch, i) => {
+    const span = document.createElement("span");
+    span.className = ch === " " ? "space pending" : "pending";
+    span.textContent = ch === " " ? "" : ch;
+    rows[lineOfChar[i]].appendChild(span);
+    return span;
   });
 
-  promptEl.innerHTML = rows
-    .map((spans) => `<div class="prompt-line">${spans.join("")}</div>`)
-    .join("");
+  promptEl.replaceChildren(...rows);
+  setCurrentSpan(0);
+}
 
+function setCurrentSpan(index) {
+  if (index < charSpans.length) {
+    charSpans[index].classList.add("current");
+  }
+}
+
+function clearCurrentSpan(index) {
+  if (index < charSpans.length) {
+    charSpans[index].classList.remove("current");
+  }
+}
+
+function scrollToCurrentLine() {
   const currentLine = lineOfChar[Math.min(position, lineOfChar.length - 1)];
   const lineEl = promptEl.children[currentLine];
   if (lineEl) {
     lineEl.scrollIntoView({ behavior: "smooth", block: "end" });
   }
-}
-
-function escapeHtml(ch) {
-  return ch === "<" ? "&lt;" : ch === "&" ? "&amp;" : ch;
 }
 
 function handleKeydown(e) {
@@ -161,14 +176,23 @@ function handleKeydown(e) {
     correct,
     latency_ms: latencyMs,
   });
-  charStates[position] = correct ? "correct" : "incorrect";
+
+  const previousLine = lineOfChar[position];
+  clearCurrentSpan(position);
+  charSpans[position].classList.remove("pending");
+  charSpans[position].classList.add(correct ? "correct" : "incorrect");
 
   position += 1;
-  renderPrompt();
+  setCurrentSpan(position);
   renderProgress();
 
   if (position >= promptChars.length) {
     finishStep();
+    return;
+  }
+
+  if (lineOfChar[position] !== previousLine) {
+    scrollToCurrentLine();
   }
 }
 
