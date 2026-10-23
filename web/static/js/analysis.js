@@ -50,13 +50,14 @@ function renderKeyboard(keys) {
       .map((k) => {
         const entry = byKey[k];
         const color = entry ? accuracyColor(entry.accuracy) : null;
-        const cls = color ? "" : "not-started";
+        const cls = (color ? "" : "not-started") + (k === " " ? " kb-space" : "");
         const style = color ? `style="background:${color}"` : "";
+        const name = k === " " ? "space" : k;
         const title = entry
-          ? `${k}: ${entry.sample_count} attempts` +
+          ? `${name}: ${entry.sample_count} attempts` +
             (entry.accuracy !== null ? `, ${Math.round(entry.accuracy * 100)}% accuracy` : ", not started")
           : k;
-        return `<div class="kb-key ${cls}" ${style} title="${title}">${k}</div>`;
+        return `<div class="kb-key ${cls}" ${style} title="${title}">${name}</div>`;
       })
       .join("");
     const indent = i * 0.8;

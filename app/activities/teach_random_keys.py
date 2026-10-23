@@ -19,6 +19,7 @@ from app.activities.base import (
     ActivityResult,
     KeystrokeEvent,
     build_blocked_sequence,
+    build_space_sequence,
     default_coins,
     score_attempt,
 )
@@ -40,6 +41,14 @@ class TeachRandomKeys:
         rng: random.Random | None = None,
         chars_per_second: float = 2.0,
     ) -> ActivityContent:
+        if focus_keys == [" "]:
+            return ActivityContent(
+                activity_id=self.id,
+                kind=self.kind,
+                keys=[" "],
+                prompt=build_space_sequence(allowed_keys, duration_s, chars_per_second),
+                instructions="New key: the space bar! Tap it with your thumb after every letter.",
+            )
         prompt = build_blocked_sequence(focus_keys, duration_s, chars_per_second=chars_per_second)
         label = " and ".join(sorted(set(focus_keys)))
         return ActivityContent(

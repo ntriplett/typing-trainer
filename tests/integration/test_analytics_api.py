@@ -25,8 +25,7 @@ def _run_one_step():
     step0 = start["steps"][0]
     keystrokes = [
         {"expected_char": ch, "typed_char": ch, "correct": True, "latency_ms": 200}
-        for ch in start["first_step_content"]["prompt"]
-        if ch != " "
+        for ch in start["first_step_content"]["prompt"]  # spaces included, as the front-end sends them
     ]
     client.post(f"/api/session/{session_id}/steps/0/complete", json={"keystrokes": keystrokes})
     return step0
@@ -50,12 +49,13 @@ def test_analytics_keys_reflects_a_completed_step():
     assert entry["unlocked"] is True
 
 
-def test_analytics_fingers_covers_all_eight_fingers():
+def test_analytics_fingers_covers_all_eight_fingers_plus_thumbs():
     resp = client.get("/api/analytics/fingers")
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 8
+    assert len(data) == 9
     assert "left_index" in data
+    assert data["thumb"]["keys"] == [" "]
 
 
 def test_analytics_bigrams_empty_before_any_activity():

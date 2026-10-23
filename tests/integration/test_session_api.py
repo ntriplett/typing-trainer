@@ -38,9 +38,7 @@ def _content_for(session_id: int, index: int, start_response: dict) -> dict:
 def _keystrokes_for(content: dict, all_correct: bool = True) -> list[dict]:
     """Build a keystroke list that exercises every char in the prompt."""
     result = []
-    for ch in content["prompt"]:
-        if ch == " ":
-            continue
+    for ch in content["prompt"]:  # spaces included, as the front-end sends them
         result.append(
             {
                 "expected_char": ch,
@@ -61,9 +59,10 @@ def test_start_session_returns_a_skeleton_and_first_step_content():
     assert len(data["active_keys"]) == INITIAL_ACTIVE_KEY_COUNT
     assert data["estimated_wpm"] > 0
     phases = [s["phase"] for s in data["steps"]]
-    # brand-new learner, default config: ~10 short steps, opening with warmup,
+    # brand-new learner, default config: ~10 short steps, opening with the
+    # space-bar lesson then warmup,
     # with at least one teach step since there's plenty of room to grow
-    assert phases[0] == "warmup"
+    assert phases[:2] == ["teach", "warmup"]
     assert "teach" in phases
     assert 8 <= len(phases) <= 12
     # skeleton steps carry no content -- that's generated lazily
@@ -231,3 +230,20 @@ def test_session_page_is_served():
     resp = client.get("/session")
     assert resp.status_code == 200
     assert "Typing Trainer" in resp.text
+
+
+def test_end_session_flag_finishes_the_session_early():
+    start = client.post("/api/session/start", params={"quick": True}).json()
+    assert len(start["steps"]) > 1
+    sid = start["session_id"]
+    resp = client.post(
+        f"/api/session/{sid}/steps/0/complete",
+        json={"keystrokes": _keystrokes_for(start["first_step_content"]), "end_session": True},
+    ).json()
+    assert resp["session_complete"] is True
+    assert {"amount": main.SESSION_COMPLETE_BONUS, "reason": "session_complete"} in resp["coins_earned"]
+    # the in-memory plan is gone, so later steps can't be played
+    assert client.get(f"/api/session/{sid}/steps/1/content").status_code == 404
+    with db.open_db(main.DB_PATH) as conn:
+        row = conn.execute("SELECT ended_at FROM session WHERE id = ?", (sid,)).fetchone()
+    assert row["ended_at"] is not None

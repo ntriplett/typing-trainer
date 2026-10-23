@@ -61,7 +61,7 @@ function itemCard(item) {
   card.className = "item-card" + (item.equipped ? " equipped" : "");
   card.dataset.itemId = item.id;
 
-  const thumb = makeAvatarCanvas(128);
+  const thumb = makeAvatarCanvas(144);
   drawAvatar(thumb, withItem(state.avatar, item));
   thumb.title = `Try on the ${item.name}`;
   thumb.addEventListener("click", () => {

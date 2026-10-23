@@ -7,8 +7,8 @@ is a code change (plus its sprite in web/static/js/sprites.js, keyed by
 the same id), never a DB edit.
 
 Starting avatars are free hidden "starter" items in the body slot, and
-the default background is a starter too, so an avatar is just "whatever
-is equipped in each slot" with no special cases.
+each clothing slot and the background have a starter too, so an avatar
+is just "whatever is equipped in each slot" with no special cases.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from app import db
 
 # Draw order, back to front -- the front-end avatar renderer layers in
 # this same order.
-SLOTS = ("background", "body", "shirt", "hat", "pet")
+SLOTS = ("background", "body", "shoes", "pants", "shirt", "hat", "pet")
 REQUIRED_SLOTS = ("body",)
 
 
@@ -42,12 +42,16 @@ _ITEMS = [
     StoreItem("body_ember", "Ember", "body", 0, "Red hair, full of energy.", starter=True),
     StoreItem("body_moss", "Moss", "body", 0, "Dark curls, calm and steady.", starter=True),
     StoreItem("bg_meadow", "Sunny Meadow", "background", 0, "Where every journey starts.", starter=True),
+    StoreItem("shirt_tunic", "Cream Tunic", "shirt", 0, "Plain, comfy, and ready for anything.", starter=True),
+    StoreItem("pants_trousers", "Brown Trousers", "pants", 0, "Good for climbing and kneeling.", starter=True),
+    StoreItem("shoes_boots", "Leather Boots", "shoes", 0, "Sturdy enough for any trail.", starter=True),
     # hats
     StoreItem("hat_straw", "Straw Hat", "hat", 300, "Keeps the sun out of your eyes."),
     StoreItem("hat_acorn", "Acorn Cap", "hat", 600, "Borrowed from a very large acorn."),
     StoreItem("hat_leaf_crown", "Autumn Leaf Crown", "hat", 1200, "Woven from the brightest fall leaves."),
     # shirts
     StoreItem("shirt_sweater", "Pumpkin Sweater", "shirt", 500, "Cozy, orange, and a little bit itchy."),
+    # (overalls cover the legs too, so they live in the shirt slot as a full outfit)
     StoreItem("shirt_overalls", "Garden Overalls", "shirt", 900, "Pockets for seeds and snacks."),
     # pets
     StoreItem("pet_hedgehog", "Hedgehog", "pet", 1500, "Small, spiky, and very loyal."),
@@ -60,6 +64,13 @@ _ITEMS = [
 CATALOG: dict[str, StoreItem] = {item.id: item for item in _ITEMS}
 DEFAULT_BODY = "body_sprout"
 DEFAULT_BACKGROUND = "bg_meadow"
+# What a slot falls back to when emptied ("take off" puts these back on).
+SLOT_DEFAULTS: dict[str, str] = {
+    "background": DEFAULT_BACKGROUND,
+    "shirt": "shirt_tunic",
+    "pants": "pants_trousers",
+    "shoes": "shoes_boots",
+}
 
 
 class StoreError(ValueError):
@@ -90,8 +101,9 @@ def grant_starters(conn: sqlite3.Connection, learner_id: int, body: str | None =
         if chosen not in {b.id for b in starter_bodies()}:
             raise StoreError(f"{chosen!r} isn't a starting avatar.")
         db.set_equipped(conn, learner_id, "body", chosen)
-    if "background" not in equipped:
-        db.set_equipped(conn, learner_id, "background", DEFAULT_BACKGROUND)
+    for slot, item_id in SLOT_DEFAULTS.items():
+        if slot not in equipped:
+            db.set_equipped(conn, learner_id, slot, item_id)
 
 
 def owned_ids(conn: sqlite3.Connection, learner_id: int) -> set[str]:
@@ -129,9 +141,9 @@ def unequip(conn: sqlite3.Connection, learner_id: int, slot: str) -> None:
         raise StoreError(f"There's no {slot!r} slot.")
     if slot in REQUIRED_SLOTS:
         raise StoreError("You always need a body!")
-    if slot == "background":
-        # The starter background isn't listed in the store, so "taking
-        # off" a bought background goes back to it rather than to nothing.
-        db.set_equipped(conn, learner_id, "background", DEFAULT_BACKGROUND)
+    if slot in SLOT_DEFAULTS:
+        # Starters aren't listed in the store, so "taking off" a bought
+        # piece puts the starter back on rather than leaving the slot empty.
+        db.set_equipped(conn, learner_id, slot, SLOT_DEFAULTS[slot])
         return
     db.clear_equipped(conn, learner_id, slot)

@@ -244,6 +244,9 @@ class SessionConfigIn(BaseModel):
 
 class CompleteStepRequest(BaseModel):
     keystrokes: list[KeystrokeIn]
+    # The session timer ran out during this step: finish the session after
+    # it instead of moving on to the next planned step.
+    end_session: bool = False
 
 
 def _serialize_skeleton_step(step: StepPlan) -> dict:
@@ -364,7 +367,7 @@ def complete_step(
     if result.attempts > 0 and result.wpm > 0:
         runtime.estimated_wpm = 0.5 * runtime.estimated_wpm + 0.5 * result.wpm
 
-    session_complete = step_index == len(runtime.skeleton.steps) - 1
+    session_complete = body.end_session or step_index == len(runtime.skeleton.steps) - 1
     if session_complete:
         db.end_session(conn, session_id)
         del _SESSION_PLANS[session_id]

@@ -23,15 +23,15 @@ def test_keyboard_heatmap_renders_on_a_fresh_learner(page: Page, live_server):
     page.goto(f"{live_server}/analysis")
     page.wait_for_function("document.getElementById('keyboard').children.length > 0")
     rows = page.locator("#keyboard .kb-row")
-    assert rows.count() == 4
+    assert rows.count() == 5  # 4 key rows + the space bar
     keys = page.locator("#keyboard .kb-key")
-    assert keys.count() == 40  # every key in KEY_ORDER
+    assert keys.count() == 41  # every key in KEY_ORDER, space included
 
 
 def test_finger_bars_render_on_a_fresh_learner(page: Page, live_server):
     page.goto(f"{live_server}/analysis")
     page.wait_for_function("document.getElementById('finger-bars').children.length > 0")
-    assert page.locator("#finger-bars .finger-row").count() == 8
+    assert page.locator("#finger-bars .finger-row").count() == 9  # 8 fingers + thumbs
 
 
 def test_all_four_panels_render_after_a_real_session_step(page: Page, live_server):
@@ -39,8 +39,8 @@ def test_all_four_panels_render_after_a_real_session_step(page: Page, live_serve
     page.goto(f"{live_server}/analysis")
 
     page.wait_for_function("document.getElementById('keyboard').children.length > 0")
-    assert page.locator("#keyboard .kb-key").count() == 40
-    assert page.locator("#finger-bars .finger-row").count() == 8
+    assert page.locator("#keyboard .kb-key").count() == 41
+    assert page.locator("#finger-bars .finger-row").count() == 9
 
     page.click("[data-tab='bigrams']")
     page.wait_for_function("document.querySelector('#bigram-table tbody').children.length > 0")

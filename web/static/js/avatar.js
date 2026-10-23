@@ -7,10 +7,10 @@
 // Needs sprites.js loaded first.
 
 // Back-to-front draw order -- matches app/store.py's SLOTS.
-const AVATAR_SLOTS = ["background", "body", "shirt", "hat", "pet"];
+const AVATAR_SLOTS = ["background", "body", "shoes", "pants", "shirt", "hat", "pet"];
 
-// Draws `equipped` onto `canvas` (any size; it's scaled from the 32x32
-// pixel grid, so give it a multiple of 32 for crisp pixels).
+// Draws `equipped` onto `canvas` (any size; it's scaled from the 48x48
+// pixel grid, so give it a multiple of 48 for crisp pixels).
 //
 // opts.pose: only "idle" exists today. Games will add poses (e.g.
 //   "casting") by offsetting/swapping per-layer sprites here.

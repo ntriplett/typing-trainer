@@ -117,19 +117,25 @@ def build_mixed_sequence(
     allowed. Falls back to whichever pool is non-empty if the other is.
     """
     rng = rng or random.Random()
-    focus_pool = focus_keys or allowed_keys
-    allowed_pool = allowed_keys or focus_keys
+    # Space is a real key, but it's practiced as the gap between "words",
+    # never drawn as a random character (that would make double spaces).
+    # When it's a focus key, words get shorter so it comes up more often.
+    space_focus = " " in focus_keys
+    letters_focus = [k for k in focus_keys if k != " "]
+    letters_allowed = [k for k in allowed_keys if k != " "]
+    focus_pool = letters_focus or letters_allowed
+    allowed_pool = letters_allowed or letters_focus
     if not focus_pool and not allowed_pool:
-        raise ValueError("Need at least 1 focus or allowed key to build an activity")
+        raise ValueError("Need at least 1 focus or allowed letter to build an activity")
 
     length = max(10, int(duration_s * chars_per_second))
     chars = [
         rng.choice(focus_pool if rng.random() < focus_ratio else allowed_pool)
         for _ in range(length)
     ]
-    # group into chunks of 4 so it reads like short "words" rather than
-    # one unbroken string
-    chunks = ["".join(chars[i : i + 4]) for i in range(0, len(chars), 4)]
+    # group into short "words" rather than one unbroken string
+    word_len = 2 if space_focus else 4
+    chunks = ["".join(chars[i : i + word_len]) for i in range(0, len(chars), word_len)]
     return " ".join(chunks)
 
 
@@ -148,6 +154,19 @@ def build_blocked_sequence(
     total_chars = max(min_repeats * len(keys), int(duration_s * chars_per_second))
     repeats = max(min_repeats, total_chars // len(keys))
     return " ".join(key * repeats for key in keys)
+
+
+def build_space_sequence(
+    allowed_keys: list[str], duration_s: int, chars_per_second: float = 2.0
+) -> str:
+    """Teaching the space bar: single known letters with a space after
+    each ("f j f j"), so every other keystroke is a thumb press. Uses
+    f/j when no letters are known yet -- they're always introduced
+    alongside space (skill_model.INITIAL_ACTIVE_KEY_COUNT).
+    """
+    letters = [k for k in allowed_keys if k != " "] or ["f", "j"]
+    count = max(6, int(duration_s * chars_per_second) // 2)
+    return " ".join(letters[i % len(letters)] for i in range(count))
 
 
 def score_attempt(

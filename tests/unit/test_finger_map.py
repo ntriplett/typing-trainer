@@ -30,4 +30,5 @@ def test_home_key_for_finger_round_trips_through_key_to_finger():
 
 
 def test_home_row_keys_are_exactly_the_home_key_for_finger_values():
-    assert set(fm.HOME_ROW_KEYS) == set(fm.HOME_KEY_FOR_FINGER.values())
+    # plus the space bar, where the thumbs rest
+    assert set(fm.HOME_ROW_KEYS) | {" "} == set(fm.HOME_KEY_FOR_FINGER.values())

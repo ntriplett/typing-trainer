@@ -145,6 +145,10 @@ function stopSessionTimer() {
 
 function renderTimeRemaining() {
   const remainingMs = Math.max(0, totalBudgetMs - activeElapsedMs);
+  if (remainingMs === 0) {
+    timeRemainingEl.textContent = "Time's up — finish this lesson!";
+    return;
+  }
   const totalSeconds = Math.round(remainingMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -331,19 +335,24 @@ async function finishStep() {
   endNowButton.hidden = true;
   lockMessageEl.hidden = true;
 
+  // Out of time: this lesson is the last one, even if more were planned.
+  const timeUp = activeElapsedMs >= totalBudgetMs;
   const res = await fetch(`/api/session/${sessionId}/steps/${stepIndex}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keystrokes }),
+    body: JSON.stringify({ keystrokes, end_session: timeUp }),
   });
   const data = await res.json();
+  if (data.session_complete) {
+    skeleton = skeleton.slice(0, stepIndex + 1); // drop the unplayed steps
+  }
   stepResults.push({ phase: skeleton[stepIndex].phase, ...data.result });
 
   document.getElementById("result-headline").textContent = headlineFor(data.result.reward_signal);
   resultSummaryEl.textContent =
     `${Math.round(data.result.accuracy * 100)}% accuracy, ${data.result.wpm.toFixed(1)} WPM. ` +
     (data.session_complete
-      ? "Click below to see your session summary."
+      ? (timeUp ? "Time's up — great session! " : "") + "Click below to see your session summary."
       : "Click below to move on to the next lesson.");
   showCoins(data.coins_earned || [], data.coin_balance);
   stepResultEl.hidden = false;

@@ -25,9 +25,21 @@
   text-decoration: underline;
 }
 
+/* Space is a real, taught key: show where it goes as a dotted bar in
+   the character's own state color (pending/current/correct/incorrect). */
 .space {
   display: inline-block;
-  width: 0.7em;
+  width: 0.8em;
+  position: relative;
+}
+
+.space::before {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0.35em;
+  border-bottom: 3px dotted currentColor;
 }
 
 /* Shared secondary/caption text style, used on the analysis and

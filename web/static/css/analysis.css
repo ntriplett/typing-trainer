@@ -41,6 +41,12 @@
   text-transform: uppercase;
 }
 
+.kb-key.kb-space {
+  width: 14rem;
+  margin-left: 2.5rem;
+  text-transform: none;
+}
+
 .kb-key.not-started {
   background: #d8c7a0;
   color: var(--ink-soft);

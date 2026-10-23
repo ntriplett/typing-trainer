@@ -48,11 +48,17 @@ def test_there_is_something_to_buy_after_one_session():
 # --- starters -----------------------------------------------------------------
 
 
-def test_grant_starters_equips_default_body_and_background(conn, learner_id):
+def test_grant_starters_equips_default_body_background_and_clothes(conn, learner_id):
     assert store.get_avatar(conn, learner_id) == {
         "body": store.DEFAULT_BODY,
-        "background": store.DEFAULT_BACKGROUND,
+        **store.SLOT_DEFAULTS,
     }
+
+
+def test_every_slot_default_is_a_starter_in_that_slot():
+    for slot, item_id in store.SLOT_DEFAULTS.items():
+        assert store.CATALOG[item_id].starter
+        assert store.CATALOG[item_id].slot == slot
 
 
 def test_grant_starters_is_idempotent_and_keeps_choices(conn, learner_id):
@@ -161,3 +167,12 @@ def test_taking_off_a_background_returns_to_the_starter(conn, learner_id):
     store.equip(conn, learner_id, bg.id)
     store.unequip(conn, learner_id, "background")
     assert store.get_avatar(conn, learner_id)["background"] == store.DEFAULT_BACKGROUND
+
+
+def test_taking_off_a_shirt_puts_the_starter_tunic_back(conn, learner_id):
+    shirt = next(i for i in store.CATALOG.values() if i.slot == "shirt" and not i.starter)
+    db.add_coins(conn, learner_id, shirt.price, "lesson")
+    store.buy(conn, learner_id, shirt.id)
+    store.equip(conn, learner_id, shirt.id)
+    store.unequip(conn, learner_id, "shirt")
+    assert store.get_avatar(conn, learner_id)["shirt"] == store.SLOT_DEFAULTS["shirt"]

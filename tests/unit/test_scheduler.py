@@ -49,9 +49,24 @@ def test_fifteen_minute_session_produces_roughly_ten_short_steps():
         assert 45 <= step.duration_s <= 120  # ~1-2 minutes each, per your call
 
 
-def test_session_always_opens_with_warmup():
+def test_brand_new_learner_opens_with_a_space_bar_lesson_then_warmup():
     skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert skeleton.steps[0].phase == "teach"
+    assert skeleton.steps[0].focus_keys == [" "]
+    assert skeleton.steps[1].phase == "warmup"
+
+
+def test_session_opens_with_warmup_once_space_is_taught():
+    key_stats = {" ": scheduler_space_taught()}
+    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
     assert skeleton.steps[0].phase == "warmup"
+
+
+def scheduler_space_taught() -> KeyStat:
+    return KeyStat(
+        learner_id=1, key=" ", ema_time_ms=300.0, confidence=1.0, accuracy_rolling=0.95,
+        sample_count=5, unlocked_at=NOW, mastered_at=None,
+    )
 
 
 def test_no_teach_without_room_to_grow():
@@ -85,8 +100,9 @@ def test_teach_steps_are_never_back_to_back():
 
 def test_teach_focus_is_the_single_next_untaught_key_not_a_random_pair():
     skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    teach_step = next(s for s in skeleton.steps if s.phase == "teach")
-    assert teach_step.focus_keys == [KEY_ORDER[INITIAL_ACTIVE_KEY_COUNT]]
+    # the first teach is the space bar (see above); the next is a letter
+    teach_steps = [s for s in skeleton.steps if s.phase == "teach"]
+    assert teach_steps[1].focus_keys == [KEY_ORDER[INITIAL_ACTIVE_KEY_COUNT]]
 
 
 def test_multiple_teach_steps_in_one_session_target_different_keys():

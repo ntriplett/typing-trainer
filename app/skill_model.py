@@ -37,10 +37,13 @@ EMA_ALPHA_ACCURACY = 0.15
 ACCURACY_FLOOR = 0.95
 MIN_SAMPLES_FOR_MASTERY = 20
 
-# Home-row first, then top row, then bottom row, then numbers -- better
-# for building finger discipline in a beginner than pure letter-frequency
-# order (PLAN.md Section 2).
+# Space first (a real, taught, accuracy-tracked key -- every word
+# boundary is a thumb keystroke), then home row, top row, bottom row,
+# numbers -- better for building finger discipline in a beginner than
+# pure letter-frequency order (PLAN.md Section 2).
 KEY_ORDER: tuple[str, ...] = (
+    # thumbs
+    " ",
     # home row
     "f", "j", "d", "k", "s", "l", "a", ";", "g", "h",
     # top row
@@ -51,7 +54,8 @@ KEY_ORDER: tuple[str, ...] = (
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
 )
 
-INITIAL_ACTIVE_KEY_COUNT = 2
+# Space + f + j: the smallest set that makes real "words" with gaps.
+INITIAL_ACTIVE_KEY_COUNT = 3
 
 
 def new_key_stat(learner_id: int, key: str) -> KeyStat:

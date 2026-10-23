@@ -10,6 +10,7 @@ const KEYBOARD_ROWS = [
   ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
   ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"],
   ["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
+  [" "],
 ];
 
 const KEY_TO_FINGER = {
@@ -37,5 +38,6 @@ const FINGER_LABELS = {
   right_middle: "Right middle",
   right_ring: "Right ring",
   right_pinky: "Right pinky",
+  thumb: "Thumbs (space)",
 };
 const FINGER_ORDER = Object.keys(FINGER_LABELS);

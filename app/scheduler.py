@@ -200,6 +200,17 @@ def build_session_skeleton(
     ran_teach = False
     ran_eval = False
 
+    # The space bar is taught before anything else: if it's never had a
+    # teach step (no unlocked_at yet), the session opens with one.
+    space_stat = key_stats.get(" ")
+    space_untaught = space_stat is None or space_stat.unlocked_at is None
+    if " " in planned and space_untaught and config.learn_vs_practice > LEARN_VS_PRACTICE_TEACH_FLOOR:
+        step_len = min(step_seconds["teach"], remaining)
+        steps.append(StepPlan("teach", teach_activity.id, [" "], list(planned), step_len))
+        remaining -= step_len
+        steps_since_teach = 0
+        ran_teach = True
+
     step_len = min(step_seconds["warmup"], remaining)
     steps.append(StepPlan("warmup", warmup_activity.id, weakest_focus_keys(), list(planned), step_len))
     remaining -= step_len

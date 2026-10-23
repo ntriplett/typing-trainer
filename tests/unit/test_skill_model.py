@@ -161,10 +161,9 @@ def test_initial_active_keys_before_any_mastery():
 
 
 def test_next_key_unlocks_once_all_active_keys_mastered():
-    first, second = sm.KEY_ORDER[0], sm.KEY_ORDER[1]
     stats = {
-        first: make_stat(key=first, mastered_at=NOW),
-        second: make_stat(key=second, mastered_at=NOW),
+        key: make_stat(key=key, mastered_at=NOW)
+        for key in sm.KEY_ORDER[: sm.INITIAL_ACTIVE_KEY_COUNT]
     }
     keys = sm.active_keys(stats)
     assert keys == list(sm.KEY_ORDER[: sm.INITIAL_ACTIVE_KEY_COUNT + 1])
@@ -181,11 +180,12 @@ def test_unlock_stops_at_first_unmastered_key():
 
 
 def test_mastered_key_stays_active_even_if_it_later_regresses():
-    first, second = sm.KEY_ORDER[0], sm.KEY_ORDER[1]
+    first = sm.KEY_ORDER[0]
     stats = {
-        first: make_stat(key=first, mastered_at=NOW, accuracy_rolling=0.5),  # regressed
-        second: make_stat(key=second, mastered_at=NOW),
+        key: make_stat(key=key, mastered_at=NOW)
+        for key in sm.KEY_ORDER[: sm.INITIAL_ACTIVE_KEY_COUNT]
     }
+    stats[first] = make_stat(key=first, mastered_at=NOW, accuracy_rolling=0.5)  # regressed
     keys = sm.active_keys(stats)
     # Regression doesn't lock the key back out -- it's surfaced via
     # needs_review for the scheduler instead.
@@ -261,3 +261,8 @@ def test_next_keys_to_teach_returns_first_not_in_allowed_in_key_order():
 
 def test_next_keys_to_teach_empty_when_everything_allowed():
     assert sm.next_keys_to_teach(list(sm.KEY_ORDER), n=1) == []
+
+
+def test_space_is_the_first_key_and_active_from_the_start():
+    assert sm.KEY_ORDER[0] == " "
+    assert " " in sm.active_keys({})

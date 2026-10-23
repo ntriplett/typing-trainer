@@ -8,6 +8,8 @@ stats are always derived from the already-persisted key_stat rows.
 from __future__ import annotations
 
 KEY_TO_FINGER: dict[str, str] = {
+    # space bar (either thumb)
+    " ": "thumb",
     # home row
     "a": "left_pinky", "s": "left_ring", "d": "left_middle", "f": "left_index",
     "j": "right_index", "k": "right_middle", "l": "right_ring", ";": "right_pinky",
@@ -29,6 +31,7 @@ KEY_TO_FINGER: dict[str, str] = {
 ALL_FINGERS: tuple[str, ...] = (
     "left_pinky", "left_ring", "left_middle", "left_index",
     "right_index", "right_middle", "right_ring", "right_pinky",
+    "thumb",
 )
 
 # Home row, left to right -- each of these 8 keys is exactly the key
@@ -38,6 +41,9 @@ HOME_ROW_KEYS: tuple[str, ...] = ("a", "s", "d", "f", "j", "k", "l", ";")
 # Derived from KEY_TO_FINGER + HOME_ROW_KEYS rather than listed again by
 # hand, so it can't drift out of sync with the finger assignments above.
 HOME_KEY_FOR_FINGER: dict[str, str] = {KEY_TO_FINGER[key]: key for key in HOME_ROW_KEYS}
+# Thumbs rest on the space bar; kept out of HOME_ROW_KEYS, which means
+# "the 8 letter keys the fingers rest on" to the teach-demo lessons.
+HOME_KEY_FOR_FINGER["thumb"] = " "
 
 
 def finger_for_key(key: str) -> str | None:

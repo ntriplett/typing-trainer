@@ -102,3 +102,32 @@ def test_score_attempt_handles_no_keystrokes():
     assert result.attempts == 0
     assert result.accuracy == 0.0
     assert result.wpm == 0.0
+
+
+def test_mixed_sequence_never_draws_space_as_a_letter():
+    import random as _random
+
+    from app.activities.base import build_mixed_sequence
+
+    seq = build_mixed_sequence([" ", "f"], [" ", "f", "j"], 0.5, 60, _random.Random(3))
+    assert "  " not in seq
+    assert not seq.startswith(" ") and not seq.endswith(" ")
+
+
+def test_space_focus_makes_shorter_words():
+    import random as _random
+
+    from app.activities.base import build_mixed_sequence
+
+    with_space = build_mixed_sequence([" "], ["f", "j"], 0.5, 60, _random.Random(3))
+    without = build_mixed_sequence(["f"], ["f", "j"], 0.5, 60, _random.Random(3))
+    assert max(map(len, with_space.split(" "))) == 2
+    assert max(map(len, without.split(" "))) == 4
+
+
+def test_space_teach_alternates_letters_and_spaces():
+    from app.activities.base import build_space_sequence
+
+    seq = build_space_sequence([" ", "f", "j"], 10)
+    assert seq.startswith("f j f j")
+    assert all(len(word) == 1 for word in seq.split(" "))
