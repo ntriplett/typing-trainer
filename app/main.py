@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, bigram_model, db, scheduler, skill_model
+from app import analytics, bigram_model, db, scheduler, skill_model, store
 from app.activities import get_activity
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -86,6 +86,10 @@ class SessionRuntime:
     content_cache: dict[int, ActivityContent] = field(default_factory=dict)
 
 
+# Bonus coin rules on top of each activity's own coins() (PLAN.md 11c).
+KEY_MASTERED_BONUS = 50
+SESSION_COMPLETE_BONUS = 100
+
 # session_id -> its runtime. See module docstring re: v1 scope.
 _SESSION_PLANS: dict[int, SessionRuntime] = {}
 
@@ -102,6 +106,18 @@ def ensure_learner(conn) -> int:
         return existing.id
     created = db.create_learner(conn, "Learner")
     return created.id
+
+
+def current_learner(conn=Depends(get_db)) -> int:
+    """The learner this request acts for. Every endpoint that touches
+    per-learner data goes through here, so profiles (PLAN.md 11d) only
+    have to change this one function (read a cookie instead of
+    assuming learner 1). FastAPI caches get_db per request, so this
+    shares the endpoint's connection.
+    """
+    learner_id = ensure_learner(conn)
+    store.grant_starters(conn, learner_id)
+    return learner_id
 
 
 @app.get("/health")
@@ -127,6 +143,11 @@ def session_page() -> FileResponse:
 @app.get("/analysis")
 def analysis_page() -> FileResponse:
     return FileResponse(WEB_DIR / "analysis.html")
+
+
+@app.get("/store")
+def store_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "store.html")
 
 
 @app.get("/teach-demo")
@@ -190,27 +211,23 @@ def teach_demo_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
 
 
 @app.get("/api/analytics/keys")
-def analytics_keys(conn=Depends(get_db)) -> list[dict]:
-    learner_id = ensure_learner(conn)
+def analytics_keys(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> list[dict]:
     return analytics.key_report(conn, learner_id)
 
 
 @app.get("/api/analytics/fingers")
-def analytics_fingers(conn=Depends(get_db)) -> dict:
-    learner_id = ensure_learner(conn)
+def analytics_fingers(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     return {finger: asdict(stat) for finger, stat in analytics.finger_stats(key_stats).items()}
 
 
 @app.get("/api/analytics/bigrams")
-def analytics_bigrams(limit: int = 10, conn=Depends(get_db)) -> list[dict]:
-    learner_id = ensure_learner(conn)
+def analytics_bigrams(limit: int = 10, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> list[dict]:
     return [asdict(b) for b in analytics.worst_bigrams(conn, learner_id, limit=limit)]
 
 
 @app.get("/api/analytics/trend")
-def analytics_trend(days: int | None = None, conn=Depends(get_db)) -> list[dict]:
-    learner_id = ensure_learner(conn)
+def analytics_trend(days: int | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> list[dict]:
     return analytics.daily_trend(conn, learner_id, days=days)
 
 
@@ -240,9 +257,11 @@ def _serialize_skeleton_step(step: StepPlan) -> dict:
 
 @app.post("/api/session/start")
 def start_session(
-    config: SessionConfigIn = SessionConfigIn(), quick: bool = False, conn=Depends(get_db)
+    config: SessionConfigIn = SessionConfigIn(),
+    quick: bool = False,
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
 ) -> dict:
-    learner_id = ensure_learner(conn)
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     bigram_stats = db.list_bigram_stats(conn, learner_id)
 
@@ -324,7 +343,7 @@ def complete_step(
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
     result = activity.score(content, keystrokes)
 
-    learner_id = ensure_learner(conn)
+    learner_id = runtime.learner_id
     now = datetime.now(UTC)
 
     event = db.log_session_event(conn, session_id, step.phase, step.activity_id)
@@ -334,7 +353,9 @@ def complete_step(
         )
     db.end_session_event(conn, event.id, summary_stats=asdict(result))
 
-    _apply_keystrokes_to_skill_model(conn, learner_id, content.keys, keystrokes, now)
+    newly_mastered = _apply_keystrokes_to_skill_model(
+        conn, learner_id, content.keys, keystrokes, now
+    )
     _apply_keystrokes_to_bigram_model(conn, learner_id, keystrokes)
 
     # Blend this step's real WPM into the running estimate so the next
@@ -348,19 +369,33 @@ def complete_step(
         db.end_session(conn, session_id)
         del _SESSION_PLANS[session_id]
 
+    # Coins (PLAN.md 11c): the activity's own rule, then bonus rules.
+    earned = [(activity.coins(content, result), "lesson", f"event:{event.id}")]
+    earned += [(KEY_MASTERED_BONUS, "key_mastered", key) for key in newly_mastered]
+    if session_complete:
+        earned.append((SESSION_COMPLETE_BONUS, "session_complete", f"session:{session_id}"))
+    coins_earned = []
+    for amount, reason, ref in earned:
+        if amount > 0:
+            db.add_coins(conn, learner_id, amount, reason, ref=ref)
+            coins_earned.append({"amount": amount, "reason": reason})
+
     return {
         "result": asdict(result),
         "session_complete": session_complete,
         "estimated_wpm": runtime.estimated_wpm,
+        "coins_earned": coins_earned,
+        "coin_balance": db.get_coin_balance(conn, learner_id),
     }
 
 
 def _apply_keystrokes_to_skill_model(
     conn, learner_id: int, focus_keys: list[str], keystrokes: list[KeystrokeEvent], now: datetime
-) -> None:
+) -> list[str]:
     """Fold this step's keystrokes into each key's running stats and
     persist them -- the thing that makes tomorrow's plan different from
-    today's.
+    today's. Returns the keys mastered for the first time by this step
+    (mastered_at is set once and never cleared, so this can't repeat).
     """
     touched: dict[str, KeyStat] = {}
 
@@ -379,8 +414,13 @@ def _apply_keystrokes_to_skill_model(
             stat, correct=ke.correct, latency_ms=ke.latency_ms, now=now
         )
 
+    newly_mastered = []
     for stat in touched.values():
+        before = db.get_key_stat(conn, learner_id, stat.key)
+        if stat.mastered_at is not None and (before is None or before.mastered_at is None):
+            newly_mastered.append(stat.key)
         db.upsert_key_stat(conn, stat)
+    return newly_mastered
 
 
 def _apply_keystrokes_to_bigram_model(
@@ -397,3 +437,61 @@ def _apply_keystrokes_to_bigram_model(
         stat = existing if existing is not None else bigram_model.new_bigram_stat(learner_id, key1, key2)
         updated = bigram_model.record_bigram_attempt(stat, correct=correct, latency_ms=latency_ms)
         db.upsert_bigram_stat(conn, updated)
+
+
+# --- player + store API ---------------------------------------------------------
+
+
+def _me(conn, learner_id: int) -> dict:
+    learner = db.get_learner(conn, learner_id)
+    return {
+        "learner": {"id": learner.id, "name": learner.name},
+        "coins": db.get_coin_balance(conn, learner_id),
+        "avatar": store.get_avatar(conn, learner_id),
+    }
+
+
+@app.get("/api/me")
+def me(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _me(conn, learner_id)
+
+
+@app.get("/api/store")
+def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    owned = store.owned_ids(conn, learner_id)
+    equipped = set(store.get_avatar(conn, learner_id).values())
+    coins = db.get_coin_balance(conn, learner_id)
+    items = [
+        {
+            **asdict(item),
+            "owned": item.id in owned,
+            "equipped": item.id in equipped,
+            "affordable": item.price <= coins,
+        }
+        for item in store.CATALOG.values()
+        if not item.starter
+    ]
+    return {**_me(conn, learner_id), "items": items}
+
+
+def _store_action(action, conn, learner_id: int, arg: str) -> dict:
+    try:
+        action(conn, learner_id, arg)
+    except store.StoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _me(conn, learner_id)
+
+
+@app.post("/api/store/buy/{item_id}")
+def store_buy(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _store_action(store.buy, conn, learner_id, item_id)
+
+
+@app.post("/api/store/equip/{item_id}")
+def store_equip(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _store_action(store.equip, conn, learner_id, item_id)
+
+
+@app.post("/api/store/unequip/{slot}")
+def store_unequip(slot: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _store_action(store.unequip, conn, learner_id, slot)

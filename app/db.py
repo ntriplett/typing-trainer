@@ -96,6 +96,21 @@ CREATE TABLE IF NOT EXISTS coin_ledger (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_coin_ledger_learner ON coin_ledger(learner_id);
+
+-- Store items (catalog itself lives in app/store.py, not the DB).
+CREATE TABLE IF NOT EXISTS owned_item (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    item_id TEXT NOT NULL,
+    purchased_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS equipped_item (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    slot TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    PRIMARY KEY (learner_id, slot)
+);
 """
 
 
@@ -467,3 +482,47 @@ def list_coin_history(
         )
         for row in rows
     ]
+
+
+# --- store items --------------------------------------------------------------
+#
+# Thin storage only; the rules (prices, starters, "must own to equip")
+# live in app/store.py.
+
+
+def add_owned_item(conn: sqlite3.Connection, learner_id: int, item_id: str) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO owned_item (learner_id, item_id, purchased_at) VALUES (?, ?, ?)",
+        (learner_id, item_id, _now_iso()),
+    )
+
+
+def list_owned_item_ids(conn: sqlite3.Connection, learner_id: int) -> set[str]:
+    rows = conn.execute(
+        "SELECT item_id FROM owned_item WHERE learner_id = ?", (learner_id,)
+    ).fetchall()
+    return {row["item_id"] for row in rows}
+
+
+def set_equipped(conn: sqlite3.Connection, learner_id: int, slot: str, item_id: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO equipped_item (learner_id, slot, item_id) VALUES (?, ?, ?)
+        ON CONFLICT(learner_id, slot) DO UPDATE SET item_id = excluded.item_id
+        """,
+        (learner_id, slot, item_id),
+    )
+
+
+def clear_equipped(conn: sqlite3.Connection, learner_id: int, slot: str) -> None:
+    conn.execute(
+        "DELETE FROM equipped_item WHERE learner_id = ? AND slot = ?", (learner_id, slot)
+    )
+
+
+def get_equipped(conn: sqlite3.Connection, learner_id: int) -> dict[str, str]:
+    """slot -> item_id for everything this learner has equipped."""
+    rows = conn.execute(
+        "SELECT slot, item_id FROM equipped_item WHERE learner_id = ?", (learner_id,)
+    ).fetchall()
+    return {row["slot"]: row["item_id"] for row in rows}

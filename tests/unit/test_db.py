@@ -24,7 +24,7 @@ def test_schema_creates_all_tables(conn):
     }
     assert {
         "learner", "key_stat", "bigram_stat", "session", "session_event",
-        "keystroke_log", "streak",
+        "keystroke_log", "streak", "coin_ledger", "owned_item", "equipped_item",
     } <= tables
 
 
