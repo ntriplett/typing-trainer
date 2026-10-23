@@ -1,0 +1,26 @@
+/* Placeholder styling only -- real visual/theme pass is deferred
+   (PLAN.md Section 11a). Just enough to read the prompt clearly. */
+
+#prompt {
+  font-family: monospace;
+  font-size: 1.5rem;
+  letter-spacing: 0.05em;
+}
+
+#prompt .correct {
+  color: green;
+}
+
+#prompt .incorrect {
+  color: red;
+  text-decoration: underline;
+}
+
+#prompt .pending {
+  color: #888;
+}
+
+#phase-label {
+  font-weight: bold;
+  text-transform: uppercase;
+}

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Session</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/session.css" />
+</head>
+<body>
+  <main>
+    <h1>Typing Trainer</h1>
+
+    <div id="start-screen">
+      <p>Ready for a short practice session?</p>
+      <button id="start-button">Start session</button>
+    </div>
+
+    <div id="session-screen" hidden>
+      <p id="phase-label"></p>
+      <p id="instructions"></p>
+      <p id="prompt"></p>
+      <div id="step-result" hidden>
+        <p id="result-summary"></p>
+        <button id="next-button">Next</button>
+      </div>
+    </div>
+
+    <div id="complete-screen" hidden>
+      <h2>Session complete!</h2>
+      <ul id="summary-list"></ul>
+    </div>
+  </main>
+  <script src="/static/js/session.js"></script>
+</body>
+</html>
