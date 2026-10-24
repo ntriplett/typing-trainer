@@ -67,12 +67,12 @@
 }
 
 .item-info h3 {
-  font-size: 1.05rem;
+  font-size: 20px;
   margin: 0;
 }
 
 .item-desc {
-  font-size: 0.85rem;
+  font-size: 20px;
   line-height: 1.25;
   margin: 0.1rem 0 0.2rem;
   color: var(--ink-soft);
@@ -83,7 +83,11 @@
 }
 
 .item-card button {
-  font-size: 0.95rem;
+  font-size: 20px;
+}
+
+.night-places {
+  color: var(--heading);
 }
 
 .store-tabs {
@@ -94,7 +98,7 @@
 }
 
 .store-tabs .tab-button {
-  font-size: 0.95rem;
+  font-size: 20px;
 }
 
 /* Tabs are theme buttons; the active one is the gold plank. */

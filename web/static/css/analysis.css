@@ -63,7 +63,7 @@
 
 .finger-label {
   width: 8rem;
-  font-size: 0.9rem;
+  font-size: 20px;
 }
 
 .finger-bar-track {
@@ -82,7 +82,7 @@
 .finger-value {
   width: 3rem;
   text-align: right;
-  font-size: 0.85rem;
+  font-size: 20px;
 }
 
 /* --- bigram table --- */
@@ -109,7 +109,7 @@
 }
 
 .legend {
-  font-size: 0.85rem;
+  font-size: 20px;
 }
 
 .swatch {

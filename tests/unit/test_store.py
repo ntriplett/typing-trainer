@@ -219,11 +219,19 @@ def test_night_hides_in_a_place_without_its_unlock_and_comes_back(conn, learner_
     assert store.night_status(conn, learner_id)["on"] is True
 
 
-def test_using_a_night_unlock_from_another_group_explains_why_not(conn, learner_id):
+def test_night_unlock_without_any_of_its_places_says_which_to_get(conn, learner_id):
     db.add_coins(conn, learner_id, 5000, "test")
     store.buy(conn, learner_id, "night_space")
-    with pytest.raises(store.StoreError, match="Pick a place"):
+    with pytest.raises(store.StoreError, match="Outer Space, The Moon, Mars"):
         store.equip(conn, learner_id, "night_space")
+
+
+def test_night_unlock_takes_you_to_one_of_its_places(conn, learner_id):
+    _buy_and_use(conn, learner_id, "bg_moon")
+    store.unequip(conn, learner_id, "background")  # back in the meadow (forests group)
+    _buy_and_use(conn, learner_id, "night_space")
+    avatar = store.get_avatar(conn, learner_id)
+    assert avatar["background"] == "bg_moon" and avatar["night"] is True
 
 
 def test_turning_night_off(conn, learner_id):

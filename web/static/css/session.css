@@ -39,7 +39,7 @@
 
 .config-row label {
   display: block;
-  font-size: 1rem;
+  font-size: 20px;
   margin-bottom: 0.2rem;
 }
 
@@ -60,7 +60,7 @@ input[type="checkbox"] {
   display: flex;
   gap: 0.4rem;
   margin-bottom: 0.4rem;
-  font-size: 0.85rem;
+  font-size: 20px;
   text-transform: uppercase;
   flex-wrap: wrap;
 }
@@ -88,7 +88,7 @@ input[type="checkbox"] {
 #progress-bar-row {
   display: flex;
   justify-content: space-between;
-  font-size: 1rem;
+  font-size: 20px;
 }
 
 #time-remaining.paused::after {
@@ -103,7 +103,7 @@ input[type="checkbox"] {
 
 #progress {
   color: var(--ink-soft);
-  font-size: 0.95rem;
+  font-size: 20px;
 }
 
 #result-headline {
@@ -117,7 +117,7 @@ input[type="checkbox"] {
 #result-coins,
 #session-coins {
   display: flex;
-  font-size: 1.2rem;
+  font-size: 20px;
   margin: 0 0 0.75rem;
 }
 

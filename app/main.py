@@ -29,9 +29,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, bigram_model, db, pets, room, scheduler, skill_model, store
+from app import analytics, appearance, bigram_model, config, db, pets, room, scheduler, skill_model, store
 from app.activities import get_activity
-from app.catalog import night_item_id
+from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
 from app.activities.teach_demos import get_demo_activity, list_demo_activities
@@ -118,7 +118,19 @@ def current_learner(conn=Depends(get_db)) -> int:
     """
     learner_id = ensure_learner(conn)
     store.grant_starters(conn, learner_id)
+    _grant_dev_coins(conn, learner_id)
     return learner_id
+
+
+def _grant_dev_coins(conn, learner_id: int) -> None:
+    """Dev mode only (config.DEV_START_COINS): a one-time free balance."""
+    if config.DEV_START_COINS <= 0:
+        return
+    granted = conn.execute(
+        "SELECT 1 FROM coin_ledger WHERE learner_id = ? AND reason = 'dev_grant'", (learner_id,)
+    ).fetchone()
+    if not granted:
+        db.add_coins(conn, learner_id, config.DEV_START_COINS, "dev_grant")
 
 
 @app.get("/health")
@@ -504,6 +516,13 @@ def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learne
         for item in store.CATALOG.values()
         if not item.starter
     ]
+    # night unlocks list the places they work in (and which you own)
+    for entry in items:
+        if entry["slot"] == "night":
+            entry["places"] = [
+                {"id": p, "name": store.CATALOG[p].name, "owned": p in owned}
+                for p in group_places(entry["group"])
+            ]
     return {**_me(conn, learner_id), "items": items}
 
 

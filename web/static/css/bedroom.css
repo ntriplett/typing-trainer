@@ -54,7 +54,7 @@ main.wide {
   background: var(--sand);
   color: var(--ink);
   text-shadow: none;
-  font-size: 0.7rem;
+  font-size: 20px;
   line-height: 1.15;
 }
 

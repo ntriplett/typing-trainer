@@ -14,7 +14,8 @@ from dataclasses import replace
 
 from app import appearance, db, pets, room
 from app.catalog import (
-    CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem, night_item_id, place_group,
+    CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem, group_places, night_item_id,
+    place_group,
 )
 
 # Re-exported so callers have one place to look for store names.
@@ -108,10 +109,16 @@ def equip(conn: sqlite3.Connection, learner_id: int, item_id: str) -> None:
     if item.id not in owned_ids(conn, learner_id):
         raise StoreError(f"You don't own the {item.name} yet.")
     if item.slot == "night":
-        # "Using" a night unlock means: switch to one of its places at night.
+        # "Using" a night unlock turns on night -- going to one of its
+        # places first if you're somewhere else.
         current = place_group(db.get_equipped(conn, learner_id).get("background", DEFAULT_BACKGROUND))
         if current != item.group:
-            raise StoreError("Pick a place from this group first, then turn on night.")
+            owned = owned_ids(conn, learner_id)
+            mine = [p for p in group_places(item.group) if p in owned]
+            if not mine:
+                names = ", ".join(CATALOG[p].name for p in group_places(item.group))
+                raise StoreError(f"Get one of these places first: {names}.")
+            db.set_equipped(conn, learner_id, "background", mine[0])
         set_night(conn, learner_id, True)
         return
     if item.slot in ("wallpaper", "flooring"):

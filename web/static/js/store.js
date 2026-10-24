@@ -47,8 +47,28 @@ const TABS = [
 
 const ROOM_KINDS = ["furniture", "wallpaper", "flooring"]; // shown as room thumbnails, not on you
 
-// A night unlock's thumbnail shows one of its own places at night.
-const NIGHT_PREVIEW_PLACE = { forests: "bg_meadow", water: "bg_beach", wild: "bg_desert", space: "bg_moon" };
+// A night unlock's thumbnail: every place it works in, side by side, at
+// night -- so it reads as "night for these places", not a new place.
+function drawNightCollage(canvas, placeIds) {
+  const ctx = canvas.getContext("2d");
+  const scale = canvas.width / AVATAR_SIZE;
+  const strip = AVATAR_SIZE / placeIds.length;
+  placeIds.forEach((id, i) => {
+    const left = i * strip;
+    const shift = left - (AVATAR_SIZE - strip) / 2; // show each scene's middle
+    const clip = (x, y, w, h, c) => {
+      const x0 = Math.max(x + shift, left), x1 = Math.min(x + shift + w, left + strip);
+      if (x1 <= x0) return;
+      ctx.fillStyle = c;
+      ctx.fillRect(x0 * scale, y * scale, (x1 - x0) * scale, h * scale);
+    };
+    spriteFor(id).draw(clip, true);
+    if (i) {
+      ctx.fillStyle = INK;
+      ctx.fillRect(left * scale, 0, scale, canvas.height);
+    }
+  });
+}
 
 const tabsEl = document.getElementById("store-tabs");
 const itemsEl = document.getElementById("store-items");
@@ -96,9 +116,6 @@ async function load() {
 
 function withItem(avatar, item) {
   if (!item) return avatar;
-  if (item.slot === "night") {
-    return { ...avatar, background: NIGHT_PREVIEW_PLACE[item.group], night: true };
-  }
   if (item.slot === "hair_dye") {
     const color = item.id.replace(/^dye_/, "");
     return { ...avatar, appearance: { ...avatar.appearance, hair_color: color } };
@@ -258,6 +275,8 @@ function familyCard(key, variants) {
   const thumb = makeAvatarCanvas(144);
   if (ROOM_KINDS.includes(item.slot)) {
     drawRoomThumb(thumb, item.id);
+  } else if (item.slot === "night") {
+    drawNightCollage(thumb, item.places.map((p) => p.id));
   } else {
     drawAvatar(thumb, withItem(state.avatar, item));
     thumb.title = `Try on the ${item.name}`;
@@ -272,6 +291,7 @@ function familyCard(key, variants) {
   info.innerHTML = `
     <h3>${item.name}</h3>
     <p class="item-desc">${item.description}</p>
+    ${item.slot === "night" ? `<p class="item-desc night-places">Turns on night for: ${item.places.map((p) => p.name).join(", ")}</p>` : ""}
     <p class="coins-inline"><span class="coin-icon"></span>${item.price.toLocaleString()}</p>`;
 
   card.append(thumb, info);
@@ -312,8 +332,15 @@ function actionButton(item) {
   } else if (item.slot === "night" && item.equipped) {
     btn.textContent = "Turn off";
     btn.onclick = () => act("/api/me/night", null, "PUT", { on: false });
+  } else if (item.slot === "night" && item.owned && !item.places.some((p) => p.owned)) {
+    btn.textContent = "Get one of its places";
+    btn.onclick = () => {
+      currentTab = "places";
+      saveTab("places");
+      render();
+    };
   } else if (item.slot === "night" && item.owned) {
-    btn.textContent = "Turn on";
+    btn.textContent = "Turn on night";
     btn.className = "button-go";
     btn.onclick = () => act(`/api/store/equip/${item.id}`);
   } else if (item.equipped && usable) {
@@ -345,8 +372,9 @@ async function act(url, boughtItem = null, method = "POST", body = null) {
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : null,
   });
-  // Buying wears it straight away (a night unlock only if you're in one of its places).
-  if (r.ok && boughtItem && !(boughtItem.slot === "night" && state.night.group !== boughtItem.group)) {
+  // Buying wears it straight away (a night unlock only if you own one of its places).
+  const nightWithoutPlace = boughtItem && boughtItem.slot === "night" && !boughtItem.places.some((p) => p.owned);
+  if (r.ok && boughtItem && !nightWithoutPlace) {
     r = await fetch(`/api/store/equip/${boughtItem.id}`, { method: "POST" });
   }
   const data = await r.json();

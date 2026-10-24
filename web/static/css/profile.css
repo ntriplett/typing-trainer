@@ -30,13 +30,13 @@
   background: var(--sand);
   border: 3px solid var(--wood-light);
   padding: 0.3rem 0.5rem;
-  font-size: 0.85rem;
+  font-size: 20px;
   line-height: 1.2;
 }
 
 .stat strong {
   display: block;
-  font-size: 1.4rem;
+  font-size: 30px;
   color: var(--wood-dark);
 }
 
@@ -70,7 +70,7 @@ a.hub-tile:hover {
 }
 
 .hub-tile small {
-  font-size: 0.75rem;
+  font-size: 20px;
   font-weight: 400;
 }
 
@@ -112,7 +112,7 @@ a.hub-tile:hover {
   text-shadow: none;
   border-image: none;
   padding: 0.25rem 0.75rem;
-  font-size: 1rem;
+  font-size: 20px;
 }
 
 .choice.selected {
@@ -146,12 +146,12 @@ a.hub-tile:hover {
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 1rem;
+  font-size: 20px;
 }
 
 #name-input {
   font-family: var(--font-ui);
-  font-size: 1.1rem;
+  font-size: 20px;
   padding: 0.2rem 0.5rem;
   border: 3px solid var(--wood-light);
   background: var(--surface);

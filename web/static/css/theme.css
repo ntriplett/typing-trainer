@@ -1,13 +1,17 @@
 /* Cozy theme (PLAN.md Section 11c): warm, autumn, sandy, cheerful,
-   nature-focused, with a 16-bit pixel flair. Loaded on every page after
+   nature-focused, with a 16-bit pixel flair.
+
+   UI font: Jersey 10, a pixel font drawn on a 10px grid -- it is only
+   crisp at multiples of 10px, so every UI font-size is 20px, 30px, or
+   40px (anything in between renders blurry). The typing prompt uses
+   Atkinson Hyperlegible Mono instead, for letter-by-letter legibility. Loaded on every page after
    app.css. Frames and buttons are 9-slice pixel SVGs in
    /static/assets/ui/ (original placeholder art), so any element gets the
    look just by adding a class. */
 
 @font-face {
-  font-family: "Pixelify Sans";
-  src: url("/static/assets/fonts/PixelifySans.ttf") format("truetype");
-  font-weight: 400 700;
+  font-family: "Jersey 10";
+  src: url("/static/assets/fonts/Jersey10.ttf") format("truetype");
   font-display: swap;
 }
 
@@ -54,7 +58,7 @@
   --page-bg: var(--sand);
   --topbar: var(--wood-dark);
 
-  --font-ui: "Pixelify Sans", system-ui, sans-serif;
+  --font-ui: "Jersey 10", system-ui, sans-serif;
   --font-type: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
 }
 
@@ -99,10 +103,11 @@ body {
   min-height: 100vh;
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: 1.15rem;
-  line-height: 1.5;
-  /* Pixelify Sans' "fi" ligature reads as "A" ("fingers" -> "Angers"). */
-  font-variant-ligatures: none;
+  font-size: 20px;
+  line-height: 1.3;
+  font-variant-ligatures: none; /* keep every letter a separate glyph */
+  /* Jersey 10 has one weight; a browser-faked bold smears the pixels */
+  font-synthesis: none;
   display: flex;
   flex-direction: column;
 }
@@ -116,13 +121,13 @@ main {
 h1,
 h2,
 h3 {
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.02em;
   margin: 0 0 0.5rem;
 }
 
 h1 {
-  font-size: 2rem;
+  font-size: 40px;
   color: var(--heading);
   text-shadow: 2px 2px 0 var(--leaf-gold);
 }
@@ -146,7 +151,7 @@ a {
 
 .panel-title {
   margin: -0.25rem 0 0.75rem;
-  font-size: 1.3rem;
+  font-size: 30px;
   color: var(--heading);
 }
 
@@ -156,8 +161,8 @@ button,
 .button {
   font-family: var(--font-ui);
   font-variant-ligatures: none;
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 400;
   color: var(--on-wood);
   text-shadow: 2px 2px 0 var(--outline);
   text-decoration: none;
@@ -203,7 +208,7 @@ button:focus-visible,
 }
 
 .big-button {
-  font-size: 1.35rem;
+  font-size: 30px;
   padding: 0.2rem 1rem 0.35rem;
 }
 
@@ -234,8 +239,8 @@ button:focus-visible,
 .topbar .brand {
   color: var(--on-wood);
   text-decoration: none;
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 400;
   text-shadow: 2px 2px 0 var(--outline);
   white-space: nowrap;
 }
@@ -263,8 +268,8 @@ button:focus-visible,
   padding: 0.1rem 0.6rem;
   background: var(--outline);
   border: 3px solid var(--wood-light);
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 400;
   color: var(--leaf-gold);
   min-width: 4.5rem;
   justify-content: flex-end;
@@ -323,7 +328,7 @@ button:focus-visible,
   background: var(--parchment);
   border: 3px solid var(--outline);
   box-shadow: 3px 3px 0 var(--wood);
-  font-weight: 700;
+  font-weight: 400;
   animation: toast-rise 2.4s steps(12) forwards;
 }
 
@@ -349,13 +354,13 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-weight: 700;
+  font-weight: 400;
   color: var(--heading);
 }
 
 .error-text {
   color: var(--leaf-red);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 /* the same message spot, for good news */

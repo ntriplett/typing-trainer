@@ -58,6 +58,11 @@ def night_item_id(group: str) -> str:
     return f"night_{group}"
 
 
+def group_places(group: str) -> list[str]:
+    """Background item ids in a place group, in catalog order."""
+    return [f"bg_{place}" for place in PLACE_GROUPS[group]]
+
+
 # Clothing colors. Ids must match sprites.js's CLOTH_COLORS (it draws
 # them); recolorable items are named "<slot>_<style>_<color>".
 COLORS = {
