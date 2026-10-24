@@ -370,8 +370,11 @@ class PetWalkScene extends Scene {
   }
 
   repeat(spacing, parallax, fn) {
-    const off = (this.dist * parallax) % spacing;
-    for (let x = -spacing - off; x < SCENE_W + spacing; x += spacing) fn(x, Math.floor((x + this.dist * parallax) / spacing));
+    // count slots with integers: deriving k from the fractional x made it
+    // jump by one now and then, so every-other-slot trees flickered
+    const scroll = this.dist * parallax;
+    const first = Math.floor(scroll / spacing) - 1;
+    for (let k = first; (k - first) * spacing < SCENE_W + spacing * 2; k++) fn(k * spacing - scroll, k);
   }
 
   draw() {
