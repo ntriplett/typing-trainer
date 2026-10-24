@@ -522,6 +522,15 @@ def add_coins(
     )
 
 
+def has_coin_entry(conn: sqlite3.Connection, learner_id: int, reason: str, ref: str) -> bool:
+    """Whether this learner was ever paid for `reason` + `ref` (one-time rewards)."""
+    row = conn.execute(
+        "SELECT 1 FROM coin_ledger WHERE learner_id = ? AND reason = ? AND ref = ?",
+        (learner_id, reason, ref),
+    ).fetchone()
+    return row is not None
+
+
 def get_coin_balance(conn: sqlite3.Connection, learner_id: int) -> int:
     row = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS balance FROM coin_ledger WHERE learner_id = ?",

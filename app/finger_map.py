@@ -42,7 +42,7 @@ HOME_ROW_KEYS: tuple[str, ...] = ("a", "s", "d", "f", "j", "k", "l", ";")
 # hand, so it can't drift out of sync with the finger assignments above.
 HOME_KEY_FOR_FINGER: dict[str, str] = {KEY_TO_FINGER[key]: key for key in HOME_ROW_KEYS}
 # Thumbs rest on the space bar; kept out of HOME_ROW_KEYS, which means
-# "the 8 letter keys the fingers rest on" to the teach-demo lessons.
+# "the 8 letter keys the fingers rest on".
 HOME_KEY_FOR_FINGER["thumb"] = " "
 
 

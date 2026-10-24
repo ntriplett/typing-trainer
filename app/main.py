@@ -34,7 +34,7 @@ from app.activities import get_activity
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
-from app.activities.teach_demos import get_demo_activity, list_demo_activities
+from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
 from app.models import KeyStat
@@ -203,17 +203,16 @@ def wardrobe_page() -> FileResponse:
     return FileResponse(WEB_DIR / "wardrobe.html")
 
 
-@app.get("/teach-demo")
-def teach_demo_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "teach_demo.html")
+@app.get("/teach-lab")
+def teach_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "teach_lab.html")
 
 
-# --- teach-demo API -------------------------------------------------------------
+# --- teach modules (keyboard-driven, not in the live scheduler yet) ------------
 #
-# Demo-only: 3 experimental "teach" variants (app/activities/teach_demos.py)
-# for comparing pedagogical approaches. Deliberately stateless -- nothing
-# here touches the DB or the real learner's key_stat/session history,
-# since this is for review/comparison, not real progress.
+# Tried out from /teach-lab. Nothing feeds the skill model yet; finishing
+# one pays coins (an activity's first_finish_coins the first time, then
+# its normal coin rule).
 
 
 class KeystrokeIn(BaseModel):
@@ -223,53 +222,32 @@ class KeystrokeIn(BaseModel):
     latency_ms: int
 
 
-class DemoCompleteRequest(BaseModel):
+class TeachCompleteRequest(BaseModel):
     keys: list[str]
     keystrokes: list[KeystrokeIn]
 
 
-@app.get("/api/teach-demo/modules")
-def teach_demo_modules() -> list[dict]:
-    return list_demo_activities()
+def _teach_keys(activity, keys: str) -> list[str]:
+    """`keys` is a string of characters ("dk"); only modules with an
+    is_eligible check on it (the key-pair one) use it."""
+    if activity.id == "teach_intro_home_row_v1":
+        return []
+    focus = list(keys)
+    if not activity.is_eligible(focus, []):
+        raise HTTPException(status_code=400, detail=f"Can't teach keys {keys!r}")
+    return focus
 
 
-@app.get("/api/teach-demo/{activity_id}/content")
-def teach_demo_content(activity_id: str, focus_key: str, allowed_keys: str = "") -> dict:
+def _get_teach_module(activity_id: str):
     try:
-        activity = get_demo_activity(activity_id)
+        return get_teach_module(activity_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown demo module") from None
-
-    if focus_key not in KEY_TO_FINGER:
-        raise HTTPException(status_code=400, detail=f"Unknown key: {focus_key!r}")
-
-    allowed = [k for k in allowed_keys.split(",") if k]
-    content = activity.generate([focus_key], allowed, duration_s=60, chars_per_second=2.0)
-    return asdict(content)
-
-
-@app.post("/api/teach-demo/{activity_id}/complete")
-def teach_demo_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
-    try:
-        get_demo_activity(activity_id)  # validates the id; scoring itself is generic
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown demo module") from None
-
-    keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
-    result = score_attempt(activity_id, body.keys, keystrokes)
-    return asdict(result)
-
-
-# --- teach modules (keyboard-driven, not in the live scheduler yet) ------------
-#
-# Stateless like the teach demo: nothing is saved until these modules are
-# strung together into real lessons.
+        raise HTTPException(status_code=404, detail="Unknown teach module") from None
 
 
 @app.get("/teach/{activity_id}")
 def teach_page(activity_id: str) -> FileResponse:
-    if activity_id not in {m["id"] for m in list_teach_modules()}:
-        raise HTTPException(status_code=404, detail="Unknown teach module")
+    _get_teach_module(activity_id)
     return FileResponse(WEB_DIR / "teach.html")
 
 
@@ -278,23 +256,51 @@ def teach_modules() -> list[dict]:
     return list_teach_modules()
 
 
+@app.get("/api/teach/lessons")
+def teach_lesson_list() -> list[dict]:
+    return teach_lessons()
+
+
 @app.get("/api/teach/{activity_id}/content")
-def teach_content(activity_id: str) -> dict:
-    try:
-        activity = get_teach_module(activity_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown teach module") from None
-    return asdict(activity.generate([], [], duration_s=120))
+def teach_content(activity_id: str, keys: str = "") -> dict:
+    activity = _get_teach_module(activity_id)
+    focus = _teach_keys(activity, keys)
+    known = known_before(focus) if focus else []
+    return asdict(activity.generate(focus, known, duration_s=120))
 
 
 @app.post("/api/teach/{activity_id}/complete")
-def teach_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
-    try:
-        get_teach_module(activity_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown teach module") from None
+def teach_complete(
+    activity_id: str,
+    body: TeachCompleteRequest,
+    keys: str = "",
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
+) -> dict:
+    activity = _get_teach_module(activity_id)
+    _teach_keys(activity, keys)
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
-    return asdict(score_attempt(activity_id, body.keys, keystrokes))
+    # The whole prompt is always typed by the end, so an empty prompt here
+    # makes the coin rule count it as complete (accuracy-based).
+    content = ActivityContent(activity_id, activity.kind, body.keys, prompt="")
+    result = activity.score(content, keystrokes)
+
+    ref = f"{activity_id}:{keys}" if keys else activity_id
+    first_bonus = getattr(activity, "first_finish_coins", 0)
+    if first_bonus and not db.has_coin_entry(conn, learner_id, "teach_first", ref):
+        amount, reason = first_bonus, "teach_first"
+    else:
+        amount = activity.coins(content, result)
+        reason = "teach"
+    coins_earned = []
+    if amount > 0:
+        db.add_coins(conn, learner_id, amount, reason, ref=ref)
+        coins_earned.append({"amount": amount, "reason": reason})
+    return {
+        "result": asdict(result),
+        "coins_earned": coins_earned,
+        "coin_balance": db.get_coin_balance(conn, learner_id),
+    }
 
 
 # --- analytics API -------------------------------------------------------------

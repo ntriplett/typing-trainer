@@ -121,8 +121,12 @@ def test_intro_content_keys_and_scoring():
     assert result.accuracy == 0.5
 
 
-def test_teach_registry_lists_the_intro():
-    assert "teach_intro_home_row_v1" in TEACH_REGISTRY
+def test_intro_pays_a_big_first_reward():
+    assert TeachIntroHomeRow().first_finish_coins == 250
+
+
+def test_teach_registry_lists_the_intro_and_key_pair_modules():
+    assert {"teach_intro_home_row_v1", "teach_key_pair_v1"} <= set(TEACH_REGISTRY)
     assert get_teach_module("teach_intro_home_row_v1").kind == "teach"
     assert list_teach_modules()[0]["title"] == "Hands on home"
 

@@ -4,7 +4,8 @@
 //   - "show" steps wait for their advance_key (e.g. Space with a thumb),
 //   - "type" steps finish when the prompt is typed (a wrong key doesn't
 //     move on; you retry it), then move on by themselves.
-// At the end: Space to go again, Enter to go home.
+// At the end: Space to go again, Enter to pick another lesson (/teach-lab).
+// The query string (?keys=dk for the key-pair module) is passed through.
 //
 // Needs keyboard_data.js and teach_keyboard.js loaded first.
 
@@ -59,7 +60,7 @@ function renderProgress() {
 function renderStep() {
   const step = steps[stepIndex];
   renderProgress();
-  el("teach-title").textContent = step.title;
+  el("teach-title").innerHTML = richText(step.title);
   el("teach-text").innerHTML = richText(step.text);
   setHint("");
   const prompt = el("teach-prompt");
@@ -161,13 +162,16 @@ async function finish() {
   el("teach-lesson").hidden = true;
   el("teach-done").hidden = false;
 
-  const res = await fetch(`/api/teach/${moduleId}/complete`, {
+  const res = await fetch(`/api/teach/${moduleId}/complete${location.search}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ keys: content.keys, keystrokes }),
   });
-  const result = await res.json();
-  el("teach-result").textContent = `${Math.round(result.accuracy * 100)}% of keys right the first time.`;
+  const data = await res.json();
+  el("teach-result").textContent = `${Math.round(data.result.accuracy * 100)}% of keys right the first time.`;
+  const coins = data.coins_earned.reduce((sum, c) => sum + c.amount, 0);
+  el("teach-coins").textContent = coins ? `+${coins.toLocaleString()} coins!` : "";
+  if (window.Header) Header.celebrate(data.coins_earned, data.coin_balance);
   busy = false;
 }
 
@@ -179,7 +183,7 @@ window.addEventListener("keydown", (e) => {
       e.preventDefault();
       location.reload();
     } else if (e.key === "Enter") {
-      location.href = "/";
+      location.href = "/teach-lab";
     }
     return;
   }
@@ -192,7 +196,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 async function start() {
-  const res = await fetch(`/api/teach/${moduleId}/content`);
+  const res = await fetch(`/api/teach/${moduleId}/content${location.search}`);
   if (!res.ok) {
     el("teach-title").textContent = "Couldn't load this lesson.";
     return;

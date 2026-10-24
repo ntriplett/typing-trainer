@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Teach Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+</head>
+<body>
+  <main class="teach-main">
+    <section class="panel">
+      <h1>Teach lab</h1>
+      <p class="hint">Every teach lesson, in the order they'll be taught. Pick one to try it.</p>
+      <div id="lab-list"></div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script>
+    // One button per lesson from /api/teach/lessons, grouped by row.
+    fetch("/api/teach/lessons")
+      .then((r) => r.json())
+      .then((lessons) => {
+        const groups = new Map();
+        for (const lesson of lessons) {
+          if (!groups.has(lesson.group)) groups.set(lesson.group, []);
+          groups.get(lesson.group).push(lesson);
+        }
+        const list = document.getElementById("lab-list");
+        for (const [name, items] of groups) {
+          const section = document.createElement("div");
+          section.className = "lab-group";
+          section.innerHTML = `<h2></h2><div class="lab-lessons"></div>`;
+          section.querySelector("h2").textContent = name;
+          for (const lesson of items) {
+            const a = document.createElement("a");
+            a.className = "button";
+            a.textContent = lesson.title;
+            a.href = `/teach/${lesson.module}` + (lesson.keys ? `?keys=${encodeURIComponent(lesson.keys)}` : "");
+            section.querySelector(".lab-lessons").appendChild(a);
+          }
+          list.appendChild(section);
+        }
+      });
+  </script>
+</body>
+</html>

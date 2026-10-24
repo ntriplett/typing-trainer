@@ -2,7 +2,7 @@
    theme.css, loaded after this on every page. */
 
 /* Shared per-character typing states, used by both the real session
-   prompt (#prompt) and the teach-demo prompt (#lesson-prompt) -- same
+   prompt (#prompt) and the teach prompt (#teach-prompt) -- same
    colors, same meaning, no reason for each page to redefine them. */
 
 .pending {
@@ -43,7 +43,7 @@
 }
 
 /* Shared secondary/caption text style, used on the analysis and
-   teach-demo pages. */
+   teach pages. */
 .hint {
   color: var(--ink-soft);
   font-size: 20px;

@@ -62,6 +62,8 @@
     lesson: "Lesson",
     key_mastered: "New key mastered!",
     session_complete: "Session complete!",
+    teach: "Lesson",
+    teach_first: "First lesson bonus!",
   };
 
   function setCoins(n) {

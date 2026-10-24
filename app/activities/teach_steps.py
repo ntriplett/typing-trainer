@@ -95,3 +95,97 @@ def keys_in_steps(steps: list[dict]) -> list[str]:
             keys.add(step["advance_key"])
         keys.update(step["prompt"])
     return sorted(keys)
+
+
+# --- shared lesson pieces (any row: home, top, bottom, numbers) ----------------
+
+FINGER_NAMES: dict[str, str] = {
+    "left_pinky": "left pinky", "left_ring": "left ring finger",
+    "left_middle": "left middle finger", "left_index": "left pointer finger",
+    "right_index": "right pointer finger", "right_middle": "right middle finger",
+    "right_ring": "right ring finger", "right_pinky": "right pinky", "thumb": "thumb",
+}
+HOME_FOR_FINGER: dict[str, str] = {KEY_TO_FINGER[k]: k for k in "asdfjkl;"}
+
+# Where each key sits, in key widths from the keyboard's left edge
+# (each row is shifted right a bit more than the one above it).
+_ROWS = ("1234567890", "qwertyuiop", "asdfghjkl;", "zxcvbnm,./")
+_ROW_START = (1.0, 1.5, 1.75, 2.25)
+_KEY_SPOT: dict[str, tuple[int, float]] = {
+    key: (row, _ROW_START[row] + col) for row, keys in enumerate(_ROWS) for col, key in enumerate(keys)
+}
+
+
+def finger_name(key: str) -> str:
+    return FINGER_NAMES[KEY_TO_FINGER[key]]
+
+
+def home_key(key: str) -> str:
+    """The home-row key the finger for `key` rests on."""
+    return HOME_FOR_FINGER[KEY_TO_FINGER[key]]
+
+
+def reach_phrase(key: str) -> str:
+    """How the finger gets from its home key to `key`: "reaches up",
+    "reaches way up and to the left", "stretches over to the right"...
+    """
+    home_row, home_x = _KEY_SPOT[home_key(key)]
+    row, x = _KEY_SPOT[key]
+    rows, dx = row - home_row, x - home_x
+    side = "" if abs(dx) < 0.6 else ("to the right" if dx > 0 else "to the left")
+    if rows == 0:
+        return f"stretches over {side}"
+    way = {-2: "reaches way up", -1: "reaches up", 1: "reaches down"}[rows]
+    return f"{way} and {side}" if side else way
+
+
+def meet_key_steps(key: str) -> list[dict]:
+    """The pages that introduce one key: where it is and which finger
+    presses it, then a quick drill. A reach key also gets a "back home"
+    page and a reach-and-return drill (home, key, home, key...).
+    """
+    finger = KEY_TO_FINGER[key]
+    home = home_key(key)
+    if key == home:
+        return [
+            show_step(
+                f"Meet [{key}]",
+                f"[{key}] is home for your {finger_name(key)}. Press [{key}].",
+                advance_key=key,
+            ),
+            type_step(f"Just [{key}]", "Tap, tap, then a thumb on [Space].", f"{key * 2} {key * 2} {key * 3}"),
+        ]
+    return [
+        show_step(
+            f"Meet [{key}]",
+            f"Your {finger_name(key)} {reach_phrase(key)} from [{home}] to [{key}]. Press [{key}].",
+            advance_key=key,
+            reach={finger: key},
+        ),
+        show_step(
+            "Back home",
+            f"Now slide back home to [{home}]. Press [{home}].",
+            advance_key=home,
+        ),
+        type_step(
+            "Reach and come back",
+            f"Out to [{key}], back to [{home}].",
+            " ".join([f"{home}{key}"] * 3 + [f"{key}{home}{key}"]),
+        ),
+    ]
+
+
+def take_turns_prompt(a: str, b: str) -> str:
+    return " ".join([a + b, a + b, b + a, b + a, a + a + b, b + b + a])
+
+
+def mix_prompt(new_keys: list[str], known_keys: list[str], rng, groups: int = 6) -> str:
+    """Short pseudo-words, about half new keys and half keys already known."""
+    known = [k for k in known_keys if k not in new_keys and k != " "]
+    words = []
+    for _ in range(groups):
+        length = rng.choice((3, 4))
+        words.append(
+            "".join(rng.choice(new_keys if not known or rng.random() < 0.5 else known) for _ in range(length))
+        )
+    return " ".join(words)

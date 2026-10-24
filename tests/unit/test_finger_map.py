@@ -1,6 +1,6 @@
 """Unit tests for the finger/key reference data -- previously only
 exercised indirectly through analytics/recommender tests; now also
-load-bearing for the teach-demo modules (micro_lesson.py), so it gets
+load-bearing for the teach modules (teach_steps.py), so it gets
 its own direct coverage.
 """
 

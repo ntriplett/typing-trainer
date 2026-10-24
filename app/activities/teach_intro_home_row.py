@@ -131,6 +131,8 @@ class TeachIntroHomeRow:
     kind: str = "teach"
     title: str = "Hands on home"
     description: str = "Where your fingers rest on the home row, the F and J bumps, and thumbs on space."
+    # A big welcome reward the first time it's finished, whatever the accuracy.
+    first_finish_coins: int = 250
 
     def is_eligible(self, focus_keys: list[str], allowed_keys: list[str]) -> bool:
         # The very first lesson: nothing needs to be known beforehand.

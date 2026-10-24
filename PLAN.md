@@ -166,8 +166,8 @@ class Activity(Protocol):
 
 - The scheduler only ever talks to this interface — it never knows the internals of a specific game.
 - New activities are added by registering a module in `app/activities/__init__.py`'s `REGISTRY`; nothing
-  else changes. (Experimental/demo variants, like the 3 teach-demo modules in Section 6b, are registered
-  separately in their own demo registry instead, so they can't be picked up by the live scheduler.)
+  else changes. (The keyboard-driven teach modules, Section 11e, are registered separately in
+  `teach_modules.py` until they're strung into lessons, so the live scheduler can't pick them up yet.)
 - `ActivityContent` can optionally carry `micro_steps` (a list of plain dicts) for a structured
   multi-part lesson instead of one flat prompt — `None` for every ordinary flat-prompt activity.
 - Front-end renders generically from `ActivityContent`'s declared shape (flat prompt vs. `micro_steps`,
@@ -352,7 +352,17 @@ then a few capitals at a time. They get strung together into lessons once enough
   reaches a finger to any key, and can light Shift for capitals) and `teach_player.js` (runs any
   module's steps at `/teach/<id>`). Bigger text (30px) and bold keycaps.
 - Registered in `app/activities/teach_modules.py`, outside the live scheduler, and stateless for now.
-- Built so far: the intro (`teach_intro_home_row_v1`), a draft for review.
+- Built (2026-10-24, approved): the intro (`teach_intro_home_row_v1`). It pays 250 coins the first time
+  it's finished, whatever the accuracy; replays pay the normal rate.
+- Built: `teach_key_pair_v1`, one module for any 1-2 keys on any row. Pages: new keys, then "meet" each
+  key (reach keys add a reach page, a back-home page and a reach-and-return drill), take turns, eyes up,
+  mix with known keys, real words (from `word_bank.py`, only when the taught letters spell some), done.
+- Curriculum (`teach_curriculum.py`): the intro, then `KEY_ORDER` two keys at a time. A lesson's known
+  keys are everything earlier. Every lesson can be tried from `/teach-lab` (replaces the old 3-way
+  teach demo, which is deleted).
+- Teach completions pay coins to the current player (reason `teach`, or `teach_first` for a module's
+  one-time first-finish reward) but don't feed the skill model yet.
+- Next: capitals (Shift with the other hand), then string modules into lessons.
 
 ## 12. Workflow
 

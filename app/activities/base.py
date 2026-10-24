@@ -32,9 +32,8 @@ class ActivityContent:
     keys: list[str]
     prompt: str
     instructions: str = ""
-    # Structured multi-part lesson (diagram / anchor-check / isolated
-    # drill / combo, per micro_lesson.py), for teach variants that are
-    # more than "type this string." A flat list of plain dicts rather
+    # Structured multi-part lesson (show / type pages, per teach_steps.py),
+    # for teach modules that are more than "type this string." A flat list of plain dicts rather
     # than a nested dataclass, so new experimental shapes don't need a
     # schema change here -- the front-end renders generically on `kind`.
     # None for every existing (flat-prompt) activity; unused fields cost

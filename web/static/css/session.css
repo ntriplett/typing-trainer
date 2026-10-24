@@ -24,7 +24,7 @@
 }
 
 /* .pending/.current/.correct/.incorrect/.space are shared with the
-   teach-demo prompt -- defined once in app.css. */
+   teach prompt -- defined once in app.css. */
 
 #prompt .locked {
   background: #f2b8a8;

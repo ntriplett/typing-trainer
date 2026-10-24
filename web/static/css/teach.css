@@ -99,8 +99,14 @@
   box-shadow: inset 0 4px 0 var(--surface-shadow);
   border: 3px solid var(--wood-light);
   padding: 0.3rem 0.6rem;
-  min-height: 1.6em;
+  /* same height for "Press X" and typing pages, so the keyboard never jumps */
+  box-sizing: border-box;
+  min-height: 80px;
   letter-spacing: 0.05em;
+}
+
+#teach-title .keycap {
+  line-height: 1.1;
 }
 
 #teach-prompt.show {
@@ -248,4 +254,36 @@
 
 .tk-finger-lit-fill * {
   stroke: var(--finger-lit);
+}
+
+.teach-coins {
+  font-size: 40px;
+  color: var(--leaf-orange);
+  text-shadow: 2px 2px 0 var(--outline);
+  margin: 0 0 0.3rem;
+}
+
+.teach-coins:empty {
+  display: none;
+}
+
+/* --- the teach lab (/teach-lab): every lesson, to try out ------------------- */
+
+.lab-group {
+  margin-bottom: 1rem;
+}
+
+.lab-group h2 {
+  font-size: 30px;
+  color: var(--heading);
+}
+
+.lab-lessons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lab-lessons .button {
+  font-size: 30px;
 }

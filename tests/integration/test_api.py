@@ -58,6 +58,6 @@ def test_page_routes_are_never_cached_either():
     # -- this is what made analysis.html specifically need a hard
     # refresh after edits (the page route itself wasn't covered by the
     # earlier /static/-only fix).
-    for path in ("/", "/session", "/analysis", "/teach-demo"):
+    for path in ("/", "/session", "/analysis", "/teach-lab"):
         resp = client.get(path)
         assert resp.headers["cache-control"] == "no-store", path

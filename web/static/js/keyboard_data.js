@@ -1,5 +1,5 @@
 // Shared keyboard/finger reference data for the front-end -- used by
-// both analysis.js (keyboard heatmap, finger bars) and teach_demo.js
+// both analysis.js (keyboard heatmap, finger bars) and teach_keyboard.js
 // (the hand/keyboard diagram). Previously each page hardcoded its own
 // copy; this is the one JS source of truth, mirroring the backend's
 // app/finger_map.py (necessarily a separate copy across the language
