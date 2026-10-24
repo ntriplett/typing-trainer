@@ -33,7 +33,7 @@ async function load() {
   const data = await r.json();
   me = data;
   options = data.options;
-  nameInput.value = data.learner.name;
+  if (!nameInput.value) nameInput.value = data.learner.name; // never clobber typing in progress
   render();
 }
 

@@ -31,6 +31,7 @@ def test_locked_dye_swatch_is_marked_locked(page: Page, live_server):
 
 def test_rename(page: Page, live_server):
     page.goto(f"{live_server}/designer")
+    expect(page.locator("#name-input")).to_have_value("Tester")  # loaded; CI was racing this
     page.fill("#name-input", "Robin")
     page.click("#name-form button")
     expect(page.locator("#designer-status")).to_have_text("Hi, Robin!")
