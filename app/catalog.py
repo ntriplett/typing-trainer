@@ -18,7 +18,7 @@ from app.appearance import DYE_HAIR_COLORS, dye_item_id
 
 # Draw order, back to front -- the front-end avatar renderer layers in
 # this same order.
-WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "accessory", "hat", "pet")
+WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "accessory", "hat")
 OTHER_KINDS = ("hair_dye", "night")
 
 
@@ -134,9 +134,7 @@ ITEMS: list[StoreItem] = [
     StoreItem("accessory_watering_can", "Watering Can", "accessory", 900, "Help the garden grow."),
     StoreItem("accessory_fishing_rod", "Fishing Rod", "accessory", 1200, "Gone fishing!"),
     StoreItem("accessory_portal_gun", "Portal Gun", "accessory", 3000, "Blue portal, orange portal..."),
-    # pets
-    StoreItem("pet_hedgehog", "Hedgehog", "pet", 1500, "Small, spiky, and very loyal."),
-    StoreItem("pet_fox", "Fox Kit", "pet", 2500, "Curious about everything you type."),
+    # (pets are adopted, not bought as items -- see app/pets.py)
     # places (backgrounds), by group -- each group has a night unlock below
     *_place("meadow", "Sunny Meadow", 0, "Where every journey starts."),
     *_place("flower_forest", "Flower Forest", 900, "Every tree is blooming."),

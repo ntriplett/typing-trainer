@@ -51,7 +51,8 @@ def test_there_is_something_to_buy_after_one_session():
 
 def test_grant_starters_equips_default_background_and_clothes(conn, learner_id):
     avatar = store.get_avatar(conn, learner_id)
-    assert {k: v for k, v in avatar.items() if k not in ("appearance", "night")} == store.SLOT_DEFAULTS
+    assert {k: v for k, v in avatar.items() if k in store.SLOTS} == store.SLOT_DEFAULTS
+    assert avatar["pets"] == []
     assert avatar["night"] is False
     assert avatar["appearance"]["hair_style"] == "short"
 

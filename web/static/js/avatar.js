@@ -4,7 +4,7 @@
 // game can show the player's dressed avatar without knowing anything
 // about the store.
 //
-// Needs sprites.js, backgrounds.js, and wardrobe.js loaded first.
+// Needs sprites.js, backgrounds.js, wardrobe.js, and pets.js loaded first.
 
 // Back-to-front draw order. Worn slots match app/catalog.py's
 // WEARABLE_SLOTS; the hair_back/body/hair_front layers come from the
@@ -38,13 +38,17 @@ function drawAvatar(canvas, equipped, opts = {}) {
   const look = equipped.appearance || DEFAULT_APPEARANCE;
   for (const slot of AVATAR_LAYERS) {
     if (slot === "background" && !background) continue;
+    if (slot === "pet") {
+      // pets stay planted while the character bobs
+      for (const pet of equipped.pets || []) drawGrid(px, petSprite(pet), 0);
+      continue;
+    }
     const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : spriteFor(equipped[slot]);
     if (!sprite) continue;
     if (sprite.draw) {
       sprite.draw(px, Boolean(equipped.night));
     } else {
-      // Pets stay planted; the character (body + clothes) bobs.
-      drawGrid(px, sprite, slot === "pet" || slot === "background" ? 0 : bob);
+      drawGrid(px, sprite, slot === "background" ? 0 : bob);
     }
   }
 }

@@ -302,44 +302,6 @@ const SPRITES = {
     rows: sym("..R...O...", ".RRR.OOO.G", "RRRRROOOOG", "nnnnnnnnnn"),
   },
 
-  // --- pets (bottom right, in front of the character) ---
-  pet_hedgehog: {
-    x: 33,
-    y: 36,
-    palette: { n: INK, b: "#7a5636", B: "#4a301c", f: "#e8c79a", e: INK, k: INK },
-    rows: [
-      "....n.n.n.....",
-      "...nBnBnBn....",
-      "..nBbBbBbBnn..",
-      ".nBbBbBbBbffn.",
-      "nBbBbBbBbffefn",
-      "nbBbBbBbBffffk",
-      "nBbBbBbBbfffn.",
-      ".nBbBbBbBnnn..",
-      "..nnnnnnnn....",
-      "...nf..nf.....",
-    ],
-  },
-  pet_fox: {
-    x: 29,
-    y: 34,
-    palette: { n: INK, O: "#d9682b", W: "#fbf1dc", e: INK, k: INK },
-    rows: [
-      "............n..n..",
-      "...........nOnnOn.",
-      "...........nOOOOOn",
-      "nnn........nOOOeOO",
-      "nWWn.......nOOOOOk",
-      "nWOOn....nnnOOWWWn",
-      ".nOOOnnnnOOOOOWWn.",
-      "..nOOOOOOOOOOOWn..",
-      "...nOOOOOOOOOOOn..",
-      "...nOWWOOOOOOWWn..",
-      "....nOn....nOn....",
-      "....nkn....nkn....",
-    ],
-  },
-
 };
 
 // Dev guard: a malformed grid is easy to make by hand, so say so loudly.

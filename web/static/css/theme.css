@@ -358,6 +358,11 @@ button:focus-visible,
   font-weight: 600;
 }
 
+/* the same message spot, for good news */
+.error-text.ok {
+  color: var(--type-correct);
+}
+
 /* Drifting place particles (themes.js), on pages that opt in with
    <body data-particles>. Purely decorative. */
 .particles {

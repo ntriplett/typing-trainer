@@ -152,3 +152,16 @@ def test_night_toggle_endpoint():
     data = client.put("/api/me/night", json={"on": True}).json()
     assert data["night"]["on"] is True and data["avatar"]["night"] is True
     assert client.put("/api/me/night", json={"on": False}).json()["night"]["on"] is False
+
+
+def test_pets_api_round_trip():
+    _give_coins(10_000)
+    data = client.post("/api/pets/adopt", json={"species": "dog", "color": "golden"}).json()
+    pet = data["pets"][0]
+    assert data["avatar"]["pets"][0]["species"] == "dog"
+    pet_id = pet["id"]
+    assert client.post(f"/api/pets/{pet_id}/feed").json()["pets"][0]["growth"] == 1
+    assert client.post(f"/api/pets/{pet_id}/feed").status_code == 400
+    assert client.put(f"/api/pets/{pet_id}/name", json={"name": "Biscuit"}).json()["pets"][0]["name"] == "Biscuit"
+    assert client.put(f"/api/pets/{pet_id}/along", json={"slot": None}).json()["avatar"]["pets"] == []
+    assert client.get("/pets").status_code == 200

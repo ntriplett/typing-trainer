@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, bigram_model, db, scheduler, skill_model, store
+from app import analytics, appearance, bigram_model, db, pets, scheduler, skill_model, store
 from app.activities import get_activity
 from app.catalog import night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
@@ -159,6 +159,11 @@ def profile_page() -> FileResponse:
 @app.get("/designer")
 def designer_page() -> FileResponse:
     return FileResponse(WEB_DIR / "designer.html")
+
+
+@app.get("/pets")
+def pets_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pets.html")
 
 
 @app.get("/teach-demo")
@@ -476,7 +481,7 @@ def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learne
     owned = store.owned_ids(conn, learner_id)
     avatar = store.get_avatar(conn, learner_id)
     # "equipped" = worn, or (for a hair dye) the hair color in use
-    equipped = {v for k, v in avatar.items() if k not in ("appearance", "night")}
+    equipped = {v for k, v in avatar.items() if k in store.SLOTS}
     equipped.add(appearance.dye_item_id(avatar["appearance"]["hair_color"]))
     night = store.night_status(conn, learner_id)
     if night["on"]:
@@ -573,3 +578,66 @@ def save_appearance(
     except appearance.AppearanceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return _me(conn, learner_id)
+
+
+# --- pets API -----------------------------------------------------------------------
+
+
+class AdoptIn(BaseModel):
+    species: str
+    color: str
+
+
+class PetNameIn(BaseModel):
+    name: str
+
+
+class AlongIn(BaseModel):
+    slot: int | None = None
+
+
+def _pets_state(conn, learner_id: int) -> dict:
+    return {
+        **_me(conn, learner_id),
+        "pets": pets.list_pets(conn, learner_id),
+        "species": pets.catalog(),
+        "food_price": pets.FOOD_PRICE,
+        "max_along": pets.MAX_ALONG,
+    }
+
+
+def _pet_action(action, conn, learner_id: int, *args) -> dict:
+    try:
+        action(conn, learner_id, *args)
+    except pets.PetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _pets_state(conn, learner_id)
+
+
+@app.get("/api/pets")
+def list_pets(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _pets_state(conn, learner_id)
+
+
+@app.post("/api/pets/adopt")
+def adopt_pet(body: AdoptIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _pet_action(pets.adopt, conn, learner_id, body.species, body.color)
+
+
+@app.post("/api/pets/{pet_id}/feed")
+def feed_pet(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _pet_action(pets.feed, conn, learner_id, pet_id)
+
+
+@app.put("/api/pets/{pet_id}/name")
+def rename_pet(
+    pet_id: int, body: PetNameIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    return _pet_action(pets.rename, conn, learner_id, pet_id, body.name)
+
+
+@app.put("/api/pets/{pet_id}/along")
+def pet_along(
+    pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    return _pet_action(pets.set_along, conn, learner_id, pet_id, body.slot)
