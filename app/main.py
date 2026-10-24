@@ -34,6 +34,8 @@ from app.activities import get_activity
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
+from app.activities.practice_modules import PRACTICE_MODULES
+from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
@@ -304,6 +306,128 @@ def teach_complete(
     }
 
 
+# --- keyboard hint (any short lesson) ------------------------------------------
+
+
+class HintIn(BaseModel):
+    ref: str = Field(default="", max_length=200)  # which lesson it was bought for
+
+
+@app.post("/api/hint/keyboard")
+def buy_keyboard_hint(body: HintIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Spend coins to show the keyboard with hands for the rest of one lesson."""
+    price = config.KEYBOARD_HINT_PRICE
+    if db.get_coin_balance(conn, learner_id) < price:
+        raise HTTPException(status_code=402, detail=f"A keyboard hint costs {price} coins.")
+    db.add_coins(conn, learner_id, -price, "keyboard_hint", ref=body.ref or None)
+    return {"spent": price, "coin_balance": db.get_coin_balance(conn, learner_id)}
+
+
+# --- practice lab (try every practice module) -----------------------------------
+#
+# Uses the player's real weak spots and typing speed, pays coins like a
+# lesson, but doesn't feed the skill model (that's what sessions are for).
+
+PRACTICE_BY_ID = {m.id: m for m in PRACTICE_MODULES}
+PRACTICE_KEY_SETS = {
+    "home": "asdfghjkl;",
+    "home_top": "asdfghjkl;qwertyuiop",
+    "letters": "abcdefghijklmnopqrstuvwxyz",
+}
+PRACTICE_LENGTHS = {"short": 45, "medium": 90, "long": 150}
+PRACTICE_DIFFICULTIES = {"easy": 0.15, "medium": 0.5, "hard": 0.9}
+
+
+def _practice_module(activity_id: str):
+    module = PRACTICE_BY_ID.get(activity_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail="Unknown practice module")
+    return module
+
+
+@app.get("/practice-lab")
+def practice_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "practice_lab.html")
+
+
+@app.get("/practice/{activity_id}")
+def practice_page(activity_id: str) -> FileResponse:
+    _practice_module(activity_id)
+    return FileResponse(WEB_DIR / "practice.html")
+
+
+@app.get("/api/practice/modules")
+def practice_modules() -> list[dict]:
+    return [{"id": m.id, "title": m.title, "blurb": m.blurb, "scene": m.scene} for m in PRACTICE_MODULES]
+
+
+@app.get("/api/practice/{activity_id}/content")
+def practice_content(
+    activity_id: str,
+    keys: str = "mine",
+    focus: str = "",
+    length: str = "medium",
+    difficulty: str = "medium",
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
+) -> dict:
+    module = _practice_module(activity_id)
+    if length not in PRACTICE_LENGTHS or difficulty not in PRACTICE_DIFFICULTIES:
+        raise HTTPException(status_code=400, detail="Unknown length or difficulty")
+    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    if keys == "mine":
+        allowed = [k for k in skill_model.active_keys(key_stats) if k != " "]
+    elif keys in PRACTICE_KEY_SETS:
+        allowed = list(PRACTICE_KEY_SETS[keys])
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown key set {keys!r}")
+    focus_keys = [k for k in dict.fromkeys(focus.lower()) if k in KEY_TO_FINGER and k != " "]
+    allowed = [" ", *dict.fromkeys(allowed + focus_keys)]
+    wpm = analytics.estimate_starting_wpm(conn, learner_id, default=profiles.placement_wpm(conn, learner_id) or analytics.DEFAULT_STARTING_WPM)
+    content = module.generate(
+        focus_keys,
+        allowed,
+        PRACTICE_LENGTHS[length],
+        chars_per_second=scheduler.chars_per_second_for_wpm(wpm),
+        difficulty=PRACTICE_DIFFICULTIES[difficulty],
+        skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
+    )
+    return asdict(content)
+
+
+class PracticeCompleteRequest(BaseModel):
+    keys: list[str]
+    prompt_length: int = Field(ge=0)
+    keystrokes: list[KeystrokeIn]
+    skipped_chars: int = Field(default=0, ge=0)
+
+
+@app.post("/api/practice/{activity_id}/complete")
+def practice_complete(
+    activity_id: str,
+    body: PracticeCompleteRequest,
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
+) -> dict:
+    module = _practice_module(activity_id)
+    keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
+    # The coin rule only looks at the prompt's length (how much was finished),
+    # minus the spaces dropped at line wraps, which are never typed.
+    typed_length = max(0, body.prompt_length - body.skipped_chars)
+    content = ActivityContent(activity_id, module.kind, body.keys, prompt="x" * typed_length)
+    result = module.score(content, keystrokes)
+    amount = module.coins(content, result)
+    coins_earned = []
+    if amount > 0:
+        db.add_coins(conn, learner_id, amount, "lesson", ref=f"practice_lab:{activity_id}")
+        coins_earned.append({"amount": amount, "reason": "lesson"})
+    return {
+        "result": asdict(result),
+        "coins_earned": coins_earned,
+        "coin_balance": db.get_coin_balance(conn, learner_id),
+    }
+
+
 # --- analytics API -------------------------------------------------------------
 
 
@@ -395,7 +519,7 @@ def start_session(
     runtime = SessionRuntime(skeleton=skeleton, estimated_wpm=estimated_wpm, learner_id=learner_id)
     _SESSION_PLANS[session.id] = runtime
 
-    first_content = scheduler.generate_step_content(skeleton.steps[0], estimated_wpm)
+    first_content = scheduler.generate_step_content(skeleton.steps[0], estimated_wpm, skill=skeleton.skill)
     runtime.content_cache[0] = first_content
 
     return {
@@ -424,7 +548,7 @@ def get_step_content(session_id: int, step_index: int) -> dict:
     if step_index not in runtime.content_cache:
         step = runtime.skeleton.steps[step_index]
         runtime.content_cache[step_index] = scheduler.generate_step_content(
-            step, runtime.estimated_wpm
+            step, runtime.estimated_wpm, skill=runtime.skeleton.skill
         )
 
     return {"content": asdict(runtime.content_cache[step_index])}
@@ -443,7 +567,7 @@ def complete_step(
     step = runtime.skeleton.steps[step_index]
     if step_index not in runtime.content_cache:
         runtime.content_cache[step_index] = scheduler.generate_step_content(
-            step, runtime.estimated_wpm
+            step, runtime.estimated_wpm, skill=runtime.skeleton.skill
         )
     content = runtime.content_cache[step_index]
 

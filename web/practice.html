@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Practice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+  <link rel="stylesheet" href="/static/css/stage.css" />
+</head>
+<body>
+  <main class="teach-main">
+    <section class="panel">
+      <div id="stage"></div>
+      <div id="practice-done" class="practice-done" hidden>
+        <h1>Nice practice!</h1>
+        <p id="teach-coins" class="teach-coins"></p>
+        <p id="practice-result" class="teach-big"></p>
+        <p class="teach-big">
+          Press <kbd class="keycap">Space</kbd> to go again, or <kbd class="keycap">Enter</kbd> for another.
+        </p>
+      </div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/keyboard_data.js"></script>
+  <script src="/static/js/teach_keyboard.js"></script>
+  <script src="/static/js/prompt_view.js"></script>
+  <script src="/static/js/rich_text.js"></script>
+  <script src="/static/js/practice_scenes.js"></script>
+  <script src="/static/js/practice_stage.js"></script>
+  <script>
+    // One practice module from the lab: /practice/<id>?keys=&focus=&length=&difficulty=
+    const moduleId = decodeURIComponent(location.pathname.split("/").pop());
+    let content = null;
+    let done = false;
+    const stage = new PracticeStage(document.getElementById("stage"), { onFinish: finish });
+    const view = stage.view; // tests read view.typeable
+
+    async function finish({ keystrokes, skipped }) {
+      const res = await fetch(`/api/practice/${moduleId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: content.keys, prompt_length: content.prompt.length, keystrokes, skipped_chars: skipped }),
+      });
+      const data = await res.json();
+      const coins = data.coins_earned.reduce((sum, c) => sum + c.amount, 0);
+      document.getElementById("teach-coins").textContent = coins ? `+${coins} coins!` : "";
+      document.getElementById("practice-result").textContent =
+        `${Math.round(data.result.accuracy * 100)}% right, ${data.result.wpm.toFixed(1)} words a minute.`;
+      if (window.Header) Header.celebrate(data.coins_earned, data.coin_balance);
+      // give the scene's finish a moment on screen before the summary
+      setTimeout(() => {
+        document.getElementById("practice-done").hidden = false;
+        done = true;
+      }, 1200);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (!done) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        location.reload();
+      } else if (e.key === "Enter") {
+        location.href = "/practice-lab";
+      }
+    });
+
+    fetch(`/api/practice/${moduleId}/content${location.search}`)
+      .then((r) => r.json())
+      .then((c) => {
+        content = c;
+        stage.load(c, { label: "Practice lab", hintRef: `practice_lab:${moduleId}` });
+      });
+  </script>
+</body>
+</html>

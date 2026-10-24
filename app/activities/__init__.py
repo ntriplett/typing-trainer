@@ -6,19 +6,15 @@ means adding one line to REGISTRY, not touching the scheduler.
 from __future__ import annotations
 
 from app.activities.base import Activity
-from app.activities.eval_random_keys import EvalRandomKeys
 from app.activities.game_random_keys import GameRandomKeys
-from app.activities.practice_random_keys import PracticeRandomKeys
+from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.teach_random_keys import TeachRandomKeys
-from app.activities.warmup_random_keys import WarmupRandomKeys
 
 REGISTRY: dict[str, Activity] = {
     activity.id: activity
     for activity in (
-        WarmupRandomKeys(),
         TeachRandomKeys(),
-        PracticeRandomKeys(),
-        EvalRandomKeys(),
+        *PRACTICE_MODULES,  # also used for warmups (short and easy)
         GameRandomKeys(),
     )
 }

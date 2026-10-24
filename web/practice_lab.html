@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Practice Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+  <link rel="stylesheet" href="/static/css/stage.css" />
+</head>
+<body>
+  <main class="teach-main">
+    <section class="panel">
+      <h1>Practice lab</h1>
+      <p class="hint">Every practice module. Pick the letters, length and difficulty, then a theme.</p>
+      <div class="lab-options">
+        <label>Letters
+          <select id="opt-keys">
+            <option value="mine">My letters so far</option>
+            <option value="home">Home row</option>
+            <option value="home_top">Home + top rows</option>
+            <option value="letters">All letters</option>
+          </select>
+        </label>
+        <label>Focus letters
+          <input id="opt-focus" placeholder="e.g. ei" maxlength="6" size="8" />
+        </label>
+        <label>Length
+          <select id="opt-length">
+            <option value="short">Short (warmup)</option>
+            <option value="medium" selected>Medium</option>
+            <option value="long">Long</option>
+          </select>
+        </label>
+        <label>Difficulty
+          <select id="opt-difficulty">
+            <option value="easy">Easy (warmup)</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+      </div>
+      <div id="lab-cards" class="lab-cards"></div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/rich_text.js"></script>
+  <script src="/static/js/practice_scenes.js"></script>
+  <script>
+    // A card per module with its scene playing on its own; the options
+    // ride along in each card's link.
+    const options = ["keys", "focus", "length", "difficulty"].map((k) => document.getElementById(`opt-${k}`));
+    const cards = [];
+
+    function query() {
+      const q = new URLSearchParams();
+      for (const el of options) if (el.value) q.set(el.id.replace("opt-", ""), el.value);
+      return `?${q}`;
+    }
+
+    function updateLinks() {
+      for (const { a, id } of cards) a.href = `/practice/${id}${query()}`;
+    }
+    options.forEach((el) => el.addEventListener("input", updateLinks));
+
+    fetch("/api/practice/modules")
+      .then((r) => r.json())
+      .then((modules) => {
+        const list = document.getElementById("lab-cards");
+        for (const m of modules) {
+          const a = document.createElement("a");
+          a.className = "lab-card";
+          a.innerHTML = `${m.scene ? "<canvas></canvas>" : '<div class="lab-card-blank">asdf jkl;</div>'}<h2></h2><p></p>`;
+          a.querySelector("h2").textContent = m.title;
+          a.querySelector("p").textContent = m.blurb;
+          list.appendChild(a);
+          cards.push({ a, id: m.id });
+          if (!m.scene) continue;
+          // pretend someone is typing, so each card shows its theme
+          const canvas = a.querySelector("canvas");
+          let scene = makeScene(m.scene, canvas);
+          let progress = Math.random() * 0.3;
+          setInterval(() => {
+            progress += 0.01;
+            if (progress >= 1) {
+              // start the scene over
+              scene.destroy();
+              scene = makeScene(m.scene, canvas);
+              progress = 0;
+            }
+            if (Math.random() < 0.08) scene.miss();
+            else scene.correct({ ch: "a", progress, wordDone: Math.random() < 0.25 });
+          }, 260);
+        }
+        updateLinks();
+      });
+  </script>
+</body>
+</html>

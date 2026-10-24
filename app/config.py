@@ -11,3 +11,6 @@ from __future__ import annotations
 import os
 
 DEV_START_COINS = int(os.environ.get("TYPING_TRAINER_DEV_START_COINS", "50000"))
+
+# What revealing the keyboard-with-hands hint costs, once per short lesson.
+KEYBOARD_HINT_PRICE = 10

@@ -1,0 +1,156 @@
+/* The practice stage (practice_stage.js): the teach pages' look -- 40px
+   title, 30px text with keycaps, a 44px one-line prompt -- plus the themed
+   scene and the keyboard hint. Keycap and keyboard styles come from
+   teach.css. Jersey 10 is only crisp at 20/30/40px. */
+
+.stage-label {
+  font-size: 20px;
+  color: var(--leaf-red);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.stage-label[hidden] + .stage-title {
+  margin-top: 0;
+}
+
+.stage-text {
+  font-size: 30px;
+  line-height: 1.25;
+  margin: 0 0 0.6rem;
+}
+
+.stage-scene {
+  display: block;
+  width: 100%;
+  aspect-ratio: 180 / 54;
+  image-rendering: pixelated;
+  border: 3px solid var(--wood-light);
+  margin-bottom: 0.6rem;
+  background: var(--sky);
+}
+
+.stage-prompt {
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 44px;
+  background: var(--surface);
+  box-shadow: inset 0 4px 0 var(--surface-shadow);
+  border: 3px solid var(--wood-light);
+  padding: 0.3rem 0.6rem;
+  letter-spacing: 0.05em;
+}
+
+/* two lines' height all the way to the last line, so nothing jumps */
+.stage-prompt .prompt-next:empty {
+  display: block;
+}
+
+.stage-prompt .locked {
+  background: #f2b8a8;
+}
+
+.stage-hint {
+  font-size: 30px;
+  min-height: 1.3em;
+  margin: 0.3rem 0;
+}
+
+.stage-hint.oops {
+  color: var(--type-wrong);
+}
+
+.stage-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stage-progress {
+  font-size: 30px;
+  color: var(--ink-soft);
+}
+
+.stage-keyboard {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+/* --- practice page + lab --------------------------------------------------- */
+
+.practice-done .teach-big {
+  font-size: 30px;
+}
+
+.lab-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.lab-options label {
+  display: flex;
+  flex-direction: column;
+  font-size: 20px;
+}
+
+.lab-options select,
+.lab-options input {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  padding: 0.1rem 0.3rem;
+  background: var(--surface);
+  color: var(--ink);
+  border: 2px solid var(--wood-light);
+}
+
+.lab-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.lab-card {
+  display: block;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--surface);
+  border: 3px solid var(--wood-light);
+  padding: 0.4rem;
+}
+
+.lab-card:hover {
+  background: var(--card-hover);
+}
+
+.lab-card canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 180 / 54;
+  image-rendering: pixelated;
+  background: var(--sky);
+}
+
+.lab-card .lab-card-blank {
+  aspect-ratio: 180 / 54;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 30px;
+  color: var(--type-pending);
+}
+
+.lab-card h2 {
+  font-size: 30px;
+  color: var(--heading);
+  margin: 0.3rem 0 0;
+}
+
+.lab-card p {
+  font-size: 20px;
+  margin: 0;
+}

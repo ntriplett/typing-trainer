@@ -1,31 +1,10 @@
 /* Session page layout. Frames, fonts, and palette come from theme.css;
    the typing prompt uses the legible --font-type, never the pixel font. */
 
-#prompt-viewport {
-  background: var(--surface);
-  border: 3px solid var(--wood-light);
-  box-shadow: inset 3px 3px 0 var(--surface-shadow);
-  padding: 0.25rem 0.75rem;
-}
-
-#prompt {
-  font-family: var(--font-type);
-  font-size: 2.2rem;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-/* keep two lines' height all the way to the last line */
-#prompt .prompt-next:empty {
-  display: block;
-}
-
 /* .pending/.current/.correct/.incorrect/.space are shared with the
    teach prompt -- defined once in app.css. */
 
-#prompt .locked {
-  background: #f2b8a8;
-}
+
 
 /* --- pre-session config sliders --- */
 

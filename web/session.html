@@ -6,10 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/css/app.css" />
   <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+  <link rel="stylesheet" href="/static/css/stage.css" />
   <link rel="stylesheet" href="/static/css/session.css" />
 </head>
 <body>
-  <main>
+  <main class="teach-main">
     <div id="start-screen" class="panel">
       <h1>Practice time!</h1>
       <p>Ready for a practice session? Pick how today should go:</p>
@@ -44,13 +46,7 @@
       </div>
 
       <div class="panel typing-panel">
-        <p id="phase-label"></p>
-        <p id="instructions"></p>
-        <p id="progress"></p>
-        <p id="lock-message" hidden>🔒 Get this one right to keep going!</p>
-        <div id="prompt-viewport">
-          <div id="prompt"></div>
-        </div>
+        <div id="stage"></div>
         <div id="step-result" hidden>
           <h2 id="result-headline"></h2>
           <p id="result-summary"></p>
@@ -83,7 +79,12 @@
   <script src="/static/js/avatar.js"></script>
   <script src="/static/js/themes.js"></script>
   <script src="/static/js/header.js"></script>
+  <script src="/static/js/keyboard_data.js"></script>
+  <script src="/static/js/teach_keyboard.js"></script>
   <script src="/static/js/prompt_view.js"></script>
+  <script src="/static/js/rich_text.js"></script>
+  <script src="/static/js/practice_scenes.js"></script>
+  <script src="/static/js/practice_stage.js"></script>
   <script src="/static/js/session.js"></script>
 </body>
 </html>

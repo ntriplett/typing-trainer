@@ -60,7 +60,7 @@ class Session:
 class SessionEvent:
     id: int
     session_id: int
-    phase: str  # "warmup" | "teach" | "practice" | "eval" | "game"
+    phase: str  # "warmup" | "teach" | "practice" | "game"
     activity_id: str
     started_at: datetime
     ended_at: datetime | None

@@ -1,8 +1,9 @@
-"""Module tests: each of the 5 v1 activities (warmup/teach/practice/eval/
-game) against the shared Activity contract (focus_keys/allowed_keys
-dual-pool input, PLAN.md Section 7), plus module-specific pattern checks.
+"""Module tests: every registered activity (teach, the practice modules
+that also serve as warmups, game) against the shared Activity contract
+(focus_keys/allowed_keys dual-pool input, PLAN.md Section 7), plus
+module-specific pattern checks.
 
-Parametrized over the registry rather than duplicated 5x.
+Parametrized over the registry rather than duplicated per module.
 """
 
 import random
@@ -79,19 +80,13 @@ def test_teach_uses_blocked_not_randomized_pattern_and_ignores_allowed():
     assert set(content.prompt.replace(" ", "")) == set(FOCUS_KEYS)
 
 
-def test_warmup_leans_focus_but_includes_some_allowed():
-    warmup = REGISTRY["warmup_random_keys_v1"]
-    content = warmup.generate(FOCUS_KEYS, ALLOWED_KEYS, duration_s=60, rng=random.Random(1))
+def test_practice_easy_is_a_warmup_and_still_leans_focus():
+    practice = REGISTRY["practice_random_keys_v1"]
+    content = practice.generate(
+        FOCUS_KEYS, ALLOWED_KEYS, duration_s=60, rng=random.Random(1), difficulty=0.15
+    )
     letters = content.prompt.replace(" ", "")
     focus_count = sum(1 for c in letters if c in FOCUS_KEYS)
-    # ~75% focus by design -- not an exact check (it's random), just
-    # confirms focus clearly dominates over a long enough sample.
-    assert focus_count > len(letters) * 0.5
-
-
-def test_eval_leans_allowed_but_includes_some_focus():
-    eval_activity = REGISTRY["eval_random_keys_v1"]
-    content = eval_activity.generate(FOCUS_KEYS, ALLOWED_KEYS, duration_s=60, rng=random.Random(1))
-    letters = content.prompt.replace(" ", "")
-    allowed_count = sum(1 for c in letters if c in ALLOWED_KEYS)
-    assert allowed_count > len(letters) * 0.5
+    # each focus letter is 3x as likely as each allowed one: 6 of 10 weight
+    assert focus_count > len(letters) * 0.4
+    assert set(letters) & set(ALLOWED_KEYS)

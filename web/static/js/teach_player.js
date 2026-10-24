@@ -7,7 +7,7 @@
 // At the end: Space to go again, Enter to pick another lesson (/teach-lab).
 // The query string (?keys=dk for the key-pair module) is passed through.
 //
-// Needs keyboard_data.js, teach_keyboard.js, and prompt_view.js loaded first.
+// Needs keyboard_data.js, teach_keyboard.js, prompt_view.js, and rich_text.js loaded first.
 
 const FINGER_NAMES = {
   left_pinky: "left pinky", left_ring: "left ring finger", left_middle: "left middle finger",
@@ -29,20 +29,6 @@ let busy = true; // between steps, or still loading: ignore keys
 let finished = false;
 let lastKeyAt = 0;
 const keystrokes = []; // type steps only; show-step presses aren't scored
-
-// "[F]" in step text -> a keycap.
-function keycap(key) {
-  const label = key === " " ? "Space" : key.length === 1 ? key.toUpperCase() : key;
-  return `<kbd class="keycap">${escapeHtml(label)}</kbd>`;
-}
-
-function richText(text) {
-  return escapeHtml(text).replace(/\[([^\]]+)\]/g, (_, k) => keycap(k === "Space" ? " " : k));
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 function setHint(html, kind = "") {
   const hint = el("teach-hint");

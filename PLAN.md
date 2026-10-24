@@ -373,7 +373,32 @@ then a few capitals at a time. They get strung together into lessons once enough
   letters, all on one hand (one Shift): ASDF, QWER, ZXCV, HJKL, UIOP, then the pointer stretches GTB
   and YNM. Pages: new capitals, "Big X" per letter, big and small (Aa Ss), mix (capital then
   small letters), capital words, done. Capitals come after the bottom row and before the numbers.
-- Next: string modules into lessons.
+- Next: string teach modules into lessons (after warmups/practice, 11f).
+
+## 11f. Warmups and practice (built 2026-10-24)
+
+- No separate eval: practice results feed the skill model, and that's the evaluation (eval module and
+  scheduler eval step removed).
+- Warmups are practice modules run short (60s) and easy (difficulty 0.15); practice is 100s at 0.5.
+  The scheduler gives each warmup/practice step a different theme until all have had a turn.
+- Practice text (`app/activities/practice_text.py`): focus letters weigh 3x each other allowed letter
+  and are called out in the instructions ("Focus letters: [E] and [I]"). Nothing outside the allowed
+  keys appears. `length` (characters, from seconds x typing speed) and `difficulty` (0-1) are inputs.
+  Difficulty = how many weak letters / weak bigrams come in a row: easy never puts two weak letters
+  together; hard chains weak pairs into whole words. Weak spots come from a `SkillSnapshot` built from
+  key and bigram stats at session start. Mixes in real words when the taught letters spell some.
+- 11 practice modules (`practice_modules.py`): the plain baseline plus 10 themed scenes
+  (`web/static/js/practice_scenes.js`, code-drawn pixel art on a 180x54 canvas): fishing (fish nears
+  the hook, misses scare it), garden (words plant, keys water), puppy walk (misses = sniff stop), moon
+  rocket, potion lab (words drop ingredients, misses puff smoke), mountain hike (misses slip back), leaf
+  catcher (misses = gust), star map (words light a constellation), campfire (keys feed the fire, toast a
+  marshmallow), lily pad hop (each word is a hop).
+- Shared stage (`practice_stage.js`) for every session step and the practice lab, in the teach look.
+  A "Keyboard hint" button spends `config.KEYBOARD_HINT_PRICE` (10) coins to show the keyboard with
+  hands for the rest of that lesson (`POST /api/hint/keyboard`).
+- `/practice-lab` lists every module with its scene playing; options for letters, focus letters, length
+  (short/medium/long) and difficulty (easy/medium/hard). Lab runs pay coins but don't feed the skill model.
+- Later: tune difficulty per learner (e.g. ramp within a session), smarter weak-pair chaining.
 
 ## 12. Workflow
 

@@ -1,22 +1,19 @@
 // Runs one scheduler-built session end to end: collect the pre-session
-// config, fetch the skeleton + first step, render each step's prompt
-// (fetching its content lazily, right before it's needed), capture
-// keystrokes with timing, submit for scoring, show the result, advance.
+// config, fetch the skeleton + first step, run each step on the shared
+// practice stage (practice_stage.js: title, themed scene, one-line prompt,
+// keyboard hint), fetching content lazily right before it's needed, then
+// submit for scoring, show the result, advance.
 // Each scored step also pays coins (PLAN.md 11c), shown here and in the
 // shared header (header.js).
 
 const IDLE_PAUSE_MS = 5000; // no keystroke in this long -> the session timer pauses
-const WRONG_STREAK_LOCKOUT = 5; // this many consecutive misses -> must get the next one right
 
 let sessionId = null;
 let skeleton = []; // [{phase, activity_id, focus_keys, duration_s}], no content
 let contentCache = {}; // stepIndex -> ActivityContent
 let stepIndex = 0;
-let keystrokes = [];
 let lastKeyTime = 0;
 let stepFinished = false; // guards against double-submitting the same step
-let consecutiveWrong = 0;
-let locked = false;
 const stepResults = [];
 let sessionCoins = 0; // total coins earned this session, for the summary
 
@@ -31,12 +28,12 @@ const TIMER_TICK_MS = 200;
 const startScreen = document.getElementById("start-screen");
 const sessionScreen = document.getElementById("session-screen");
 const completeScreen = document.getElementById("complete-screen");
-const phaseLabel = document.getElementById("phase-label");
-const instructionsEl = document.getElementById("instructions");
-const progressEl = document.getElementById("progress");
-const lockMessageEl = document.getElementById("lock-message");
-// One line at a time, wrapped between words (prompt_view.js).
-const view = new PromptView(document.getElementById("prompt"));
+// Typing happens on the stage; it calls back when a step's prompt is done.
+const stage = new PracticeStage(document.getElementById("stage"), {
+  onKey: () => (lastKeyTime = performance.now()),
+  onFinish: (typed) => finishStep(typed),
+});
+const view = stage.view; // tests read view.typeable / view.typed
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
 const resultCoinsEl = document.getElementById("result-coins");
@@ -53,7 +50,6 @@ document.getElementById("complete-home-button").addEventListener("click", goHome
 document.getElementById("complete-new-session-button").addEventListener("click", () => {
   window.location.reload();
 });
-window.addEventListener("keydown", handleKeydown);
 
 // --- pre-session config sliders ----------------------------------------------
 
@@ -161,29 +157,16 @@ async function fetchStepContent(index) {
 
 async function renderStep() {
   const content = await fetchStepContent(stepIndex);
-  keystrokes = [];
   lastKeyTime = performance.now();
   stepFinished = false;
-  consecutiveWrong = 0;
-  locked = false;
-  lockMessageEl.hidden = true;
-
-  phaseLabel.textContent = skeleton[stepIndex].phase;
-  instructionsEl.textContent = content.instructions;
   stepResultEl.hidden = true;
   endNowButton.hidden = false;
-  view.load(content.prompt);
-  renderProgress();
+  const phase = skeleton[stepIndex].phase;
+  stage.load(content, {
+    label: phase[0].toUpperCase() + phase.slice(1),
+    hintRef: `session:${sessionId}:${stepIndex}`,
+  });
   renderPlanPreview();
-}
-
-function renderProgress() {
-  // Visible characters only -- spaces are part of the typed stream but
-  // not meaningful to count for the learner.
-  const text = view.typeable;
-  const total = text.replace(/ /g, "").length;
-  const done = text.slice(0, view.typed).replace(/ /g, "").length;
-  progressEl.textContent = `${done} / ${total}`;
 }
 
 function renderPlanPreview() {
@@ -200,59 +183,10 @@ function renderPlanPreview() {
   stepProgressEl.textContent = `Step ${stepIndex + 1} of ${skeleton.length}`;
 }
 
-function handleKeydown(e) {
-  if (sessionScreen.hidden || !stepResultEl.hidden) {
-    return; // not mid-step (not started yet, or waiting on "Next")
-  }
-  if (e.key.length !== 1) {
-    return; // ignore Shift/Enter/Tab/etc.
-  }
-  e.preventDefault();
-
-  const expected = view.expected;
-  const typed = e.key;
-  const correct = typed === expected;
-
-  // Latency is measured against the PREVIOUS keystroke's timestamp,
-  // so capture "now" before overwriting lastKeyTime with it (also the
-  // same timestamp the idle-pause timer uses to detect activity).
-  const now = performance.now();
-  const latencyMs = Math.round(now - lastKeyTime) || 1;
-  lastKeyTime = now;
-
-  if (locked) {
-    // Prevent-smashing lockout: ignore anything that isn't the correct
-    // character for the current position -- no keystroke recorded,
-    // no advancing, until the learner actually gets it right.
-    if (!correct) return;
-    locked = false;
-    view.setLocked(false);
-    lockMessageEl.hidden = true;
-    consecutiveWrong = 0;
-  } else if (!correct) {
-    consecutiveWrong += 1;
-    if (consecutiveWrong >= WRONG_STREAK_LOCKOUT) {
-      locked = true;
-      lockMessageEl.hidden = false;
-      view.setLocked(true);
-      return; // this miss itself still doesn't advance; next miss is ignored until correct
-    }
-  } else {
-    consecutiveWrong = 0;
-  }
-
-  keystrokes.push({ expected_char: expected, typed_char: typed, correct, latency_ms: latencyMs });
-
-  const finished = view.mark(correct);
-  renderProgress();
-  if (finished) finishStep();
-}
-
-async function finishStep() {
+async function finishStep({ keystrokes, skipped }) {
   if (stepFinished) return; // handles a keystroke racing with "End now"
   stepFinished = true;
   endNowButton.hidden = true;
-  lockMessageEl.hidden = true;
 
   // Out of time: this lesson is the last one, even if more were planned.
   const timeUp = activeElapsedMs >= totalBudgetMs;
@@ -260,7 +194,7 @@ async function finishStep() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     // Spaces dropped at line wraps aren't typed; they don't count against finishing.
-    body: JSON.stringify({ keystrokes, end_session: timeUp, skipped_chars: view.skipped }),
+    body: JSON.stringify({ keystrokes, end_session: timeUp, skipped_chars: skipped }),
   });
   const data = await res.json();
   if (data.session_complete) {
@@ -317,7 +251,7 @@ async function advanceStep() {
 // than discarding it -- a deliberate "I'm done with this one" control,
 // not a way to skip being scored.
 function endStepNow() {
-  finishStep();
+  stage.finish();
 }
 
 function showSummary() {

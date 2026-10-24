@@ -50,9 +50,9 @@ def test_plan_preview_marks_steps_done_as_the_session_progresses(page: Page, liv
 
 def test_progress_counter_advances_as_characters_are_typed(page: Page, live_server):
     start_quick_session(page, live_server)
-    before = page.locator("#progress").inner_text()
+    before = page.locator(".stage-progress").inner_text()
     page.keyboard.press("a")  # one keystroke, right or wrong doesn't matter for the counter
-    after = page.locator("#progress").inner_text()
+    after = page.locator(".stage-progress").inner_text()
     assert before != after
 
 
@@ -79,7 +79,7 @@ def test_wrong_streak_lockout_blocks_until_the_correct_key(page: Page, live_serv
     for _ in range(5):
         page.keyboard.press(wrong_key)
 
-    expect(page.locator("#lock-message")).to_be_visible()
+    expect(page.locator(".stage-hint")).to_contain_text("Get this one right")
     position_while_locked = page.evaluate("view.typed")
     expected = page.evaluate("view.expected")
 
@@ -89,7 +89,7 @@ def test_wrong_streak_lockout_blocks_until_the_correct_key(page: Page, live_serv
 
     # the correct key unlocks and advances
     page.keyboard.press(expected)
-    expect(page.locator("#lock-message")).to_be_hidden()
+    expect(page.locator(".stage-hint")).not_to_contain_text("Get this one right")
     assert page.evaluate("view.typed") == position_while_locked + 1
 
 

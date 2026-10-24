@@ -115,13 +115,13 @@ def test_multiple_teach_steps_in_one_session_target_different_keys():
     assert len(set(teach_focuses)) == len(teach_focuses)
 
 
-def test_earlier_game_or_eval_steps_do_not_retroactively_gain_later_taught_keys():
-    # Regression: game/eval steps' focus_keys used to alias the same
+def test_earlier_game_steps_do_not_retroactively_gain_later_taught_keys():
+    # Regression: game steps' focus_keys used to alias the same
     # mutable list that later teach steps extend, so an EARLIER game
     # step would end up listing a key that hadn't been taught yet by
     # the time it actually runs.
     key_stats = {
-        key: stat_with_samples(key, scheduler.EVAL_MIN_SAMPLES)
+        key: stat_with_samples(key, 5)
         for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]
     }
     skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
@@ -133,7 +133,7 @@ def test_earlier_game_or_eval_steps_do_not_retroactively_gain_later_taught_keys(
                 taught_by[key] = i
 
     for i, step in enumerate(skeleton.steps):
-        if step.phase in ("game", "eval"):
+        if step.phase == "game":
             for key in step.focus_keys:
                 assert taught_by.get(key, -1) <= i, (
                     f"step {i} ({step.phase}) focuses on {key!r}, "
@@ -157,25 +157,6 @@ def test_every_step_carries_at_least_the_known_allowed_set():
     skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
     for step in skeleton.steps:
         assert set(skeleton.active_keys) <= set(step.allowed_keys)
-
-
-def test_eval_runs_at_most_once_per_session_when_ready():
-    key_stats = {
-        key: stat_with_samples(key, scheduler.EVAL_MIN_SAMPLES)
-        for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]
-    }
-    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    phases = [s.phase for s in skeleton.steps]
-    assert phases.count("eval") <= 1
-    if skeleton.ran_eval:
-        assert "eval" in phases
-
-
-def test_eval_skipped_when_samples_too_low():
-    key_stats = {key: stat_with_samples(key, 1) for key in KEY_ORDER[:INITIAL_ACTIVE_KEY_COUNT]}
-    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
-    assert skeleton.ran_eval is False
-    assert "eval" not in [s.phase for s in skeleton.steps]
 
 
 def test_games_are_spaced_out_not_clustered():
@@ -264,6 +245,34 @@ def test_generate_step_content_produces_more_text_for_a_faster_estimate():
 
 
 def test_generate_step_content_uses_the_step_key_pools():
-    step = scheduler.StepPlan("warmup", "warmup_random_keys_v1", ["f"], ["j"], duration_s=30)
+    step = scheduler.StepPlan("warmup", "practice_fishing_v1", ["f"], ["j"], duration_s=30)
     content = scheduler.generate_step_content(step, estimated_wpm=15, rng=random.Random(1))
     assert set(content.keys) <= {"f", "j"}
+
+
+def test_no_eval_steps_and_warmup_is_short_easy_practice():
+    skeleton = scheduler.build_session_skeleton({}, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert "eval" not in [s.phase for s in skeleton.steps]
+    warmup = next(s for s in skeleton.steps if s.phase == "warmup")
+    assert warmup.activity_id.startswith("practice_")
+    assert warmup.difficulty == scheduler.WARMUP_DIFFICULTY < scheduler.PRACTICE_DIFFICULTY
+    assert warmup.duration_s < scheduler.SHORT_STEP_SECONDS["practice"]
+
+
+def test_practice_steps_rotate_through_themes():
+    config = SessionConfig(duration_minutes=30, learn_vs_practice=0.0, focus_vs_general=0.3)
+    key_stats = {key: mastered_stat(key) for key in KEY_ORDER[:6]}
+    skeleton = scheduler.build_session_skeleton(key_stats, config, now=NOW, rng=random.Random(3))
+    ids = [s.activity_id for s in skeleton.steps if s.phase in ("warmup", "practice")]
+    assert len(ids) >= 5
+    assert len(set(ids)) == len(ids)  # fewer than 11 practice steps: no repeats
+
+
+def test_session_skill_snapshot_carries_weak_keys_into_practice():
+    weak = KeyStat(
+        learner_id=1, key="d", ema_time_ms=500.0, confidence=0.5,
+        accuracy_rolling=0.5, sample_count=20, unlocked_at=NOW, mastered_at=None,
+    )
+    key_stats = {key: mastered_stat(key) for key in KEY_ORDER[:6]} | {"d": weak}
+    skeleton = scheduler.build_session_skeleton(key_stats, DEFAULT_CONFIG, now=NOW, rng=random.Random(1))
+    assert skeleton.skill.weak_keys == ("d",)

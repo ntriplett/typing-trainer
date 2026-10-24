@@ -1,4 +1,4 @@
-"""The module contract every teach/practice/eval/game/warmup activity
+"""The module contract every teach/practice/game/warmup activity
 implements (PLAN.md Section 7), plus shared data shapes and scoring
 helpers so each module isn't reimplementing the same arithmetic.
 
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 # Kinds match the session phases in PLAN.md Section 6.
-Kind = str  # "warmup" | "teach" | "practice" | "eval" | "game"
+Kind = str  # "warmup" | "teach" | "practice" | "game"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +39,11 @@ class ActivityContent:
     # None for every existing (flat-prompt) activity; unused fields cost
     # nothing since this is just a JSON response, not a DB column.
     micro_steps: list[dict] | None = None
+    # Shown big above the prompt (practice modules: the theme's name).
+    title: str = ""
+    # A themed animation drawn above the prompt (web/static/js/practice_scenes.js),
+    # or None for a plain prompt.
+    scene: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

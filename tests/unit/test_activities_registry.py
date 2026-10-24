@@ -20,13 +20,22 @@ def test_get_activity_raises_for_unknown_id():
         get_activity("does_not_exist")
 
 
-@pytest.mark.parametrize(
-    "kind", ["warmup", "teach", "practice", "eval", "game"]
-)
+@pytest.mark.parametrize("kind", ["teach", "game"])
 def test_exactly_one_v1_activity_per_kind(kind):
     matches = activities_by_kind(kind)
     assert len(matches) == 1
     assert matches[0].kind == kind
+
+
+def test_practice_has_the_plain_module_plus_ten_themes():
+    practice = activities_by_kind("practice")
+    assert len(practice) == 11
+    assert sum(1 for a in practice if a.scene) == 10
+
+
+def test_no_eval_or_separate_warmup_modules():
+    assert activities_by_kind("eval") == []
+    assert activities_by_kind("warmup") == []
 
 
 def test_every_registered_activity_satisfies_the_protocol():
