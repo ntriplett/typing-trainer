@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Learn</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+</head>
+<body>
+  <main class="teach-main">
+    <section class="panel teach-panel">
+      <div id="teach-progress" aria-label="Lesson progress"></div>
+
+      <div id="teach-lesson">
+        <h1 id="teach-title">Loading…</h1>
+        <p id="teach-text"></p>
+        <div id="teach-prompt"></div>
+        <p id="teach-hint" aria-live="polite"></p>
+      </div>
+
+      <div id="teach-done" hidden>
+        <h1>Lesson complete!</h1>
+        <p id="teach-result" class="teach-big"></p>
+        <p class="teach-big">
+          Press <kbd class="keycap">Space</kbd> to go again, or <kbd class="keycap">Enter</kbd> to go home.
+        </p>
+      </div>
+
+      <svg id="teach-keyboard" role="img" aria-label="Keyboard with hands showing which finger to use"></svg>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/keyboard_data.js"></script>
+  <script src="/static/js/teach_keyboard.js"></script>
+  <script src="/static/js/teach_player.js"></script>
+</body>
+</html>

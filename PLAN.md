@@ -339,6 +339,21 @@ remembered per browser via cookie, so losing the cookie just means picking again
 opens details plus "log out / switch". Two kids can play at once in separate browsers on the same PC. One
 DB, all tables keyed by `learner_id`.
 
+## 11e. Keyboard-driven teach modules (started 2026-10-24)
+
+Order: (1) intro: hands on home row + thumbs on space, (2) home row, (3) top row, (4) bottom row,
+(5) number row, 2 keys per lesson each, (6) capitals: shift with one hand and the key with the other,
+then a few capitals at a time. They get strung together into lessons once enough exist.
+
+- Every step advances from a key press, never the mouse ("press Space with your thumb"), so hands
+  stay on home. Steps are `show` (explain, wait for one key) or `type` (type a prompt; a wrong key
+  doesn't move on). Builders: `app/activities/teach_steps.py`.
+- Shared front-end: `teach_keyboard.js` (full keyboard + gray ghost hands; lights a finger and key,
+  reaches a finger to any key, and can light Shift for capitals) and `teach_player.js` (runs any
+  module's steps at `/teach/<id>`). Bigger text (30px) and bold keycaps.
+- Registered in `app/activities/teach_modules.py`, outside the live scheduler, and stateless for now.
+- Built so far: the intro (`teach_intro_home_row_v1`), a draft for review.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

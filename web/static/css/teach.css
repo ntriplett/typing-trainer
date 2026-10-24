@@ -1,0 +1,251 @@
+/* Keyboard-driven teach modules (/teach/<id>): bigger text than the rest
+   of the app, and the ghost-hand keyboard (teach_keyboard.js).
+   Jersey 10 is only crisp at 20/30/40px, so text sizes stick to those. */
+
+:root {
+  --key-cap: #fffaf0;
+  --key-side: #d8c7a0;
+  --key-label: #3b2417;
+  --key-case: #5c3a1a;
+  --key-lit: #f6d465;
+  --key-lit-side: #b5862a;
+  --hand: #9a958d;
+  --hand-line: #4d4842;
+  --finger-lit: #d9822b;
+  --finger-lit-line: #7a3f12;
+}
+
+:root[data-night] {
+  --key-cap: #3a3650;
+  --key-side: #1f1c2b;
+  --key-label: #f1e6cf;
+  --key-case: #15131d;
+  --hand: #b9b4c8;
+  --hand-line: #eeeaf6;
+}
+
+.teach-main {
+  width: min(960px, calc(100% - 32px));
+}
+
+/* --- text ------------------------------------------------------------------ */
+
+#teach-progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 0.5rem;
+}
+
+#teach-progress .dot {
+  width: 20px;
+  height: 10px;
+  background: var(--muted-fill);
+  border: 2px solid var(--outline);
+}
+
+#teach-progress .dot.done {
+  background: var(--moss);
+}
+
+#teach-progress .dot.now {
+  background: var(--leaf-gold);
+}
+
+#teach-text,
+.teach-big {
+  font-size: 30px;
+  line-height: 1.25;
+  margin: 0 0 0.6rem;
+  min-height: 2.5em;
+}
+
+#teach-hint {
+  font-size: 30px;
+  min-height: 1.3em;
+  margin: 0.3rem 0;
+}
+
+#teach-hint.oops {
+  color: var(--type-wrong);
+}
+
+#teach-hint.yay {
+  color: var(--type-correct);
+}
+
+.keycap {
+  font-family: var(--font-type);
+  font-weight: 800;
+  font-size: 0.8em;
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 0.3em;
+  text-align: center;
+  color: var(--key-label);
+  background: var(--key-cap);
+  border: 2px solid var(--outline);
+  border-radius: 6px;
+  box-shadow: 0 4px 0 var(--key-side);
+  vertical-align: 0.1em;
+}
+
+/* --- the prompt ------------------------------------------------------------ */
+
+#teach-prompt {
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 44px;
+  background: var(--surface);
+  box-shadow: inset 0 4px 0 var(--surface-shadow);
+  border: 3px solid var(--wood-light);
+  padding: 0.3rem 0.6rem;
+  min-height: 1.6em;
+  letter-spacing: 0.05em;
+}
+
+#teach-prompt.show {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  font-size: 30px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#teach-prompt.show .keycap {
+  font-size: 40px;
+  animation: tk-pulse 1.1s ease-in-out infinite;
+}
+
+#teach-prompt .missed {
+  text-decoration: underline wavy var(--type-wrong);
+}
+
+.shake {
+  display: inline-block;
+  animation: tk-shake 0.3s;
+}
+
+@keyframes tk-shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+@keyframes tk-pulse {
+  50% { transform: translateY(-3px); filter: brightness(1.08); }
+}
+
+/* --- the keyboard ---------------------------------------------------------- */
+
+#teach-keyboard {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.tk-case {
+  fill: var(--key-case);
+}
+
+.tk-cap {
+  fill: var(--key-cap);
+}
+
+.tk-cap-side {
+  fill: var(--key-side);
+  stroke: var(--outline);
+  stroke-width: 2;
+}
+
+.tk-mod .tk-cap,
+.tk-mod .tk-cap-side {
+  opacity: 0.7;
+}
+
+.tk-bump {
+  fill: var(--key-side);
+}
+
+.tk-label {
+  font-family: var(--font-type);
+  font-weight: 800;
+  font-size: 26px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  fill: var(--key-label);
+  pointer-events: none;
+  /* a halo so letters stay readable under the ghost hands */
+  stroke: var(--key-cap);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+
+.tk-label-small {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tk-label.tk-mod {
+  opacity: 0.6;
+}
+
+.tk-target .tk-cap {
+  fill: var(--key-lit);
+  animation: tk-glow 1.1s ease-in-out infinite;
+}
+
+.tk-target .tk-cap-side {
+  fill: var(--key-lit-side);
+}
+
+@keyframes tk-glow {
+  50% { fill: #fff3b8; }
+}
+
+.tk-pressed .tk-cap {
+  fill: var(--moss);
+  transform: translateY(4px);
+}
+
+.tk-wrong .tk-cap {
+  fill: var(--leaf-red);
+}
+
+/* Ghost hands: each hand is drawn as a fat outline pass and a fill pass,
+   faded as one group so overlapping parts don't get darker. */
+.tk-hands {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.tk-hand line,
+.tk-finger-lit line {
+  stroke-linecap: round;
+}
+
+.tk-hand polygon {
+  stroke-linejoin: round;
+}
+
+.tk-hand-outline * {
+  fill: var(--hand-line);
+  stroke: var(--hand-line);
+}
+
+.tk-hand-fill * {
+  fill: var(--hand);
+  stroke: var(--hand);
+}
+
+.tk-hands-lit {
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.tk-finger-lit-outline * {
+  stroke: var(--finger-lit-line);
+}
+
+.tk-finger-lit-fill * {
+  stroke: var(--finger-lit);
+}

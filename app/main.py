@@ -35,6 +35,7 @@ from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
 from app.activities.teach_demos import get_demo_activity, list_demo_activities
+from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
 from app.models import KeyStat
 from app.scheduler import SessionConfig, SessionSkeleton, StepPlan
@@ -257,6 +258,43 @@ def teach_demo_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
     result = score_attempt(activity_id, body.keys, keystrokes)
     return asdict(result)
+
+
+# --- teach modules (keyboard-driven, not in the live scheduler yet) ------------
+#
+# Stateless like the teach demo: nothing is saved until these modules are
+# strung together into real lessons.
+
+
+@app.get("/teach/{activity_id}")
+def teach_page(activity_id: str) -> FileResponse:
+    if activity_id not in {m["id"] for m in list_teach_modules()}:
+        raise HTTPException(status_code=404, detail="Unknown teach module")
+    return FileResponse(WEB_DIR / "teach.html")
+
+
+@app.get("/api/teach/modules")
+def teach_modules() -> list[dict]:
+    return list_teach_modules()
+
+
+@app.get("/api/teach/{activity_id}/content")
+def teach_content(activity_id: str) -> dict:
+    try:
+        activity = get_teach_module(activity_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown teach module") from None
+    return asdict(activity.generate([], [], duration_s=120))
+
+
+@app.post("/api/teach/{activity_id}/complete")
+def teach_complete(activity_id: str, body: DemoCompleteRequest) -> dict:
+    try:
+        get_teach_module(activity_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown teach module") from None
+    keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
+    return asdict(score_attempt(activity_id, body.keys, keystrokes))
 
 
 # --- analytics API -------------------------------------------------------------
