@@ -52,6 +52,7 @@
   --type-correct: #4f7a2a;
   --type-wrong: #b8432f;
   --type-wrong-bg: #f6d6c8;
+  --space-wrong-bg: #fbe7e0;
   --panel-frame: url("/static/assets/ui/panel.svg");
 
   /* Set per place by themes.js (the current place's colors). */
@@ -79,6 +80,7 @@
   --type-correct: #9fd07a;
   --type-wrong: #ff8a7a;
   --type-wrong-bg: #5a2a2a;
+  --space-wrong-bg: #3e2a30;
   --panel-frame: url("/static/assets/ui/panel-night.svg");
   color-scheme: dark;
 }

@@ -25,21 +25,26 @@
   text-decoration: underline;
 }
 
-/* Space is a real, taught key: show where it goes as a dotted bar in
-   the character's own state color (pending/current/correct/incorrect). */
-.space {
-  display: inline-block;
-  width: 0.8em;
-  position: relative;
+/* A space is just a space: an empty box when it's the key to press
+   (.current's yellow), very light red if it was mistyped. */
+.space.incorrect {
+  background: var(--space-wrong-bg);
+  text-decoration: none;
 }
 
-.space::before {
-  content: "";
-  position: absolute;
-  left: 15%;
-  right: 15%;
-  bottom: 0.35em;
-  border-bottom: 3px dotted currentColor;
+/* The shared one-line prompt (prompt_view.js): the line being typed, and
+   the next line faded underneath so you can read ahead. */
+.prompt-view .prompt-line {
+  white-space: pre;
+  min-height: 1.3em;
+}
+
+.prompt-view .prompt-next {
+  opacity: 0.45;
+}
+
+.prompt-view .prompt-next:empty {
+  display: none;
 }
 
 /* Shared secondary/caption text style, used on the analysis and

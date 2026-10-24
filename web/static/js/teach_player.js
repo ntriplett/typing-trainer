@@ -7,7 +7,7 @@
 // At the end: Space to go again, Enter to pick another lesson (/teach-lab).
 // The query string (?keys=dk for the key-pair module) is passed through.
 //
-// Needs keyboard_data.js and teach_keyboard.js loaded first.
+// Needs keyboard_data.js, teach_keyboard.js, and prompt_view.js loaded first.
 
 const FINGER_NAMES = {
   left_pinky: "left pinky", left_ring: "left ring finger", left_middle: "left middle finger",
@@ -20,12 +20,11 @@ const NEXT_STEP_DELAY_MS = 700;
 const moduleId = decodeURIComponent(location.pathname.split("/").pop());
 const kb = new TeachKeyboard(document.getElementById("teach-keyboard"));
 const el = (id) => document.getElementById(id);
+const view = new PromptView(el("teach-lines"));
 
 let content = null;
 let steps = [];
 let stepIndex = 0;
-let position = 0; // in the current type step's prompt
-let charSpans = [];
 let busy = true; // between steps, or still loading: ignore keys
 let finished = false;
 let lastKeyAt = 0;
@@ -63,31 +62,18 @@ function renderStep() {
   el("teach-title").innerHTML = richText(step.title);
   el("teach-text").innerHTML = richText(step.text);
   setHint("");
-  const prompt = el("teach-prompt");
-  prompt.className = step.kind;
 
+  el("teach-press").hidden = step.kind !== "show";
+  el("teach-lines").hidden = step.kind !== "type";
   if (step.kind === "show") {
-    prompt.innerHTML = `<span class="press-label">Press</span> ${keycap(step.advance_key)}`;
+    el("teach-press").innerHTML = `<span class="press-label">Press</span> ${keycap(step.advance_key)}`;
     kb.setFocus({ fingers: step.fingers, keys: step.keys, reach: step.reach });
   } else {
-    position = 0;
-    charSpans = [...step.prompt].map((ch) => {
-      const span = document.createElement("span");
-      span.className = ch === " " ? "space pending" : "pending";
-      span.textContent = ch === " " ? "" : ch;
-      return span;
-    });
-    prompt.replaceChildren(...charSpans);
-    focusCurrentChar();
+    view.load(step.prompt);
+    kb.focusChar(view.expected);
   }
   lastKeyAt = performance.now();
   busy = false;
-}
-
-function focusCurrentChar() {
-  const step = steps[stepIndex];
-  charSpans.forEach((s, i) => s.classList.toggle("current", i === position));
-  kb.focusChar(step.prompt[position]);
 }
 
 function fingerHint(ch) {
@@ -95,9 +81,33 @@ function fingerHint(ch) {
   return finger ? ` with your ${FINGER_NAMES[finger]}` : "";
 }
 
+function shiftHint(expected) {
+  const { side } = TeachKeyboard.shiftForChar(expected);
+  return `Hold ${side} [Shift] with your ${side} pinky, then press [${expected}].`;
+}
+
 function wrongKeyHint(typed, expected) {
-  const caps = typed !== expected && typed.toLowerCase() === expected ? " (Is Caps Lock on?)" : "";
-  return `Oops, that was ${keycap(typed)}. Press ${keycap(expected)}${fingerHint(expected)}.${caps}`;
+  if (typed.toLowerCase() === expected.toLowerCase()) {
+    // right letter, wrong size
+    if (expected !== expected.toLowerCase()) return richText(`Almost! ${shiftHint(expected)}`);
+    return richText("That one's small, no [Shift]. (Is Caps Lock on?)");
+  }
+  return `Oops, that was ${keycap(typed)}. Press ${keycap(expected)}${fingerHint(expected)}.`;
+}
+
+// Which Shift is held down right now ("left"/"right"), from Shift's own key
+// events. null when none, or when we never saw it go down.
+let shiftHeld = null;
+
+// Whether `typed` is the `expected` key, and if not, what to say. A capital
+// typed with the same hand's Shift counts as a miss: that's the habit to build.
+function judge(typed, expected) {
+  if (typed !== expected) return { correct: false, hint: wrongKeyHint(typed, expected) };
+  const need = TeachKeyboard.shiftForChar(expected);
+  if (need && shiftHeld && shiftHeld !== need.side) {
+    return { correct: false, hint: richText(`Use the other Shift! ${shiftHint(expected)}`) };
+  }
+  return { correct: true, hint: "" };
 }
 
 function nextStep(delayMs = NEXT_STEP_DELAY_MS) {
@@ -110,19 +120,19 @@ function nextStep(delayMs = NEXT_STEP_DELAY_MS) {
 }
 
 function handleShowKey(step, typed) {
-  if (typed === step.advance_key) {
-    kb.flashKey(typed, true);
+  const { correct, hint } = judge(typed, step.advance_key);
+  kb.flashKey(typed, correct);
+  if (correct) {
     nextStep(200); // just long enough to see the key flash
   } else {
-    kb.flashKey(typed, false);
-    setHint(wrongKeyHint(typed, step.advance_key), "oops");
+    setHint(hint, "oops");
   }
 }
 
-function handleTypeKey(step, typed) {
-  const expected = step.prompt[position];
+function handleTypeKey(typed) {
+  const expected = view.expected;
   const now = performance.now();
-  const correct = typed === expected;
+  const { correct, hint } = judge(typed, expected);
   keystrokes.push({
     expected_char: expected,
     typed_char: typed,
@@ -132,20 +142,14 @@ function handleTypeKey(step, typed) {
   lastKeyAt = now;
   kb.flashKey(typed, correct);
 
-  const span = charSpans[position];
   if (!correct) {
-    span.classList.remove("shake");
-    void span.offsetWidth; // restart the shake on repeated misses
-    span.classList.add("shake", "missed");
-    setHint(wrongKeyHint(typed, expected), "oops");
+    view.flagMiss();
+    setHint(hint, "oops");
     return;
   }
-  span.classList.remove("current", "pending", "shake");
-  span.classList.add("correct");
   setHint("");
-  position += 1;
-  if (position < charSpans.length) {
-    focusCurrentChar();
+  if (!view.mark(true)) {
+    kb.focusChar(view.expected);
   } else {
     kb.clearFocus();
     setHint("Nice!", "yay");
@@ -175,8 +179,17 @@ async function finish() {
   busy = false;
 }
 
+window.addEventListener("keyup", (e) => {
+  if (e.key === "Shift") shiftHeld = null;
+});
+
 window.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts alone
+  if (e.key === "Shift") {
+    shiftHeld = e.code === "ShiftRight" ? "right" : "left";
+    if (!finished) kb.flashKey(`shift_${shiftHeld[0]}`, true);
+    return;
+  }
   if (finished) {
     if (busy) return;
     if (e.key === " ") {
@@ -192,7 +205,7 @@ window.addEventListener("keydown", (e) => {
   if (busy || e.repeat) return;
   const step = steps[stepIndex];
   if (step.kind === "show") handleShowKey(step, e.key);
-  else handleTypeKey(step, e.key);
+  else handleTypeKey(e.key);
 });
 
 async function start() {

@@ -2,9 +2,6 @@
    the typing prompt uses the legible --font-type, never the pixel font. */
 
 #prompt-viewport {
-  height: 9.6rem; /* 4 lines at the line-height below */
-  overflow-y: auto;
-  scroll-behavior: smooth;
   background: var(--surface);
   border: 3px solid var(--wood-light);
   box-shadow: inset 3px 3px 0 var(--surface-shadow);
@@ -13,14 +10,14 @@
 
 #prompt {
   font-family: var(--font-type);
-  font-size: 1.7rem;
-  font-weight: 500;
+  font-size: 2.2rem;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
-.prompt-line {
-  display: flex;
-  line-height: 2.4rem;
-  white-space: pre;
+/* keep two lines' height all the way to the last line */
+#prompt .prompt-next:empty {
+  display: block;
 }
 
 /* .pending/.current/.correct/.incorrect/.space are shared with the

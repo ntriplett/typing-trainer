@@ -109,9 +109,9 @@ def start_quick_session(page: Page, live_server: str) -> None:
 
 def type_current_step_prompt(page: Page) -> None:
     """Type the full, correct prompt for whichever step is active."""
-    page.wait_for_function("typeof stepIndex !== 'undefined' && !!contentCache[stepIndex]")
-    prompt = page.evaluate("contentCache[stepIndex].prompt")
-    page.keyboard.type(prompt)
+    page.wait_for_function("typeof stepIndex !== 'undefined' && !!contentCache[stepIndex] && view.typed === 0")
+    # what's actually typed: the spaces where lines wrap are dropped
+    page.keyboard.type(page.evaluate("view.typeable"))
 
 
 def run_full_quick_session(page: Page, live_server: str) -> None:

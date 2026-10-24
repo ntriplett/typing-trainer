@@ -109,7 +109,7 @@
   line-height: 1.1;
 }
 
-#teach-prompt.show {
+#teach-press {
   font-family: var(--font-ui);
   font-weight: 400;
   font-size: 30px;
@@ -118,13 +118,18 @@
   gap: 0.5rem;
 }
 
-#teach-prompt.show .keycap {
+#teach-press .keycap {
   font-size: 40px;
   animation: tk-pulse 1.1s ease-in-out infinite;
 }
 
 #teach-prompt .missed {
   text-decoration: underline wavy var(--type-wrong);
+}
+
+#teach-prompt .space.missed {
+  background: var(--space-wrong-bg);
+  text-decoration: none;
 }
 
 .shake {

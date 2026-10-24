@@ -85,7 +85,7 @@ def test_word_bank_is_lowercase_letters():
 def test_curriculum_starts_with_the_intro_then_pairs_in_key_order():
     all_lessons = lessons()
     assert all_lessons[0]["module"] == "teach_intro_home_row_v1"
-    taught = "".join(l["keys"] for l in all_lessons[1:])
+    taught = "".join(l["keys"] for l in all_lessons if l["module"] == PAIR_ID)
     assert taught == "".join(k for k in KEY_ORDER if k != " ")
     assert all(len(p) == 2 for p in PAIRS)
 

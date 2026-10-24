@@ -13,6 +13,8 @@ mouse. There are two kinds:
     for each character as it comes up.
 
 Text may mark keys as [F] or [Space]; the player draws those as keycaps.
+Capital letters are typeable too: the player expects Shift on the other
+hand from the letter (shift_focus below).
 """
 
 from __future__ import annotations
@@ -28,10 +30,37 @@ HAND_FINGERS: frozenset[str] = frozenset(
 EXTRA_KEYS: frozenset[str] = frozenset({"shift_l", "shift_r"})
 
 
+def is_capital(ch: str) -> bool:
+    return ch.isupper() and ch.lower() in KEY_TO_FINGER
+
+
+def _finger(ch: str) -> str:
+    return KEY_TO_FINGER[ch.lower()]
+
+
 def _check_keys(keys: list[str]) -> None:
     for key in keys:
-        if key not in KEY_TO_FINGER and key not in EXTRA_KEYS:
+        if key not in KEY_TO_FINGER and key not in EXTRA_KEYS and not is_capital(key):
             raise ValueError(f"Unknown key {key!r}")
+
+
+def shift_for(letter: str) -> tuple[str, str]:
+    """The Shift key and pinky for a capital: always the other hand's."""
+    if _finger(letter).startswith("left"):
+        return "shift_r", "right_pinky"
+    return "shift_l", "left_pinky"
+
+
+def shift_focus(letter: str) -> dict:
+    """show_step fingers/keys/reach for a capital: the letter's finger and
+    key, plus the other hand's pinky reaching onto its Shift."""
+    key = letter.lower()
+    shift_key, pinky = shift_for(key)
+    finger = _finger(key)
+    reach = {pinky: shift_key}
+    if HOME_FOR_FINGER[finger] != key:
+        reach[finger] = key
+    return {"fingers": [finger, pinky], "keys": [shift_key, key], "reach": reach}
 
 
 def _check_fingers(fingers: list[str]) -> None:
@@ -53,11 +82,11 @@ def show_step(
     {"left_index": "r"}. The advance key's own finger is always lit, so
     "press J" can never point at the wrong finger.
     """
-    if advance_key not in KEY_TO_FINGER:
+    if advance_key not in KEY_TO_FINGER and not is_capital(advance_key):
         raise ValueError(f"Unknown advance key {advance_key!r}")
-    keys = list(keys) if keys is not None else [advance_key]
+    keys = list(keys) if keys is not None else [advance_key.lower()]
     fingers = list(fingers or [])
-    advance_finger = KEY_TO_FINGER[advance_key]
+    advance_finger = _finger(advance_key)
     if advance_finger not in fingers and not (
         advance_finger == "thumb" and {"left_thumb", "right_thumb"} & set(fingers)
     ):

@@ -362,7 +362,18 @@ then a few capitals at a time. They get strung together into lessons once enough
   teach demo, which is deleted).
 - Teach completions pay coins to the current player (reason `teach`, or `teach_first` for a module's
   one-time first-finish reward) but don't feed the skill model yet.
-- Next: capitals (Shift with the other hand), then string modules into lessons.
+- Typing prompts everywhere (session and teach) use the shared `prompt_view.js`: one line at a time
+  plus the next line faded below, wrapped only between words to fit the box. The space at a wrap is
+  neither shown nor typed, so a line never ends on a space (the session reports `skipped_chars` so
+  coins aren't docked for them). A space is a plain gap: yellow box when it's next, very light red if
+  mistyped. No dotted space markers.
+- Capitals (built): Shift is always the other hand's, pressed with its pinky. The page tracks which
+  Shift is held and counts a same-hand Shift as a miss, with a hint. `teach_caps_intro_v1` teaches
+  the idea with J (left Shift) and F (right Shift). Then `teach_caps_v1` takes a group of up to 5
+  letters, all on one hand (one Shift): ASDF, QWER, ZXCV, HJKL, UIOP, then the pointer stretches GTB
+  and YNM. Pages: new capitals, "Big X" per letter, big and small (Aa Ss), mix (capital then
+  small letters), capital words, done. Capitals come after the bottom row and before the numbers.
+- Next: string modules into lessons.
 
 ## 12. Workflow
 

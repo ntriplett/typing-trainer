@@ -20,7 +20,7 @@ written on every step completion regardless.
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -230,7 +230,7 @@ class TeachCompleteRequest(BaseModel):
 def _teach_keys(activity, keys: str) -> list[str]:
     """`keys` is a string of characters ("dk"); only modules with an
     is_eligible check on it (the key-pair one) use it."""
-    if activity.id == "teach_intro_home_row_v1":
+    if activity.id in ("teach_intro_home_row_v1", "teach_caps_intro_v1"):
         return []
     focus = list(keys)
     if not activity.is_eligible(focus, []):
@@ -265,7 +265,8 @@ def teach_lesson_list() -> list[dict]:
 def teach_content(activity_id: str, keys: str = "") -> dict:
     activity = _get_teach_module(activity_id)
     focus = _teach_keys(activity, keys)
-    known = known_before(focus) if focus else []
+    # Capitals come after every letter, so they don't need a known-keys list.
+    known = known_before(focus) if focus and activity.id == "teach_key_pair_v1" else []
     return asdict(activity.generate(focus, known, duration_s=120))
 
 
@@ -343,6 +344,9 @@ class CompleteStepRequest(BaseModel):
     # The session timer ran out during this step: finish the session after
     # it instead of moving on to the next planned step.
     end_session: bool = False
+    # Spaces the page dropped where lines wrap (prompt_view.js): never typed,
+    # so they don't count against how much of the prompt was finished.
+    skipped_chars: int = Field(default=0, ge=0)
 
 
 def _serialize_skeleton_step(step: StepPlan) -> dict:
@@ -474,7 +478,8 @@ def complete_step(
         del _SESSION_PLANS[session_id]
 
     # Coins (PLAN.md 11c): the activity's own rule, then bonus rules.
-    earned = [(activity.coins(content, result), "lesson", f"event:{event.id}")]
+    typed_part = replace(content, prompt=content.prompt[: max(0, len(content.prompt) - body.skipped_chars)])
+    earned = [(activity.coins(typed_part, result), "lesson", f"event:{event.id}")]
     earned += [(KEY_MASTERED_BONUS, "key_mastered", key) for key in newly_mastered]
     if session_complete:
         earned.append((SESSION_COMPLETE_BONUS, "session_complete", f"session:{session_id}"))

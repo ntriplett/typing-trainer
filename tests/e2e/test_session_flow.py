@@ -80,17 +80,17 @@ def test_wrong_streak_lockout_blocks_until_the_correct_key(page: Page, live_serv
         page.keyboard.press(wrong_key)
 
     expect(page.locator("#lock-message")).to_be_visible()
-    position_while_locked = page.evaluate("position")
-    expected = page.evaluate("contentCache[stepIndex].prompt[position]")
+    position_while_locked = page.evaluate("view.typed")
+    expected = page.evaluate("view.expected")
 
     # more wrong keys while locked must not advance anything
     page.keyboard.press(wrong_key)
-    assert page.evaluate("position") == position_while_locked
+    assert page.evaluate("view.typed") == position_while_locked
 
     # the correct key unlocks and advances
     page.keyboard.press(expected)
     expect(page.locator("#lock-message")).to_be_hidden()
-    assert page.evaluate("position") == position_while_locked + 1
+    assert page.evaluate("view.typed") == position_while_locked + 1
 
 
 def test_home_button_navigates_to_the_home_page(page: Page, live_server):

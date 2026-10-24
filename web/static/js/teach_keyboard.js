@@ -11,6 +11,7 @@
 //   const kb = new TeachKeyboard(svgElement);
 //   kb.setFocus({ fingers: ["left_index"], keys: ["r"], reach: { left_index: "r" } });
 //   kb.focusChar("r");        // same thing, worked out from the character
+//   kb.focusChar("R");        // a capital also lights the other hand's Shift
 //   kb.flashKey("r", true);   // pressed it (false = wrong key)
 //
 // Finger names: left_pinky ... right_pinky (as in keyboard_data.js), plus
@@ -69,6 +70,16 @@ const TeachKeyboard = (function () {
   function fingerForChar(ch) {
     if (ch === " ") return "thumb";
     return KEY_TO_FINGER[ch.toLowerCase()] || null;
+  }
+
+  // A capital's Shift: always the other hand's, pressed with its pinky.
+  function shiftForChar(ch) {
+    if (ch === ch.toLowerCase()) return null;
+    const finger = fingerForChar(ch);
+    if (!finger) return null;
+    return finger.startsWith("left")
+      ? { key: "shift_r", finger: "right_pinky", side: "right" }
+      : { key: "shift_l", finger: "left_pinky", side: "left" };
   }
 
   function expandFingers(fingers) {
@@ -158,13 +169,21 @@ const TeachKeyboard = (function () {
     }
 
     // Light up the finger and key for one character, reaching if it isn't
-    // that finger's home key.
+    // that finger's home key. A capital adds the other pinky on its Shift.
     focusChar(ch) {
       const key = ch.toLowerCase();
       const finger = fingerForChar(ch);
       if (!finger) return this.setFocus({ keys: [key] });
       const reach = finger !== "thumb" && HOME_KEY_FOR_FINGER[finger] !== key ? { [finger]: key } : {};
-      this.setFocus({ fingers: [finger], keys: [key], reach });
+      const fingers = [finger];
+      const keys = [key];
+      const shift = shiftForChar(ch);
+      if (shift) {
+        fingers.push(shift.finger);
+        keys.push(shift.key);
+        reach[shift.finger] = shift.key;
+      }
+      this.setFocus({ fingers, keys, reach });
     }
 
     clearFocus() {
@@ -192,12 +211,17 @@ const TeachKeyboard = (function () {
         const [side, finger] = fingerName.split("_");
         const hand = pose[side];
         const tip = hand.tips[finger];
+        // On a wide key (Shift) aim for the end nearest the finger, not the middle.
+        const target = {
+          x: Math.min(Math.max(tip.x, key.x + 0.5 * U), key.x + key.w - 0.5 * U),
+          y: key.cy,
+        };
         // The hand leans a third of the way and the finger does the rest --
         // except reaching down, where the knuckles are already close, so
         // the hand drops most of the way and the finger still points up.
-        const dy = key.cy - tip.y;
-        hand.shift = { x: (key.cx - tip.x) / 3, y: dy > 0 ? dy * 0.85 : dy / 3 };
-        hand.tips[finger] = { x: key.cx - hand.shift.x, y: key.cy - hand.shift.y };
+        const dy = target.y - tip.y;
+        hand.shift = { x: (target.x - tip.x) / 3, y: dy > 0 ? dy * 0.85 : dy / 3 };
+        hand.tips[finger] = { x: target.x - hand.shift.x, y: target.y - hand.shift.y };
       }
       return pose;
     }
@@ -278,5 +302,6 @@ const TeachKeyboard = (function () {
   }
 
   TeachKeyboard.fingerForChar = fingerForChar;
+  TeachKeyboard.shiftForChar = shiftForChar;
   return TeachKeyboard;
 })();

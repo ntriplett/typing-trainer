@@ -5,7 +5,6 @@
 // Each scored step also pays coins (PLAN.md 11c), shown here and in the
 // shared header (header.js).
 
-const MAX_CHARS_PER_LINE = 24; // ~5 blocks of 4 chars + inter-block gaps
 const IDLE_PAUSE_MS = 5000; // no keystroke in this long -> the session timer pauses
 const WRONG_STREAK_LOCKOUT = 5; // this many consecutive misses -> must get the next one right
 
@@ -13,10 +12,6 @@ let sessionId = null;
 let skeleton = []; // [{phase, activity_id, focus_keys, duration_s}], no content
 let contentCache = {}; // stepIndex -> ActivityContent
 let stepIndex = 0;
-let promptChars = [];
-let lineOfChar = []; // which visual line each char index belongs to
-let charSpans = []; // DOM span for each char index, built once per step
-let position = 0;
 let keystrokes = [];
 let lastKeyTime = 0;
 let stepFinished = false; // guards against double-submitting the same step
@@ -40,7 +35,8 @@ const phaseLabel = document.getElementById("phase-label");
 const instructionsEl = document.getElementById("instructions");
 const progressEl = document.getElementById("progress");
 const lockMessageEl = document.getElementById("lock-message");
-const promptEl = document.getElementById("prompt");
+// One line at a time, wrapped between words (prompt_view.js).
+const view = new PromptView(document.getElementById("prompt"));
 const stepResultEl = document.getElementById("step-result");
 const resultSummaryEl = document.getElementById("result-summary");
 const resultCoinsEl = document.getElementById("result-coins");
@@ -165,9 +161,6 @@ async function fetchStepContent(index) {
 
 async function renderStep() {
   const content = await fetchStepContent(stepIndex);
-  promptChars = content.prompt.split("");
-  lineOfChar = computeLineAssignments(promptChars);
-  position = 0;
   keystrokes = [];
   lastKeyTime = performance.now();
   stepFinished = false;
@@ -179,7 +172,7 @@ async function renderStep() {
   instructionsEl.textContent = content.instructions;
   stepResultEl.hidden = true;
   endNowButton.hidden = false;
-  buildPromptDom();
+  view.load(content.prompt);
   renderProgress();
   renderPlanPreview();
 }
@@ -187,8 +180,9 @@ async function renderStep() {
 function renderProgress() {
   // Visible characters only -- spaces are part of the typed stream but
   // not meaningful to count for the learner.
-  const total = promptChars.filter((c) => c !== " ").length;
-  const done = promptChars.slice(0, position).filter((c) => c !== " ").length;
+  const text = view.typeable;
+  const total = text.replace(/ /g, "").length;
+  const done = text.slice(0, view.typed).replace(/ /g, "").length;
   progressEl.textContent = `${done} / ${total}`;
 }
 
@@ -206,67 +200,6 @@ function renderPlanPreview() {
   stepProgressEl.textContent = `Step ${stepIndex + 1} of ${skeleton.length}`;
 }
 
-// A hard wrap every MAX_CHARS_PER_LINE characters, independent of
-// where the prompt's own word/block spaces fall. A pure space-boundary
-// wrap breaks badly for content shaped like teach's "ffff....f jjjj....j"
-// -- only 2 chunks total, however long each one is, so it never wraps.
-function computeLineAssignments(chars) {
-  const lines = [];
-  let line = 0;
-  let lineLength = 0;
-  for (const _ch of chars) {
-    if (lineLength >= MAX_CHARS_PER_LINE) {
-      line += 1;
-      lineLength = 0;
-    }
-    lines.push(line);
-    lineLength += 1;
-  }
-  return lines;
-}
-
-// Builds the prompt's DOM exactly once per step and keeps a flat
-// charSpans[] array so keystrokes can update individual spans directly
-// instead of re-rendering everything (full-rebuild-per-keystroke was
-// the earlier design and visibly bogs down on a long prompt).
-function buildPromptDom() {
-  const lineCount = lineOfChar.length ? lineOfChar[lineOfChar.length - 1] + 1 : 0;
-  const rows = [];
-  for (let l = 0; l < lineCount; l++) rows.push(document.createElement("div"));
-  rows.forEach((row) => row.classList.add("prompt-line"));
-
-  charSpans = promptChars.map((ch, i) => {
-    const span = document.createElement("span");
-    span.className = ch === " " ? "space pending" : "pending";
-    span.textContent = ch === " " ? "" : ch;
-    rows[lineOfChar[i]].appendChild(span);
-    return span;
-  });
-
-  promptEl.replaceChildren(...rows);
-  setCurrentSpan(0);
-}
-
-function setCurrentSpan(index) {
-  if (index < charSpans.length) {
-    charSpans[index].classList.add(locked ? "locked" : "current");
-  }
-}
-
-function clearCurrentSpan(index) {
-  if (index < charSpans.length) {
-    charSpans[index].classList.remove("current", "locked");
-  }
-}
-
-function scrollToCurrentLine() {
-  const currentLine = lineOfChar[Math.min(position, lineOfChar.length - 1)];
-  const lineEl = promptEl.children[currentLine];
-  if (lineEl) {
-    lineEl.scrollIntoView({ behavior: "smooth", block: "end" });
-  }
-}
-
 function handleKeydown(e) {
   if (sessionScreen.hidden || !stepResultEl.hidden) {
     return; // not mid-step (not started yet, or waiting on "Next")
@@ -276,7 +209,7 @@ function handleKeydown(e) {
   }
   e.preventDefault();
 
-  const expected = promptChars[position];
+  const expected = view.expected;
   const typed = e.key;
   const correct = typed === expected;
 
@@ -293,6 +226,7 @@ function handleKeydown(e) {
     // no advancing, until the learner actually gets it right.
     if (!correct) return;
     locked = false;
+    view.setLocked(false);
     lockMessageEl.hidden = true;
     consecutiveWrong = 0;
   } else if (!correct) {
@@ -300,8 +234,7 @@ function handleKeydown(e) {
     if (consecutiveWrong >= WRONG_STREAK_LOCKOUT) {
       locked = true;
       lockMessageEl.hidden = false;
-      clearCurrentSpan(position);
-      setCurrentSpan(position);
+      view.setLocked(true);
       return; // this miss itself still doesn't advance; next miss is ignored until correct
     }
   } else {
@@ -310,23 +243,9 @@ function handleKeydown(e) {
 
   keystrokes.push({ expected_char: expected, typed_char: typed, correct, latency_ms: latencyMs });
 
-  const previousLine = lineOfChar[position];
-  clearCurrentSpan(position);
-  charSpans[position].classList.remove("pending");
-  charSpans[position].classList.add(correct ? "correct" : "incorrect");
-
-  position += 1;
-  setCurrentSpan(position);
+  const finished = view.mark(correct);
   renderProgress();
-
-  if (position >= promptChars.length) {
-    finishStep();
-    return;
-  }
-
-  if (lineOfChar[position] !== previousLine) {
-    scrollToCurrentLine();
-  }
+  if (finished) finishStep();
 }
 
 async function finishStep() {
@@ -340,7 +259,8 @@ async function finishStep() {
   const res = await fetch(`/api/session/${sessionId}/steps/${stepIndex}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keystrokes, end_session: timeUp }),
+    // Spaces dropped at line wraps aren't typed; they don't count against finishing.
+    body: JSON.stringify({ keystrokes, end_session: timeUp, skipped_chars: view.skipped }),
   });
   const data = await res.json();
   if (data.session_complete) {

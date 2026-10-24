@@ -54,6 +54,18 @@ def test_perfect_step_pays_100_coins():
     assert client.get("/api/me").json()["coins"] == resp["coin_balance"]
 
 
+def test_spaces_dropped_at_line_wraps_dont_cost_coins():
+    start = client.post("/api/session/start", params={"quick": True}).json()
+    prompt = start["first_step_content"]["prompt"]
+    assert prompt.count(" ") >= 2
+    typed = prompt.replace(" ", "", 2)  # the page wrapped twice, dropping 2 spaces
+    resp = client.post(
+        f"/api/session/{start['session_id']}/steps/0/complete",
+        json={"keystrokes": _all_correct(typed), "skipped_chars": 2},
+    ).json()
+    assert [c for c in resp["coins_earned"] if c["reason"] == "lesson"] == [{"amount": 100, "reason": "lesson"}]
+
+
 def test_empty_step_pays_nothing():
     start = client.post("/api/session/start", params={"quick": True}).json()
     resp = client.post(

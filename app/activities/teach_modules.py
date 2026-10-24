@@ -6,10 +6,11 @@ lessons, so the scheduler can't pick them up yet. The /teach page and the
 
 from __future__ import annotations
 
+from app.activities.teach_caps import TeachCapsGroup, TeachCapsIntro
 from app.activities.teach_intro_home_row import TeachIntroHomeRow
 from app.activities.teach_key_pair import TeachKeyPair
 
-TEACH_REGISTRY = {activity.id: activity for activity in (TeachIntroHomeRow(), TeachKeyPair())}
+TEACH_REGISTRY = {activity.id: activity for activity in (TeachIntroHomeRow(), TeachKeyPair(), TeachCapsIntro(), TeachCapsGroup())}
 
 
 def get_teach_module(activity_id: str):
