@@ -345,3 +345,8 @@ DB, all tables keyed by `learner_id`.
   commit, as the ProjectPlan requires.
 - We build part-by-part per the build order above, testing and checking in with you at each step before
   moving to the next.
+
+## 13. Before release checklist
+
+- Set `DEV_START_COINS = 0` in `app/config.py` (dev mode gives every learner 50K free coins once,
+  recorded as a `dev_grant` ledger row; consider deleting those rows from the real DB too).
