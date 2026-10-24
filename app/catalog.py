@@ -18,7 +18,7 @@ from app.appearance import DYE_HAIR_COLORS, dye_item_id
 
 # Draw order, back to front -- the front-end avatar renderer layers in
 # this same order.
-WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "hat", "pet")
+WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "accessory", "hat", "pet")
 OTHER_KINDS = ("hair_dye", "night")
 
 
@@ -58,6 +58,24 @@ def night_item_id(group: str) -> str:
     return f"night_{group}"
 
 
+# Clothing colors. Ids must match sprites.js's CLOTH_COLORS (it draws
+# them); recolorable items are named "<slot>_<style>_<color>".
+COLORS = {
+    "red": "Red", "orange": "Orange", "yellow": "Sunny", "green": "Green", "blue": "Blue",
+    "navy": "Navy", "purple": "Purple", "pink": "Pink", "brown": "Brown", "black": "Black",
+    "white": "White", "tan": "Khaki", "gray": "Gray",
+}
+
+
+def _styles(slot: str, style: str, name: str, price: int, description: str, colors: list[str]) -> list[StoreItem]:
+    """One store item per color of a style, grouped so the store shows the
+    style once with color swatches."""
+    return [
+        StoreItem(f"{slot}_{style}_{c}", f"{COLORS[c]} {name}", slot, price, description, group=f"{slot}_{style}")
+        for c in colors
+    ]
+
+
 _DYE_NAMES = {
     "blue": "Ocean Blue", "green": "Leafy Green", "pink": "Bubblegum Pink",
     "purple": "Plum Purple", "silver": "Moonbeam Silver", "cherry": "Cherry Red",
@@ -72,10 +90,50 @@ ITEMS: list[StoreItem] = [
     StoreItem("hat_straw", "Straw Hat", "hat", 300, "Keeps the sun out of your eyes."),
     StoreItem("hat_acorn", "Acorn Cap", "hat", 600, "Borrowed from a very large acorn."),
     StoreItem("hat_leaf_crown", "Autumn Leaf Crown", "hat", 1200, "Woven from the brightest fall leaves."),
-    # shirts
+    *_styles("hat", "beanie", "Beanie", 300, "Warm ears, with a pom-pom.", ["red", "blue", "green"]),
+    *_styles("hat", "cap", "Ball Cap", 300, "For sunny days and ball games.", ["red", "blue"]),
+    StoreItem("hat_flower", "Flower Clip", "hat", 250, "A daisy tucked in your hair."),
+    StoreItem("hat_bunny", "Bunny Ears", "hat", 600, "Hop hop!"),
+    StoreItem("hat_chef", "Chef's Hat", "hat", 700, "Ready to cook up some words."),
+    StoreItem("hat_cowboy", "Cowboy Hat", "hat", 900, "Yee-haw!"),
+    StoreItem("hat_snorkel", "Snorkel Mask", "hat", 1000, "For peeking at fish."),
+    StoreItem("hat_headphones", "Headphones", "hat", 1100, "Your favorite songs, on repeat."),
+    StoreItem("hat_pirate", "Pirate Hat", "hat", 1200, "Arr! Treasure ahead."),
+    StoreItem("hat_wizard", "Wizard Hat", "hat", 1500, "Covered in tiny stars."),
+    StoreItem("hat_top", "Top Hat", "hat", 1500, "Very fancy indeed."),
+    StoreItem("hat_astronaut", "Astronaut Helmet", "hat", 4000, "Ready for space."),
+    StoreItem("hat_crown", "Royal Crown", "hat", 5000, "For the ruler of the keyboard."),
+    # shirts (overalls and dresses cover the legs too, so they live in the
+    # shirt slot as full outfits)
     StoreItem("shirt_sweater", "Pumpkin Sweater", "shirt", 500, "Cozy, orange, and a little bit itchy."),
-    # (overalls cover the legs too, so they live in the shirt slot as a full outfit)
     StoreItem("shirt_overalls", "Garden Overalls", "shirt", 900, "Pockets for seeds and snacks."),
+    *_styles("shirt", "tee", "T-Shirt", 300, "Soft, simple, with a little star.", ["red", "blue", "green", "yellow", "purple"]),
+    *_styles("shirt", "hoodie", "Hoodie", 700, "A comfy hood and a front pocket.", ["orange", "green", "pink", "navy"]),
+    *_styles("shirt", "flannel", "Flannel", 650, "Plaid, warm, and ready for camping.", ["red", "blue", "green"]),
+    *_styles("shirt", "dress", "Dress", 800, "Twirly, with a ribbon sash.", ["pink", "blue", "yellow", "purple"]),
+    # pants
+    *_styles("pants", "trousers", "Trousers", 350, "Good for climbing and kneeling.", ["black", "green"]),
+    *_styles("pants", "jeans", "Jeans", 400, "Tough enough for any adventure.", ["blue", "black"]),
+    *_styles("pants", "shorts", "Shorts", 300, "For hot summer days.", ["tan", "blue", "red"]),
+    *_styles("pants", "skirt", "Skirt", 400, "Swishy and fun.", ["red", "purple", "green"]),
+    # shoes
+    *_styles("shoes", "boots", "Boots", 300, "Sturdy enough for any trail.", ["black"]),
+    *_styles("shoes", "sneakers", "Sneakers", 300, "Fast feet, fast fingers.", ["red", "blue", "white"]),
+    *_styles("shoes", "rainboots", "Rain Boots", 350, "Puddles, beware!", ["yellow", "green", "red"]),
+    *_styles("shoes", "sandals", "Sandals", 200, "Toes out in the sunshine.", ["brown"]),
+    # accessories: worn, or carried in your left hand
+    *_styles("accessory", "scarf", "Scarf", 400, "Long, striped, and toasty.", ["red", "green", "blue", "yellow"]),
+    *_styles("accessory", "mittens", "Mittens", 250, "Warm hands, happy typing.", ["red", "blue"]),
+    StoreItem("accessory_necklace", "Gold Necklace", "accessory", 500, "Shiny!"),
+    StoreItem("accessory_ball", "Bouncy Ball", "accessory", 300, "Throw it for your pet!"),
+    StoreItem("accessory_flowers", "Flower Bouquet", "accessory", 350, "Freshly picked."),
+    StoreItem("accessory_book", "Storybook", "accessory", 400, "Full of adventures."),
+    *_styles("accessory", "umbrella", "Umbrella", 600, "Rain or shine.", ["red", "blue"]),
+    StoreItem("accessory_net", "Butterfly Net", "accessory", 700, "Catch (and release) bugs."),
+    StoreItem("accessory_lantern", "Lantern", "accessory", 800, "A warm glow for dark nights."),
+    StoreItem("accessory_watering_can", "Watering Can", "accessory", 900, "Help the garden grow."),
+    StoreItem("accessory_fishing_rod", "Fishing Rod", "accessory", 1200, "Gone fishing!"),
+    StoreItem("accessory_portal_gun", "Portal Gun", "accessory", 3000, "Blue portal, orange portal..."),
     # pets
     StoreItem("pet_hedgehog", "Hedgehog", "pet", 1500, "Small, spiky, and very loyal."),
     StoreItem("pet_fox", "Fox Kit", "pet", 2500, "Curious about everything you type."),

@@ -86,6 +86,56 @@
   font-size: 0.95rem;
 }
 
+.store-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.store-tabs .tab-button {
+  font-size: 0.95rem;
+}
+
+/* Tabs are theme buttons; the active one is the gold plank. */
+.store-tabs .tab-button.active {
+  border-image-source: url("/static/assets/ui/button-gold.svg");
+  color: var(--outline);
+  text-shadow: 1px 1px 0 var(--on-wood);
+}
+
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+.color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--outline);
+  border-image: none;
+  position: relative;
+}
+
+.color-swatch.selected {
+  box-shadow: 0 0 0 3px var(--leaf-gold);
+}
+
+/* a little check mark on colors you already own */
+.color-swatch.owned::after {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  color: #fff;
+  text-shadow: 1px 1px 0 var(--outline);
+}
+
 @media (max-width: 700px) {
   .store-layout {
     grid-template-columns: 1fr;

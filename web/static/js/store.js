@@ -1,23 +1,44 @@
-// The store page: shelves of items grouped by slot, each shown on the
-// player's own avatar ("try it on"), with buy / wear / take-off buttons.
+// The store page: tabs of shelves, each item shown on the player's own
+// avatar ("try it on"), with buy / wear / take-off buttons. A clothing
+// style sold in several colors is one card with color swatches.
 // All rules live server-side (app/store.py); this page just reflects
 // /api/store and posts actions.
 
-const SHELVES = [
-  { title: "Hats", match: (i) => i.slot === "hat" },
-  { title: "Clothes", match: (i) => ["shirt", "pants", "shoes"].includes(i.slot) },
-  { title: "Pets", match: (i) => i.slot === "pet" },
-  { title: "Places: fields & forests", match: (i) => i.slot === "background" && i.group === "forests" },
-  { title: "Places: by the water", match: (i) => i.slot === "background" && i.group === "water" },
-  { title: "Places: wild lands", match: (i) => i.slot === "background" && i.group === "wild" },
-  { title: "Places: outer space", match: (i) => i.slot === "background" && i.group === "space" },
-  { title: "Night time", match: (i) => i.slot === "night" },
-  { title: "Hair dye", match: (i) => i.slot === "hair_dye" },
+const TABS = [
+  {
+    id: "clothes",
+    title: "Clothes",
+    shelves: [
+      { title: "Shirts & dresses", match: (i) => i.slot === "shirt" },
+      { title: "Pants & skirts", match: (i) => i.slot === "pants" },
+      { title: "Shoes", match: (i) => i.slot === "shoes" },
+    ],
+  },
+  { id: "hats", title: "Hats", shelves: [{ title: "Hats", match: (i) => i.slot === "hat" }] },
+  {
+    id: "accessories",
+    title: "Accessories",
+    shelves: [{ title: "Accessories", match: (i) => i.slot === "accessory" }],
+  },
+  { id: "pets", title: "Pets", shelves: [{ title: "Pets", match: (i) => i.slot === "pet" }] },
+  {
+    id: "places",
+    title: "Places",
+    shelves: [
+      { title: "Fields & forests", match: (i) => i.slot === "background" && i.group === "forests" },
+      { title: "By the water", match: (i) => i.slot === "background" && i.group === "water" },
+      { title: "Wild lands", match: (i) => i.slot === "background" && i.group === "wild" },
+      { title: "Outer space", match: (i) => i.slot === "background" && i.group === "space" },
+    ],
+  },
+  { id: "night", title: "Night", shelves: [{ title: "Night time", match: (i) => i.slot === "night" }] },
+  { id: "hair", title: "Hair dye", shelves: [{ title: "Hair dye", match: (i) => i.slot === "hair_dye" }] },
 ];
 
 // A night unlock's thumbnail shows one of its own places at night.
 const NIGHT_PREVIEW_PLACE = { forests: "bg_meadow", water: "bg_beach", wild: "bg_desert", space: "bg_moon" };
 
+const tabsEl = document.getElementById("store-tabs");
 const itemsEl = document.getElementById("store-items");
 const messageEl = document.getElementById("store-message");
 const previewCanvas = document.getElementById("preview-avatar");
@@ -26,11 +47,30 @@ const previewReset = document.getElementById("preview-reset");
 
 let state = null; // latest /api/store response
 let tryingOn = null; // item being previewed, or null
+let currentTab = loadTab();
+const shownVariant = {}; // family key -> item id the card is showing
 
 previewReset.addEventListener("click", () => {
   tryingOn = null;
   renderPreview();
 });
+
+function loadTab() {
+  try {
+    const saved = localStorage.getItem("store-tab");
+    return TABS.some((t) => t.id === saved) ? saved : TABS[0].id;
+  } catch {
+    return TABS[0].id;
+  }
+}
+
+function saveTab(id) {
+  try {
+    localStorage.setItem("store-tab", id);
+  } catch {
+    // per-viewer convenience only
+  }
+}
 
 async function load() {
   const r = await fetch("/api/store");
@@ -51,6 +91,16 @@ function withItem(avatar, item) {
   return { ...avatar, [item.slot]: item.id };
 }
 
+// Items sold in several colors share a family: "shirt_tee_blue" and
+// "shirt_tee_red" both belong to group "shirt_tee".
+function familyKey(item) {
+  return item.group && item.id.startsWith(`${item.group}_`) ? item.group : item.id;
+}
+
+function colorOf(item) {
+  return item.id.slice(item.group.length + 1);
+}
+
 function renderPreview() {
   drawAvatar(previewCanvas, withItem(state.avatar, tryingOn));
   previewLabel.textContent = tryingOn ? `Trying on: ${tryingOn.name}` : "This is you!";
@@ -59,23 +109,52 @@ function renderPreview() {
 
 function render() {
   renderPreview();
+  tabsEl.replaceChildren(
+    ...TABS.map((tab) => {
+      const btn = document.createElement("button");
+      btn.className = "tab-button" + (tab.id === currentTab ? " active" : "");
+      btn.dataset.tab = tab.id;
+      btn.textContent = tab.title;
+      btn.onclick = () => {
+        currentTab = tab.id;
+        saveTab(tab.id);
+        render();
+      };
+      return btn;
+    })
+  );
+
   itemsEl.innerHTML = "";
-  for (const shelf of SHELVES) {
+  const tab = TABS.find((t) => t.id === currentTab);
+  for (const shelf of tab.shelves) {
     const items = state.items.filter(shelf.match);
     if (!items.length) continue;
     const section = document.createElement("section");
     section.className = "panel shelf";
     section.innerHTML = `<h2 class="panel-title">${shelf.title}</h2><div class="item-grid"></div>`;
     const grid = section.querySelector(".item-grid");
-    items.forEach((item) => grid.appendChild(itemCard(item)));
+    const families = new Map();
+    for (const item of items) {
+      const key = familyKey(item);
+      if (!families.has(key)) families.set(key, []);
+      families.get(key).push(item);
+    }
+    for (const [key, variants] of families) grid.appendChild(familyCard(key, variants));
     itemsEl.appendChild(section);
   }
 }
 
-function itemCard(item) {
+function pickVariant(key, variants) {
+  const remembered = variants.find((v) => v.id === shownVariant[key]);
+  return remembered || variants.find((v) => v.equipped) || variants.find((v) => v.owned) || variants[0];
+}
+
+function familyCard(key, variants) {
+  const item = pickVariant(key, variants);
   const card = document.createElement("article");
   card.className = "item-card" + (item.equipped ? " equipped" : "");
   card.dataset.itemId = item.id;
+  if (variants.length > 1) card.dataset.family = key;
 
   const thumb = makeAvatarCanvas(144);
   drawAvatar(thumb, withItem(state.avatar, item));
@@ -92,8 +171,29 @@ function itemCard(item) {
     <p class="item-desc">${item.description}</p>
     <p class="coins-inline"><span class="coin-icon"></span>${item.price.toLocaleString()}</p>`;
 
-  card.append(thumb, info, actionButton(item));
+  card.append(thumb, info);
+  if (variants.length > 1) card.appendChild(swatches(key, variants, item));
+  card.appendChild(actionButton(item));
   return card;
+}
+
+function swatches(key, variants, shown) {
+  const row = document.createElement("div");
+  row.className = "swatch-row";
+  for (const v of variants) {
+    const btn = document.createElement("button");
+    btn.className = "color-swatch" + (v.id === shown.id ? " selected" : "") + (v.owned ? " owned" : "");
+    btn.style.background = (CLOTH_COLORS[colorOf(v)] || ["#ccc"])[0];
+    btn.title = v.name + (v.owned ? " (yours)" : "");
+    btn.setAttribute("aria-label", btn.title);
+    btn.onclick = () => {
+      shownVariant[key] = v.id;
+      tryingOn = v;
+      render();
+    };
+    row.appendChild(btn);
+  }
+  return row;
 }
 
 function actionButton(item) {
@@ -127,7 +227,6 @@ function actionButton(item) {
   return btn;
 }
 
-// After buying, wear it straight away -- that's what a kid wants.
 async function act(url, boughtItem = null, method = "POST", body = null) {
   messageEl.textContent = "";
   let r = await fetch(url, {

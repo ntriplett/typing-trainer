@@ -49,3 +49,19 @@ def test_buy_and_wear_an_item(page: Page, live_server, tmp_path):
 def test_unaffordable_items_say_how_many_more_coins(page: Page, live_server):
     page.goto(f"{live_server}/store")
     expect(page.locator(".item-card button:disabled").first).to_contain_text("more")
+
+
+def test_every_catalog_item_has_a_sprite(page: Page, live_server):
+    page.goto(f"{live_server}/store")
+    expect(page.locator(".item-card").first).to_be_visible()
+    ids = [i.id for i in store.CATALOG.values() if i.slot in store.SLOTS]
+    assert page.evaluate("ids => missingSprites(ids)", ids) == []
+
+
+def test_color_swatches_switch_the_card(page: Page, live_server):
+    page.goto(f"{live_server}/store")
+    card = page.locator('.item-card[data-family="shirt_tee"]')
+    expect(card).to_have_attribute("data-item-id", "shirt_tee_red")
+    card.locator(".color-swatch").nth(1).click()
+    expect(page.locator('.item-card[data-family="shirt_tee"]')).to_have_attribute("data-item-id", "shirt_tee_blue")
+    expect(page.locator("#preview-label")).to_contain_text("Blue T-Shirt")

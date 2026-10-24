@@ -20,6 +20,7 @@ def test_a_place_rethemes_the_page(page: Page, live_server, tmp_path):
     _give_coins(tmp_path, store.CATALOG["bg_under_sea"].price)
 
     page.goto(f"{live_server}/store")
+    page.click("[data-tab='places']")
     page.locator('.item-card[data-item-id="bg_under_sea"]').get_by_role("button", name="Buy").click()
     expect(page.locator('.item-card[data-item-id="bg_under_sea"]')).to_have_class("item-card equipped")
     bar = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--topbar')")
@@ -32,6 +33,7 @@ def test_night_toggle_appears_once_unlocked_and_switches_to_dark(page: Page, liv
     _give_coins(tmp_path, store.CATALOG["night_forests"].price)
 
     page.goto(f"{live_server}/store")
+    page.click("[data-tab='night']")
     page.locator('.item-card[data-item-id="night_forests"]').get_by_role("button", name="Buy").click()
     expect(page.locator("html")).to_have_attribute("data-night", "")
 

@@ -97,7 +97,8 @@ def test_buy_and_equip_round_trip():
     assert resp.json()["avatar"][item.slot] == item.id
 
     resp = client.post(f"/api/store/unequip/{item.slot}")
-    assert item.slot not in resp.json()["avatar"]
+    # an emptied slot is either bare or back to its free starter item
+    assert resp.json()["avatar"].get(item.slot) in (None, store.SLOT_DEFAULTS.get(item.slot))
 
 
 def test_buy_without_coins_is_a_400_with_a_reason():

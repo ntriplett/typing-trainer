@@ -167,6 +167,23 @@ const PANTS_Y = BODY_Y + 28;
 const SHOES_Y = BODY_Y + 34;
 
 // --- the sprite table ---------------------------------------------------------
+// SPRITES: exact item id -> sprite. STYLE_SPRITES: "<slot>_<style>" ->
+// a recolorable sprite (palette keys a/A, or a draw(px) using
+// this.colors) that spriteFor() fills in from an id like
+// "shirt_tee_blue" (wardrobe.js defines both the styles and the colors).
+
+const STYLE_SPRITES = {};
+
+function spriteFor(id) {
+  if (!id) return null;
+  if (SPRITES[id]) return SPRITES[id];
+  const parts = id.split("_");
+  const colors = typeof CLOTH_COLORS !== "undefined" ? CLOTH_COLORS[parts.pop()] : null;
+  const style = STYLE_SPRITES[parts.join("_")];
+  if (!style || !colors) return null;
+  if (style.draw) return { draw: (px, night) => style.draw.call({ colors }, px, night) };
+  return { ...style, palette: { ...style.palette, a: colors[0], A: colors[1] } };
+}
 
 const SPRITES = {
   // --- shirts (body rows 20-27) ---
@@ -336,14 +353,18 @@ for (const gender of Object.keys(BODY_ROWS)) {
     if (back) _appearanceSprites[`hair_back_${hair_style}`] = back;
   }
 }
-for (const [id, s] of Object.entries({ ...SPRITES, ..._appearanceSprites })) {
-  if (!s.rows) continue;
-  const widths = new Set(s.rows.map((r) => r.length));
-  const unknown = [...new Set(s.rows.join(""))].filter((c) => c !== "." && !s.palette[c]);
-  if (widths.size !== 1 || unknown.length) {
-    console.error(`sprite ${id}: row widths ${[...widths]}, unknown palette keys ${unknown}`);
-  }
-  if (s.x + Math.max(...widths) > AVATAR_SIZE || s.y + s.rows.length > AVATAR_SIZE) {
-    console.error(`sprite ${id} runs off the ${AVATAR_SIZE}px canvas`);
+// Runs here and again from wardrobe.js once styles and colors exist.
+function checkSprites(extra = {}) {
+  for (const [id, s] of Object.entries({ ...SPRITES, ..._appearanceSprites, ...extra })) {
+    if (!s.rows) continue;
+    const widths = new Set(s.rows.map((r) => r.length));
+    const unknown = [...new Set(s.rows.join(""))].filter((c) => c !== "." && !s.palette[c]);
+    if (widths.size !== 1 || unknown.length) {
+      console.error(`sprite ${id}: row widths ${[...widths]}, unknown palette keys ${unknown}`);
+    }
+    if (s.x < 0 || s.x + Math.max(...widths) > AVATAR_SIZE || s.y < 0 || s.y + s.rows.length > AVATAR_SIZE) {
+      console.error(`sprite ${id} runs off the ${AVATAR_SIZE}px canvas`);
+    }
   }
 }
+checkSprites();

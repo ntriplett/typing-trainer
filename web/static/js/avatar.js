@@ -4,12 +4,12 @@
 // game can show the player's dressed avatar without knowing anything
 // about the store.
 //
-// Needs sprites.js and backgrounds.js loaded first.
+// Needs sprites.js, backgrounds.js, and wardrobe.js loaded first.
 
 // Back-to-front draw order. Worn slots match app/catalog.py's
 // WEARABLE_SLOTS; the hair_back/body/hair_front layers come from the
 // learner's appearance rather than an item.
-const AVATAR_LAYERS = ["background", "hair_back", "body", "shoes", "pants", "shirt", "hair_front", "hat", "pet"];
+const AVATAR_LAYERS = ["background", "hair_back", "body", "shoes", "pants", "shirt", "hair_front", "accessory", "hat", "pet"];
 const APPEARANCE_LAYERS = { hair_back: hairBackSprite, body: bodySprite, hair_front: hairFrontSprite };
 const DEFAULT_APPEARANCE = { gender: "boy", skin: "light", hair_color: "brown", hair_style: "short" };
 
@@ -38,7 +38,7 @@ function drawAvatar(canvas, equipped, opts = {}) {
   const look = equipped.appearance || DEFAULT_APPEARANCE;
   for (const slot of AVATAR_LAYERS) {
     if (slot === "background" && !background) continue;
-    const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : SPRITES[equipped[slot]];
+    const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : spriteFor(equipped[slot]);
     if (!sprite) continue;
     if (sprite.draw) {
       sprite.draw(px, Boolean(equipped.night));
