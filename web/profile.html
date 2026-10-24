@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Profile</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/profile.css" />
+</head>
+<body>
+  <main>
+    <section class="panel profile-hero">
+      <canvas id="profile-avatar" class="avatar-canvas" width="240" height="240"></canvas>
+      <div>
+        <h1 id="profile-name">…</h1>
+        <p><a class="button" href="/designer">Change my look</a></p>
+        <div class="stat-grid" id="stats"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Where to?</h2>
+      <nav class="hub-grid">
+        <a class="hub-tile" href="/session"><span class="hub-icon">⌨️</span>Practice</a>
+        <a class="hub-tile" href="/store"><span class="hub-icon">🛍️</span>Store</a>
+        <a class="hub-tile" href="/designer"><span class="hub-icon">🎨</span>Character designer</a>
+        <a class="hub-tile" href="/analysis"><span class="hub-icon">📈</span>My progress</a>
+        <span class="hub-tile soon" title="Coming soon"><span class="hub-icon">🐾</span>Pet room<small>coming soon</small></span>
+        <span class="hub-tile soon" title="Coming soon"><span class="hub-icon">🛏️</span>Bedroom<small>coming soon</small></span>
+      </nav>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script>
+    const STATS = [
+      ["coins", "Coins now"],
+      ["coins_earned_total", "Coins earned"],
+      ["sessions_completed", "Sessions done"],
+      ["keys_mastered", "Keys mastered"],
+      ["items_owned", "Things owned"],
+    ];
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((p) => {
+        document.getElementById("profile-name").textContent = p.learner.name;
+        const values = { coins: p.coins, ...p.stats };
+        document.getElementById("stats").innerHTML = STATS.map(
+          ([key, label]) => `<div class="stat"><strong>${values[key].toLocaleString()}</strong>${label}</div>`
+        ).join("");
+        const canvas = document.getElementById("profile-avatar");
+        let frame = 0;
+        drawAvatar(canvas, p.avatar);
+        setInterval(() => drawAvatar(canvas, p.avatar, { frame: ++frame }), 600);
+      });
+  </script>
+</body>
+</html>

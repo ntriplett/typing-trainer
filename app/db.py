@@ -111,6 +111,15 @@ CREATE TABLE IF NOT EXISTS equipped_item (
     item_id TEXT NOT NULL,
     PRIMARY KEY (learner_id, slot)
 );
+
+-- Character designer choices (app/appearance.py owns the allowed values).
+CREATE TABLE IF NOT EXISTS appearance (
+    learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
+    gender TEXT NOT NULL,
+    skin TEXT NOT NULL,
+    hair_color TEXT NOT NULL,
+    hair_style TEXT NOT NULL
+);
 """
 
 
@@ -182,6 +191,10 @@ def create_learner(conn: sqlite3.Connection, name: str) -> Learner:
         "INSERT INTO learner (name, created_at) VALUES (?, ?)", (name, created_at)
     )
     return Learner(id=cur.lastrowid, name=name, created_at=_parse_dt(created_at))
+
+
+def rename_learner(conn: sqlite3.Connection, learner_id: int, name: str) -> None:
+    conn.execute("UPDATE learner SET name = ? WHERE id = ?", (name, learner_id))
 
 
 def get_learner(conn: sqlite3.Connection, learner_id: int) -> Learner | None:
@@ -526,3 +539,48 @@ def get_equipped(conn: sqlite3.Connection, learner_id: int) -> dict[str, str]:
         "SELECT slot, item_id FROM equipped_item WHERE learner_id = ?", (learner_id,)
     ).fetchall()
     return {row["slot"]: row["item_id"] for row in rows}
+
+
+# --- appearance ---------------------------------------------------------------
+
+
+def get_appearance(conn: sqlite3.Connection, learner_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT gender, skin, hair_color, hair_style FROM appearance WHERE learner_id = ?",
+        (learner_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def set_appearance(
+    conn: sqlite3.Connection, learner_id: int, *, gender: str, skin: str, hair_color: str, hair_style: str
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO appearance (learner_id, gender, skin, hair_color, hair_style) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(learner_id) DO UPDATE SET
+            gender = excluded.gender, skin = excluded.skin,
+            hair_color = excluded.hair_color, hair_style = excluded.hair_style
+        """,
+        (learner_id, gender, skin, hair_color, hair_style),
+    )
+
+
+# --- profile stats ----------------------------------------------------------------
+
+
+def profile_stats(conn: sqlite3.Connection, learner_id: int) -> dict:
+    """Headline numbers for the profile page."""
+    one = lambda sql: conn.execute(sql, (learner_id,)).fetchone()[0]  # noqa: E731
+    return {
+        "coins_earned_total": one(
+            "SELECT COALESCE(SUM(amount), 0) FROM coin_ledger WHERE learner_id = ? AND amount > 0"
+        ),
+        "sessions_completed": one(
+            "SELECT COUNT(*) FROM session WHERE learner_id = ? AND ended_at IS NOT NULL"
+        ),
+        "keys_mastered": one(
+            "SELECT COUNT(*) FROM key_stat WHERE learner_id = ? AND mastered_at IS NOT NULL"
+        ),
+        "items_owned": one("SELECT COUNT(*) FROM owned_item WHERE learner_id = ?"),
+    }

@@ -20,32 +20,32 @@ function sym(...halves) {
   return halves.map((h) => h + [...h].reverse().join(""));
 }
 
-// --- bodies -------------------------------------------------------------------
-// One shared 24x38 grid in plain underclothes (u/U); shirts, pants, and
-// shoes are separate layers drawn over it. The starter bodies differ only
-// in palette. h/H/L hair, s/S skin, c cheeks, e/w eyes, m mouth.
+// --- bodies (built from the learner's appearance) -------------------------------
+// A shared 24x38 base: a hairless head and a body in plain underclothes
+// (u/U). Hair, shirts, pants, and shoes are separate layers drawn over it.
+// s/S skin, c cheeks, e/w eyes (w = highlight), l lashes, m mouth.
 
 const BODY_X = 12;
 const BODY_Y = 6;
 
-const BODY_ROWS = sym(
-  "........oooo", //  0 hair
-  "......oohhhh",
-  ".....ohhhhhh",
-  "....ohhhLLhh",
-  "...ohhhLhhhh",
-  "...ohhhhhhhh", //  5
-  "..ohhhhhhhhh",
-  "..ohhhhhhhHH",
-  "..ohhhHsHsss", //    fringe
-  "..ohhHssssss",
-  "..ohHsssssss", // 10
-  "..ohHsswesss", //    eyes (highlight on top)
-  "..ohHsseesss",
-  "..ohHsseesss",
-  "..oHscccssss", //    cheeks
-  "...oSssssmss", // 15 smile corners
-  "....oSssssmm", //    smile
+const HEAD_AND_BODY = [
+  "........oooo", //  0
+  "......oossss",
+  ".....ossssss",
+  "....osssssss",
+  "...ossssssss",
+  "...ossssssss", //  5
+  "..osssssssss",
+  "..osssssssss",
+  "..osssssssss",
+  "..osssssssss",
+  "..osssssssss", // 10
+  "..osssswesss", //    eyes (highlight on top)
+  "..osssseesss",
+  "..osssseesss",
+  "..osssccssss", //    cheeks (under the eyes)
+  "...ossssssms", // 15 small smile: corners...
+  "....ossssssm", //    ...and a 2px bottom
   ".....oosssss",
   ".......ooooo", //    chin
   "........osss", //    neck
@@ -66,24 +66,98 @@ const BODY_ROWS = sym(
   ".....osssso.",
   "....ossssso.", // 35 feet
   "....ossssso.",
-  "....ooooooo."
-);
+  "....ooooooo.",
+];
 
-function bodyPalette(hair, hairShadow, hairLight, skin, skinShadow) {
+const BODY_ROWS = {
+  boy: sym(...HEAD_AND_BODY),
+  // girls get a lash at the outer corner of each eye
+  girl: sym(...HEAD_AND_BODY.map((r, i) => (i === 11 ? "..osssl" + r.slice(7) : r))),
+};
+
+// Keyed by app/appearance.py's SKIN_TONES.
+const SKIN_TONES = {
+  light: ["#f2c79b", "#d9a57a"],
+  fair: ["#f5d6b4", "#e0b48e"],
+  tan: ["#d9a066", "#b8814e"],
+  brown: ["#a86b45", "#8a5434"],
+  dark: ["#6e4a32", "#573826"],
+};
+
+// Keyed by app/appearance.py's hair colors: [base, shadow, highlight].
+const HAIR_COLORS = {
+  brown: ["#8a5a2c", "#5e3c1c", "#b07a43"],
+  black: ["#2e2016", "#1a120c", "#4a3626"],
+  blonde: ["#e8c25a", "#c99b35", "#f6dd8a"],
+  ginger: ["#c4502a", "#8e3418", "#e07a4a"],
+  sandy: ["#b8935e", "#8f6e40", "#d4b47e"],
+  blue: ["#3f7fd0", "#2a5a9a", "#78aef0"],
+  green: ["#4f9a3a", "#356e26", "#86c46a"],
+  pink: ["#e87aa8", "#c0507e", "#f6aacb"],
+  purple: ["#8a55c4", "#623a96", "#b48ae6"],
+  silver: ["#c8ccd4", "#9aa0ac", "#eef0f4"],
+  cherry: ["#d8283a", "#a0182a", "#f2606c"],
+};
+
+// Hair is drawn in two layers: "back" (behind the body, for length) and
+// "front" (over the face/shirt, for the fringe and locks over shoulders).
+const HAIR_TOP = [
+  "........oooo",
+  "......oohhhh",
+  ".....ohhhhhh",
+  "....ohhhLLhh",
+  "...ohhhLhhhh",
+  "...ohhhhhhhh",
+  "..ohhhhhhhhh",
+  "..ohhhhhhhHH",
+  "..ohhhH.H...", //    fringe ("." lets the face show)
+];
+
+const HAIR_FRONT = {
+  short: sym(...HAIR_TOP, "..ohhH......", "..ohH.......", "..ohH.......", "..ohH.......", "..oH........"),
+  medium: sym(
+    ...HAIR_TOP,
+    "..ohhH......", "..ohhH......", "..ohH.......", "..ohH.......", "..ohH.......",
+    "..ohH.......", "..ohhH......", "..ohhhH.....", "..oooo......"
+  ),
+  long: sym(
+    ...HAIR_TOP,
+    "..ohhH......", "..ohhH......", "..ohH.......", "..ohH.......", "..ohH.......",
+    "..ohH.......", "..ohhH......", "..ohhH......", "..ohhH......", "..ohhH......",
+    "..ohhH......", "..ohhH......", "..ohhH......", "..ohhH......", "...ohH......",
+    "...oo......."
+  ),
+};
+
+// Only long hair has a back layer: it fills in behind the neck and chin.
+const HAIR_BACK = {
+  long: { y: BODY_Y + 15, rows: sym("...HHHHHH...", "...HHHHHHH..", "...HHHHHHH..", "...HHHHHHHH.", "...HHHHHHHH.", "...HHHHH....") },
+};
+
+function hairPalette(color) {
+  const [h, H, L] = HAIR_COLORS[color] || HAIR_COLORS.brown;
+  return { o: INK, h, H, L };
+}
+
+// The appearance-driven layers, in the same {x, y, rows, palette} shape as
+// any other grid sprite. `look` is /api/me's avatar.appearance.
+function bodySprite(look) {
+  const [s, S] = SKIN_TONES[look.skin] || SKIN_TONES.light;
   return {
-    o: INK,
-    h: hair,
-    H: hairShadow,
-    L: hairLight,
-    s: skin,
-    S: skinShadow,
-    c: "#e8907a",
-    e: INK,
-    w: "#ffffff",
-    m: "#9a3b2b",
-    u: "#efe6d2",
-    U: "#d3c6a8",
+    x: BODY_X,
+    y: BODY_Y,
+    rows: BODY_ROWS[look.gender] || BODY_ROWS.boy,
+    palette: { o: INK, s, S, c: "#e8907a", e: INK, w: "#ffffff", l: INK, m: "#b5523b", u: "#efe6d2", U: "#d3c6a8" },
   };
+}
+
+function hairFrontSprite(look) {
+  return { x: BODY_X, y: BODY_Y, rows: HAIR_FRONT[look.hair_style] || HAIR_FRONT.short, palette: hairPalette(look.hair_color) };
+}
+
+function hairBackSprite(look) {
+  const back = HAIR_BACK[look.hair_style];
+  return back ? { x: BODY_X, y: back.y, rows: back.rows, palette: hairPalette(look.hair_color) } : null;
 }
 
 // Clothing rows line up with BODY_ROWS: a layer starting at body row N
@@ -95,10 +169,6 @@ const SHOES_Y = BODY_Y + 34;
 // --- the sprite table ---------------------------------------------------------
 
 const SPRITES = {
-  body_sprout: { x: BODY_X, y: BODY_Y, rows: BODY_ROWS, palette: bodyPalette("#8a5a2c", "#5e3c1c", "#b07a43", "#f2c79b", "#d9a57a") },
-  body_ember: { x: BODY_X, y: BODY_Y, rows: BODY_ROWS, palette: bodyPalette("#c4502a", "#8e3418", "#e07a4a", "#f5d6b4", "#e0b48e") },
-  body_moss: { x: BODY_X, y: BODY_Y, rows: BODY_ROWS, palette: bodyPalette("#2e2016", "#1a120c", "#4a3626", "#a86b45", "#8a5434") },
-
   // --- shirts (body rows 20-27) ---
   shirt_tunic: {
     x: BODY_X,
@@ -312,7 +382,17 @@ function drawBeach(px) {
 }
 
 // Dev guard: a malformed grid is easy to make by hand, so say so loudly.
-for (const [id, s] of Object.entries(SPRITES)) {
+const _appearanceSprites = {};
+for (const gender of Object.keys(BODY_ROWS)) {
+  for (const hair_style of Object.keys(HAIR_FRONT)) {
+    const look = { gender, hair_style, skin: "light", hair_color: "brown" };
+    _appearanceSprites[`body_${gender}`] = bodySprite(look);
+    _appearanceSprites[`hair_front_${hair_style}`] = hairFrontSprite(look);
+    const back = hairBackSprite(look);
+    if (back) _appearanceSprites[`hair_back_${hair_style}`] = back;
+  }
+}
+for (const [id, s] of Object.entries({ ...SPRITES, ..._appearanceSprites })) {
   if (!s.rows) continue;
   const widths = new Set(s.rows.map((r) => r.length));
   const unknown = [...new Set(s.rows.join(""))].filter((c) => c !== "." && !s.palette[c]);

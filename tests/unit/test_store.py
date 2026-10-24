@@ -28,16 +28,17 @@ def _cheapest_for_sale() -> store.StoreItem:
 
 
 def test_catalog_items_use_known_slots_and_sane_prices():
+    from app.catalog import OTHER_KINDS
+
     for item in store.CATALOG.values():
-        assert item.slot in store.SLOTS
+        assert item.slot in store.SLOTS + OTHER_KINDS
         assert item.price >= 0
         assert (item.price == 0) == item.starter
 
 
-def test_every_starter_body_and_background_exists():
-    assert store.CATALOG[store.DEFAULT_BODY].slot == "body"
+def test_default_background_is_a_starter():
     assert store.CATALOG[store.DEFAULT_BACKGROUND].slot == "background"
-    assert len(store.starter_bodies()) >= 3
+    assert store.CATALOG[store.DEFAULT_BACKGROUND].starter
 
 
 def test_there_is_something_to_buy_after_one_session():
@@ -48,11 +49,10 @@ def test_there_is_something_to_buy_after_one_session():
 # --- starters -----------------------------------------------------------------
 
 
-def test_grant_starters_equips_default_body_background_and_clothes(conn, learner_id):
-    assert store.get_avatar(conn, learner_id) == {
-        "body": store.DEFAULT_BODY,
-        **store.SLOT_DEFAULTS,
-    }
+def test_grant_starters_equips_default_background_and_clothes(conn, learner_id):
+    avatar = store.get_avatar(conn, learner_id)
+    assert {k: v for k, v in avatar.items() if k != "appearance"} == store.SLOT_DEFAULTS
+    assert avatar["appearance"]["hair_style"] == "short"
 
 
 def test_every_slot_default_is_a_starter_in_that_slot():
@@ -62,17 +62,12 @@ def test_every_slot_default_is_a_starter_in_that_slot():
 
 
 def test_grant_starters_is_idempotent_and_keeps_choices(conn, learner_id):
-    other_body = next(i.id for i in store.starter_bodies() if i.id != store.DEFAULT_BODY)
-    store.equip(conn, learner_id, other_body)
+    bg = next(i for i in store.CATALOG.values() if i.slot == "background" and not i.starter)
+    db.add_coins(conn, learner_id, bg.price, "lesson")
+    store.buy(conn, learner_id, bg.id)
+    store.equip(conn, learner_id, bg.id)
     store.grant_starters(conn, learner_id)
-    assert store.get_avatar(conn, learner_id)["body"] == other_body
-
-
-def test_grant_starters_with_chosen_body(conn):
-    lid = db.create_learner(conn, "Alex").id
-    chosen = store.starter_bodies()[-1].id
-    store.grant_starters(conn, lid, body=chosen)
-    assert store.get_avatar(conn, lid)["body"] == chosen
+    assert store.get_avatar(conn, learner_id)["background"] == bg.id
 
 
 # --- buying -------------------------------------------------------------------
@@ -112,7 +107,15 @@ def test_unknown_item_fails(conn, learner_id):
 
 def test_starters_are_not_for_sale(conn, learner_id):
     with pytest.raises(store.StoreError):
-        store.buy(conn, learner_id, store.starter_bodies()[-1].id)
+        store.buy(conn, learner_id, store.DEFAULT_BACKGROUND)
+
+
+def test_using_a_hair_dye_recolors_hair(conn, learner_id):
+    dye = store.CATALOG["dye_blue"]
+    db.add_coins(conn, learner_id, dye.price, "lesson")
+    store.buy(conn, learner_id, dye.id)
+    store.equip(conn, learner_id, dye.id)
+    assert store.get_avatar(conn, learner_id)["appearance"]["hair_color"] == "blue"
 
 
 # --- equipping ----------------------------------------------------------------
@@ -156,7 +159,7 @@ def test_items_never_mix_between_learners(conn, learner_id):
     store.buy(conn, learner_id, item.id)
     store.equip(conn, learner_id, item.id)
     assert item.id not in store.owned_ids(conn, alex)
-    assert item.slot not in store.get_avatar(conn, alex)
+    assert store.get_avatar(conn, alex).get(item.slot) != item.id
     assert db.get_coin_balance(conn, alex) == 0
 
 

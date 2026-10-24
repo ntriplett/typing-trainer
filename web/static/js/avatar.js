@@ -6,10 +6,15 @@
 //
 // Needs sprites.js loaded first.
 
-// Back-to-front draw order -- matches app/store.py's SLOTS.
-const AVATAR_SLOTS = ["background", "body", "shoes", "pants", "shirt", "hat", "pet"];
+// Back-to-front draw order. Worn slots match app/catalog.py's
+// WEARABLE_SLOTS; the hair_back/body/hair_front layers come from the
+// learner's appearance rather than an item.
+const AVATAR_LAYERS = ["background", "hair_back", "body", "shoes", "pants", "shirt", "hair_front", "hat", "pet"];
+const APPEARANCE_LAYERS = { hair_back: hairBackSprite, body: bodySprite, hair_front: hairFrontSprite };
+const DEFAULT_APPEARANCE = { gender: "boy", skin: "light", hair_color: "brown", hair_style: "short" };
 
-// Draws `equipped` onto `canvas` (any size; it's scaled from the 48x48
+// Draws `equipped` (/api/me's avatar: {slot: item_id, appearance: {...}})
+// onto `canvas` (any size; it's scaled from the 48x48
 // pixel grid, so give it a multiple of 48 for crisp pixels).
 //
 // opts.pose: only "idle" exists today. Games will add poses (e.g.
@@ -30,9 +35,10 @@ function drawAvatar(canvas, equipped, opts = {}) {
     ctx.fillRect(x * scale, y * scale, w * scale, h * scale);
   };
 
-  for (const slot of AVATAR_SLOTS) {
+  const look = equipped.appearance || DEFAULT_APPEARANCE;
+  for (const slot of AVATAR_LAYERS) {
     if (slot === "background" && !background) continue;
-    const sprite = SPRITES[equipped[slot]];
+    const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : SPRITES[equipped[slot]];
     if (!sprite) continue;
     if (sprite.draw) {
       sprite.draw(px);

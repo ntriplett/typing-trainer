@@ -1,6 +1,6 @@
 // Shared top bar on every page (PLAN.md Section 11c): brand, coin
-// counter, and the player's avatar (links to the store). Profiles
-// (PLAN.md 11d) will add the profile menu here.
+// counter, and the player's avatar (links to the profile hub). Profiles
+// (PLAN.md 11d) will add the switch-player menu here.
 //
 // Needs sprites.js and avatar.js loaded first. Exposes window.Header so
 // pages can update coins without refetching.
@@ -15,7 +15,7 @@
         <span class="coin-icon" aria-hidden="true"></span>
         <span id="coin-count">…</span>
       </span>
-      <a class="topbar-avatar" href="/store" title="Visit the store"></a>
+      <a class="topbar-avatar" href="/profile" title="My profile"></a>
     </div>`;
   document.body.prepend(bar);
 

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Character Designer</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/profile.css" />
+</head>
+<body>
+  <main>
+    <h1>Character Designer</h1>
+    <div class="designer-layout">
+      <section class="panel designer-preview">
+        <canvas id="designer-avatar" class="avatar-canvas" width="240" height="240"></canvas>
+        <p id="designer-status" role="status"></p>
+        <a class="button" href="/profile">Done</a>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel-title">Your name</h2>
+        <form id="name-form" class="choice-row">
+          <input id="name-input" maxlength="20" autocomplete="off" aria-label="Your name" />
+          <button type="submit" class="button-go">Save name</button>
+        </form>
+
+        <h2 class="panel-title">I am a…</h2>
+        <div class="choice-row" id="choices-gender"></div>
+
+        <h2 class="panel-title">Skin</h2>
+        <div class="choice-row" id="choices-skin"></div>
+
+        <h2 class="panel-title">Hair length</h2>
+        <div class="choice-row" id="choices-hair_style"></div>
+
+        <h2 class="panel-title">Hair color</h2>
+        <div class="choice-row" id="choices-hair_color"></div>
+        <p class="hint">🔒 Fancy colors are hair dyes from the <a href="/store">store</a>.</p>
+      </section>
+    </div>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/designer.js"></script>
+</body>
+</html>

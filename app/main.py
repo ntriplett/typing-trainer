@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, bigram_model, db, scheduler, skill_model, store
+from app import analytics, appearance, bigram_model, db, scheduler, skill_model, store
 from app.activities import get_activity
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -148,6 +148,16 @@ def analysis_page() -> FileResponse:
 @app.get("/store")
 def store_page() -> FileResponse:
     return FileResponse(WEB_DIR / "store.html")
+
+
+@app.get("/profile")
+def profile_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "profile.html")
+
+
+@app.get("/designer")
+def designer_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "designer.html")
 
 
 @app.get("/teach-demo")
@@ -462,7 +472,10 @@ def me(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict
 @app.get("/api/store")
 def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     owned = store.owned_ids(conn, learner_id)
-    equipped = set(store.get_avatar(conn, learner_id).values())
+    avatar = store.get_avatar(conn, learner_id)
+    # "equipped" = worn, or (for a hair dye) the hair color in use
+    equipped = {v for k, v in avatar.items() if k != "appearance"}
+    equipped.add(appearance.dye_item_id(avatar["appearance"]["hair_color"]))
     coins = db.get_coin_balance(conn, learner_id)
     items = [
         {
@@ -498,3 +511,47 @@ def store_equip(item_id: str, conn=Depends(get_db), learner_id: int = Depends(cu
 @app.post("/api/store/unequip/{slot}")
 def store_unequip(slot: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return _store_action(store.unequip, conn, learner_id, slot)
+
+
+# --- profile + character designer API ---------------------------------------------
+
+
+class AppearanceIn(BaseModel):
+    gender: str
+    skin: str
+    hair_color: str
+    hair_style: str
+
+
+class NameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=20)
+
+
+@app.get("/api/profile")
+def profile(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), "stats": db.profile_stats(conn, learner_id)}
+
+
+@app.put("/api/me/name")
+def rename(body: NameIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Your name can't be blank.")
+    db.rename_learner(conn, learner_id, name)
+    return _me(conn, learner_id)
+
+
+@app.get("/api/appearance")
+def appearance_options(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), "options": appearance.options(conn, learner_id)}
+
+
+@app.put("/api/appearance")
+def save_appearance(
+    body: AppearanceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    try:
+        appearance.save(conn, learner_id, appearance.Appearance(**body.model_dump()))
+    except appearance.AppearanceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _me(conn, learner_id)

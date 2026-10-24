@@ -299,6 +299,33 @@ Profiles come right after (11d). Games that reuse the dressed avatar come after 
   typing prompt stays in a clean monospace for legibility. Art: free/open-licensed or AI-made, with
   code-drawn pixel placeholders until then.
 
+## 11c-2. Gamification round 2 (agreed 2026-10-23)
+
+Economy target: ~3 months of play at ~1K coins/session, so ~100K coins earned in total. The catalog
+should hold well over that, so there's always something to save for. Small items cost ~200-800,
+big ones (pets, rare places, night unlocks) cost ~2-5K.
+
+Build order (each phase is tested and shown before the next):
+
+1. **Profile page + character designer.** `/profile` is the hub linking the store, progress,
+   character designer, pet room and bedroom; the header avatar opens it. The designer picks
+   boy/girl, skin tone, hair color and hair length from a few options each. Appearance is learner
+   data (an `appearance` table), not store items. Fancy hair dyes (blue, green, pink, ...) are store
+   purchases that unlock extra hair colors.
+2. **Places + page themes.** 18 places in 4 groups (fields & forests, water, wild lands, space). Each
+   place also re-themes the whole page subtly: background, header, and drifting particles (leaves,
+   petals, snow, bubbles, stars...). Each group has one **night unlock**. While night is on, the
+   avatar scene goes to night and the whole UI switches to a dark-mode theme.
+3. **Wardrobe.** Slots: hat, accessory, shirt, pants, shoes. Styles are drawn once and recolored per
+   item (30+ clothes). Accessories include scarf, gloves, watering can, portal gun, ball, and more.
+4. **Pets.** Each pet is an individual you own: species, coloring, name, growth 0-10. Species: cat,
+   bunny, dog, sheep, goat, llama (plus hedgehog and fox). Pets start as babies. Food is bought and
+   fed **once per pet per day** to grow them, with 3 visual stages (baby, young, grown). Up to 2
+   pets come along on the avatar. The pet room shows all of them.
+5. **Bedroom.** A shared room engine (also used by the pet room): wallpaper and floor, wall items
+   (windows, posters) and floor items (furniture, toys, rugs) placed by dragging, with pets wandering.
+   Room is 2x the dressing-room picture in each direction (96x96 pixel grid, ~576px).
+
 ## 11d. Profiles (next round)
 
 No passwords. With no profile selected (cookie), show a pick-from-dropdown or create screen. Create asks

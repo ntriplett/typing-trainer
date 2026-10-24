@@ -8,6 +8,7 @@ const SHELVES = [
   { slot: "shirt", title: "Clothes" },
   { slot: "pet", title: "Pets" },
   { slot: "background", title: "Places" },
+  { slot: "hair_dye", title: "Hair dye" },
 ];
 
 const itemsEl = document.getElementById("store-items");
@@ -32,7 +33,12 @@ async function load() {
 }
 
 function withItem(avatar, item) {
-  return item ? { ...avatar, [item.slot]: item.id } : avatar;
+  if (!item) return avatar;
+  if (item.slot === "hair_dye") {
+    const color = item.id.replace(/^dye_/, "");
+    return { ...avatar, appearance: { ...avatar.appearance, hair_color: color } };
+  }
+  return { ...avatar, [item.slot]: item.id };
 }
 
 function renderPreview() {
@@ -82,11 +88,15 @@ function itemCard(item) {
 
 function actionButton(item) {
   const btn = document.createElement("button");
-  if (item.equipped) {
+  const usable = item.slot === "hair_dye"; // used, not worn
+  if (item.equipped && usable) {
+    btn.textContent = "In use";
+    btn.disabled = true;
+  } else if (item.equipped) {
     btn.textContent = "Take off";
     btn.onclick = () => act(`/api/store/unequip/${item.slot}`);
   } else if (item.owned) {
-    btn.textContent = "Wear";
+    btn.textContent = usable ? "Use" : "Wear";
     btn.className = "button-go";
     btn.onclick = () => act(`/api/store/equip/${item.id}`);
   } else if (item.affordable) {

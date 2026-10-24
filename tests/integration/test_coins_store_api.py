@@ -35,7 +35,8 @@ def test_me_starts_with_zero_coins_and_a_starter_avatar():
     data = client.get("/api/me").json()
     assert data["coins"] == 0
     assert data["learner"]["id"] == 1
-    assert data["avatar"]["body"] == store.DEFAULT_BODY
+    assert data["avatar"]["background"] == store.DEFAULT_BACKGROUND
+    assert set(data["avatar"]["appearance"]) == {"gender", "skin", "hair_color", "hair_style"}
 
 
 def test_perfect_step_pays_100_coins():
@@ -110,3 +111,34 @@ def test_store_page_is_served():
     resp = client.get("/store")
     assert resp.status_code == 200
     assert "Store" in resp.text
+
+
+def test_profile_reports_stats():
+    data = client.get("/api/profile").json()
+    assert data["stats"] == {
+        "coins_earned_total": 0, "sessions_completed": 0, "keys_mastered": 0,
+        "items_owned": sum(1 for i in store.CATALOG.values() if i.starter),
+    }
+
+
+def test_rename():
+    assert client.put("/api/me/name", json={"name": "  Robin "}).json()["learner"]["name"] == "Robin"
+    assert client.put("/api/me/name", json={"name": "   "}).status_code == 400
+
+
+def test_designer_saves_appearance_and_guards_dyes():
+    opts = client.get("/api/appearance").json()["options"]
+    assert {"boy", "girl"} == set(opts["gender"])
+    assert any(c["dye"] and not c["unlocked"] for c in opts["hair_color"])
+
+    look = {"gender": "girl", "skin": "tan", "hair_color": "ginger", "hair_style": "long"}
+    assert client.put("/api/appearance", json=look).json()["avatar"]["appearance"] == look
+
+    resp = client.put("/api/appearance", json={**look, "hair_color": "blue"})
+    assert resp.status_code == 400
+    assert "dye" in resp.json()["detail"]
+
+
+def test_profile_and_designer_pages_are_served():
+    assert "Profile" in client.get("/profile").text
+    assert "Designer" in client.get("/designer").text
