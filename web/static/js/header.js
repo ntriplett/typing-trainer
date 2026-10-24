@@ -64,6 +64,7 @@
     session_complete: "Session complete!",
     teach: "Lesson",
     teach_first: "First lesson bonus!",
+    game: "Game",
   };
 
   function setCoins(n) {

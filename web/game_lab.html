@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Game Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+  <link rel="stylesheet" href="/static/css/stage.css" />
+</head>
+<body>
+  <main class="teach-main">
+    <section class="panel">
+      <h1>Game lab</h1>
+      <p class="hint">Every game. Pick the letters and difficulty, then a game. Games need at least 4 letters.</p>
+      <div class="lab-options">
+        <label>Letters
+          <select id="opt-keys">
+            <option value="mine">My letters so far</option>
+            <option value="home">Home row</option>
+            <option value="home_top">Home + top rows</option>
+            <option value="letters">All letters</option>
+          </select>
+        </label>
+        <label>Focus letters
+          <input id="opt-focus" placeholder="e.g. ei" maxlength="6" size="8" />
+        </label>
+        <label>Difficulty
+          <select id="opt-difficulty">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+      </div>
+      <div id="lab-cards" class="lab-cards"></div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script>
+    const options = ["keys", "focus", "difficulty"].map((k) => document.getElementById(`opt-${k}`));
+    const cards = [];
+
+    function query() {
+      const q = new URLSearchParams();
+      for (const el of options) if (el.value) q.set(el.id.replace("opt-", ""), el.value);
+      return `?${q}`;
+    }
+
+    function updateLinks() {
+      for (const { a, id } of cards) a.href = `/game/${id}${query()}`;
+    }
+    options.forEach((el) => el.addEventListener("input", updateLinks));
+
+    fetch("/api/game/modules")
+      .then((r) => r.json())
+      .then((games) => {
+        const list = document.getElementById("lab-cards");
+        for (const g of games) {
+          const a = document.createElement("a");
+          a.className = "lab-card";
+          a.innerHTML = `<div class="lab-card-blank"></div><h2></h2><p></p>`;
+          a.querySelector(".lab-card-blank").textContent = g.game === "crow_patrol" ? "real-time" : "turn-based";
+          a.querySelector("h2").textContent = g.title;
+          a.querySelector("p").textContent = g.blurb;
+          list.appendChild(a);
+          cards.push({ a, id: g.id });
+        }
+        updateLinks();
+      });
+  </script>
+</body>
+</html>

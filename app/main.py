@@ -34,6 +34,7 @@ from app.activities import get_activity
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
+from app.activities.game_modules import GAME_MODULES
 from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
@@ -374,16 +375,8 @@ def practice_content(
     module = _practice_module(activity_id)
     if length not in PRACTICE_LENGTHS or difficulty not in PRACTICE_DIFFICULTIES:
         raise HTTPException(status_code=400, detail="Unknown length or difficulty")
-    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
-    if keys == "mine":
-        allowed = [k for k in skill_model.active_keys(key_stats) if k != " "]
-    elif keys in PRACTICE_KEY_SETS:
-        allowed = list(PRACTICE_KEY_SETS[keys])
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown key set {keys!r}")
-    focus_keys = [k for k in dict.fromkeys(focus.lower()) if k in KEY_TO_FINGER and k != " "]
-    allowed = [" ", *dict.fromkeys(allowed + focus_keys)]
-    wpm = analytics.estimate_starting_wpm(conn, learner_id, default=profiles.placement_wpm(conn, learner_id) or analytics.DEFAULT_STARTING_WPM)
+    focus_keys, allowed, key_stats = _lab_letters(conn, learner_id, keys, focus)
+    wpm = _lab_wpm(conn, learner_id)
     content = module.generate(
         focus_keys,
         allowed,
@@ -423,6 +416,112 @@ def practice_complete(
         coins_earned.append({"amount": amount, "reason": "lesson"})
     return {
         "result": asdict(result),
+        "coins_earned": coins_earned,
+        "coin_balance": db.get_coin_balance(conn, learner_id),
+    }
+
+
+# --- game lab (try every game) ---------------------------------------------------
+#
+# Like the practice lab: real weak spots, coins per success, no skill-model
+# updates. Games aren't in sessions yet.
+
+GAMES_BY_ID = {g.id: g for g in GAME_MODULES}
+# Generous: 5 levels of a minute won't come near this.
+MAX_GAME_SUCCESSES = 200
+
+
+def _game_module(activity_id: str):
+    module = GAMES_BY_ID.get(activity_id)
+    if module is None:
+        raise HTTPException(status_code=404, detail="Unknown game")
+    return module
+
+
+def _lab_letters(conn, learner_id: int, keys: str, focus: str) -> tuple[list[str], list[str], dict]:
+    """(focus keys, allowed keys with space, key stats) for a lab's ?keys=&focus= options."""
+    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    if keys == "mine":
+        allowed = [k for k in skill_model.active_keys(key_stats) if k != " "]
+    elif keys in PRACTICE_KEY_SETS:
+        allowed = list(PRACTICE_KEY_SETS[keys])
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown key set {keys!r}")
+    focus_keys = [k for k in dict.fromkeys(focus.lower()) if k in KEY_TO_FINGER and k != " "]
+    return focus_keys, [" ", *dict.fromkeys(allowed + focus_keys)], key_stats
+
+
+def _lab_wpm(conn, learner_id: int) -> float:
+    default = profiles.placement_wpm(conn, learner_id) or analytics.DEFAULT_STARTING_WPM
+    return analytics.estimate_starting_wpm(conn, learner_id, default=default)
+
+
+@app.get("/game-lab")
+def game_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "game_lab.html")
+
+
+@app.get("/game/{activity_id}")
+def game_page(activity_id: str) -> FileResponse:
+    _game_module(activity_id)
+    return FileResponse(WEB_DIR / "game.html")
+
+
+@app.get("/api/game/modules")
+def game_modules() -> list[dict]:
+    return [{"id": g.id, "title": g.title, "blurb": g.blurb, "game": g.game} for g in GAME_MODULES]
+
+
+@app.get("/api/game/{activity_id}/content")
+def game_content(
+    activity_id: str,
+    keys: str = "mine",
+    focus: str = "",
+    difficulty: str = "medium",
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
+) -> dict:
+    module = _game_module(activity_id)
+    if difficulty not in PRACTICE_DIFFICULTIES:
+        raise HTTPException(status_code=400, detail="Unknown difficulty")
+    focus_keys, allowed, key_stats = _lab_letters(conn, learner_id, keys, focus)
+    if not module.is_eligible(focus_keys, allowed):
+        raise HTTPException(status_code=400, detail="Games need at least 4 letters. Learn a few more first!")
+    content = module.generate(
+        focus_keys,
+        allowed,
+        chars_per_second=scheduler.chars_per_second_for_wpm(_lab_wpm(conn, learner_id)),
+        difficulty=PRACTICE_DIFFICULTIES[difficulty],
+        skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
+    )
+    return asdict(content)
+
+
+class GameCompleteRequest(BaseModel):
+    keys: list[str]
+    keystrokes: list[KeystrokeIn]
+    successes: int = Field(ge=0, le=MAX_GAME_SUCCESSES)
+
+
+@app.post("/api/game/{activity_id}/complete")
+def game_complete(
+    activity_id: str,
+    body: GameCompleteRequest,
+    conn=Depends(get_db),
+    learner_id: int = Depends(current_learner),
+) -> dict:
+    module = _game_module(activity_id)
+    keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
+    content = ActivityContent(activity_id, module.kind, body.keys, prompt="")
+    result = module.score(content, keystrokes)
+    amount = module.coins_for(body.successes)
+    coins_earned = []
+    if amount > 0:
+        db.add_coins(conn, learner_id, amount, "game", ref=f"game_lab:{activity_id}")
+        coins_earned.append({"amount": amount, "reason": "game"})
+    return {
+        "result": asdict(result),
+        "successes": body.successes,
         "coins_earned": coins_earned,
         "coin_balance": db.get_coin_balance(conn, learner_id),
     }

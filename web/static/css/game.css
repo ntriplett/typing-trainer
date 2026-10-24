@@ -1,0 +1,245 @@
+/* Games (game_kit.js, crow_patrol.js, pet_battle.js), in the teach look:
+   stage.css's label/title/text, a pixel canvas, and words in the 44px type
+   font. Jersey 10 is only crisp at 20/30/40px. */
+
+.game-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: 30px;
+  margin-bottom: 0.4rem;
+}
+
+.game-hud .game-score {
+  color: var(--leaf-red);
+}
+
+.game-area {
+  position: relative;
+  border: 3px solid var(--wood-light);
+  background: var(--sky);
+}
+
+.game-canvas {
+  display: block;
+  width: 100%;
+  image-rendering: pixelated;
+}
+
+.game-canvas.crow-field {
+  aspect-ratio: 240 / 120;
+}
+
+.game-canvas.battle-arena {
+  aspect-ratio: 240 / 96;
+}
+
+.game-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* --- words on things ---------------------------------------------------------- */
+
+.w-typed {
+  color: var(--type-correct);
+}
+
+.w-next {
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 4px;
+}
+
+.crow-word {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1;
+  padding: 2px 8px;
+  background: var(--surface);
+  border: 3px solid var(--wood-light);
+  white-space: nowrap;
+}
+
+.crow-word.locked {
+  border-color: var(--leaf-gold);
+  background: var(--parchment);
+  z-index: 1;
+}
+
+.slip {
+  animation: slip 0.25s;
+}
+
+@keyframes slip {
+  25% { translate: -4px 0; background: var(--type-wrong-bg); }
+  75% { translate: 4px 0; background: var(--type-wrong-bg); }
+}
+
+/* --- overlay screens -------------------------------------------------------- */
+
+.game-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(59, 36, 23, 0.35);
+}
+
+.game-card {
+  background: var(--surface);
+  border: 3px solid var(--wood);
+  padding: 0.6rem 1.2rem;
+  max-width: 90%;
+  text-align: center;
+  font-size: 30px;
+}
+
+.game-card h2 {
+  font-size: 40px;
+  color: var(--heading);
+  margin: 0;
+}
+
+.game-card p {
+  margin: 0.3rem 0;
+}
+
+.choice-cards {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 0.4rem;
+}
+
+.choice-card {
+  flex: 1;
+  background: var(--parchment);
+  border: 3px solid var(--wood-light);
+  padding: 0.3rem 0.5rem;
+  font-size: 20px;
+}
+
+.choice-card h3 {
+  font-size: 30px;
+  margin: 0;
+}
+
+.choice-card p {
+  margin: 0.2rem 0;
+}
+
+.choice-card .choice-word,
+.move-card .move-word {
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.1;
+}
+
+.choice-card.locked,
+.move-card.locked {
+  border-color: var(--leaf-gold);
+  background: var(--card-good);
+}
+
+/* --- pet battles ------------------------------------------------------------ */
+
+.hp-bar {
+  display: inline-block;
+  width: 110px;
+  height: 14px;
+  border: 3px solid var(--wood-dark);
+  background: var(--muted-fill);
+  vertical-align: middle;
+}
+
+.hp-bar span {
+  display: block;
+  height: 100%;
+  background: var(--moss);
+  transition: width 0.3s;
+}
+
+.stars {
+  color: var(--leaf-gold);
+}
+
+.foe-intent {
+  position: absolute;
+  top: 6%;
+  right: 3%;
+  max-width: 45%;
+  font-size: 20px;
+  background: var(--surface);
+  border: 3px solid var(--wood-light);
+  padding: 2px 8px;
+}
+
+.foe-intent[hidden] {
+  display: none;
+}
+
+.move-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.move-card {
+  background: var(--surface);
+  border: 3px solid var(--wood-light);
+  padding: 0.3rem 0.6rem;
+  font-size: 20px;
+}
+
+.move-card h3 {
+  font-size: 30px;
+  margin: 0;
+}
+
+.move-card p {
+  margin: 0;
+}
+
+.move-card.cant {
+  opacity: 0.4;
+}
+
+.move-card.waiting {
+  opacity: 0.7;
+}
+
+.move-slips {
+  color: var(--type-wrong);
+}
+
+.float-text {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 30px;
+  font-weight: 700;
+  animation: float-up 1.2s forwards;
+  text-shadow: 2px 2px 0 var(--surface);
+}
+
+.float-text.hurt { color: var(--leaf-red); }
+.float-text.calm { color: var(--moss-dark); }
+.float-text.note { color: var(--ink-soft); font-size: 20px; }
+
+@keyframes float-up {
+  to { translate: 0 -40px; opacity: 0; }
+}
+
+@media (max-width: 640px) {
+  .game-hud { font-size: 20px; flex-wrap: wrap; }
+  .move-cards, .choice-cards { grid-template-columns: 1fr; flex-direction: column; }
+  .crow-word { font-size: 20px; }
+}

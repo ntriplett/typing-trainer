@@ -93,7 +93,7 @@ def list_pets(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
 def along(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
     """The pets drawn on the avatar, as the renderer wants them."""
     return [
-        {"id": p["id"], "species": p["species"], "color": p["color"], "stage": p["stage"], "slot": p["slot"]}
+        {"id": p["id"], "name": p["name"], "species": p["species"], "color": p["color"], "stage": p["stage"], "slot": p["slot"]}
         for p in list_pets(conn, learner_id)
         if p["slot"] is not None
     ]

@@ -48,9 +48,10 @@ function mixColor(a, b, t) {
 }
 
 class Scene {
-  constructor(canvas) {
-    canvas.width = SCENE_W;
-    canvas.height = SCENE_H;
+  // Games pass a bigger size; practice scenes use 180x54.
+  constructor(canvas, w = SCENE_W, h = SCENE_H) {
+    this.w = canvas.width = w;
+    this.h = canvas.height = h;
     this.ctx = canvas.getContext("2d");
     this.t = 0;
     this.progress = 0;
@@ -113,9 +114,9 @@ class Scene {
   }
 
   // Vertical color bands from top to bottom.
-  bands(colors, y0 = 0, y1 = SCENE_H) {
+  bands(colors, y0 = 0, y1 = this.h) {
     const h = (y1 - y0) / colors.length;
-    colors.forEach((c, i) => this.rect(0, y0 + i * h, SCENE_W, h + 1, c));
+    colors.forEach((c, i) => this.rect(0, y0 + i * h, this.w, h + 1, c));
   }
 
   line(x0, y0, x1, y1, color) {

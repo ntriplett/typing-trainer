@@ -400,6 +400,29 @@ then a few capitals at a time. They get strung together into lessons once enough
   (short/medium/long) and difficulty (easy/medium/hard). Lab runs pay coins but don't feed the skill model.
 - Later: tune difficulty per learner (e.g. ramp within a session), smarter weak-pair chaining.
 
+## 11g. Games (built 2026-10-24)
+
+- Rules agreed with the user: the word you type is the choice you make; time pressure in some games
+  only and never very hard; soft losing (retry, score = successes); ~1 minute levels, ~5 levels;
+  self-contained for now (persistent/roguelite later). Full idea list: `GAME_IDEAS.md`.
+- `app/activities/game_modules.py`: `GameModule` (kind "game") gives `ActivityContent.game` =
+  {game, levels, words: {short, medium, long}, letters, chars_per_second, difficulty}. Words come from
+  practice_text (allowed letters only, focus 3x, weak pairs by difficulty); letters only, no ";".
+  Needs 4+ letters. Difficulty also scales crow speed / critter HP (0.8x-1.2x). Pays coins per success.
+- Front-end: `game_kit.js` (Typer: first key locks onto the word starting with it, wrong keys are
+  slips, Esc/Backspace lets go; GameShell: HUD, canvas, overlay screens, posting the score).
+- **Crow Patrol** (`crow_patrol.js`, real-time): crows carry words toward pumpkins; type to shoo.
+  Flight time and spawn rate come from the learner's typing speed. Losing every pumpkin = retry the
+  level 15% slower. Between levels pick 1 of 3 upgrades by typing: scarecrow (slower crows), fence
+  (+2 pumpkins), bell (Space shoos every crow once a level), pumpkin pie (saved pumpkins count).
+- **Pet Battles** (`pet_battle.js`, turn-based): your pet (first pet along, or borrowed "Pip") vs a
+  wild critter (pet art). Moves are words: Pounce (short, 2, +1 star), Super pounce (long, 4, 2 stars),
+  Shield (blocks 3, 1 star), Snack (heals 3, 1 star). Each slip takes 1 off a move's power. The critter
+  shows its next move (nibble, tackle, rest, wind-up then BIG, guard halves your hits).
+  Losing = nap and retry, critter 10% easier.
+- `/game-lab` (letters, focus, difficulty) and `/game/<id>`; `POST /api/game/<id>/complete` pays
+  `coins_per_success` (3 per crow, 25 per battle). Not in sessions yet; lab runs don't feed stats.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

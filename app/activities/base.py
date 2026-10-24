@@ -44,6 +44,9 @@ class ActivityContent:
     # A themed animation drawn above the prompt (web/static/js/practice_scenes.js),
     # or None for a plain prompt.
     scene: str | None = None
+    # A real game's setup (app/activities/game_modules.py): levels, word
+    # groups, and which front-end game runs it. None for everything else.
+    game: dict | None = None
 
 
 @dataclass(frozen=True, slots=True)
