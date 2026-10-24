@@ -32,8 +32,20 @@ const TABS = [
     ],
   },
   { id: "night", title: "Night", shelves: [{ title: "Night time", match: (i) => i.slot === "night" }] },
+  {
+    id: "bedroom",
+    title: "Bedroom",
+    shelves: [
+      { title: "Furniture & toys", match: (i) => i.slot === "furniture" && i.group === "floor" },
+      { title: "Wall decorations", match: (i) => i.slot === "furniture" && i.group === "wall" },
+      { title: "Wallpaper", match: (i) => i.slot === "wallpaper" },
+      { title: "Floors", match: (i) => i.slot === "flooring" },
+    ],
+  },
   { id: "hair", title: "Hair dye", shelves: [{ title: "Hair dye", match: (i) => i.slot === "hair_dye" }] },
 ];
+
+const ROOM_KINDS = ["furniture", "wallpaper", "flooring"]; // shown as room thumbnails, not on you
 
 // A night unlock's thumbnail shows one of its own places at night.
 const NIGHT_PREVIEW_PLACE = { forests: "bg_meadow", water: "bg_beach", wild: "bg_desert", space: "bg_moon" };
@@ -244,12 +256,16 @@ function familyCard(key, variants) {
   if (variants.length > 1) card.dataset.family = key;
 
   const thumb = makeAvatarCanvas(144);
-  drawAvatar(thumb, withItem(state.avatar, item));
-  thumb.title = `Try on the ${item.name}`;
-  thumb.addEventListener("click", () => {
-    tryingOn = item;
-    renderPreview();
-  });
+  if (ROOM_KINDS.includes(item.slot)) {
+    drawRoomThumb(thumb, item.id);
+  } else {
+    drawAvatar(thumb, withItem(state.avatar, item));
+    thumb.title = `Try on the ${item.name}`;
+    thumb.addEventListener("click", () => {
+      tryingOn = item;
+      renderPreview();
+    });
+  }
 
   const info = document.createElement("div");
   info.className = "item-info";
@@ -285,8 +301,15 @@ function swatches(key, variants, shown) {
 
 function actionButton(item) {
   const btn = document.createElement("button");
-  const usable = item.slot === "hair_dye"; // used, not worn
-  if (item.slot === "night" && item.equipped) {
+  const usable = ["hair_dye", "wallpaper", "flooring"].includes(item.slot); // used, not worn
+  if (item.slot === "furniture" && item.equipped) {
+    btn.textContent = "In your room ✓";
+    btn.onclick = () => (window.location.href = "/bedroom");
+  } else if (item.slot === "furniture" && item.owned) {
+    btn.textContent = "Put in room";
+    btn.className = "button-go";
+    btn.onclick = () => act(`/api/store/equip/${item.id}`);
+  } else if (item.slot === "night" && item.equipped) {
     btn.textContent = "Turn off";
     btn.onclick = () => act("/api/me/night", null, "PUT", { on: false });
   } else if (item.slot === "night" && item.owned) {

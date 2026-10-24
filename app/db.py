@@ -135,6 +135,26 @@ CREATE TABLE IF NOT EXISTS owned_pet (
 );
 CREATE INDEX IF NOT EXISTS idx_owned_pet_learner ON owned_pet(learner_id);
 
+-- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
+-- placed furniture, keyed by room name.
+CREATE TABLE IF NOT EXISTS room_surface (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    room TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    PRIMARY KEY (learner_id, room, kind)
+);
+
+CREATE TABLE IF NOT EXISTS room_item (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    room TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_room_item_learner ON room_item(learner_id, room);
+
 -- Character designer choices (app/appearance.py owns the allowed values).
 CREATE TABLE IF NOT EXISTS appearance (
     learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
@@ -676,3 +696,51 @@ def update_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, **fields)
         f"UPDATE owned_pet SET {assignments} WHERE learner_id = ? AND id = ?",
         (*fields.values(), learner_id, pet_id),
     )
+
+
+# --- rooms --------------------------------------------------------------------------
+
+
+def get_room_surfaces(conn: sqlite3.Connection, learner_id: int, room: str) -> dict[str, str]:
+    rows = conn.execute(
+        "SELECT kind, item_id FROM room_surface WHERE learner_id = ? AND room = ?", (learner_id, room)
+    ).fetchall()
+    return {r["kind"]: r["item_id"] for r in rows}
+
+
+def set_room_surface(conn: sqlite3.Connection, learner_id: int, room: str, kind: str, item_id: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO room_surface (learner_id, room, kind, item_id) VALUES (?, ?, ?, ?)
+        ON CONFLICT(learner_id, room, kind) DO UPDATE SET item_id = excluded.item_id
+        """,
+        (learner_id, room, kind, item_id),
+    )
+
+
+def list_room_items(conn: sqlite3.Connection, learner_id: int, room: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, item_id, x, y FROM room_item WHERE learner_id = ? AND room = ? ORDER BY id",
+        (learner_id, room),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_room_item(conn: sqlite3.Connection, learner_id: int, room: str, item_id: str, x: int, y: int) -> int:
+    cur = conn.execute(
+        "INSERT INTO room_item (learner_id, room, item_id, x, y) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, room, item_id, x, y),
+    )
+    return cur.lastrowid
+
+
+def move_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int, x: int, y: int) -> bool:
+    cur = conn.execute(
+        "UPDATE room_item SET x = ?, y = ? WHERE learner_id = ? AND id = ?", (x, y, learner_id, placed_id)
+    )
+    return cur.rowcount == 1
+
+
+def remove_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int) -> bool:
+    cur = conn.execute("DELETE FROM room_item WHERE learner_id = ? AND id = ?", (learner_id, placed_id))
+    return cur.rowcount == 1

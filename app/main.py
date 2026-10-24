@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, bigram_model, db, pets, scheduler, skill_model, store
+from app import analytics, appearance, bigram_model, db, pets, room, scheduler, skill_model, store
 from app.activities import get_activity
 from app.catalog import night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
@@ -164,6 +164,11 @@ def designer_page() -> FileResponse:
 @app.get("/pets")
 def pets_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pets.html")
+
+
+@app.get("/bedroom")
+def bedroom_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "bedroom.html")
 
 
 @app.get("/teach-demo")
@@ -483,6 +488,8 @@ def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learne
     # "equipped" = worn, or (for a hair dye) the hair color in use
     equipped = {v for k, v in avatar.items() if k in store.SLOTS}
     equipped.add(appearance.dye_item_id(avatar["appearance"]["hair_color"]))
+    bedroom = room.state(conn, learner_id)
+    equipped |= {bedroom["wallpaper"], bedroom["flooring"]} | {p["item_id"] for p in bedroom["items"]}
     night = store.night_status(conn, learner_id)
     if night["on"]:
         equipped.add(night_item_id(night["group"]))
@@ -641,3 +648,60 @@ def pet_along(
     pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
 ) -> dict:
     return _pet_action(pets.set_along, conn, learner_id, pet_id, body.slot)
+
+
+# --- room API -------------------------------------------------------------------------
+
+
+class PlaceIn(BaseModel):
+    item_id: str
+    x: int | None = None
+    y: int | None = None
+
+
+class MoveIn(BaseModel):
+    x: int
+    y: int
+
+
+class SurfaceIn(BaseModel):
+    item_id: str
+
+
+def _room_state(conn, learner_id: int) -> dict:
+    return {**_me(conn, learner_id), "room": room.state(conn, learner_id)}
+
+
+def _room_action(action, conn, learner_id: int, *args) -> dict:
+    try:
+        action(conn, learner_id, *args)
+    except room.RoomError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _room_state(conn, learner_id)
+
+
+@app.get("/api/room")
+def get_room(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _room_state(conn, learner_id)
+
+
+@app.post("/api/room/items")
+def place_item(body: PlaceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _room_action(room.place, conn, learner_id, body.item_id, body.x, body.y)
+
+
+@app.put("/api/room/items/{placed_id}")
+def move_item(
+    placed_id: int, body: MoveIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    return _room_action(room.move, conn, learner_id, placed_id, body.x, body.y)
+
+
+@app.delete("/api/room/items/{placed_id}")
+def put_away_item(placed_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _room_action(room.put_away, conn, learner_id, placed_id)
+
+
+@app.put("/api/room/surface")
+def set_room_surface(body: SurfaceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _room_action(room.set_surface, conn, learner_id, body.item_id)

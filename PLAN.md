@@ -305,6 +305,11 @@ Economy target: ~3 months of play at ~1K coins/session, so ~100K coins earned in
 should hold well over that, so there's always something to save for. Small items cost ~200-800,
 big ones (pets, rare places, night unlocks) cost ~2-5K.
 
+Status (2026-10-23): all 5 phases below are built and tested. Art is code-drawn placeholder
+pixel art (web/static/js/sprites.js, backgrounds.js, wardrobe.js, pets.js, room.js), meant to be
+replaced piece by piece with real art later. Next up: profiles (11d), then games that reuse the
+avatar.
+
 Build order (each phase is tested and shown before the next):
 
 1. **Profile page + character designer.** `/profile` is the hub linking the store, progress,

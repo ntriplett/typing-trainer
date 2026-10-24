@@ -19,7 +19,7 @@ from app.appearance import DYE_HAIR_COLORS, dye_item_id
 # Draw order, back to front -- the front-end avatar renderer layers in
 # this same order.
 WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "accessory", "hat")
-OTHER_KINDS = ("hair_dye", "night")
+OTHER_KINDS = ("hair_dye", "night", "furniture", "wallpaper", "flooring")
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +164,46 @@ ITEMS: list[StoreItem] = [
             "space": ("Starlight Visor", 3500, "Deep-space night: darker skies, brighter stars."),
         }.items()
     ],
+    # bedroom: wallpaper + flooring (group = "surface"), furniture (group =
+    # the zone it goes in: "wall" or "floor"). Drawings: room.js.
+    StoreItem("wallpaper_cream", "Cream Stripes", "wallpaper", 0, "Simple and cozy.", starter=True, group="surface"),
+    StoreItem("wallpaper_floral", "Flower Wallpaper", "wallpaper", 600, "Tiny flowers everywhere.", group="surface"),
+    StoreItem("wallpaper_wood", "Log Cabin Walls", "wallpaper", 800, "Like a cabin in the woods.", group="surface"),
+    StoreItem("wallpaper_mint", "Mint Polka Dots", "wallpaper", 500, "Fresh and fun.", group="surface"),
+    StoreItem("wallpaper_stars", "Starry Night Walls", "wallpaper", 1200, "Glow-in-the-dark stars.", group="surface"),
+    StoreItem("wallpaper_ocean", "Ocean Waves", "wallpaper", 1000, "Swirly blue waves.", group="surface"),
+    StoreItem("flooring_planks", "Wood Planks", "flooring", 0, "Warm and creaky.", starter=True, group="surface"),
+    StoreItem("flooring_checker", "Checker Tiles", "flooring", 500, "Black and white squares.", group="surface"),
+    StoreItem("flooring_carpet", "Green Carpet", "flooring", 600, "Soft like grass.", group="surface"),
+    StoreItem("flooring_stone", "Stone Floor", "flooring", 700, "Like a castle.", group="surface"),
+    StoreItem("flooring_pink", "Pink Carpet", "flooring", 600, "Fluffy and pink.", group="surface"),
+    *[
+        StoreItem(f"furniture_bed_{c}", f"{COLORS[c]} Bed", "furniture", 1200, "Sweet dreams!", group="floor")
+        for c in ("red", "blue", "green", "purple")
+    ],
+    StoreItem("furniture_rug_round", "Round Rug", "furniture", 400, "Soft under your feet.", group="floor"),
+    StoreItem("furniture_rug_rainbow", "Rainbow Rug", "furniture", 700, "Every color at once.", group="floor"),
+    StoreItem("furniture_desk", "Desk", "furniture", 800, "A spot for homework (and typing).", group="floor"),
+    StoreItem("furniture_chair", "Chair", "furniture", 300, "Sit up straight!", group="floor"),
+    StoreItem("furniture_bookshelf", "Bookshelf", "furniture", 900, "Full of favorite stories.", group="floor"),
+    StoreItem("furniture_dresser", "Dresser", "furniture", 900, "Room for all your outfits.", group="floor"),
+    StoreItem("furniture_toy_chest", "Toy Chest", "furniture", 600, "Where toys go at bedtime.", group="floor"),
+    StoreItem("furniture_lamp", "Floor Lamp", "furniture", 400, "A warm reading light.", group="floor"),
+    StoreItem("furniture_plant", "Potted Plant", "furniture", 300, "Water it sometimes!", group="floor"),
+    StoreItem("furniture_teddy", "Teddy Bear", "furniture", 350, "A very good listener.", group="floor"),
+    StoreItem("furniture_beanbag", "Beanbag", "furniture", 500, "Flop!", group="floor"),
+    StoreItem("furniture_pet_bed", "Pet Bed", "furniture", 450, "A comfy spot for your pet.", group="floor"),
+    StoreItem("furniture_aquarium", "Aquarium", "furniture", 1800, "Little fish say hi.", group="floor"),
+    StoreItem("furniture_rocket", "Toy Rocket", "furniture", 700, "3... 2... 1...", group="floor"),
+    StoreItem("furniture_train", "Toy Train", "furniture", 800, "Choo choo!", group="floor"),
+    StoreItem("furniture_window", "Window", "furniture", 900, "Looks out on your current place.", group="wall"),
+    StoreItem("furniture_poster_star", "Star Poster", "furniture", 250, "You're a star typist!", group="wall"),
+    StoreItem("furniture_painting", "Landscape Painting", "furniture", 600, "Hills and a little house.", group="wall"),
+    StoreItem("furniture_clock", "Wall Clock", "furniture", 400, "Tick tock.", group="wall"),
+    StoreItem("furniture_shelf", "Plant Shelf", "furniture", 500, "Little plants in a row.", group="wall"),
+    StoreItem("furniture_lights", "String Lights", "furniture", 700, "Twinkly and warm.", group="wall"),
+    StoreItem("furniture_map", "Treasure Map", "furniture", 550, "X marks the spot.", group="wall"),
+    StoreItem("furniture_pennant", "Pennant Flag", "furniture", 300, "Go team!", group="wall"),
     # hair dyes (unlock colors in the character designer)
     *[
         StoreItem(dye_item_id(c), _DYE_NAMES[c], "hair_dye", 1500, "A splash of color for your hair.")

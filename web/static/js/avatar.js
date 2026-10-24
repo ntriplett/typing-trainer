@@ -23,24 +23,30 @@ const DEFAULT_APPEARANCE = { gender: "boy", skin: "light", hair_color: "brown", 
 // opts.background: false to skip the background layer (e.g. drawing the
 //   avatar into a game scene that has its own).
 function drawAvatar(canvas, equipped, opts = {}) {
-  const { pose = "idle", frame = 0, background = true } = opts;
   const ctx = canvas.getContext("2d");
   const scale = canvas.width / AVATAR_SIZE;
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const bob = pose === "idle" && frame % 2 === 1 ? 1 : 0;
   const px = (x, y, w, h, color) => {
     ctx.fillStyle = color;
     ctx.fillRect(x * scale, y * scale, w * scale, h * scale);
   };
+  paintAvatar(px, equipped, opts);
+}
+
+// The same drawing through any pixel-fill function, so other scenes (the
+// bedroom, future games) can paint the avatar wherever they like.
+// opts.pets: false to leave pets out (a scene that draws them itself).
+function paintAvatar(px, equipped, opts = {}) {
+  const { pose = "idle", frame = 0, background = true, pets = true } = opts;
+  const bob = pose === "idle" && frame % 2 === 1 ? 1 : 0;
 
   const look = equipped.appearance || DEFAULT_APPEARANCE;
   for (const slot of AVATAR_LAYERS) {
     if (slot === "background" && !background) continue;
     if (slot === "pet") {
       // pets stay planted while the character bobs
-      for (const pet of equipped.pets || []) drawGrid(px, petSprite(pet), 0);
+      if (pets) for (const pet of equipped.pets || []) drawGrid(px, petSprite(pet), 0);
       continue;
     }
     const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : spriteFor(equipped[slot]);

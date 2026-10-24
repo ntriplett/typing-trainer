@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import replace
 
-from app import appearance, db, pets
+from app import appearance, db, pets, room
 from app.catalog import (
     CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem, night_item_id, place_group,
 )
@@ -113,6 +113,14 @@ def equip(conn: sqlite3.Connection, learner_id: int, item_id: str) -> None:
         if current != item.group:
             raise StoreError("Pick a place from this group first, then turn on night.")
         set_night(conn, learner_id, True)
+        return
+    if item.slot in ("wallpaper", "flooring"):
+        room.set_surface(conn, learner_id, item.id)
+        return
+    if item.slot == "furniture":
+        # "using" furniture = putting it in your room (once)
+        if not any(p["item_id"] == item.id for p in db.list_room_items(conn, learner_id, "bedroom")):
+            room.place(conn, learner_id, item.id)
         return
     if item.slot == "hair_dye":
         color = item.id.removeprefix("dye_")

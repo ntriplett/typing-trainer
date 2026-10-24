@@ -165,3 +165,15 @@ def test_pets_api_round_trip():
     assert client.put(f"/api/pets/{pet_id}/name", json={"name": "Biscuit"}).json()["pets"][0]["name"] == "Biscuit"
     assert client.put(f"/api/pets/{pet_id}/along", json={"slot": None}).json()["avatar"]["pets"] == []
     assert client.get("/pets").status_code == 200
+
+
+def test_room_api_round_trip():
+    _give_coins(5_000)
+    client.post("/api/store/buy/furniture_bed_blue")
+    data = client.post("/api/room/items", json={"item_id": "furniture_bed_blue"}).json()
+    placed = data["room"]["items"][0]
+    moved = client.put(f"/api/room/items/{placed['id']}", json={"x": 5, "y": 60}).json()["room"]["items"][0]
+    assert (moved["x"], moved["y"]) == (5, 60)
+    assert client.delete(f"/api/room/items/{placed['id']}").json()["room"]["items"] == []
+    assert client.put("/api/room/surface", json={"item_id": "flooring_stone"}).status_code == 400
+    assert client.get("/bedroom").status_code == 200
