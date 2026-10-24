@@ -100,7 +100,7 @@ async function choose(field, value) {
     return;
   }
   me.avatar = data.avatar;
-  Header.setAvatar(data.avatar);
+  Header.update(data);
   statusEl.textContent = "Saved!";
   render();
 }

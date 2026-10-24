@@ -323,63 +323,7 @@ const SPRITES = {
     ],
   },
 
-  bg_meadow: { draw: drawMeadow },
-  bg_autumn_forest: { draw: drawAutumnForest },
-  bg_beach: { draw: drawBeach },
 };
-
-// --- backgrounds --------------------------------------------------------------
-// `px(x, y, w, h, color)` fills a block of avatar pixels. The character
-// stands on y ~= 43, so the ground starts a little above that.
-
-function dots(px, list, w = 1, h = 1) {
-  for (const [x, y, c] of list) px(x, y, w, h, c);
-}
-
-function drawMeadow(px) {
-  px(0, 0, 48, 48, "#a8d5e2"); // sky
-  px(0, 0, 48, 6, "#c4e3ec");
-  px(5, 4, 6, 6, "#f6d465"); // sun
-  px(3, 6, 10, 2, "#f6d465");
-  px(7, 2, 2, 10, "#f6d465");
-  px(30, 7, 9, 3, "#ffffff"); // cloud
-  px(33, 5, 4, 2, "#ffffff");
-  px(28, 9, 13, 1, "#e6f2f6");
-  px(0, 25, 48, 9, "#9cbf63"); // far hill
-  px(5, 22, 16, 3, "#9cbf63");
-  px(30, 23, 14, 2, "#9cbf63");
-  px(0, 34, 48, 14, "#6b8e3a"); // grass
-  px(0, 34, 48, 1, "#7fa346");
-  dots(px, [[3, 39, "#f4ead2"], [9, 44, "#e8b33e"], [42, 37, "#f4ead2"], [38, 45, "#e8907a"], [21, 45, "#e8b33e"], [15, 38, "#e8907a"]], 2, 1);
-  dots(px, [[6, 36, "#5a7a2e"], [25, 37, "#5a7a2e"], [44, 41, "#5a7a2e"]], 1, 2);
-}
-
-function drawAutumnForest(px) {
-  px(0, 0, 48, 48, "#f2c48d"); // warm sky
-  px(0, 0, 48, 8, "#f6d4a6");
-  for (const [x, crown, light] of [[1, "#b8432f", "#d9684a"], [17, "#e8b33e", "#f6d465"], [36, "#d9822b", "#efa55a"]]) {
-    px(x + 4, 15, 3, 21, "#5c3a1a"); // trunk
-    px(x, 6, 11, 10, crown); // canopy
-    px(x - 2, 9, 15, 5, crown);
-    px(x + 2, 6, 3, 2, light); // highlight
-  }
-  px(0, 34, 48, 14, "#8a6a3a"); // leafy ground
-  px(0, 34, 48, 1, "#a07a42");
-  dots(px, [[4, 39, "#b8432f"], [13, 44, "#e8b33e"], [27, 40, "#d9822b"], [41, 45, "#b8432f"], [33, 37, "#e8b33e"], [19, 37, "#d9822b"]], 3, 1);
-}
-
-function drawBeach(px) {
-  px(0, 0, 48, 48, "#9fd3e8"); // sky
-  px(36, 4, 6, 6, "#f6d465"); // sun
-  px(0, 21, 48, 10, "#4fa3c7"); // sea
-  px(0, 21, 48, 1, "#7cc0dc");
-  px(4, 25, 6, 1, "#ffffff"); // foam
-  px(22, 28, 8, 1, "#ffffff");
-  px(37, 24, 6, 1, "#ffffff");
-  px(0, 31, 48, 17, "#f0d79c"); // sand
-  px(0, 31, 48, 1, "#fbf1dc");
-  dots(px, [[6, 40, "#e8907a"], [18, 45, "#fbf1dc"], [40, 39, "#d9822b"]], 3, 1);
-}
 
 // Dev guard: a malformed grid is easy to make by hand, so say so loudly.
 const _appearanceSprites = {};

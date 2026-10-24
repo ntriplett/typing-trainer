@@ -112,6 +112,14 @@ CREATE TABLE IF NOT EXISTS equipped_item (
     PRIMARY KEY (learner_id, slot)
 );
 
+-- Small per-learner preferences (e.g. night mode on/off).
+CREATE TABLE IF NOT EXISTS learner_setting (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (learner_id, key)
+);
+
 -- Character designer choices (app/appearance.py owns the allowed values).
 CREATE TABLE IF NOT EXISTS appearance (
     learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
@@ -584,3 +592,23 @@ def profile_stats(conn: sqlite3.Connection, learner_id: int) -> dict:
         ),
         "items_owned": one("SELECT COUNT(*) FROM owned_item WHERE learner_id = ?"),
     }
+
+
+# --- settings -------------------------------------------------------------------
+
+
+def get_setting(conn: sqlite3.Connection, learner_id: int, key: str) -> str | None:
+    row = conn.execute(
+        "SELECT value FROM learner_setting WHERE learner_id = ? AND key = ?", (learner_id, key)
+    ).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(conn: sqlite3.Connection, learner_id: int, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO learner_setting (learner_id, key, value) VALUES (?, ?, ?)
+        ON CONFLICT(learner_id, key) DO UPDATE SET value = excluded.value
+        """,
+        (learner_id, key, value),
+    )

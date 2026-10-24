@@ -2,8 +2,12 @@
 // counter, and the player's avatar (links to the profile hub). Profiles
 // (PLAN.md 11d) will add the switch-player menu here.
 //
-// Needs sprites.js and avatar.js loaded first. Exposes window.Header so
-// pages can update coins without refetching.
+// Also applies the current place's page theme (themes.js) and shows a
+// day/night switch when that place's night is unlocked.
+//
+// Needs sprites.js, backgrounds.js, avatar.js, and themes.js loaded first.
+// Exposes window.Header so pages can update coins/avatar without
+// refetching.
 
 (function () {
   const bar = document.createElement("header");
@@ -15,6 +19,7 @@
         <span class="coin-icon" aria-hidden="true"></span>
         <span id="coin-count">…</span>
       </span>
+      <button class="night-toggle" hidden></button>
       <a class="topbar-avatar" href="/profile" title="My profile"></a>
     </div>`;
   document.body.prepend(bar);
@@ -41,9 +46,33 @@
     coinPill.classList.add("bump");
   }
 
+  const nightToggle = bar.querySelector(".night-toggle");
+  let current = null; // latest /api/me-shaped response
+
   function setAvatar(equipped) {
     drawAvatar(avatarCanvas, equipped);
+    applyTheme(equipped);
   }
+
+  // Any response shaped like /api/me (store actions, designer, ...).
+  function update(me) {
+    current = me;
+    setCoins(me.coins);
+    setAvatar(me.avatar);
+    nightToggle.hidden = !me.night.available;
+    nightToggle.textContent = me.night.on ? "☀️" : "🌙";
+    nightToggle.title = me.night.on ? "Switch to day" : "Switch to night";
+    document.dispatchEvent(new CustomEvent("avatarchange", { detail: me }));
+  }
+
+  nightToggle.addEventListener("click", async () => {
+    const r = await fetch("/api/me/night", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on: !current.night.on }),
+    });
+    if (r.ok) update(await r.json());
+  });
 
   // `earned` is the step-completion response's coins_earned list.
   function celebrate(earned, newBalance) {
@@ -65,8 +94,7 @@
       return r.json();
     })
     .then((me) => {
-      setCoins(me.coins);
-      setAvatar(me.avatar);
+      update(me);
       return me;
     })
     .catch((err) => {
@@ -75,5 +103,5 @@
       return null;
     });
 
-  window.Header = { ready, setCoins, setAvatar, celebrate };
+  window.Header = { ready, setCoins, setAvatar, update, celebrate };
 })();

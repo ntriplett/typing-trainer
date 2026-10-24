@@ -33,8 +33,50 @@
   --moss-dark: #4a6627;
   --sky: #a8d5e2;
 
+  /* Semantic tokens: what things are for, so night mode (below) can
+     swap them all at once. --outline stays dark brown day and night. */
+  --outline: #3b2417;
+  --on-wood: #fbf1dc; /* text on wood buttons and the top bar, day and night */
+  --heading: var(--wood-dark);
+  --link: var(--leaf-red);
+  --surface: #fffaf0; /* typing area, inputs */
+  --surface-shadow: #efe2c4;
+  --muted-fill: #d8c7a0;
+  --card-good: #e9efd2;
+  --card-hover: #f8e6c4;
+  --type-pending: #a8957a;
+  --type-correct: #4f7a2a;
+  --type-wrong: #b8432f;
+  --type-wrong-bg: #f6d6c8;
+  --panel-frame: url("/static/assets/ui/panel.svg");
+
+  /* Set per place by themes.js (the current place's colors). */
+  --page-bg: var(--sand);
+  --topbar: var(--wood-dark);
+
   --font-ui: "Pixelify Sans", system-ui, sans-serif;
   --font-type: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+}
+
+/* Night mode (a place-group night unlock is on): the whole UI goes dark. */
+:root[data-night] {
+  --ink: #f1e6cf;
+  --ink-soft: #c9b896;
+  --sand: #39344c;
+  --parchment: #2b2838;
+  --heading: #f6d465;
+  --link: #ff9a7a;
+  --surface: #22202e;
+  --surface-shadow: #1a1824;
+  --muted-fill: #4a4560;
+  --card-good: #2f4030;
+  --card-hover: #463f5c;
+  --type-pending: #8a8296;
+  --type-correct: #9fd07a;
+  --type-wrong: #ff8a7a;
+  --type-wrong-bg: #5a2a2a;
+  --panel-frame: url("/static/assets/ui/panel-night.svg");
+  color-scheme: dark;
 }
 
 /* --- base ---------------------------------------------------------------------- */
@@ -46,7 +88,8 @@
 }
 
 html {
-  background: var(--sand) url("/static/assets/ui/sand.svg") repeat;
+  /* themes.js swaps in a grain tile in the current place's colors */
+  background: var(--page-bg) url("/static/assets/ui/sand.svg") repeat;
   background-size: 32px 32px;
   image-rendering: pixelated;
 }
@@ -80,19 +123,19 @@ h3 {
 
 h1 {
   font-size: 2rem;
-  color: var(--wood-dark);
+  color: var(--heading);
   text-shadow: 2px 2px 0 var(--leaf-gold);
 }
 
 a {
-  color: var(--leaf-red);
+  color: var(--link);
 }
 
 /* --- windows (pixel wood frame around parchment) ---------------------------- */
 
 .panel {
   border: 12px solid transparent;
-  border-image: url("/static/assets/ui/panel.svg") 4 fill / 12px stretch;
+  border-image: var(--panel-frame) 4 fill / 12px stretch;
   padding: 0.75rem 1rem;
   margin-bottom: 1.25rem;
 }
@@ -104,7 +147,7 @@ a {
 .panel-title {
   margin: -0.25rem 0 0.75rem;
   font-size: 1.3rem;
-  color: var(--wood-dark);
+  color: var(--heading);
 }
 
 /* --- buttons (pixel planks) --------------------------------------------------- */
@@ -115,8 +158,8 @@ button,
   font-variant-ligatures: none;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--parchment);
-  text-shadow: 2px 2px 0 var(--ink);
+  color: var(--on-wood);
+  text-shadow: 2px 2px 0 var(--outline);
   text-decoration: none;
   display: inline-block;
   border: 9px solid transparent;
@@ -155,7 +198,7 @@ button:focus-visible,
 
 .button-gold {
   border-image-source: url("/static/assets/ui/button-gold.svg");
-  color: var(--ink);
+  color: var(--outline);
   text-shadow: 1px 1px 0 var(--parchment);
 }
 
@@ -168,7 +211,7 @@ button:focus-visible,
 .link-button {
   border: none;
   border-image: none;
-  color: var(--leaf-red);
+  color: var(--link);
   text-shadow: none;
   text-decoration: underline;
   padding: 0;
@@ -182,18 +225,18 @@ button:focus-visible,
   justify-content: space-between;
   gap: 1rem;
   padding: 0.4rem 16px;
-  background: var(--wood-dark);
-  border-bottom: 4px solid var(--ink);
+  background: var(--topbar);
+  border-bottom: 4px solid var(--outline);
   box-shadow: inset 0 -4px 0 var(--wood), inset 0 4px 0 var(--wood);
-  color: var(--parchment);
+  color: var(--on-wood);
 }
 
 .topbar .brand {
-  color: var(--parchment);
+  color: var(--on-wood);
   text-decoration: none;
   font-size: 1.35rem;
   font-weight: 700;
-  text-shadow: 2px 2px 0 var(--ink);
+  text-shadow: 2px 2px 0 var(--outline);
   white-space: nowrap;
 }
 
@@ -218,7 +261,7 @@ button:focus-visible,
   align-items: center;
   gap: 0.35rem;
   padding: 0.1rem 0.6rem;
-  background: var(--ink);
+  background: var(--outline);
   border: 3px solid var(--wood-light);
   font-size: 1.2rem;
   font-weight: 700;
@@ -248,7 +291,7 @@ button:focus-visible,
 .topbar-avatar {
   display: block;
   border: 3px solid var(--wood-light);
-  background: var(--ink);
+  background: var(--outline);
   line-height: 0;
 }
 
@@ -278,7 +321,7 @@ button:focus-visible,
   gap: 0.35rem;
   padding: 0.15rem 0.6rem;
   background: var(--parchment);
-  border: 3px solid var(--ink);
+  border: 3px solid var(--outline);
   box-shadow: 3px 3px 0 var(--wood);
   font-weight: 700;
   animation: toast-rise 2.4s steps(12) forwards;
@@ -307,7 +350,7 @@ button:focus-visible,
   align-items: center;
   gap: 0.25rem;
   font-weight: 700;
-  color: var(--wood-dark);
+  color: var(--heading);
 }
 
 .error-text {
@@ -315,8 +358,9 @@ button:focus-visible,
   font-weight: 600;
 }
 
-/* Gentle falling leaves; purely decorative (home page). */
-.leaves {
+/* Drifting place particles (themes.js), on pages that opt in with
+   <body data-particles>. Purely decorative. */
+.particles {
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -324,24 +368,111 @@ button:focus-visible,
   z-index: -1;
 }
 
-.leaves span {
+.particles span {
   position: absolute;
-  top: -30px;
-  width: 21px;
-  height: 21px;
-  background: url("/static/assets/ui/leaf.svg") no-repeat center / contain;
-  animation: leaf-fall linear infinite;
-  opacity: 0.85;
+  width: 18px;
+  height: 18px;
+  background: no-repeat center / contain;
+  image-rendering: pixelated;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
-@keyframes leaf-fall {
+.particles .fall {
+  top: -30px;
+  animation-name: p-fall;
+}
+
+.particles .rise {
+  bottom: -30px;
+  animation-name: p-rise;
+}
+
+.particles .blow {
+  left: -30px;
+  animation-name: p-blow;
+}
+
+.particles .twinkle {
+  animation-name: p-twinkle;
+  animation-timing-function: steps(4);
+}
+
+.particles .wander {
+  animation-name: p-wander;
+  animation-timing-function: ease-in-out;
+  animation-direction: alternate;
+}
+
+@keyframes p-fall {
   to {
     transform: translate(60px, 110vh) rotate(360deg);
   }
 }
 
+@keyframes p-rise {
+  to {
+    transform: translate(-30px, -110vh);
+  }
+}
+
+@keyframes p-blow {
+  to {
+    transform: translate(110vw, 40px);
+  }
+}
+
+@keyframes p-twinkle {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes p-wander {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(70px, -50px);
+    opacity: 0.3;
+  }
+}
+
+/* The place's ground along the bottom of the page (themes.js colors it). */
+.page-ground {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--ground, transparent);
+  border-top: 4px solid var(--ground-top, transparent);
+  image-rendering: pixelated;
+}
+
+body[data-particles] main {
+  margin-bottom: 4rem; /* clear the ground strip */
+}
+
+/* Day/night switch in the top bar (shown when night is unlocked here). */
+.night-toggle {
+  border: 3px solid var(--wood-light);
+  border-image: none;
+  background: var(--outline);
+  text-shadow: none;
+  font-size: 1.1rem;
+  padding: 0.1rem 0.45rem;
+  line-height: 1.2;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .leaves {
+  .particles {
     display: none;
   }
   .coin-pill.bump,

@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from app import analytics, appearance, bigram_model, db, scheduler, skill_model, store
 from app.activities import get_activity
+from app.catalog import night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
 from app.activities.teach_demos import get_demo_activity, list_demo_activities
@@ -461,6 +462,7 @@ def _me(conn, learner_id: int) -> dict:
         "learner": {"id": learner.id, "name": learner.name},
         "coins": db.get_coin_balance(conn, learner_id),
         "avatar": store.get_avatar(conn, learner_id),
+        "night": store.night_status(conn, learner_id),
     }
 
 
@@ -474,8 +476,11 @@ def store_catalog(conn=Depends(get_db), learner_id: int = Depends(current_learne
     owned = store.owned_ids(conn, learner_id)
     avatar = store.get_avatar(conn, learner_id)
     # "equipped" = worn, or (for a hair dye) the hair color in use
-    equipped = {v for k, v in avatar.items() if k != "appearance"}
+    equipped = {v for k, v in avatar.items() if k not in ("appearance", "night")}
     equipped.add(appearance.dye_item_id(avatar["appearance"]["hair_color"]))
+    night = store.night_status(conn, learner_id)
+    if night["on"]:
+        equipped.add(night_item_id(night["group"]))
     coins = db.get_coin_balance(conn, learner_id)
     items = [
         {
@@ -506,6 +511,19 @@ def store_buy(item_id: str, conn=Depends(get_db), learner_id: int = Depends(curr
 @app.post("/api/store/equip/{item_id}")
 def store_equip(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return _store_action(store.equip, conn, learner_id, item_id)
+
+
+class NightIn(BaseModel):
+    on: bool
+
+
+@app.put("/api/me/night")
+def set_night(body: NightIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        store.set_night(conn, learner_id, body.on)
+    except store.StoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _me(conn, learner_id)
 
 
 @app.post("/api/store/unequip/{slot}")

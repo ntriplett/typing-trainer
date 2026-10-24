@@ -51,7 +51,8 @@ def test_there_is_something_to_buy_after_one_session():
 
 def test_grant_starters_equips_default_background_and_clothes(conn, learner_id):
     avatar = store.get_avatar(conn, learner_id)
-    assert {k: v for k, v in avatar.items() if k != "appearance"} == store.SLOT_DEFAULTS
+    assert {k: v for k, v in avatar.items() if k not in ("appearance", "night")} == store.SLOT_DEFAULTS
+    assert avatar["night"] is False
     assert avatar["appearance"]["hair_style"] == "short"
 
 
@@ -179,3 +180,52 @@ def test_taking_off_a_shirt_puts_the_starter_tunic_back(conn, learner_id):
     store.equip(conn, learner_id, shirt.id)
     store.unequip(conn, learner_id, "shirt")
     assert store.get_avatar(conn, learner_id)["shirt"] == store.SLOT_DEFAULTS["shirt"]
+
+
+
+# --- places + night -------------------------------------------------------------
+
+
+def test_every_place_has_a_group_with_a_night_unlock():
+    from app.catalog import night_item_id, place_group
+
+    places = [i for i in store.CATALOG.values() if i.slot == "background"]
+    assert len(places) == 18
+    for place in places:
+        group = place_group(place.id)
+        assert group == place.group
+        assert store.CATALOG[night_item_id(group)].slot == "night"
+
+
+def _buy_and_use(conn, learner_id, item_id):
+    db.add_coins(conn, learner_id, store.CATALOG[item_id].price, "test")
+    store.buy(conn, learner_id, item_id)
+    store.equip(conn, learner_id, item_id)
+
+
+def test_night_needs_the_unlock_for_the_current_places_group(conn, learner_id):
+    with pytest.raises(store.StoreError, match="night"):
+        store.set_night(conn, learner_id, True)
+    _buy_and_use(conn, learner_id, "night_forests")  # meadow is a forests-group place
+    assert store.get_avatar(conn, learner_id)["night"] is True
+
+
+def test_night_hides_in_a_place_without_its_unlock_and_comes_back(conn, learner_id):
+    _buy_and_use(conn, learner_id, "night_forests")
+    _buy_and_use(conn, learner_id, "bg_beach")  # water group: no night unlock
+    assert store.night_status(conn, learner_id) == {"available": False, "on": False, "group": "water"}
+    store.unequip(conn, learner_id, "background")  # back to the meadow
+    assert store.night_status(conn, learner_id)["on"] is True
+
+
+def test_using_a_night_unlock_from_another_group_explains_why_not(conn, learner_id):
+    db.add_coins(conn, learner_id, 5000, "test")
+    store.buy(conn, learner_id, "night_space")
+    with pytest.raises(store.StoreError, match="Pick a place"):
+        store.equip(conn, learner_id, "night_space")
+
+
+def test_turning_night_off(conn, learner_id):
+    _buy_and_use(conn, learner_id, "night_forests")
+    store.set_night(conn, learner_id, False)
+    assert store.get_avatar(conn, learner_id)["night"] is False

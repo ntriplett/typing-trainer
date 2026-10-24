@@ -19,7 +19,7 @@ from app.appearance import DYE_HAIR_COLORS, dye_item_id
 # Draw order, back to front -- the front-end avatar renderer layers in
 # this same order.
 WEARABLE_SLOTS = ("background", "shoes", "pants", "shirt", "hat", "pet")
-OTHER_KINDS = ("hair_dye",)
+OTHER_KINDS = ("hair_dye", "night")
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +33,31 @@ class StoreItem:
     group: str = ""
 
 
+# Place groups, for store shelving and night unlocks.
+PLACE_GROUPS: dict[str, tuple[str, ...]] = {
+    "forests": ("meadow", "flower_forest", "autumn_forest", "pine_forest", "cherry_grove", "jungle"),
+    "water": ("beach", "river", "waterfall", "under_sea", "swamp"),
+    "wild": ("desert", "badlands", "tundra", "mushroom_island"),
+    "space": ("space", "moon", "mars"),
+}
+_GROUP_OF_PLACE = {place: group for group, places in PLACE_GROUPS.items() for place in places}
+
+
+def _place(place: str, name: str, price: int, description: str) -> list[StoreItem]:
+    return [StoreItem(
+        f"bg_{place}", name, "background", price, description,
+        starter=price == 0, group=_GROUP_OF_PLACE[place],
+    )]
+
+
+def place_group(background_item_id: str) -> str | None:
+    return _GROUP_OF_PLACE.get(background_item_id.removeprefix("bg_"))
+
+
+def night_item_id(group: str) -> str:
+    return f"night_{group}"
+
+
 _DYE_NAMES = {
     "blue": "Ocean Blue", "green": "Leafy Green", "pink": "Bubblegum Pink",
     "purple": "Plum Purple", "silver": "Moonbeam Silver", "cherry": "Cherry Red",
@@ -40,7 +65,6 @@ _DYE_NAMES = {
 
 ITEMS: list[StoreItem] = [
     # starters (free, not shown in the store)
-    StoreItem("bg_meadow", "Sunny Meadow", "background", 0, "Where every journey starts.", starter=True),
     StoreItem("shirt_tunic", "Cream Tunic", "shirt", 0, "Plain, comfy, and ready for anything.", starter=True),
     StoreItem("pants_trousers", "Brown Trousers", "pants", 0, "Good for climbing and kneeling.", starter=True),
     StoreItem("shoes_boots", "Leather Boots", "shoes", 0, "Sturdy enough for any trail.", starter=True),
@@ -55,9 +79,35 @@ ITEMS: list[StoreItem] = [
     # pets
     StoreItem("pet_hedgehog", "Hedgehog", "pet", 1500, "Small, spiky, and very loyal."),
     StoreItem("pet_fox", "Fox Kit", "pet", 2500, "Curious about everything you type."),
-    # backgrounds
-    StoreItem("bg_autumn_forest", "Autumn Forest", "background", 800, "Red and gold trees all around."),
-    StoreItem("bg_beach", "Sandy Beach", "background", 1000, "Warm sand and gentle waves."),
+    # places (backgrounds), by group -- each group has a night unlock below
+    *_place("meadow", "Sunny Meadow", 0, "Where every journey starts."),
+    *_place("flower_forest", "Flower Forest", 900, "Every tree is blooming."),
+    *_place("autumn_forest", "Autumn Forest", 800, "Red and gold trees all around."),
+    *_place("pine_forest", "Pine Forest", 1200, "Tall pines and the smell of sap."),
+    *_place("cherry_grove", "Cherry Grove", 1800, "Pink petals drifting everywhere."),
+    *_place("jungle", "Jungle", 2500, "Vines, giant leaves, and hidden things."),
+    *_place("beach", "Sandy Beach", 1000, "Warm sand and gentle waves."),
+    *_place("river", "Babbling River", 1100, "A cool stream with stepping stones."),
+    *_place("waterfall", "Waterfall", 2200, "Mist, rainbows, and a big splash."),
+    *_place("under_sea", "Under the Sea", 3500, "Bubbles, seaweed, and curious fish."),
+    *_place("swamp", "Misty Swamp", 1500, "Lily pads and croaking frogs."),
+    *_place("desert", "Desert", 1300, "Golden dunes and a lonely cactus."),
+    *_place("badlands", "Badlands", 2000, "Striped red cliffs as far as you can see."),
+    *_place("tundra", "Snowy Tundra", 1600, "Crunchy snow and frosty pines."),
+    *_place("mushroom_island", "Mushroom Island", 3000, "Giant mushrooms on a far-off island."),
+    *_place("space", "Outer Space", 4000, "Floating among the stars."),
+    *_place("moon", "The Moon", 4500, "Craters, dust, and Earth in the sky."),
+    *_place("mars", "Mars", 5000, "The red planet, all to yourself."),
+    # night unlocks: one per place group
+    *[
+        StoreItem(f"night_{group}", name, "night", price, desc, group=group)
+        for group, (name, price, desc) in {
+            "forests": ("Firefly Jar", 3000, "Nighttime for fields and forests, with fireflies."),
+            "water": ("Moonlit Tide", 3000, "Nighttime by the water, under a big moon."),
+            "wild": ("Desert Stars", 3000, "Nighttime in the wild lands, full of stars."),
+            "space": ("Starlight Visor", 3500, "Deep-space night: darker skies, brighter stars."),
+        }.items()
+    ],
     # hair dyes (unlock colors in the character designer)
     *[
         StoreItem(dye_item_id(c), _DYE_NAMES[c], "hair_dye", 1500, "A splash of color for your hair.")

@@ -142,3 +142,12 @@ def test_designer_saves_appearance_and_guards_dyes():
 def test_profile_and_designer_pages_are_served():
     assert "Profile" in client.get("/profile").text
     assert "Designer" in client.get("/designer").text
+
+
+def test_night_toggle_endpoint():
+    assert client.put("/api/me/night", json={"on": True}).status_code == 400
+    _give_coins(store.CATALOG["night_forests"].price)
+    client.post("/api/store/buy/night_forests")
+    data = client.put("/api/me/night", json={"on": True}).json()
+    assert data["night"]["on"] is True and data["avatar"]["night"] is True
+    assert client.put("/api/me/night", json={"on": False}).json()["night"]["on"] is False

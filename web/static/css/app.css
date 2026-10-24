@@ -6,7 +6,7 @@
    colors, same meaning, no reason for each page to redefine them. */
 
 .pending {
-  color: #a8957a;
+  color: var(--type-pending);
 }
 
 .current {
@@ -16,12 +16,12 @@
 }
 
 .correct {
-  color: #4f7a2a;
+  color: var(--type-correct);
 }
 
 .incorrect {
-  color: #b8432f;
-  background: #f6d6c8;
+  color: var(--type-wrong);
+  background: var(--type-wrong-bg);
   text-decoration: underline;
 }
 
@@ -45,6 +45,6 @@
 /* Shared secondary/caption text style, used on the analysis and
    teach-demo pages. */
 .hint {
-  color: #6b4a2e;
+  color: var(--ink-soft);
   font-size: 0.95rem;
 }

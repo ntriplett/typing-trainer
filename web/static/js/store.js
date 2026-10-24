@@ -4,12 +4,19 @@
 // /api/store and posts actions.
 
 const SHELVES = [
-  { slot: "hat", title: "Hats" },
-  { slot: "shirt", title: "Clothes" },
-  { slot: "pet", title: "Pets" },
-  { slot: "background", title: "Places" },
-  { slot: "hair_dye", title: "Hair dye" },
+  { title: "Hats", match: (i) => i.slot === "hat" },
+  { title: "Clothes", match: (i) => ["shirt", "pants", "shoes"].includes(i.slot) },
+  { title: "Pets", match: (i) => i.slot === "pet" },
+  { title: "Places: fields & forests", match: (i) => i.slot === "background" && i.group === "forests" },
+  { title: "Places: by the water", match: (i) => i.slot === "background" && i.group === "water" },
+  { title: "Places: wild lands", match: (i) => i.slot === "background" && i.group === "wild" },
+  { title: "Places: outer space", match: (i) => i.slot === "background" && i.group === "space" },
+  { title: "Night time", match: (i) => i.slot === "night" },
+  { title: "Hair dye", match: (i) => i.slot === "hair_dye" },
 ];
+
+// A night unlock's thumbnail shows one of its own places at night.
+const NIGHT_PREVIEW_PLACE = { forests: "bg_meadow", water: "bg_beach", wild: "bg_desert", space: "bg_moon" };
 
 const itemsEl = document.getElementById("store-items");
 const messageEl = document.getElementById("store-message");
@@ -34,6 +41,9 @@ async function load() {
 
 function withItem(avatar, item) {
   if (!item) return avatar;
+  if (item.slot === "night") {
+    return { ...avatar, background: NIGHT_PREVIEW_PLACE[item.group], night: true };
+  }
   if (item.slot === "hair_dye") {
     const color = item.id.replace(/^dye_/, "");
     return { ...avatar, appearance: { ...avatar.appearance, hair_color: color } };
@@ -51,7 +61,7 @@ function render() {
   renderPreview();
   itemsEl.innerHTML = "";
   for (const shelf of SHELVES) {
-    const items = state.items.filter((i) => i.slot === shelf.slot);
+    const items = state.items.filter(shelf.match);
     if (!items.length) continue;
     const section = document.createElement("section");
     section.className = "panel shelf";
@@ -89,7 +99,14 @@ function itemCard(item) {
 function actionButton(item) {
   const btn = document.createElement("button");
   const usable = item.slot === "hair_dye"; // used, not worn
-  if (item.equipped && usable) {
+  if (item.slot === "night" && item.equipped) {
+    btn.textContent = "Turn off";
+    btn.onclick = () => act("/api/me/night", null, "PUT", { on: false });
+  } else if (item.slot === "night" && item.owned) {
+    btn.textContent = "Turn on";
+    btn.className = "button-go";
+    btn.onclick = () => act(`/api/store/equip/${item.id}`);
+  } else if (item.equipped && usable) {
     btn.textContent = "In use";
     btn.disabled = true;
   } else if (item.equipped) {
@@ -111,10 +128,15 @@ function actionButton(item) {
 }
 
 // After buying, wear it straight away -- that's what a kid wants.
-async function act(url, boughtItem = null) {
+async function act(url, boughtItem = null, method = "POST", body = null) {
   messageEl.textContent = "";
-  let r = await fetch(url, { method: "POST" });
-  if (r.ok && boughtItem) {
+  let r = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : null,
+  });
+  // Buying wears it straight away (a night unlock only if you're in one of its places).
+  if (r.ok && boughtItem && !(boughtItem.slot === "night" && state.night.group !== boughtItem.group)) {
     r = await fetch(`/api/store/equip/${boughtItem.id}`, { method: "POST" });
   }
   const data = await r.json();
@@ -122,8 +144,7 @@ async function act(url, boughtItem = null) {
     messageEl.textContent = data.detail || "Something went wrong.";
     return;
   }
-  Header.setCoins(data.coins);
-  Header.setAvatar(data.avatar);
+  Header.update(data);
   tryingOn = null;
   await load();
 }

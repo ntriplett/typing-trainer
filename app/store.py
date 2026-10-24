@@ -13,14 +13,18 @@ import sqlite3
 from dataclasses import replace
 
 from app import appearance, db
-from app.catalog import CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem
+from app.catalog import (
+    CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem, night_item_id, place_group,
+)
 
 # Re-exported so callers have one place to look for store names.
 SLOTS = WEARABLE_SLOTS
 __all__ = [
     "CATALOG", "DEFAULT_BACKGROUND", "SLOTS", "SLOT_DEFAULTS", "StoreError", "StoreItem",
-    "buy", "equip", "get_avatar", "grant_starters", "owned_ids", "unequip",
+    "buy", "equip", "get_avatar", "grant_starters", "night_status", "owned_ids", "set_night", "unequip",
 ]
+
+NIGHT_SETTING = "night"
 
 
 class StoreError(ValueError):
@@ -60,10 +64,27 @@ def get_avatar(conn: sqlite3.Connection, learner_id: int) -> dict:
         for slot, item_id in db.get_equipped(conn, learner_id).items()
         if slot in WEARABLE_SLOTS
     }
-    return {**worn, "appearance": {
+    return {**worn, "night": night_status(conn, learner_id)["on"], "appearance": {
         "gender": look.gender, "skin": look.skin,
         "hair_color": look.hair_color, "hair_style": look.hair_style,
     }}
+
+
+def night_status(conn: sqlite3.Connection, learner_id: int) -> dict:
+    """Night is a saved on/off wish, but it only shows while the current
+    place's group night is unlocked -- so switching to a place without
+    its night unlock just shows day, and switching back restores night."""
+    background = db.get_equipped(conn, learner_id).get("background", DEFAULT_BACKGROUND)
+    group = place_group(background)
+    available = group is not None and night_item_id(group) in owned_ids(conn, learner_id)
+    wanted = db.get_setting(conn, learner_id, NIGHT_SETTING) == "on"
+    return {"available": available, "on": available and wanted, "group": group}
+
+
+def set_night(conn: sqlite3.Connection, learner_id: int, on: bool) -> None:
+    if on and not night_status(conn, learner_id)["available"]:
+        raise StoreError("Unlock night for this place in the store first!")
+    db.set_setting(conn, learner_id, NIGHT_SETTING, "on" if on else "off")
 
 
 def buy(conn: sqlite3.Connection, learner_id: int, item_id: str) -> StoreItem:
@@ -85,6 +106,13 @@ def equip(conn: sqlite3.Connection, learner_id: int, item_id: str) -> None:
     item = _get_item(item_id)
     if item.id not in owned_ids(conn, learner_id):
         raise StoreError(f"You don't own the {item.name} yet.")
+    if item.slot == "night":
+        # "Using" a night unlock means: switch to one of its places at night.
+        current = place_group(db.get_equipped(conn, learner_id).get("background", DEFAULT_BACKGROUND))
+        if current != item.group:
+            raise StoreError("Pick a place from this group first, then turn on night.")
+        set_night(conn, learner_id, True)
+        return
     if item.slot == "hair_dye":
         color = item.id.removeprefix("dye_")
         look = appearance.load(conn, learner_id)

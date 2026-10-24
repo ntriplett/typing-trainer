@@ -5,9 +5,9 @@
   height: 9.6rem; /* 4 lines at the line-height below */
   overflow-y: auto;
   scroll-behavior: smooth;
-  background: #fffaf0;
+  background: var(--surface);
   border: 3px solid var(--wood-light);
-  box-shadow: inset 3px 3px 0 #efe2c4;
+  box-shadow: inset 3px 3px 0 var(--surface-shadow);
   padding: 0.25rem 0.75rem;
 }
 
@@ -68,20 +68,20 @@ input[type="checkbox"] {
 #plan-preview .plan-phase {
   padding: 0.05rem 0.5rem;
   background: var(--sand);
-  border: 2px solid #d8c7a0;
+  border: 2px solid var(--muted-fill);
   color: var(--ink-soft);
 }
 
 #plan-preview .plan-phase.done {
-  background: #dfe8c4;
+  background: var(--card-good);
   border-color: var(--moss);
   color: var(--moss-dark);
 }
 
 #plan-preview .plan-phase.current {
   background: var(--leaf-gold);
-  border-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--outline);
+  color: var(--outline);
   font-weight: bold;
 }
 

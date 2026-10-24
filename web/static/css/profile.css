@@ -15,7 +15,7 @@
 #designer-avatar {
   width: 240px;
   height: 240px;
-  border: 4px solid var(--ink);
+  border: 4px solid var(--outline);
   flex: none;
 }
 
@@ -62,7 +62,7 @@
 
 a.hub-tile:hover {
   border-color: var(--leaf-orange);
-  background: #f8e6c4;
+  background: var(--card-hover);
 }
 
 .hub-tile.soon {
@@ -116,8 +116,9 @@ a.hub-tile:hover {
 }
 
 .choice.selected {
-  border-color: var(--ink);
+  border-color: var(--outline);
   background: var(--leaf-gold);
+  color: var(--outline);
 }
 
 .swatch-choice {
@@ -130,7 +131,7 @@ a.hub-tile:hover {
 }
 
 .swatch-choice.selected {
-  border-color: var(--ink);
+  border-color: var(--outline);
   box-shadow: 0 0 0 3px var(--leaf-gold);
 }
 
@@ -153,7 +154,7 @@ a.hub-tile:hover {
   font-size: 1.1rem;
   padding: 0.2rem 0.5rem;
   border: 3px solid var(--wood-light);
-  background: #fffaf0;
+  background: var(--surface);
   color: var(--ink);
   width: 12rem;
 }
