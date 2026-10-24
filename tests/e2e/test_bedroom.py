@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import urllib.request
-
 from playwright.sync_api import Page, expect
 
 from app import db, store
@@ -15,9 +12,9 @@ def _give_coins(tmp_path, amount: int) -> None:
         db.add_coins(conn, 1, amount, "test")
 
 
-def _room(live_server) -> dict:
-    with urllib.request.urlopen(f"{live_server}/api/room") as resp:
-        return json.loads(resp.read())["room"]
+def _room(page: Page, live_server) -> dict:
+    # page.request shares the browser's cookies, so it acts as the same player
+    return page.request.get(f"{live_server}/api/room").json()["room"]
 
 
 def test_buying_furniture_puts_it_in_the_room_and_dragging_saves(page: Page, live_server, tmp_path):
@@ -34,7 +31,7 @@ def test_buying_furniture_puts_it_in_the_room_and_dragging_saves(page: Page, liv
     page.goto(f"{live_server}/bedroom")
     canvas = page.locator("#room-canvas")
     expect(canvas).to_be_visible()
-    start = _room(live_server)["items"][0]
+    start = _room(page, live_server)["items"][0]
     box = canvas.bounding_box()
     scale = box["width"] / 96
     # grab the chest's middle and drag it 20 room-pixels left
@@ -54,14 +51,13 @@ def test_put_away_moves_it_to_the_inventory(page: Page, live_server, tmp_path):
     page.goto(live_server)
     expect(page.locator("#coin-count")).to_have_text("0")
     _give_coins(tmp_path, store.CATALOG["furniture_clock"].price)
-    with urllib.request.urlopen(urllib.request.Request(f"{live_server}/api/store/buy/furniture_clock", method="POST")):
-        pass
+    page.request.post(f"{live_server}/api/store/buy/furniture_clock")
 
     page.goto(f"{live_server}/bedroom")
     page.locator("#inventory .thumb-choice[data-item-id='furniture_clock']").click()
     expect(page.locator("#selected-name")).to_have_text("Wall Clock")  # placing selects it
-    assert _room(live_server)["items"][0]["item_id"] == "furniture_clock"
+    assert _room(page, live_server)["items"][0]["item_id"] == "furniture_clock"
 
     page.click("#put-away")
     expect(page.locator("#inventory .thumb-choice[data-item-id='furniture_clock']")).to_be_visible()
-    assert _room(live_server)["items"] == []
+    assert _room(page, live_server)["items"] == []

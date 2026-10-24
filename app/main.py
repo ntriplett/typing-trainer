@@ -24,12 +24,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, bigram_model, config, db, pets, room, scheduler, skill_model, store
+from app import analytics, appearance, bigram_model, config, db, pets, profiles, room, scheduler, skill_model, store
 from app.activities import get_activity
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
@@ -100,26 +100,30 @@ def get_db():
         yield conn
 
 
-def ensure_learner(conn) -> int:
-    """v1 is single-learner (PLAN.md Section 4) -- always learner id 1."""
-    existing = db.get_learner(conn, 1)
-    if existing:
-        return existing.id
-    created = db.create_learner(conn, "Learner")
-    return created.id
+# The current player, remembered per browser (PLAN.md 11d). Not a
+# security boundary -- it's a family PC with no passwords by design.
+LEARNER_COOKIE = "typing_learner"
+COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 
-def current_learner(conn=Depends(get_db)) -> int:
-    """The learner this request acts for. Every endpoint that touches
-    per-learner data goes through here, so profiles (PLAN.md 11d) only
-    have to change this one function (read a cookie instead of
-    assuming learner 1). FastAPI caches get_db per request, so this
+def current_learner(request: Request, conn=Depends(get_db)) -> int:
+    """The learner this request acts for, from the browser's cookie. Every
+    endpoint that touches per-learner data goes through here. With no (or
+    an unknown) player picked it's a 401, and the pages send you to the
+    welcome screen to pick one. FastAPI caches get_db per request, so this
     shares the endpoint's connection.
     """
-    learner_id = ensure_learner(conn)
+    raw = request.cookies.get(LEARNER_COOKIE, "")
+    learner_id = int(raw) if raw.isdigit() else None
+    if learner_id is None or not profiles.exists(conn, learner_id):
+        raise HTTPException(status_code=401, detail="Pick who's playing first!")
     store.grant_starters(conn, learner_id)
     _grant_dev_coins(conn, learner_id)
     return learner_id
+
+
+def _remember(response: Response, learner_id: int) -> None:
+    response.set_cookie(LEARNER_COOKIE, str(learner_id), max_age=COOKIE_MAX_AGE, httponly=True, samesite="lax")
 
 
 def _grant_dev_coins(conn, learner_id: int) -> None:
@@ -181,6 +185,21 @@ def pets_page() -> FileResponse:
 @app.get("/bedroom")
 def bedroom_page() -> FileResponse:
     return FileResponse(WEB_DIR / "bedroom.html")
+
+
+@app.get("/welcome")
+def welcome_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "welcome.html")
+
+
+@app.get("/placement")
+def placement_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "placement.html")
+
+
+@app.get("/wardrobe")
+def wardrobe_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "wardrobe.html")
 
 
 @app.get("/teach-demo")
@@ -318,7 +337,12 @@ def start_session(
         step_seconds_scale=0.15 if quick else 1.0,
     )
 
-    estimated_wpm = analytics.estimate_starting_wpm(conn, learner_id)
+    placement = profiles.placement_wpm(conn, learner_id)
+    estimated_wpm = (
+        analytics.estimate_starting_wpm(conn, learner_id, default=placement)
+        if placement
+        else analytics.estimate_starting_wpm(conn, learner_id)
+    )
     session = db.start_session(conn, learner_id)
     runtime = SessionRuntime(skeleton=skeleton, estimated_wpm=estimated_wpm, learner_id=learner_id)
     _SESSION_PLANS[session.id] = runtime
@@ -570,6 +594,7 @@ class AppearanceIn(BaseModel):
     skin: str
     hair_color: str
     hair_style: str
+    eye_color: str = "brown"
 
 
 class NameIn(BaseModel):
@@ -724,3 +749,75 @@ def put_away_item(placed_id: int, conn=Depends(get_db), learner_id: int = Depend
 @app.put("/api/room/surface")
 def set_room_surface(body: SurfaceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return _room_action(room.set_surface, conn, learner_id, body.item_id)
+
+
+# --- profiles API ---------------------------------------------------------------------
+# Picking/creating doesn't need a current player, so these skip current_learner.
+
+
+class ProfileIn(BaseModel):
+    name: str
+
+
+class PlacementIn(BaseModel):
+    keys: str
+    speed: str
+
+
+@app.get("/api/profiles")
+def list_profiles(conn=Depends(get_db)) -> list[dict]:
+    return profiles.list_profiles(conn)
+
+
+@app.post("/api/profiles")
+def create_profile(body: ProfileIn, response: Response, conn=Depends(get_db)) -> dict:
+    try:
+        learner_id = profiles.create(conn, body.name)
+    except profiles.ProfileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    _grant_dev_coins(conn, learner_id)
+    _remember(response, learner_id)
+    return _me(conn, learner_id)
+
+
+@app.post("/api/profiles/{learner_id}/select")
+def select_profile(learner_id: int, response: Response, conn=Depends(get_db)) -> dict:
+    if not profiles.exists(conn, learner_id):
+        raise HTTPException(status_code=404, detail="There's no player like that.")
+    _remember(response, learner_id)
+    store.grant_starters(conn, learner_id)
+    return _me(conn, learner_id)
+
+
+@app.post("/api/profiles/logout")
+def logout(response: Response) -> dict:
+    response.delete_cookie(LEARNER_COOKIE)
+    return {"ok": True}
+
+
+@app.put("/api/profiles/placement")
+def placement(body: PlacementIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        profiles.apply_placement(conn, learner_id, body.keys, body.speed)
+    except profiles.ProfileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _me(conn, learner_id)
+
+
+@app.get("/api/wardrobe")
+def wardrobe(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Everything wearable you own (starters included), by slot."""
+    owned = store.owned_ids(conn, learner_id)
+    worn = [s for s in store.SLOTS if s != "background"]
+    return {
+        **_me(conn, learner_id),
+        "slots": {
+            slot: [
+                {"id": i.id, "name": i.name, "starter": i.starter}
+                for i in store.CATALOG.values()
+                if i.slot == slot and i.id in owned
+            ]
+            for slot in worn
+        },
+        "defaults": {s: store.SLOT_DEFAULTS.get(s) for s in worn},
+    }

@@ -79,6 +79,79 @@ a.hub-tile:hover {
   line-height: 1;
 }
 
+/* --- welcome: pick a player --- */
+
+.player-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.75rem;
+}
+
+.player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.6rem;
+  border: 3px solid var(--wood-light);
+  border-image: none;
+  background: var(--sand);
+  color: var(--ink);
+  text-shadow: none;
+  font-size: 30px;
+}
+
+.player-card:hover {
+  border-color: var(--leaf-orange);
+  background: var(--card-hover);
+}
+
+.player-card canvas {
+  width: 144px;
+  height: 144px;
+  border: 3px solid var(--outline);
+}
+
+.player-card.new {
+  justify-content: center;
+  min-height: 200px;
+}
+
+.player-card .plus {
+  font-size: 40px;
+  color: var(--moss);
+}
+
+#new-name {
+  font-family: var(--font-ui);
+  font-size: 30px;
+  padding: 0.1rem 0.5rem;
+  border: 3px solid var(--wood-light);
+  background: var(--surface);
+  color: var(--ink);
+  width: 14rem;
+}
+
+.big-choices {
+  margin-bottom: 1.25rem;
+}
+
+/* --- wardrobe --- */
+
+.wardrobe-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 112px;
+  padding: 0.25rem;
+  line-height: 1.1;
+}
+
+.wardrobe-choice canvas {
+  width: 96px;
+  height: 96px;
+}
+
 /* --- character designer --- */
 
 .designer-layout {

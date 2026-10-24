@@ -68,7 +68,7 @@ def get_avatar(conn: sqlite3.Connection, learner_id: int) -> dict:
     }
     return {**worn, "night": night_status(conn, learner_id)["on"], "pets": pets.along(conn, learner_id), "appearance": {
         "gender": look.gender, "skin": look.skin,
-        "hair_color": look.hair_color, "hair_style": look.hair_style,
+        "hair_color": look.hair_color, "hair_style": look.hair_style, "eye_color": look.eye_color,
     }}
 
 

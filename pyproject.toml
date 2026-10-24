@@ -19,6 +19,9 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+markers = [
+    "no_player: e2e test starts with no player picked (welcome screen)",
+]
 testpaths = ["tests"]
 
 [tool.setuptools]

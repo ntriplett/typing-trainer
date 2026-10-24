@@ -12,6 +12,15 @@ const LABELS = {
 };
 
 const preview = document.getElementById("designer-avatar");
+
+// New players come here straight from the welcome screen (?setup=1); the
+// next step is the placement questions, not the profile page.
+if (new URLSearchParams(window.location.search).has("setup")) {
+  const done = document.getElementById("designer-done");
+  done.textContent = "Next →";
+  done.href = "/placement";
+  done.classList.add("button-go");
+}
 const statusEl = document.getElementById("designer-status");
 const nameInput = document.getElementById("name-input");
 
@@ -38,6 +47,7 @@ function render() {
   renderHairStyles();
   renderSwatches("skin", options.skin.map((id) => ({ id, unlocked: true })), (id) => SKIN_TONES[id][0]);
   renderSwatches("hair_color", options.hair_color, (id) => HAIR_COLORS[id][0]);
+  renderSwatches("eye_color", options.eye_color.map((id) => ({ id, unlocked: true })), (id) => EYE_COLORS[id]);
 }
 
 function renderTextChoices(field) {

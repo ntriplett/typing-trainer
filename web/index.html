@@ -35,6 +35,7 @@
   <script>
     Header.ready.then((me) => {
       if (!me) return;
+      document.getElementById("home-greeting").textContent = `Welcome back, ${me.learner.name}!`;
       // Gentle idle bob: the same renderer games will use for poses.
       const canvas = document.getElementById("home-avatar");
       let frame = 0;

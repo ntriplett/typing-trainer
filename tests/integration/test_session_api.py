@@ -20,6 +20,8 @@ client = TestClient(main.app)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")
     main._SESSION_PLANS.clear()
+    client.cookies.clear()
+    client.post("/api/profiles", json={"name": "Tester"})  # picks the player (cookie) as learner 1
     yield
 
 

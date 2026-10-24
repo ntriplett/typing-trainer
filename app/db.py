@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS appearance (
     gender TEXT NOT NULL,
     skin TEXT NOT NULL,
     hair_color TEXT NOT NULL,
-    hair_style TEXT NOT NULL
+    hair_style TEXT NOT NULL,
+    eye_color TEXT NOT NULL DEFAULT 'brown'
 );
 """
 
@@ -192,8 +193,19 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after a table first shipped. CREATE TABLE IF NOT EXISTS
+# won't touch an existing table, so older DBs get them via ALTER TABLE.
+_ADDED_COLUMNS = [
+    ("appearance", "eye_color", "TEXT NOT NULL DEFAULT 'brown'"),
+]
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    for table, column, decl in _ADDED_COLUMNS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     conn.commit()
 
 
@@ -593,23 +605,25 @@ def get_equipped(conn: sqlite3.Connection, learner_id: int) -> dict[str, str]:
 
 def get_appearance(conn: sqlite3.Connection, learner_id: int) -> dict | None:
     row = conn.execute(
-        "SELECT gender, skin, hair_color, hair_style FROM appearance WHERE learner_id = ?",
+        "SELECT gender, skin, hair_color, hair_style, eye_color FROM appearance WHERE learner_id = ?",
         (learner_id,),
     ).fetchone()
     return dict(row) if row else None
 
 
 def set_appearance(
-    conn: sqlite3.Connection, learner_id: int, *, gender: str, skin: str, hair_color: str, hair_style: str
+    conn: sqlite3.Connection, learner_id: int, *, gender: str, skin: str, hair_color: str, hair_style: str,
+    eye_color: str = "brown",
 ) -> None:
     conn.execute(
         """
-        INSERT INTO appearance (learner_id, gender, skin, hair_color, hair_style) VALUES (?, ?, ?, ?, ?)
+        INSERT INTO appearance (learner_id, gender, skin, hair_color, hair_style, eye_color)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(learner_id) DO UPDATE SET
-            gender = excluded.gender, skin = excluded.skin,
-            hair_color = excluded.hair_color, hair_style = excluded.hair_style
+            gender = excluded.gender, skin = excluded.skin, hair_color = excluded.hair_color,
+            hair_style = excluded.hair_style, eye_color = excluded.eye_color
         """,
-        (learner_id, gender, skin, hair_color, hair_style),
+        (learner_id, gender, skin, hair_color, hair_style, eye_color),
     )
 
 

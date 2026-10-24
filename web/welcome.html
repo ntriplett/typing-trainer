@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Who's Playing?</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/profile.css" />
+</head>
+<body data-particles>
+  <header class="topbar"><span class="brand">Typing Trainer</span></header>
+  <main>
+    <h1>Who's playing?</h1>
+    <section class="panel">
+      <div id="players" class="player-grid"></div>
+    </section>
+
+    <section class="panel" id="new-player" hidden>
+      <h2 class="panel-title">New player</h2>
+      <form id="new-player-form" class="choice-row">
+        <input id="new-name" maxlength="20" autocomplete="off" placeholder="Your name" aria-label="Your name" />
+        <button type="submit" class="button-go">Let's go!</button>
+      </form>
+      <p id="welcome-message" class="error-text" role="status"></p>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/welcome.js"></script>
+</body>
+</html>

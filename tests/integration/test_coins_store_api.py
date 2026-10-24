@@ -15,6 +15,8 @@ client = TestClient(main.app)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")
     main._SESSION_PLANS.clear()
+    client.cookies.clear()
+    client.post("/api/profiles", json={"name": "Tester"})  # picks the player (cookie) as learner 1
     yield
 
 
@@ -36,7 +38,7 @@ def test_me_starts_with_zero_coins_and_a_starter_avatar():
     assert data["coins"] == 0
     assert data["learner"]["id"] == 1
     assert data["avatar"]["background"] == store.DEFAULT_BACKGROUND
-    assert set(data["avatar"]["appearance"]) == {"gender", "skin", "hair_color", "hair_style"}
+    assert set(data["avatar"]["appearance"]) == {"gender", "skin", "hair_color", "hair_style", "eye_color"}
 
 
 def test_perfect_step_pays_100_coins():
@@ -132,7 +134,7 @@ def test_designer_saves_appearance_and_guards_dyes():
     assert {"boy", "girl"} == set(opts["gender"])
     assert any(c["dye"] and not c["unlocked"] for c in opts["hair_color"])
 
-    look = {"gender": "girl", "skin": "tan", "hair_color": "ginger", "hair_style": "long"}
+    look = {"gender": "girl", "skin": "tan", "hair_color": "ginger", "hair_style": "long", "eye_color": "green"}
     assert client.put("/api/appearance", json=look).json()["avatar"]["appearance"] == look
 
     resp = client.put("/api/appearance", json={**look, "hair_color": "blue"})

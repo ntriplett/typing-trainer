@@ -14,7 +14,10 @@
       <canvas id="profile-avatar" class="avatar-canvas" width="240" height="240"></canvas>
       <div>
         <h1 id="profile-name">…</h1>
-        <p><a class="button" href="/designer">Change my look</a></p>
+        <p class="choice-row">
+          <a class="button" href="/designer">Change my look</a>
+          <button id="switch-player" class="button-gold">Switch player</button>
+        </p>
         <div class="stat-grid" id="stats"></div>
       </div>
     </section>
@@ -28,6 +31,7 @@
         <a class="hub-tile" href="/analysis"><span class="hub-icon">📈</span>My progress</a>
         <a class="hub-tile" href="/pets"><span class="hub-icon">🐾</span>Pet room</a>
         <a class="hub-tile" href="/bedroom"><span class="hub-icon">🛏️</span>Bedroom</a>
+        <a class="hub-tile" href="/wardrobe"><span class="hub-icon">👕</span>Wardrobe</a>
       </nav>
     </section>
   </main>
@@ -46,6 +50,10 @@
       ["keys_mastered", "Keys mastered"],
       ["items_owned", "Things owned"],
     ];
+    document.getElementById("switch-player").addEventListener("click", async () => {
+      await fetch("/api/profiles/logout", { method: "POST" });
+      window.location.href = "/welcome";
+    });
     fetch("/api/profile")
       .then((r) => r.json())
       .then((p) => {

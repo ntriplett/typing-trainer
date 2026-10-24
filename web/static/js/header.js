@@ -1,6 +1,7 @@
 // Shared top bar on every page (PLAN.md Section 11c): brand, coin
-// counter, and the player's avatar (links to the profile hub). Profiles
-// (PLAN.md 11d) will add the switch-player menu here.
+// counter, and the player's avatar, which opens the profile menu (my
+// profile, wardrobe, switch player -- PLAN.md 11d). With no player picked
+// in this browser, it sends you to the welcome screen.
 //
 // Also applies the current place's page theme (themes.js) and shows a
 // day/night switch when that place's night is unlocked.
@@ -20,14 +21,38 @@
         <span id="coin-count">…</span>
       </span>
       <button class="night-toggle" hidden></button>
-      <a class="topbar-avatar" href="/profile" title="My profile"></a>
+      <div class="profile-menu-wrap">
+        <button class="topbar-avatar" aria-haspopup="true" aria-expanded="false" title="Profile menu"></button>
+        <nav class="profile-menu" hidden>
+          <p class="profile-menu-name"></p>
+          <a href="/profile">My profile</a>
+          <a href="/wardrobe">Wardrobe</a>
+          <a href="/designer">Change my look</a>
+          <button class="switch-player">Switch player</button>
+        </nav>
+      </div>
     </div>`;
   document.body.prepend(bar);
 
   const coinCount = bar.querySelector("#coin-count");
   const coinPill = bar.querySelector(".coin-pill");
   const avatarCanvas = makeAvatarCanvas(48);
-  bar.querySelector(".topbar-avatar").appendChild(avatarCanvas);
+  const avatarButton = bar.querySelector(".topbar-avatar");
+  avatarButton.appendChild(avatarCanvas);
+
+  const menu = bar.querySelector(".profile-menu");
+  avatarButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    avatarButton.setAttribute("aria-expanded", String(!menu.hidden));
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.contains(e.target)) menu.hidden = true;
+  });
+  bar.querySelector(".switch-player").addEventListener("click", async () => {
+    await fetch("/api/profiles/logout", { method: "POST" });
+    window.location.href = "/welcome";
+  });
 
   const toast = document.createElement("div");
   toast.className = "coin-toast";
@@ -57,6 +82,7 @@
   // Any response shaped like /api/me (store actions, designer, ...).
   function update(me) {
     current = me;
+    bar.querySelector(".profile-menu-name").textContent = me.learner.name;
     setCoins(me.coins);
     setAvatar(me.avatar);
     nightToggle.hidden = !me.night.available;
@@ -90,6 +116,10 @@
   // Resolves with /api/me so pages that also need it don't fetch twice.
   const ready = fetch("/api/me")
     .then((r) => {
+      if (r.status === 401) {
+        window.location.href = "/welcome"; // nobody picked in this browser yet
+        return new Promise(() => {}); // never resolves; we're leaving
+      }
       if (!r.ok) throw new Error(`/api/me returned ${r.status}`);
       return r.json();
     })

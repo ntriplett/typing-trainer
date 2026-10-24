@@ -18,6 +18,7 @@ from app import db
 GENDERS = ("boy", "girl")
 SKIN_TONES = ("light", "fair", "tan", "brown", "dark")
 HAIR_STYLES = ("short", "medium", "long")
+EYE_COLORS = ("brown", "blue", "green", "hazel", "gray")
 NATURAL_HAIR_COLORS = ("brown", "black", "blonde", "ginger", "sandy")
 # Unlocked by buying the matching "dye_<color>" store item.
 DYE_HAIR_COLORS = ("blue", "green", "pink", "purple", "silver", "cherry")
@@ -29,6 +30,7 @@ class Appearance:
     skin: str = "light"
     hair_color: str = "brown"
     hair_style: str = "short"
+    eye_color: str = "brown"
 
 
 # Learners created before the designer had one of three starter "body"
@@ -73,6 +75,7 @@ def save(conn: sqlite3.Connection, learner_id: int, appearance: Appearance) -> A
         (appearance.gender, GENDERS, "look"),
         (appearance.skin, SKIN_TONES, "skin tone"),
         (appearance.hair_style, HAIR_STYLES, "hair length"),
+        (appearance.eye_color, EYE_COLORS, "eye color"),
     ]
     for value, allowed, label in checks:
         if value not in allowed:
@@ -93,6 +96,7 @@ def options(conn: sqlite3.Connection, learner_id: int) -> dict:
         "gender": list(GENDERS),
         "skin": list(SKIN_TONES),
         "hair_style": list(HAIR_STYLES),
+        "eye_color": list(EYE_COLORS),
         "hair_color": [
             {"id": c, "unlocked": c in unlocked, "dye": c in DYE_HAIR_COLORS}
             for c in NATURAL_HAIR_COLORS + DYE_HAIR_COLORS

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Getting Started</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/profile.css" />
+</head>
+<body data-particles>
+  <main>
+    <h1>Almost ready!</h1>
+    <p>Two quick questions so your lessons start in the right place.</p>
+    <section class="panel">
+      <h2 class="panel-title">Which keys can you already type without looking?</h2>
+      <div class="choice-row big-choices" data-question="keys">
+        <button class="choice" data-value="new">None yet, I'm brand new</button>
+        <button class="choice" data-value="home_row">The home row (asdf jkl;)</button>
+        <button class="choice" data-value="letters">Most letters</button>
+        <button class="choice" data-value="everything">Everything, numbers too</button>
+      </div>
+      <h2 class="panel-title">How fast do you type?</h2>
+      <div class="choice-row big-choices" data-question="speed">
+        <button class="choice" data-value="starting">Just starting</button>
+        <button class="choice" data-value="some">A little</button>
+        <button class="choice" data-value="comfy">Pretty comfy</button>
+        <button class="choice" data-value="fast">Really fast</button>
+      </div>
+      <button id="placement-done" class="button-go big-button" disabled>Start my adventure →</button>
+      <p id="placement-message" class="error-text" role="status"></p>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script>
+    // The placement answers (app/profiles.py) mark known keys as learned.
+    const answers = {};
+    const done = document.getElementById("placement-done");
+    document.querySelectorAll("[data-question]").forEach((row) => {
+      row.querySelectorAll(".choice").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          row.querySelectorAll(".choice").forEach((b) => b.classList.toggle("selected", b === btn));
+          answers[row.dataset.question] = btn.dataset.value;
+          done.disabled = !(answers.keys && answers.speed);
+        });
+      });
+    });
+    done.addEventListener("click", async () => {
+      const r = await fetch("/api/profiles/placement", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(answers),
+      });
+      if (r.ok) window.location.href = "/";
+      else document.getElementById("placement-message").textContent = (await r.json()).detail;
+    });
+  </script>
+</body>
+</html>

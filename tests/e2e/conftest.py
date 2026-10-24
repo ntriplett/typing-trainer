@@ -85,6 +85,21 @@ def live_server(tmp_path):
 # --- test_analysis_page.py (needs real data to show), etc. -------------
 
 
+@pytest.fixture(autouse=True)
+def player(request):
+    """Browser tests start with a player already picked (learner 1, via the
+    real API so the browser gets the cookie), except tests that ask for
+    `no_player` to exercise the welcome screen themselves."""
+    if "page" not in request.fixturenames or "live_server" not in request.fixturenames:
+        return
+    if "no_player" in request.keywords:
+        return
+    page = request.getfixturevalue("page")
+    live_server = request.getfixturevalue("live_server")
+    resp = page.request.post(f"{live_server}/api/profiles", data={"name": "Tester"})
+    assert resp.ok, resp.text()
+
+
 def start_quick_session(page: Page, live_server: str) -> None:
     page.goto(f"{live_server}/session")
     page.check("#quick-test-checkbox")

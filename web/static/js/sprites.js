@@ -23,7 +23,8 @@ function sym(...halves) {
 // --- bodies (built from the learner's appearance) -------------------------------
 // A shared 24x38 base: a hairless head and a body in plain underclothes
 // (u/U). Hair, shirts, pants, and shoes are separate layers drawn over it.
-// s/S skin, c cheeks, e/w eyes (w = highlight), l lashes, m mouth.
+// s/S skin, c cheeks, e pupil, i iris (eye color), w highlight, b brows,
+// l lashes, m mouth.
 
 const BODY_X = 12;
 const BODY_Y = 6;
@@ -40,9 +41,9 @@ const HEAD_AND_BODY = [
   "..osssssssss",
   "..osssssssss",
   "..osssssssss", // 10
-  "..osssswesss", //    eyes (highlight on top)
-  "..osssseesss",
-  "..osssseesss",
+  "..osssswesss", //    eyes: highlight over iris, beside the pupil
+  "..ossssiesss",
+  "..ossssiesss",
   "..osssccssss", //    cheeks (under the eyes)
   "...ossssssms", // 15 small smile: corners...
   "....ossssssm", //    ...and a 2px bottom
@@ -69,10 +70,25 @@ const HEAD_AND_BODY = [
   "....ooooooo.",
 ];
 
+// Boys get eyebrows; girls get lashes at the outer corner of each eye
+// (and pinker lips and cheeks -- see bodySprite).
 const BODY_ROWS = {
-  boy: sym(...HEAD_AND_BODY),
-  // girls get a lash at the outer corner of each eye
-  girl: sym(...HEAD_AND_BODY.map((r, i) => (i === 11 ? "..osssl" + r.slice(7) : r))),
+  boy: sym(...HEAD_AND_BODY.map((r, i) => (i === 10 ? "..osssbbbsss" : r))),
+  girl: sym(...HEAD_AND_BODY.map((r, i) => (i === 10 ? "..ossslsssss" : i === 11 ? "..ossslwesss" : r))),
+};
+
+// Keyed by app/appearance.py's EYE_COLORS.
+const EYE_COLORS = {
+  brown: "#6b4226",
+  blue: "#3f7fd0",
+  green: "#4f9a3a",
+  hazel: "#a07a3a",
+  gray: "#8a94a0",
+};
+
+const GENDER_TOUCHES = {
+  boy: { m: "#b5523b", c: "#e8907a" },
+  girl: { m: "#d2556e", c: "#f28c9c" },
 };
 
 // Keyed by app/appearance.py's SKIN_TONES.
@@ -143,16 +159,35 @@ function hairPalette(color) {
 // any other grid sprite. `look` is /api/me's avatar.appearance.
 function bodySprite(look) {
   const [s, S] = SKIN_TONES[look.skin] || SKIN_TONES.light;
+  const gender = BODY_ROWS[look.gender] ? look.gender : "boy";
+  // brows: the hair's shadow color, so they match any hair (dye included)
+  const brows = (HAIR_COLORS[look.hair_color] || HAIR_COLORS.brown)[1];
   return {
     x: BODY_X,
     y: BODY_Y,
-    rows: BODY_ROWS[look.gender] || BODY_ROWS.boy,
-    palette: { o: INK, s, S, c: "#e8907a", e: INK, w: "#ffffff", l: INK, m: "#b5523b", u: "#efe6d2", U: "#d3c6a8" },
+    rows: BODY_ROWS[gender],
+    palette: {
+      o: INK, s, S, e: INK, w: "#ffffff", l: INK, b: brows, u: "#efe6d2", U: "#d3c6a8",
+      i: EYE_COLORS[look.eye_color] || EYE_COLORS.brown,
+      ...GENDER_TOUCHES[gender],
+    },
   };
 }
 
 function hairFrontSprite(look) {
   return { x: BODY_X, y: BODY_Y, rows: HAIR_FRONT[look.hair_style] || HAIR_FRONT.short, palette: hairPalette(look.hair_color) };
+}
+
+// Girls wear a little bow on one side of their hair (any length).
+const GIRL_BOW = {
+  x: BODY_X + 3,
+  y: BODY_Y + 2,
+  palette: { o: INK, p: "#e87aa8", P: "#c0507e" },
+  rows: [".o...o.", "opPoPpo", "oppoppo", ".o...o."],
+};
+
+function bowSprite(look) {
+  return look.gender === "girl" ? GIRL_BOW : null;
 }
 
 function hairBackSprite(look) {
@@ -310,6 +345,7 @@ for (const gender of Object.keys(BODY_ROWS)) {
   for (const hair_style of Object.keys(HAIR_FRONT)) {
     const look = { gender, hair_style, skin: "light", hair_color: "brown" };
     _appearanceSprites[`body_${gender}`] = bodySprite(look);
+    _appearanceSprites.girl_bow = GIRL_BOW;
     _appearanceSprites[`hair_front_${hair_style}`] = hairFrontSprite(look);
     const back = hairBackSprite(look);
     if (back) _appearanceSprites[`hair_back_${hair_style}`] = back;

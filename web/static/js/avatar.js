@@ -7,11 +7,11 @@
 // Needs sprites.js, backgrounds.js, wardrobe.js, and pets.js loaded first.
 
 // Back-to-front draw order. Worn slots match app/catalog.py's
-// WEARABLE_SLOTS; the hair_back/body/hair_front layers come from the
+// WEARABLE_SLOTS; the hair_back/body/hair_front/bow layers come from the
 // learner's appearance rather than an item.
-const AVATAR_LAYERS = ["background", "hair_back", "body", "shoes", "pants", "shirt", "hair_front", "accessory", "hat", "pet"];
-const APPEARANCE_LAYERS = { hair_back: hairBackSprite, body: bodySprite, hair_front: hairFrontSprite };
-const DEFAULT_APPEARANCE = { gender: "boy", skin: "light", hair_color: "brown", hair_style: "short" };
+const AVATAR_LAYERS = ["background", "hair_back", "body", "shoes", "pants", "shirt", "hair_front", "bow", "accessory", "hat", "pet"];
+const APPEARANCE_LAYERS = { hair_back: hairBackSprite, body: bodySprite, hair_front: hairFrontSprite, bow: bowSprite };
+const DEFAULT_APPEARANCE = { gender: "boy", skin: "light", hair_color: "brown", hair_style: "short", eye_color: "brown" };
 
 // Draws `equipped` (/api/me's avatar: {slot: item_id, appearance: {...}})
 // onto `canvas` (any size; it's scaled from the 48x48

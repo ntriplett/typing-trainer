@@ -36,6 +36,7 @@ def test_save_round_trips(conn, learner_id):
 
 @pytest.mark.parametrize("field,value", [
     ("gender", "dragon"), ("skin", "green"), ("hair_style", "mohawk"), ("hair_color", "plaid"),
+    ("eye_color", "rainbow"),
 ])
 def test_save_rejects_unknown_choices(conn, learner_id, field, value):
     with pytest.raises(appearance.AppearanceError):
@@ -58,3 +59,23 @@ def test_appearance_never_mixes_between_learners(conn, learner_id):
     alex = db.create_learner(conn, "Alex").id
     appearance.save(conn, learner_id, Appearance(gender="girl"))
     assert appearance.load(conn, alex).gender == "boy"
+
+
+def test_old_databases_get_the_eye_color_column(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        "CREATE TABLE learner (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT NOT NULL);"
+        "CREATE TABLE appearance (learner_id INTEGER PRIMARY KEY, gender TEXT NOT NULL, skin TEXT NOT NULL,"
+        " hair_color TEXT NOT NULL, hair_style TEXT NOT NULL);"
+        "INSERT INTO learner (name, created_at) VALUES ('Sam', '2026-01-01');"
+        "INSERT INTO appearance VALUES (1, 'girl', 'tan', 'black', 'long');"
+    )
+    old.commit()
+    old.close()
+    with db.open_db(path) as conn:
+        assert appearance.load(conn, 1) == Appearance(
+            gender="girl", skin="tan", hair_color="black", hair_style="long", eye_color="brown"
+        )
