@@ -121,7 +121,7 @@ def build_practice_text(
 
     words: list[str] = []
     total = 0
-    while total < length:
+    while total <= length:  # total counts a space after each word; the text has one fewer
         roll = rng.random()
         if weak_pairs and roll < difficulty * 0.4:
             word = tricky_word()

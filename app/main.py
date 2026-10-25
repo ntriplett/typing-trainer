@@ -34,7 +34,7 @@ from app.activities import get_activity
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
-from app.activities.game_modules import GAME_MODULES
+from app.activities.game_modules import GAME_MODULES, MAX_ROUND_SCORE
 from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
@@ -423,12 +423,10 @@ def practice_complete(
 
 # --- game lab (try every game) ---------------------------------------------------
 #
-# Like the practice lab: real weak spots, coins per success, no skill-model
-# updates. Games aren't in sessions yet.
+# Like the practice lab: real weak spots, no skill-model updates. Each round
+# is posted when it ends and paid right away. Games aren't in sessions yet.
 
 GAMES_BY_ID = {g.id: g for g in GAME_MODULES}
-# Generous: 5 levels of a minute won't come near this.
-MAX_GAME_SUCCESSES = 200
 
 
 def _game_module(activity_id: str):
@@ -497,16 +495,18 @@ def game_content(
     return asdict(content)
 
 
-class GameCompleteRequest(BaseModel):
+class GameRoundRequest(BaseModel):
+    """One finished round: its points and the keys typed during it."""
+
     keys: list[str]
     keystrokes: list[KeystrokeIn]
-    successes: int = Field(ge=0, le=MAX_GAME_SUCCESSES)
+    score: int = Field(ge=0, le=MAX_ROUND_SCORE)
 
 
-@app.post("/api/game/{activity_id}/complete")
-def game_complete(
+@app.post("/api/game/{activity_id}/round")
+def game_round(
     activity_id: str,
-    body: GameCompleteRequest,
+    body: GameRoundRequest,
     conn=Depends(get_db),
     learner_id: int = Depends(current_learner),
 ) -> dict:
@@ -514,14 +514,14 @@ def game_complete(
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
     content = ActivityContent(activity_id, module.kind, body.keys, prompt="")
     result = module.score(content, keystrokes)
-    amount = module.coins_for(body.successes)
+    amount = module.coins_for(body.score)
     coins_earned = []
     if amount > 0:
         db.add_coins(conn, learner_id, amount, "game", ref=f"game_lab:{activity_id}")
         coins_earned.append({"amount": amount, "reason": "game"})
     return {
         "result": asdict(result),
-        "successes": body.successes,
+        "score": body.score,
         "coins_earned": coins_earned,
         "coin_balance": db.get_coin_balance(conn, learner_id),
     }

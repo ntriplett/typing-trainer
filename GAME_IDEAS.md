@@ -16,10 +16,11 @@ is still practice, but it also commits you to something.
 
 ## Built
 
-- **Crow Patrol** (real-time). Crows fly at the pumpkin patch, each carrying a word;
-  type it to shoo that crow. Between levels pick an upgrade (scarecrow, fence, bell, pie).
-- **Pet Battles** (turn-based, no clock). Your pet vs. a wild critter. Moves are words;
-  the critter shows its next move so you plan around it; energy limits big moves.
+- **Crow Patrol** (real-time). Crows from every side carry words; type to shoo. Six crow kinds
+  (little, crow, big, caller, squirrel, golden), one new per round; slips make a crow call a friend.
+  Arcade tally per round (pumpkins worth 10 crows); upgrades between rounds.
+- **Pet Battles** (turn-based). Pick a partner (Leaf/Splash/Ember types) for each critter; each type
+  has its own moves, each critter its own trick; a bag of items; tally and coins per win.
 
 ## Later
 
@@ -43,3 +44,4 @@ is still practice, but it also commits you to something.
   tower, leftover letters pile up as junk. Needs spelling, so later.
 - Ideas from the favorites list: a Mario Kart-style race with item boxes earned by
   typing streaks; a shapez-style factory where typed words route parts.
+- **Tower Defense** type words to build new obsticals to defend your home

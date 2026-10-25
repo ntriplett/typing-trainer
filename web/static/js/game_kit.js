@@ -94,7 +94,8 @@ function smoothSky(colors, steps) {
   });
 }
 
-// The page around a game: the HUD line, the play area, and overlay screens.
+// The page around a game: the HUD line, the play area, overlay screens, and
+// the end-of-round tally (which posts the round and pays its coins).
 class GameShell {
   constructor(root, content, { moduleId, onDone = () => {} }) {
     this.content = content;
@@ -108,9 +109,10 @@ class GameShell {
       <div class="game-area">
         <canvas class="game-canvas"></canvas>
         <div class="game-layer"></div>
-        <div class="game-screen" hidden></div>
       </div>
-      <div class="game-below"></div>`;
+      <div class="game-below"></div>
+      <div class="game-screen" hidden></div>`;
+    root.classList.add("game-stage"); // the screen covers all of it, so tall tallies fit
     const $ = (sel) => root.querySelector(sel);
     this.els = {
       label: $(".stage-label"),
@@ -126,6 +128,9 @@ class GameShell {
     this.els.title.textContent = content.title;
     this.els.text.innerHTML = richText(content.instructions);
     this.screenKeys = null;
+    this.total = 0; // points over the whole game
+    this.coins = 0;
+    this.sent = 0; // keystrokes already posted with a round
   }
 
   setLabel(text) {
@@ -155,21 +160,121 @@ class GameShell {
     return true;
   }
 
-  // Ends the game: posts the score and shows the summary.
-  async finish({ successes, line, keystrokes }) {
-    const res = await fetch(`/api/game/${this.moduleId}/complete`, {
+  // Posts a finished round (paid right away) and counts its points up like
+  // an arcade game, row by row. rows: [{label, count, each}] or [{label, points}];
+  // rows worth 0 are left out unless they say `always`.
+  // Space speeds the count up; after it, Space goes on. Resolves then.
+  async roundTally({ title, rows, typer }) {
+    const keystrokes = typer.keystrokes.slice(this.sent);
+    this.sent = typer.keystrokes.length;
+    rows = rows.filter((r) => r.points || r.count || r.always);
+    const score = rows.reduce((sum, r) => sum + (r.points ?? r.count * r.each), 0);
+    const paid = fetch(`/api/game/${this.moduleId}/round`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keys: this.content.keys, keystrokes, successes }),
-    });
-    const data = await res.json();
+      body: JSON.stringify({ keys: this.content.keys, keystrokes, score }),
+    }).then((r) => r.json());
+
+    this.fast = false;
+    this.showScreen(
+      `<h2>${escapeHtml(title)}</h2>
+       <div class="tally"></div>
+       <p class="tally-total">Round score <b>0</b></p>
+       <p class="tally-cheer"></p>
+       <p class="teach-coins"></p>
+       <p class="tally-go" hidden>Press ${keycap(" ")} to go on.</p>`,
+      { " ": () => (this.fast = true) }
+    );
+    const $ = (sel) => this.els.screen.querySelector(sel);
+    const wait = (ms) => new Promise((r) => setTimeout(r, this.fast ? 0 : ms));
+    const bump = (el) => {
+      el.classList.remove("bump");
+      void el.offsetWidth;
+      el.classList.add("bump");
+    };
+    let roundTotal = 0;
+    const totalEl = $(".tally-total b");
+    for (const row of rows) {
+      const points = row.points ?? row.count * row.each;
+      const line = document.createElement("div");
+      line.className = "tally-row";
+      line.innerHTML = `<span class="tally-label">${escapeHtml(row.label)}</span>
+        <span class="tally-count"></span><span class="tally-points"></span><span class="tally-wow"></span>`;
+      $(".tally").appendChild(line);
+      const countEl = line.querySelector(".tally-count");
+      const pointsEl = line.querySelector(".tally-points");
+      await wait(250);
+      if (row.points == null) {
+        // count the things one at a time, faster when there are lots
+        countEl.textContent = `0 × ${row.each}`;
+        const step = Math.max(45, Math.min(160, 900 / Math.max(1, row.count)));
+        for (let i = 1; i <= row.count; i++) {
+          countEl.textContent = `${i} × ${row.each}`;
+          bump(countEl);
+          await wait(step);
+        }
+      }
+      // then the row's points tick up into the round total
+      const ticks = 12;
+      for (let k = 1; k <= ticks; k++) {
+        const shown = Math.round((points * k) / ticks);
+        pointsEl.textContent = shown.toLocaleString();
+        totalEl.textContent = (roundTotal + shown).toLocaleString();
+        await wait(30);
+      }
+      roundTotal += points;
+      bump(totalEl);
+      if (points >= 300) {
+        line.querySelector(".tally-wow").textContent = "WOW!";
+        bump(line.querySelector(".tally-wow"));
+      }
+      await wait(200);
+    }
+    this.total += roundTotal;
+
+    const best = this.bestRound();
+    const cheer = $(".tally-cheer");
+    if (roundTotal > best && best > 0) cheer.textContent = "NEW BEST ROUND!";
+    else if (roundTotal >= 600) cheer.textContent = "Amazing round!";
+    else if (roundTotal >= 300) cheer.textContent = "Great round!";
+    else cheer.textContent = roundTotal ? "Nice!" : "Next time!";
+    bump(cheer);
+    if (roundTotal > best) this.saveBestRound(roundTotal);
+
+    const data = await paid;
     const coins = data.coins_earned.reduce((sum, c) => sum + c.amount, 0);
+    this.coins += coins;
+    if (coins) $(".teach-coins").textContent = `+${coins} coins!`;
     if (window.Header) Header.celebrate(data.coins_earned, data.coin_balance);
-    const accuracy = keystrokes.length ? `${Math.round(data.result.accuracy * 100)}% of keys right.` : "";
+    $(".tally-go").hidden = false;
+    await new Promise((resolve) => (this.screenKeys = { " ": resolve }));
+    this.hideScreen();
+    return roundTotal;
+  }
+
+  // The best round score in this browser (just for "NEW BEST ROUND!").
+  bestRound() {
+    try {
+      return Number(localStorage.getItem(`game-best-round:${this.moduleId}`)) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  saveBestRound(points) {
+    try {
+      localStorage.setItem(`game-best-round:${this.moduleId}`, String(points));
+    } catch {
+      // private window etc.: no best, no problem
+    }
+  }
+
+  // Ends the game: rounds were already paid, so just the summary.
+  finish({ line }) {
     this.showScreen(
       `<h2>${escapeHtml(line)}</h2>
-       ${coins ? `<p class="teach-coins">+${coins} coins!</p>` : ""}
-       <p>${accuracy}</p>
+       <p class="tally-total">Final score <b>${this.total.toLocaleString()}</b></p>
+       ${this.coins ? `<p class="teach-coins">${this.coins} coins earned this game!</p>` : ""}
        <p>Press ${keycap(" ")} to play again, or ${keycap("Enter")} for another game.</p>`,
       { " ": () => location.reload(), Enter: () => this.onDone() }
     );

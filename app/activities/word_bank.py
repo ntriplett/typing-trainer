@@ -7,6 +7,7 @@ from __future__ import annotations
 import random
 
 WORDS: tuple[str, ...] = tuple(
+    dict.fromkeys(
     """
     a as ad add ads dad dads sad lad lads fad all fall falls hall halls ask asks lass flask salad
     alfalfa glad gas flag flags has had half hall dash flash shall ash lash sash gal gals hag
@@ -42,7 +43,27 @@ WORDS: tuple[str, ...] = tuple(
     owl bird nest egg hen duck goose sheep goat cow horse pony llama bunny fox deer bear moon
     rain snow wind cloud storm pond lake creek boat fishing rod hook worm berry jam toast bread
     milk tea soup corn bean farm barn gate fence path road map
+
+    glass salsa slash flash flasks salads shells skill skills spill drill grill dress kiss
+    hello jelly happy sleepy kitten mitten garden basket blanket pillow window shadow yellow
+    purple orange silver golden rabbit turtle monkey donkey parrot puppet rocket planet comet
+    castle tunnel bridge forest meadow valley island desert jungle canyon harbor market
+    pirate wizard dragon knight goblin unicorn robot sticker crayon pencil marker eraser
+    cookie muffin waffle pancake noodle pickle carrot potato tomato cherry banana lemon melon
+    peach grape honey butter cheese pretzel popcorn sandwich picnic sprinkle cupcake
+    camping hiking skating sledding fishing jumping running sliding hopping digging
+    building climbing painting reading singing dancing baking cooking riding swimming
+    friend family sister brother grandma grandpa teacher neighbor helper player
+    blocks crafts puzzle marble kitty jigsaw bubble giggle wiggle jiggle tickle sparkle
+    lantern compass treasure backpack sleeping campfire firefly ladybug beetle spider
+    feather pebble pinecone acorns maple branch flower flowers petal sunflower daisy
+    raindrop rainbow thunder breeze frosty chilly snowman snowball icicle puddle
+    pumpkins scarecrow harvest hayride tractor chicken rooster piglet kitten hamster
+    goldfish squirrel chipmunk raccoon hedgehog badger beaver otter falcon eagle robin
+    sparrow crows magic potion wonder secret quest level score bonus power super
+    jolly fluffy cuddly sleepy grumpy silly speedy sneaky clever brave gentle mighty
     """.split()
+    )
 )
 
 

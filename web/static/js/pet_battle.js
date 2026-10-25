@@ -1,43 +1,129 @@
-// Pet Battles (game_pet_battle_v1): a friendly, turn-based battle between
-// your pet and a wild critter. No clock: take your time.
+// Pet Battles (game_pet_battle_v1): friendly, turn-based battles between a
+// pet you pick and a wild critter. No clock: take your time.
 //
-// Each turn you pick a move by typing its word. The critter shows what it
-// will do next, so you can plan: shield before a big hit, snack when low.
-// Big moves cost stars (★), and Pounce earns one back. Each slip (wrong key)
-// on a move takes 1 off its power, but never below 1.
+// Types: Leaf beats Splash, Splash beats Ember, Ember beats Leaf. A move
+// against the type it beats does x2 ("Super!"); against the type that beats
+// it, half. Critters' hits follow the same rule, so pick your partner well.
 //
-// Tire out the critter to win; if your pet gets tired first, it naps and you
-// try that critter again. Score = battles won.
+// Before each battle you see the critter (its type, what it's weak to, its
+// trick) and pick a partner by typing its word. Each type plays differently:
+//   Leaf   heals, and Tickle makes the critter skip its turn
+//   Ember  big damage, and Warm up doubles the next hit
+//   Splash shields, and Big wave always lands
+// Each turn: type a move's word, or an item's from your bag. Big moves cost
+// stars (★); Pounce earns one. Each slip takes 1 off a move's power (min 1).
+// The critter shows what it will do next, including its trick.
+//
+// Win: an arcade tally (paid right away) and you find an item. Lose: your pet
+// naps and you try again (pick again; the critter is 10% easier).
 //
 // Needs practice_scenes.js (Scene, C), pets.js, avatar.js, and game_kit.js.
 
 const ARENA_W = 240;
 const ARENA_H = 96;
-const PET_HP = 12;
+const PET_HP = 14;
 const MAX_STARS = 3;
 const START_STARS = 1;
-const MAX_BATTLE_SECONDS = 10 * 60;
-const RETRY_FOE_HP = 0.9; // each lost try makes the critter a bit easier
-const BORROWED_PET = { name: "Pip", species: "fox", color: "red", stage: "young" };
+const RETRY_FOE_HP = 0.9;
 
-const MOVES = [
-  { id: "pounce", name: "Pounce", group: "short", cost: 0, gain: 1, kind: "hit", power: 2, text: "2 hits, +1 ★" },
-  { id: "super", name: "Super pounce", group: "long", cost: 2, gain: 0, kind: "hit", power: 4, text: "4 hits, costs ★★" },
-  { id: "shield", name: "Shield", group: "medium", cost: 1, gain: 0, kind: "shield", power: 3, text: "Blocks 3, costs ★" },
-  { id: "snack", name: "Snack", group: "medium", cost: 1, gain: 0, kind: "heal", power: 3, text: "Heals 3, costs ★" },
+const TYPES = {
+  leaf: { name: "Leaf", beats: "splash" },
+  splash: { name: "Splash", beats: "ember" },
+  ember: { name: "Ember", beats: "leaf" },
+};
+const SPECIES_TYPE = { bunny: "leaf", goat: "leaf", sheep: "leaf", fox: "ember", cat: "ember", hedgehog: "ember", dog: "splash", llama: "splash" };
+const STARTERS = [
+  { name: "Clover", species: "bunny", color: "brown", stage: "young" },
+  { name: "Pip", species: "fox", color: "red", stage: "young" },
+  { name: "Puddle", species: "dog", color: "golden", stage: "young" },
 ];
 
-// What the critter can do; foe_power (1-3) adds the trickier ones.
-const INTENTS = {
-  nibble: { says: "Nibble: 1 hit", hit: 1, weight: 3, power: 1 },
-  tackle: { says: "Tackle: 2 hits", hit: 2, weight: 3, power: 1 },
-  rest: { says: "Rest: heals 2", heal: 2, weight: 1, power: 1 },
-  windup: { says: "Winding up a BIG move!", hit: 0, weight: 2, power: 2 },
-  guard: { says: "Curling up: your hits are halved", hit: 0, guard: true, weight: 2, power: 3 },
-  big: { says: "BIG move: 4 hits!", hit: 4, weight: 0, power: 99 }, // only after a wind-up
+function effectiveness(moveType, targetType) {
+  if (!moveType || !targetType) return 1;
+  if (TYPES[moveType].beats === targetType) return 2;
+  if (TYPES[targetType].beats === moveType) return 0.5;
+  return 1;
+}
+
+const POUNCE = { id: "pounce", name: "Pounce", group: "short", cost: 0, gain: 1, kind: "hit", power: 2, text: "2 hits, +1 ★" };
+const KITS = {
+  leaf: [
+    POUNCE,
+    { id: "vine", name: "Vine whip", group: "medium", cost: 1, kind: "hit", power: 3, type: "leaf", text: "3 Leaf hits, ★" },
+    { id: "snack", name: "Leafy snack", group: "medium", cost: 1, kind: "heal", power: 4, text: "Heals 4, ★" },
+    { id: "tickle", name: "Tickle", group: "short", cost: 2, kind: "stun", power: 0, text: "It skips its move, ★★" },
+  ],
+  ember: [
+    POUNCE,
+    { id: "ember", name: "Ember", group: "medium", cost: 1, kind: "hit", power: 3, type: "ember", text: "3 Ember hits, ★" },
+    { id: "blaze", name: "Blaze", group: "long", cost: 2, kind: "hit", power: 6, type: "ember", text: "6 Ember hits, ★★" },
+    { id: "warm", name: "Warm up", group: "short", cost: 0, kind: "focus", power: 0, text: "Next hit x2, free" },
+  ],
+  splash: [
+    POUNCE,
+    { id: "splash", name: "Splash", group: "medium", cost: 1, kind: "hit", power: 3, type: "splash", text: "3 Splash hits, ★" },
+    { id: "bubble", name: "Bubble", group: "medium", cost: 1, kind: "shield", power: 4, text: "Blocks 4, ★" },
+    { id: "wave", name: "Big wave", group: "long", cost: 2, kind: "hit", power: 4, type: "splash", sure: true, text: "4 hits, always lands, ★★" },
+  ],
 };
 
-const CRITTER_NAMES = { bunny: "Bunny", hedgehog: "Hedgehog", goat: "Goat", fox: "Fox", llama: "Llama", cat: "Cat", dog: "Dog", sheep: "Sheep" };
+const ITEMS = {
+  berry: { name: "Berry", text: "Heals 5" },
+  candy: { name: "Star candy", text: "+2 ★" },
+  shell: { name: "Shell charm", text: "Blocks its next move" },
+};
+
+// Critters: a type, a trick, and what they do. Intents with `after` only
+// come right after a wind-up.
+const CRITTERS = {
+  bunny: {
+    name: "Bunny", trick: "Hops around so your hit misses.",
+    intents: {
+      nibble: { says: "Nibble: 1 hit", hit: 1, w: 3 },
+      tackle: { says: "Tackle: 2 hits", hit: 2, w: 2 },
+      hop: { says: "Hopping! Your next hit will miss.", dodge: true, w: 2 },
+      rest: { says: "Rest: heals 2", heal: 2, w: 1 },
+    },
+  },
+  hedgehog: {
+    name: "Hedgehog", trick: "Gets spiky: hitting it pricks you.",
+    intents: {
+      nibble: { says: "Nibble: 1 hit", hit: 1, w: 2 },
+      roll: { says: "Roll: 3 hits", hit: 3, w: 2 },
+      spiky: { says: "Spiky! Hitting it pricks you 2.", spiky: 2, w: 2 },
+    },
+  },
+  goat: {
+    name: "Goat", trick: "Winds up a huge headbutt.",
+    intents: {
+      tackle: { says: "Tackle: 2 hits", hit: 2, w: 3 },
+      windup: { says: "Winding up a HEADBUTT!", next: "headbutt", w: 2 },
+      headbutt: { says: "HEADBUTT: 5 hits!", hit: 5, after: true },
+      chew: { says: "Chewing grass: heals 3", heal: 3, w: 1 },
+    },
+  },
+  fox: {
+    name: "Fox", trick: "Sneaks off with your stars.",
+    intents: {
+      bite: { says: "Bite: 2 hits", hit: 2, w: 3 },
+      trick: { says: "Sneaky! Will steal a ★.", steal: 1, w: 2 },
+      windup: { says: "Crouching for a big pounce!", next: "bigpounce", w: 1 },
+      bigpounce: { says: "BIG POUNCE: 4 hits!", hit: 4, after: true },
+    },
+  },
+  llama: {
+    name: "Llama", trick: "Spits, so your words get longer.",
+    intents: {
+      stomp: { says: "Stomp: 3 hits", hit: 3, w: 3 },
+      spit: { says: "Spit! Your next words will be longer.", spit: true, hit: 1, w: 2 },
+      windup: { says: "Rearing up for a MEGA STOMP!", next: "mega", w: 1 },
+      mega: { says: "MEGA STOMP: 6 hits!", hit: 6, after: true },
+      rest: { says: "Rest: heals 3", heal: 3, w: 1 },
+    },
+  },
+};
+
+const LONGER = { short: "medium", medium: "long", long: "long" };
 
 class PetBattle {
   constructor(shell, content, me) {
@@ -45,15 +131,16 @@ class PetBattle {
     this.game = content.game;
     this.levels = this.game.levels;
     this.avatar = me && me.avatar;
-    const own = this.avatar && this.avatar.pets && this.avatar.pets[0];
-    this.pet = own ? { ...own, name: own.name || "Your pet" } : BORROWED_PET;
+    this.team = makeTeam((this.avatar && this.avatar.pets) || []);
     this.typer = new Typer();
     this.levelIndex = 0;
-    this.successes = 0;
-    this.playSeconds = 0;
     this.foeEase = 1;
-    this.state = "intro"; // intro | turn | busy | won | lost | over
+    this.items = { berry: 2, candy: 1, shell: 1 };
+    this.state = "pick"; // pick | turn | busy | tally | lost | over
     this.anim = { pet: 0, foe: 0, foeShake: 0, petShake: 0 };
+    this.pet = this.team[0];
+    this.cards = [];
+    this.bag = [];
 
     const game = this;
     this.scene = new (class extends Scene {
@@ -65,14 +152,15 @@ class PetBattle {
       }
     })(shell.els.canvas, ARENA_W, ARENA_H);
     shell.els.canvas.classList.add("battle-arena");
-    shell.els.below.innerHTML = `<div class="move-cards"></div>`;
+    shell.els.below.innerHTML = `<div class="move-cards"></div><div class="bag"></div>`;
     this.cardsEl = shell.els.below.querySelector(".move-cards");
+    this.bagEl = shell.els.below.querySelector(".bag");
     this.intentEl = document.createElement("div");
     this.intentEl.className = "foe-intent";
     shell.els.layer.appendChild(this.intentEl);
 
-    this.setupBattle();
-    this.introScreen();
+    this.setupFoe();
+    this.pickScreen();
     window.addEventListener("keydown", (e) => this.handleKey(e));
   }
 
@@ -80,47 +168,90 @@ class PetBattle {
     return this.levels[this.levelIndex];
   }
 
+  get critter() {
+    return CRITTERS[this.level.foe] || CRITTERS.bunny;
+  }
+
   // --- flow -----------------------------------------------------------------
 
-  setupBattle() {
+  setupFoe() {
     const lv = this.level;
     const colors = Object.keys(PET_COLORS[lv.foe] || {});
     this.foe = {
-      name: `Wild ${CRITTER_NAMES[lv.foe] || "critter"}`,
+      name: `Wild ${this.critter.name}`,
       species: lv.foe,
+      type: SPECIES_TYPE[lv.foe] || "leaf",
       color: colors[Math.floor(Math.random() * colors.length)] || "brown",
       stage: "grown",
       maxHp: Math.max(3, Math.round(lv.foe_hp * this.foeEase)),
     };
     this.foe.hp = this.foe.maxHp;
+    this.intent = null;
+  }
+
+  // Meet the critter, then pick a partner by typing a word.
+  pickScreen() {
+    this.state = "pick";
+    this.typer.release();
+    this.cards = [];
+    this.bag = [];
+    this.renderCards();
+    this.shell.setLabel(`Game · Battle ${this.levelIndex + 1} of ${this.levels.length} · ${this.level.name}`);
+    const weak = Object.keys(TYPES).find((t) => TYPES[t].beats === this.foe.type);
+    const words = pickWords(this.game.words, this.team.map(() => "short"));
+    this.choices = this.team.map((pet, i) => ({ pet, word: words[i], typed: 0 }));
+    this.shell.showScreen(
+      `<h2>A wild ${escapeHtml(this.critter.name.toLowerCase())} wants to play!</h2>
+       <p>${typeTag(this.foe.type)} Weak to ${typeTag(weak)} · ${escapeHtml(this.critter.trick)}</p>
+       <p>Pick your partner: type its word.</p>
+       <div class="choice-cards">${this.choices
+         .map(
+           (c, i) => `<div class="choice-card" data-i="${i}">
+             <h3>${escapeHtml(c.pet.name)} ${typeTag(c.pet.type)}</h3>
+             <p>${KITS[c.pet.type].slice(1).map((m) => escapeHtml(m.name)).join(" · ")}</p>
+             <p class="choice-word"></p>
+           </div>`
+         )
+         .join("")}</div>`
+    );
+    this.renderChoices();
+    this.renderHud();
+  }
+
+  renderChoices() {
+    this.shell.els.screen.querySelectorAll(".choice-card").forEach((card) => {
+      const c = this.choices[+card.dataset.i];
+      card.classList.toggle("locked", this.typer.target === c);
+      card.querySelector(".choice-word").innerHTML = wordHtml(c.word, c.typed);
+    });
+  }
+
+  startBattle(pet) {
+    this.pet = pet;
     this.hp = PET_HP;
     this.stars = START_STARS;
     this.shield = 0;
-    this.guard = false;
+    this.focus = false;
+    this.charm = false;
+    this.stunned = false;
+    this.spat = false;
     this.nextIntent = null;
+    this.stats = { clean: 0, supers: 0 };
     this.intent = this.pickIntent();
-    this.cards = [];
-    this.renderHud();
-    this.renderCards();
-  }
-
-  introScreen() {
-    this.shell.setLabel(`Game · Battle ${this.levelIndex + 1} of ${this.levels.length} · ${this.level.name}`);
-    this.state = "intro";
-    this.shell.showScreen(
-      `<h2>A ${escapeHtml(this.foe.name.toLowerCase())} wants to play!</h2>
-       <p>Type a move's word to use it. Watch what it will do next.</p>
-       <p>Press ${keycap(" ")} to start.</p>`,
-      { " ": () => this.startTurn() }
-    );
+    this.shell.hideScreen();
+    this.startTurn();
   }
 
   startTurn() {
-    this.shell.hideScreen();
     this.state = "turn";
     this.typer.release();
-    const words = pickWords(this.game.words, MOVES.map((m) => m.group));
-    this.cards = MOVES.map((m, i) => ({ move: m, word: words[i], typed: 0, slips: 0 }));
+    const kit = KITS[this.pet.type];
+    const group = (g) => (this.spat ? LONGER[g] : g);
+    const itemIds = Object.keys(ITEMS).filter((id) => this.items[id] > 0);
+    const words = pickWords(this.game.words, [...kit.map((m) => group(m.group)), ...itemIds.map(() => "short")]);
+    this.cards = kit.map((m, i) => ({ move: m, word: words[i], typed: 0, slips: 0 }));
+    this.bag = itemIds.map((id, i) => ({ item: id, word: words[kit.length + i], typed: 0, slips: 0 }));
+    this.spat = false;
     this.renderCards();
     this.renderHud();
   }
@@ -131,69 +262,132 @@ class PetBattle {
       this.nextIntent = null;
       return forced;
     }
-    const power = this.level.foe_power || 1;
-    const options = Object.entries(INTENTS).filter(
-      ([id, it]) => it.power <= power && it.weight && (id !== "rest" || this.foe.hp < this.foe.maxHp)
+    const options = Object.entries(this.critter.intents).filter(
+      ([, it]) => !it.after && (!it.heal || this.foe.hp < this.foe.maxHp)
     );
-    let roll = Math.random() * options.reduce((sum, [, it]) => sum + it.weight, 0);
+    let roll = Math.random() * options.reduce((sum, [, it]) => sum + it.w, 0);
     for (const [id, it] of options) {
-      roll -= it.weight;
+      roll -= it.w;
       if (roll <= 0) return id;
     }
-    return "nibble";
+    return options[0][0];
   }
 
   useMove(card) {
     const m = card.move;
+    const it = this.critter.intents[this.intent];
     const power = Math.max(1, m.power - card.slips);
+    if (!card.slips) this.stats.clean += 1;
     this.state = "busy";
-    this.stars = Math.min(MAX_STARS, this.stars - m.cost + m.gain);
+    this.stars = Math.min(MAX_STARS, this.stars - m.cost + (m.gain || 0));
     if (m.kind === "hit") {
-      const hits = this.intent === "guard" ? Math.ceil(power / 2) : power;
       this.anim.pet = 0.35;
       this.later(0.2, () => {
+        if (it.dodge && !m.sure) {
+          this.floater("Missed!", 178, 46, "note");
+          return;
+        }
+        const eff = effectiveness(m.type, this.foe.type);
+        const hits = Math.max(1, Math.round(power * eff * (this.focus ? 2 : 1)));
+        this.focus = false;
         this.foe.hp = Math.max(0, this.foe.hp - hits);
         this.anim.foeShake = 0.4;
         this.floater(`-${hits}`, 178, 50, "hurt");
+        if (eff > 1) {
+          this.stats.supers += 1;
+          this.floater("Super!", 178, 30, "super");
+        } else if (eff < 1) {
+          this.floater("Not very good...", 178, 30, "note");
+        }
+        if (it.spiky) {
+          this.hp = Math.max(0, this.hp - it.spiky);
+          this.anim.petShake = 0.4;
+          this.floater(`Ouch! -${it.spiky}`, 70, 40, "hurt");
+        }
         this.renderHud();
       });
     } else if (m.kind === "shield") {
       this.shield = power;
       this.floater(`Shield ${power}`, 70, 40, "calm");
-    } else {
-      const healed = Math.min(PET_HP - this.hp, power);
-      this.hp += healed;
-      this.scene.burst(70, 60, 8, [C.red, "#e88aa0"], { speed: 15, up: 20, gravity: -5, life: 0.9, size: 2 });
-      this.floater(`+${healed}`, 70, 40, "calm");
+    } else if (m.kind === "heal") {
+      this.heal(power);
+    } else if (m.kind === "stun") {
+      this.stunned = true;
+      this.floater("Hee hee!", 178, 40, "calm");
+    } else if (m.kind === "focus") {
+      this.focus = true;
+      this.floater("Warmed up! x2", 70, 40, "calm");
     }
     if (card.slips) this.floater(`${card.slips} slip${card.slips > 1 ? "s" : ""}`, 70, 62, "note");
+    this.afterYourTurn();
+  }
+
+  useItem(card) {
+    this.items[card.item] -= 1;
+    this.state = "busy";
+    if (card.item === "berry") {
+      this.heal(5);
+    } else if (card.item === "candy") {
+      this.stars = Math.min(MAX_STARS, this.stars + 2);
+      this.floater("+2 ★", 70, 40, "calm");
+    } else {
+      this.charm = true;
+      this.floater("Shell charm!", 70, 40, "calm");
+    }
+    this.afterYourTurn();
+  }
+
+  heal(amount) {
+    const healed = Math.min(PET_HP - this.hp, amount);
+    this.hp += healed;
+    this.scene.burst(70, 60, 8, [C.red, "#e88aa0"], { speed: 15, up: 20, gravity: -5, life: 0.9, size: 2 });
+    this.floater(`+${healed}`, 70, 40, "calm");
+  }
+
+  afterYourTurn() {
     this.renderCards();
     this.renderHud();
-    this.later(0.9, () => (this.foe.hp <= 0 ? this.win() : this.foeActs()));
+    this.later(0.9, () => {
+      if (this.foe.hp <= 0) return this.win();
+      if (this.hp <= 0) return this.lose();
+      this.foeActs();
+    });
   }
 
   foeActs() {
-    const id = this.intent;
-    const it = INTENTS[id];
-    if (it.hit) {
-      const extra = id === "big" && (this.level.foe_power || 1) >= 3 ? 1 : 0;
-      const hits = it.hit + extra;
-      const blocked = Math.min(this.shield, hits);
-      const taken = hits - blocked;
-      this.anim.foe = 0.35;
-      this.later(0.2, () => {
-        this.hp = Math.max(0, this.hp - taken);
-        if (taken) this.anim.petShake = 0.4;
-        this.floater(taken ? `-${taken}` : "Blocked!", 70, 50, taken ? "hurt" : "calm");
-        this.renderHud();
-      });
-    } else if (it.heal) {
-      const healed = Math.min(this.foe.maxHp - this.foe.hp, it.heal);
-      this.foe.hp += healed;
-      this.floater(`+${healed}`, 178, 40, "calm");
-    } else if (id === "windup") {
-      this.nextIntent = "big";
-      this.floater("!", 178, 36, "note");
+    const it = this.critter.intents[this.intent];
+    if (this.stunned) {
+      this.stunned = false;
+      this.floater("Too giggly to move!", 178, 40, "note");
+    } else if (this.charm && (it.hit || it.steal)) {
+      this.charm = false;
+      this.floater("Shell charm blocked it!", 70, 40, "calm");
+    } else {
+      if (it.hit) {
+        const hits = Math.max(1, Math.round(it.hit * effectiveness(this.foe.type, this.pet.type)));
+        const taken = hits - Math.min(this.shield, hits);
+        this.anim.foe = 0.35;
+        this.later(0.2, () => {
+          this.hp = Math.max(0, this.hp - taken);
+          if (taken) this.anim.petShake = 0.4;
+          this.floater(taken ? `-${taken}` : "Blocked!", 70, 50, taken ? "hurt" : "calm");
+          this.renderHud();
+        });
+      }
+      if (it.heal) {
+        const healed = Math.min(this.foe.maxHp - this.foe.hp, it.heal);
+        this.foe.hp += healed;
+        this.floater(`+${healed}`, 178, 40, "calm");
+      }
+      if (it.steal && this.stars) {
+        this.stars -= 1;
+        this.floater("Stole a ★!", 70, 30, "hurt");
+      }
+      if (it.spit) this.spat = true;
+      if (it.next) {
+        this.nextIntent = it.next;
+        this.floater("!", 178, 36, "note");
+      }
     }
     this.shield = 0;
     this.renderHud();
@@ -204,26 +398,28 @@ class PetBattle {
     });
   }
 
-  win() {
-    this.state = "won";
-    this.successes += 1;
+  async win() {
+    this.state = "tally";
     this.foeEase = 1;
-    this.renderHud();
-    const last = this.levelIndex >= this.levels.length - 1 || this.playSeconds >= MAX_BATTLE_SECONDS;
     this.scene.burst(178, 60, 14, [C.gold, C.cream, "#e88aa0"], { speed: 30, up: 25, life: 1.1, size: 2 });
-    this.shell.showScreen(
-      `<h2>You won!</h2>
-       <p>The ${escapeHtml(CRITTER_NAMES[this.foe.species] || "critter").toLowerCase()} is tired out and hops off happy.</p>
-       <p>Press ${keycap(" ")} to ${last ? "finish" : "meet the next critter"}.</p>`,
-      {
-        " ": () => {
-          if (last) return this.gameOver();
-          this.levelIndex += 1;
-          this.setupBattle();
-          this.introScreen();
-        },
-      }
-    );
+    const found = Object.keys(ITEMS)[Math.floor(Math.random() * 3)];
+    this.items[found] += 1;
+    this.renderCards();
+    this.renderHud();
+    await this.shell.roundTally({
+      title: `You won! Found a ${ITEMS[found].name.toLowerCase()}!`,
+      rows: [
+        { label: "Battle won", points: 200 },
+        { label: "HP left", count: this.hp, each: 10 },
+        { label: "Clean moves", count: this.stats.clean, each: 20 },
+        { label: "Super hits", count: this.stats.supers, each: 30 },
+      ],
+      typer: this.typer,
+    });
+    if (this.levelIndex >= this.levels.length - 1) return this.gameOver();
+    this.levelIndex += 1;
+    this.setupFoe();
+    this.pickScreen();
   }
 
   lose() {
@@ -231,13 +427,12 @@ class PetBattle {
     this.foeEase *= RETRY_FOE_HP;
     this.shell.showScreen(
       `<h2>${escapeHtml(this.pet.name)} needs a nap!</h2>
-       <p>Rest up and try again. Your score stays.</p>
+       <p>Try again. Maybe a different partner?</p>
        <p>Press ${keycap(" ")} to try again.</p>`,
       {
         " ": () => {
-          if (this.playSeconds >= MAX_BATTLE_SECONDS) return this.gameOver();
-          this.setupBattle();
-          this.startTurn();
+          this.setupFoe();
+          this.pickScreen();
         },
       }
     );
@@ -245,11 +440,7 @@ class PetBattle {
 
   gameOver() {
     this.state = "over";
-    this.shell.finish({
-      successes: this.successes,
-      line: `You won ${this.successes} battle${this.successes === 1 ? "" : "s"}!`,
-      keystrokes: this.typer.keystrokes,
-    });
+    this.shell.finish({ line: "You played with every critter!" });
   }
 
   later(seconds, fn) {
@@ -270,41 +461,55 @@ class PetBattle {
 
   renderHud() {
     const bar = (hp, max) => `<span class="hp-bar"><span style="width:${(100 * hp) / max}%"></span></span> ${hp}/${max}`;
-    const stars = "★".repeat(this.stars) + "☆".repeat(MAX_STARS - this.stars);
+    const inBattle = this.state !== "pick" && this.hp != null;
+    const stars = "★".repeat(this.stars || 0) + "☆".repeat(MAX_STARS - (this.stars || 0));
+    const chips = [this.focus && "x2", this.charm && "Charm", this.shield && `Shield ${this.shield}`].filter(Boolean);
+    const you = inBattle
+      ? `${escapeHtml(this.pet.name)} ${typeTag(this.pet.type)} ${bar(this.hp, PET_HP)} <span class="stars">${stars}</span>` +
+        chips.map((c) => ` <span class="chip">${c}</span>`).join("")
+      : "Your team";
     this.shell.els.hud.innerHTML =
-      `<span class="fighter">${escapeHtml(this.pet.name)} ${bar(this.hp, PET_HP)} <span class="stars">${stars}</span></span>` +
-      `<span>Wins <b class="game-score">${this.successes}</b></span>` +
-      `<span class="fighter">${escapeHtml(this.foe.name)} ${bar(this.foe.hp, this.foe.maxHp)}</span>`;
-    this.intentEl.innerHTML = `Next: ${escapeHtml(INTENTS[this.intent].says)}`;
-    this.intentEl.hidden = this.state === "won";
+      `<span class="fighter">${you}</span>` +
+      `<span>Score <b class="game-score">${this.shell.total.toLocaleString()}</b></span>` +
+      `<span class="fighter">${escapeHtml(this.foe.name)} ${typeTag(this.foe.type)} ${bar(this.foe.hp, this.foe.maxHp)}</span>`;
+    const it = this.intent && this.critter.intents[this.intent];
+    this.intentEl.innerHTML = it ? `Next: ${escapeHtml(it.says)}` : "";
+    this.intentEl.hidden = !it || this.state === "pick" || this.state === "tally";
   }
 
   affordable(card) {
-    return this.stars >= card.move.cost;
+    return Boolean(card.word) && (!card.move || this.stars >= card.move.cost);
   }
 
   renderCards() {
+    const card = (c, title, text, cls) => {
+      const classes = [cls];
+      if (!this.affordable(c)) classes.push("cant");
+      if (this.typer.target === c) classes.push("locked");
+      if (this.state !== "turn") classes.push("waiting");
+      const slips = c.slips && this.typer.target === c ? `<span class="move-slips">−${c.slips}</span>` : "";
+      return `<div class="${classes.join(" ")}">
+        <h3>${title} ${slips}</h3>
+        <p>${escapeHtml(text)}</p>
+        <p class="move-word">${c.word ? wordHtml(c.word, c.typed) : "…"}</p>
+      </div>`;
+    };
     this.cardsEl.innerHTML = this.cards
-      .map((c) => {
-        const cls = ["move-card"];
-        if (!this.affordable(c)) cls.push("cant");
-        if (this.typer.target === c) cls.push("locked");
-        if (this.state !== "turn") cls.push("waiting");
-        const slips = c.slips && this.typer.target === c ? `<span class="move-slips">−${c.slips}</span>` : "";
-        return `<div class="${cls.join(" ")}">
-          <h3>${escapeHtml(c.move.name)} ${slips}</h3>
-          <p>${escapeHtml(c.move.text)}</p>
-          <p class="move-word">${wordHtml(c.word, c.typed)}</p>
-        </div>`;
-      })
+      .map((c) => card(c, `${escapeHtml(c.move.name)}${c.move.type ? " " + typeTag(c.move.type) : ""}`, c.move.text, "move-card"))
       .join("");
+    this.bagEl.innerHTML = this.bag.length
+      ? `<h3 class="bag-title">Bag</h3><div class="bag-cards">` +
+        this.bag
+          .map((c) => card(c, `${escapeHtml(ITEMS[c.item].name)} ×${this.items[c.item]}`, ITEMS[c.item].text, "move-card item-card"))
+          .join("") +
+        `</div>`
+      : "";
   }
 
   // --- each frame -------------------------------------------------------------
 
   update(dt) {
     for (const k of Object.keys(this.anim)) this.anim[k] = Math.max(0, this.anim[k] - dt);
-    if (this.state === "turn" || this.state === "busy") this.playSeconds += dt;
   }
 
   draw(s) {
@@ -323,23 +528,28 @@ class PetBattle {
         frame: Math.floor(s.t * 2) % 2,
       });
     }
-    // your pet, lunging right on its move
+    const inBattle = this.state !== "pick" && this.state !== "lost";
     const lunge = (t) => (t > 0 ? Math.sin((t / 0.35) * Math.PI) * 14 : 0);
     const shake = (t) => (t > 0 ? Math.round(Math.sin(t * 60) * 2) : 0);
-    this.drawPet(s, this.pet, 72 + lunge(this.anim.pet) + shake(this.anim.petShake), 86, false);
-    if (this.shield && this.state !== "won") {
-      for (let y = 50; y < 88; y += 2) s.rect(102 + Math.round(Math.abs(y - 69) / 4), y, 2, 1, "#8fc3d6");
+    if (inBattle) {
+      this.drawPet(s, this.pet, 72 + lunge(this.anim.pet) + shake(this.anim.petShake), 86, false);
+      if (this.focus && Math.random() < 0.3) s.burst(72, 70, 1, [C.orange, C.gold], { speed: 10, up: 15, gravity: -10, life: 0.5 });
+      if (this.shield || this.charm) {
+        const color = this.charm ? C.gold : "#8fc3d6";
+        for (let y = 50; y < 88; y += 2) s.rect(102 + Math.round(Math.abs(y - 69) / 4), y, 2, 1, color);
+      }
     }
-    // the critter, lunging left
+    const it = (this.intent && this.critter.intents[this.intent]) || {};
     const flicker = this.anim.foeShake > 0 && Math.floor(this.anim.foeShake * 20) % 2;
-    if (this.state !== "won" && !flicker) {
-      this.drawPet(s, this.foe, 180 - lunge(this.anim.foe) + shake(this.anim.foeShake), 76, true);
+    const hopping = it.dodge && this.state === "turn" ? -Math.abs(Math.round(Math.sin(s.t * 8) * 6)) : 0;
+    if (this.state !== "tally" && !flicker) {
+      this.drawPet(s, this.foe, 180 - lunge(this.anim.foe) + shake(this.anim.foeShake), 76 + hopping, true);
     }
-    if (this.intent === "guard" && this.state === "turn") {
-      s.rect(176, 28, 8, 6, C.grey);
-      s.rect(177, 34, 6, 2, C.grey);
+    if (this.state === "turn") {
+      if (it.spiky) for (let i = 0; i < 7; i++) s.rect(160 + i * 6, 44 + (i % 2) * 2, 2, 4, C.cream);
+      if (it.after) s.mark(180, 36, "!");
+      if (this.stunned) s.mark(180, 36, "?");
     }
-    if (this.intent === "big" && this.state === "turn") s.mark(180, 36, "!");
   }
 
   // pet: {species, color, stage}; (cx, bottom) is where its feet go.
@@ -355,12 +565,14 @@ class PetBattle {
   // --- keys -------------------------------------------------------------------
 
   targets() {
-    return this.state === "turn" ? this.cards.filter((c) => this.affordable(c)) : [];
+    if (this.state === "pick") return this.choices;
+    if (this.state === "turn") return [...this.cards, ...this.bag].filter((c) => this.affordable(c));
+    return [];
   }
 
   handleKey(e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (this.state !== "turn") {
+    if (this.state !== "turn" && this.state !== "pick") {
       this.shell.screenKey(e);
       if (e.key === " ") e.preventDefault();
       return;
@@ -368,16 +580,48 @@ class PetBattle {
     if (e.key === "Escape" || e.key === "Backspace") {
       e.preventDefault();
       this.typer.release();
-      this.renderCards();
+      if (this.state === "pick") this.renderChoices();
+      else this.renderCards();
       return;
     }
     if (e.key.length !== 1) return;
     e.preventDefault();
     if (e.repeat || e.key === " ") return;
     const r = this.typer.press(e.key, this.targets());
-    if (r.kind === "done") this.useMove(r.target);
-    else this.renderCards();
+    if (this.state === "pick") {
+      if (r.kind === "done") this.startBattle(r.target.pet);
+      else this.renderChoices();
+      return;
+    }
+    if (r.kind === "done") {
+      if (r.target.item) this.useItem(r.target);
+      else this.useMove(r.target);
+    } else {
+      this.renderCards();
+    }
   }
+}
+
+function typeTag(type) {
+  return `<span class="type-tag type-${type}">${TYPES[type].name}</span>`;
+}
+
+// Up to 3 partners: the pets that come along, then starters for the types
+// still missing, so there's always one of each type when you have none.
+function makeTeam(owned) {
+  const team = owned.slice(0, 2).map((p) => ({
+    name: p.name || (CRITTERS[p.species] && CRITTERS[p.species].name) || "Pet",
+    species: p.species,
+    color: p.color,
+    stage: p.stage,
+    type: SPECIES_TYPE[p.species] || "leaf",
+  }));
+  for (const s of STARTERS) {
+    if (team.length >= 3) break;
+    const type = SPECIES_TYPE[s.species];
+    if (!team.some((p) => p.type === type)) team.push({ ...s, type });
+  }
+  return team;
 }
 
 GAMES.pet_battle = (shell, content, me) => new PetBattle(shell, content, me);

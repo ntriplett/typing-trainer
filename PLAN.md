@@ -400,28 +400,40 @@ then a few capitals at a time. They get strung together into lessons once enough
   (short/medium/long) and difficulty (easy/medium/hard). Lab runs pay coins but don't feed the skill model.
 - Later: tune difficulty per learner (e.g. ramp within a session), smarter weak-pair chaining.
 
-## 11g. Games (built 2026-10-24)
+## 11g. Games (built 2026-10-24, reworked after review)
 
 - Rules agreed with the user: the word you type is the choice you make; time pressure in some games
-  only and never very hard; soft losing (retry, score = successes); ~1 minute levels, ~5 levels;
-  self-contained for now (persistent/roguelite later). Full idea list: `GAME_IDEAS.md`.
-- `app/activities/game_modules.py`: `GameModule` (kind "game") gives `ActivityContent.game` =
-  {game, levels, words: {short, medium, long}, letters, chars_per_second, difficulty}. Words come from
-  practice_text (allowed letters only, focus 3x, weak pairs by difficulty); letters only, no ";".
-  Needs 4+ letters. Difficulty also scales crow speed / critter HP (0.8x-1.2x). Pays coins per success.
-- Front-end: `game_kit.js` (Typer: first key locks onto the word starting with it, wrong keys are
-  slips, Esc/Backspace lets go; GameShell: HUD, canvas, overlay screens, posting the score).
-- **Crow Patrol** (`crow_patrol.js`, real-time): crows carry words toward pumpkins; type to shoo.
-  Flight time and spawn rate come from the learner's typing speed. Losing every pumpkin = retry the
-  level 15% slower. Between levels pick 1 of 3 upgrades by typing: scarecrow (slower crows), fence
-  (+2 pumpkins), bell (Space shoos every crow once a level), pumpkin pie (saved pumpkins count).
-- **Pet Battles** (`pet_battle.js`, turn-based): your pet (first pet along, or borrowed "Pip") vs a
-  wild critter (pet art). Moves are words: Pounce (short, 2, +1 star), Super pounce (long, 4, 2 stars),
-  Shield (blocks 3, 1 star), Snack (heals 3, 1 star). Each slip takes 1 off a move's power. The critter
-  shows its next move (nibble, tackle, rest, wind-up then BIG, guard halves your hits).
-  Losing = nap and retry, critter 10% easier.
-- `/game-lab` (letters, focus, difficulty) and `/game/<id>`; `POST /api/game/<id>/complete` pays
-  `coins_per_success` (3 per crow, 25 per battle). Not in sessions yet; lab runs don't feed stats.
+  only and never very hard; soft losing; ~1 minute rounds, 5 rounds; self-contained for now
+  (persistent/roguelite later). Full idea list: `GAME_IDEAS.md`.
+- Words: real words (word_bank.py, ~730 kid words) as soon as the taught letters spell 8+ per length
+  group; made-up words only until then. Weighted toward focus letters and (by difficulty) weak
+  letters/pairs. Letters only, no ";". Groups: short 2-3, medium 4-5, long 6-8. Needs 4+ letters.
+- `app/activities/game_modules.py`: `GameModule` gives `ActivityContent.game` = {game, levels, words,
+  letters, chars_per_second, difficulty}. Difficulty scales crow speed / critter HP (0.8x-1.2x).
+  Each round is posted when it ends (`POST /api/game/<id>/round` {score, keystrokes}) and paid
+  right away at `coins_per_point` (crows 1 per 20 points, battles 0.15/point); a round is capped at
+  5000 points.
+- `game_kit.js`: Typer (first key locks onto the word starting with it; wrong keys are slips;
+  Esc/Backspace lets go), GameShell (HUD, canvas, overlay screens covering the stage, and the arcade
+  `roundTally`: rows count up one by one, round total, cheers, best round in localStorage, coins).
+- **Crow Patrol** (real-time, paced by the learner's typing speed): crows come from left, right and
+  top. Kinds: little (fast, short word, 10), crow (20), big (slow, long word, takes 2 pumpkins, 40),
+  caller (timer ring; calls a friend when it runs out, 30), squirrel crow (drops a squirrel that runs
+  to a pumpkin and eats it unless shooed, 30), golden (ignores pumpkins, crosses the sky, 100). One new
+  kind per round, shown on the round card. The first slip on any crow: "CAW! Help!" bubble and a
+  little friend joins (once per crow). Each round starts with a full patch (6, +2 per fence); losing
+  every pumpkin just ends the round. Tally: crows by kind, pumpkins saved x100 (x250 with pie),
+  perfect patch +200. Upgrades between rounds by typing: scarecrow, fence, bell, pie.
+- **Pet Battles** (turn-based): types Leaf > Splash > Ember > Leaf (x2 / x0.5, both ways). Before each
+  battle: the critter's type, weakness and trick; pick 1 of 3 partners by typing (pets along + Clover,
+  Pip, Puddle starters to cover the types). Kits: Leaf (Vine whip, Leafy snack, Tickle = skip its
+  move), Ember (Ember, Blaze, Warm up = next hit x2), Splash (Splash, Bubble shield, Big wave = always
+  lands), plus Pounce (+1 star). Critters: bunny hops (your hit misses), hedgehog gets spiky (hits prick
+  you), goat winds up a headbutt, fox steals stars, llama spits (your next words get longer). Bag:
+  Berry, Star candy, Shell charm, typed to use; find one per win. Win tally: 200 + HP x10 + clean
+  moves x20 + super hits x30. Losing: nap, pick again, critter 10% easier.
+- `/game-lab` (letters, focus, difficulty) and `/game/<id>`. Not in sessions yet; lab runs don't
+  feed stats.
 
 ## 12. Workflow
 

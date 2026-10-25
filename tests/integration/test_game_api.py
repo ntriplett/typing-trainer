@@ -51,22 +51,22 @@ def test_bad_options_400(params):
     assert client.get(f"/api/game/{CROWS}/content", params=params).status_code == 400
 
 
-def test_complete_pays_per_success():
+def test_each_round_pays_by_points():
     with db.open_db(main.DB_PATH) as conn:
         before = db.get_coin_balance(conn, 1)
     strokes = [{"expected_char": "a", "typed_char": "a", "correct": True, "latency_ms": 200}] * 6
-    data = client.post(f"/api/game/{BATTLE}/complete", json={"keys": ["a"], "keystrokes": strokes, "successes": 3}).json()
-    assert data["successes"] == 3
-    assert data["coins_earned"] == [{"amount": 75, "reason": "game"}]
-    assert data["coin_balance"] == before + 75
+    data = client.post(f"/api/game/{CROWS}/round", json={"keys": ["a"], "keystrokes": strokes, "score": 400}).json()
+    assert data["score"] == 400
+    assert data["coins_earned"] == [{"amount": 20, "reason": "game"}]
+    assert data["coin_balance"] == before + 20
     assert data["result"]["accuracy"] == 1.0
 
 
-def test_complete_with_no_successes_pays_nothing():
-    data = client.post(f"/api/game/{CROWS}/complete", json={"keys": ["a"], "keystrokes": [], "successes": 0}).json()
+def test_a_round_with_no_points_pays_nothing():
+    data = client.post(f"/api/game/{BATTLE}/round", json={"keys": ["a"], "keystrokes": [], "score": 0}).json()
     assert data["coins_earned"] == []
 
 
-def test_complete_rejects_silly_scores():
-    res = client.post(f"/api/game/{CROWS}/complete", json={"keys": ["a"], "keystrokes": [], "successes": 100000})
+def test_round_rejects_silly_scores():
+    res = client.post(f"/api/game/{CROWS}/round", json={"keys": ["a"], "keystrokes": [], "score": 100000})
     assert res.status_code == 422
