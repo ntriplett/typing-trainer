@@ -482,6 +482,8 @@ class CrowPatrol {
   }
 
   placeLabels() {
+    const W = this.shell.els.layer.clientWidth;
+    const H = this.shell.els.layer.clientHeight;
     for (const c of this.crows) {
       if (c.state !== "fly") continue;
       if (c.shown !== c.typed) {
@@ -489,18 +491,15 @@ class CrowPatrol {
         c.shown = c.typed;
       }
       c.el.classList.toggle("locked", this.typer.target === c);
-      // keep the word on screen while the crow flies in from an edge
-      c.el.style.left = `${Math.min(92, Math.max(6, (c.x / FIELD_W) * 100))}%`;
       const above = c.kind === "runner" ? 6 : 7 * CROW_KINDS[c.kind].size + 2;
-      c.el.style.top = `${Math.max(9, ((c.y - above) / FIELD_H) * 100)}%`;
+      placeInside(c.el, (c.x / FIELD_W) * W, ((c.y - above) / FIELD_H) * H, W, H);
       if (c.kind === "caller") {
         const left = c.calls >= MAX_CALLS ? 0 : c.callIn / CROW_KINDS.caller.callEvery;
         c.el.querySelector(".call-timer span").style.width = `${left * 100}%`;
       }
     }
     for (const b of this.bubbles) {
-      b.el.style.left = `${Math.min(88, Math.max(10, (b.crow.x / FIELD_W) * 100))}%`;
-      b.el.style.top = `${Math.max(0, ((b.crow.y - 22) / FIELD_H) * 100)}%`;
+      placeInside(b.el, (b.crow.x / FIELD_W) * W, ((b.crow.y - 22) / FIELD_H) * H, W, H);
     }
   }
 
@@ -671,6 +670,16 @@ class CrowPatrol {
     for (const c of this.flying()) this.flee(c, true);
     this.renderHud();
   }
+}
+
+// Puts a label (centered on x, bottom at y) where the crow is, but always
+// whole inside the W x H field: a long word from the edge isn't cut off.
+function placeInside(el, x, y, W, H) {
+  const pad = 4;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  el.style.left = `${Math.min(W - w / 2 - pad, Math.max(w / 2 + pad, x))}px`;
+  el.style.top = `${Math.min(H - pad, Math.max(h + pad, y))}px`;
 }
 
 GAMES.crow_patrol = (shell, content, me) => new CrowPatrol(shell, content, me && me.avatar);

@@ -63,6 +63,43 @@ def test_crow_patrol_slip_calls_a_friend_once(page: Page, live_server):
     assert page.evaluate("game.flying().length") == 2
 
 
+def test_long_words_stay_fully_inside_the_field(page: Page, live_server):
+    start_crows(page, live_server)
+    for x in (-10, 250):
+        page.evaluate(
+            f"""(() => {{ const c = game.spawnCrow('big'); c.word = 'sandwich'; c.shown = -1;
+                c.sx = c.x = {x}; c.sy = c.y = 10; }})()"""
+        )
+    page.wait_for_timeout(100)
+    area = page.locator(".game-area").bounding_box()
+    for i in range(2):
+        box = page.locator(".crow-word").nth(i).bounding_box()
+        assert box["x"] >= area["x"] and box["x"] + box["width"] <= area["x"] + area["width"]
+        assert box["y"] >= area["y"]
+
+
+def test_the_word_being_typed_is_always_on_top(page: Page, live_server):
+    start_crows(page, live_server)
+    page.evaluate("game.spawnCrow('crow'); game.spawnCrow('crow')")
+    first = page.evaluate("game.targets()[0].word")
+    # stack both labels in the same place, the second one drawn later
+    page.evaluate("game.targets().forEach(c => { c.sx = c.x = 120; c.sy = c.y = 40; c.dur = 1e6; })")
+    page.keyboard.press(first[0])
+    page.wait_for_timeout(100)
+    page.keyboard.press("z")  # a slip: a speech bubble and a friend crow join
+    page.wait_for_timeout(100)
+    z = page.evaluate(
+        """(() => {
+          const z = (el) => Number(getComputedStyle(el).zIndex) || 0;
+          const locked = document.querySelector('.crow-word.locked');
+          const others = [...document.querySelectorAll('.crow-word:not(.locked), .crow-bubble')];
+          return { locked: z(locked), others: others.map(z), count: others.length };
+        })()"""
+    )
+    assert z["count"] >= 3
+    assert all(z["locked"] > o for o in z["others"])
+
+
 def test_crows_come_from_every_side(page: Page, live_server):
     start_crows(page, live_server)
     sides = page.evaluate(
