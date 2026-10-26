@@ -657,14 +657,40 @@ body[data-particles] main {
 }
 
 .day-chest .token-icon {
+  grid-area: 1 / 1; /* stacked tokens sit on top of each other */
   width: 14px;
   height: 14px;
-  filter: grayscale(1) brightness(0.7);
-  opacity: 0.7;
+  filter: grayscale(0.7) brightness(0.8);
+  opacity: 0.8;
 }
 
 .day-chest .token-icon::after {
   animation: none;
+}
+
+/* a stack of 2 in a wider chest: one low on the left, one high on the right */
+.day-chest.stack {
+  width: 34px;
+}
+
+.day-chest.stack .token-icon:first-child {
+  transform: translate(-5px, 3px);
+}
+
+.day-chest.stack .token-icon:nth-child(2) {
+  transform: translate(5px, -2px);
+}
+
+.day-tracker.big .day-chest.stack {
+  width: 60px;
+}
+
+.day-tracker.big .day-chest.stack .token-icon:first-child {
+  transform: translate(-9px, 5px);
+}
+
+.day-tracker.big .day-chest.stack .token-icon:nth-child(2) {
+  transform: translate(9px, -4px);
 }
 
 .day-chest.open {
@@ -767,4 +793,28 @@ body[data-particles] main {
   .token-icon::after {
     animation: none;
   }
+}
+
+/* --- a locked room (header.js showMystery) -------------------------------------- */
+
+.mystery {
+  text-align: center;
+  margin-top: 1.5rem;
+}
+
+.mystery-art {
+  width: 160px;
+  height: 160px;
+  image-rendering: pixelated;
+}
+
+.mystery h1 {
+  font-size: 40px;
+  color: var(--heading);
+  margin: 0.3rem 0;
+}
+
+.mystery-text,
+.mystery-keys {
+  font-size: 30px;
 }

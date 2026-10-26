@@ -292,3 +292,11 @@
 .lab-lessons .button {
   font-size: 30px;
 }
+
+/* "You unlocked the Pet Room!" after the lesson that opens a room */
+.teach-unlock {
+  color: var(--moss-dark);
+  background: var(--card-good);
+  border: 3px solid var(--moss);
+  padding: 0.2rem 0.6rem;
+}

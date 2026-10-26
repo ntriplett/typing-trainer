@@ -132,6 +132,15 @@ function tinyLetter(px, letter, x, y, color) {
   });
 }
 
+// The home tile's row of machines: body colors, left to right.
+const ARCADE_ROW = [
+  { p: "#d9822b", P: "#8b4a1a" },
+  { p: "#3f9a8a", P: "#26685c" },
+  {},
+  { p: "#b8432f", P: "#7a2a1a" },
+  { p: "#3f7fd0", P: "#2a5a9a" },
+];
+
 // An arcade cabinet; `colors` recolors the body, `screen()` draws on its screen.
 function cabinet(px, frame, colors, screen) {
   const blink = frame % 2 === 0;
@@ -184,16 +193,41 @@ const HOME_ICONS = {
       );
     },
   },
+  // A row of five machines, each its own color and game.
   arcade: {
-    w: 16,
+    w: 84,
     h: 22,
     draw(px, frame) {
-      cabinet(px, frame, {}, () => {
-        // a tiny game on the screen: a hero and a crow trading places
-        px(4 + (frame % 6), 9, 1, 1, "#9fd07a");
-        px(4 + ((frame + 3) % 6), 7, 1, 1, "#ff9a7a");
-        px(4, 10, 8, 1, "#4a6627");
+      ARCADE_ROW.forEach((colors, i) => {
+        const dx = i * 17;
+        const at = (x, y, w, h, c) => px(x + dx, y, w, h, c);
+        cabinet(at, frame + i, colors, () => {
+          const f = frame + i * 2;
+          at(4, 10, 8, 1, "#4a6627");
+          at(4 + (f % 6), 9, 1, 1, "#9fd07a");
+          at(4 + ((f + 3) % 6), 6 + (i % 3), 1, 1, i % 2 ? "#f6d465" : "#ff9a7a");
+        });
       });
+    },
+  },
+  // A "?" block: a room that opens once enough letters are learned.
+  mystery: {
+    w: 16,
+    h: 17,
+    draw(px, frame) {
+      const dy = frame % 2;
+      const at = (x, y, w, h, c) => px(x, y + dy, w, h, c);
+      at(0, 0, 16, 16, HOME_INK);
+      at(1, 1, 14, 14, "#e8b33e");
+      at(1, 1, 14, 1, "#f6d465");
+      at(1, 1, 1, 14, "#f6d465");
+      at(1, 14, 14, 1, "#b5862a");
+      at(14, 1, 1, 14, "#b5862a");
+      for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) at(x, y, 1, 1, HOME_INK);
+      const glyph = [".www.", "ww.ww", "...ww", "..ww.", ".ww..", ".ww..", ".....", ".ww..", ".ww.."];
+      for (const [color, off] of [["#5c3a1a", 1], ["#ffffff", 0]]) {
+        glyph.forEach((row, y) => [...row].forEach((c, x) => c === "w" && at(5 + x + off, 3 + y + off, 1, 1, color)));
+      }
     },
   },
   // The arcade page's game cabinets, one per game.

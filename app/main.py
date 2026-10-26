@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, lessons, pets, profiles, room, skill_model, store
+from app import analytics, appearance, arcade, brain, config, daily, db, lessons, pets, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -575,12 +575,15 @@ def complete_lesson(
     lesson_id: int, body: LessonCompleteRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)
 ) -> dict:
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
+    before = unlocks.status(conn, learner_id)
     try:
-        return lessons.complete(
+        done = lessons.complete(
             conn, learner_id, lesson_id, keystrokes, body.active_ms, body.skipped_chars, now()
         )
     except lessons.LessonError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+    after = unlocks.status(conn, learner_id)
+    return {**done, "unlocked": unlocks.newly_unlocked(before, after), "free_pet": after["free_pet"]}
 
 
 # --- parent page -----------------------------------------------------------------------
@@ -653,6 +656,7 @@ def _me(conn, learner_id: int) -> dict:
         "coins": db.get_coin_balance(conn, learner_id),
         "tokens": db.get_token_balance(conn, learner_id),
         "day": daily.status(conn, learner_id, now()),
+        "unlocks": unlocks.status(conn, learner_id),
         "avatar": store.get_avatar(conn, learner_id),
         "night": store.night_status(conn, learner_id),
     }
@@ -706,6 +710,9 @@ def _store_action(action, conn, learner_id: int, arg: str) -> dict:
 
 @app.post("/api/store/buy/{item_id}")
 def store_buy(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    item = store.CATALOG.get(item_id)
+    if item and item.slot in unlocks.ROOM_SLOTS:
+        _require(conn, learner_id, "bedroom")
     return _store_action(store.buy, conn, learner_id, item_id)
 
 
@@ -794,6 +801,7 @@ class AlongIn(BaseModel):
 
 
 def _pets_state(conn, learner_id: int) -> dict:
+    _require(conn, learner_id, "pets")
     return {
         **_me(conn, learner_id),
         "pets": pets.list_pets(conn, learner_id),
@@ -803,7 +811,15 @@ def _pets_state(conn, learner_id: int) -> dict:
     }
 
 
+def _require(conn, learner_id: int, room_name: str) -> None:
+    try:
+        unlocks.require(conn, learner_id, room_name)
+    except unlocks.Locked as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+
+
 def _pet_action(action, conn, learner_id: int, *args) -> dict:
+    _require(conn, learner_id, "pets")
     try:
         action(conn, learner_id, *args)
     except pets.PetError as exc:
@@ -818,7 +834,11 @@ def list_pets(conn=Depends(get_db), learner_id: int = Depends(current_learner)) 
 
 @app.post("/api/pets/adopt")
 def adopt_pet(body: AdoptIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _pet_action(pets.adopt, conn, learner_id, body.species, body.color)
+    free = unlocks.status(conn, learner_id)["free_pet"]
+    state = _pet_action(pets.adopt, conn, learner_id, body.species, body.color, free)
+    if free:
+        unlocks.claim_free_pet(conn, learner_id)
+    return state
 
 
 @app.post("/api/pets/{pet_id}/feed")
@@ -859,10 +879,12 @@ class SurfaceIn(BaseModel):
 
 
 def _room_state(conn, learner_id: int) -> dict:
+    _require(conn, learner_id, "bedroom")
     return {**_me(conn, learner_id), "room": room.state(conn, learner_id)}
 
 
 def _room_action(action, conn, learner_id: int, *args) -> dict:
+    _require(conn, learner_id, "bedroom")
     try:
         action(conn, learner_id, *args)
     except room.RoomError as exc:

@@ -7,6 +7,10 @@
 // Also applies the current place's page theme (themes.js) and shows a
 // day/night switch when that place's night is unlocked.
 //
+// Rooms that unlock as letters are learned (app/unlocks.py): a page with
+// <body data-unlock="pets"> shows a "mystery room" card instead of itself
+// while that room is locked.
+//
 // Needs sprites.js, backgrounds.js, avatar.js, and themes.js loaded first.
 // Exposes window.Header so pages can update coins/avatar without
 // refetching.
@@ -47,8 +51,9 @@ const DayTracker = {
     el.classList.toggle("goal", day.goal_reached);
     el.classList.toggle("resting", !!day.resting_until);
     el.title = this.title(day);
+    // one token icon per token: the goal chest holds a little stack of 2
     const chest = (left, open, n) =>
-      `<span class="day-chest${open ? " open" : ""}" style="left:${left}%" aria-label="${n} token${n > 1 ? "s" : ""}${open ? " earned" : ""}"><span class="token-icon"></span></span>`;
+      `<span class="day-chest${open ? " open" : ""}${n > 1 ? " stack" : ""}" style="left:${left}%" aria-label="${n} token${n > 1 ? "s" : ""}${open ? " earned" : ""}">${'<span class="token-icon"></span>'.repeat(n)}</span>`;
     el.innerHTML = `
       <span class="day-track" role="progressbar" aria-valuemin="0" aria-valuemax="${day.bonus_seconds}" aria-valuenow="${day.practiced_seconds}">
         <span class="day-fill" style="width:${(share * 100).toFixed(1)}%"></span>
@@ -229,6 +234,11 @@ const DayTracker = {
     })
     .then((me) => {
       update(me);
+      const room = document.body.dataset.unlock;
+      if (room && me.unlocks && !me.unlocks[room]) {
+        showMystery(me.unlocks, room);
+        return new Promise(() => {}); // the page itself never starts
+      }
       return me;
     })
     .catch((err) => {
@@ -236,6 +246,26 @@ const DayTracker = {
       coinCount.textContent = "?";
       return null;
     });
+
+  // The locked-room card: a "?" block, what opens it, and the keys still to learn.
+  function showMystery(unlocks, room) {
+    const main = document.querySelector("main");
+    const missing = [...unlocks.missing[room]].map((k) => keycap(k)).join(" ");
+    main.innerHTML = `
+      <section class="panel mystery">
+        <canvas class="mystery-art" width="160" height="160"></canvas>
+        <h1>A mystery room!</h1>
+        <p class="mystery-text">${unlocks.hints[room]}</p>
+        <p class="mystery-keys">Still to learn: ${missing}</p>
+        <p><a class="button button-go big-button" href="/session">Practice</a> <a class="button big-button" href="/">Home</a></p>
+      </section>`;
+    const art = main.querySelector(".mystery-art");
+    if (window.drawHomeIcon) {
+      let frame = 0;
+      drawHomeIcon(art, "mystery", frame);
+      setInterval(() => drawHomeIcon(art, "mystery", ++frame), 600);
+    }
+  }
 
   window.Header = { ready, setCoins, setTokens, setDay, setAvatar, update, celebrate, celebrateTokens };
 })();

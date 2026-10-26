@@ -111,6 +111,17 @@ lesson, visit the store or pets, and come back.
 - **Parent page** (`/parent`, open for now): per player, the daily goal and the practice <-> learn
   slider, today's progress, and the brain's next pick with its reasons. Lab links live here.
 
+### 6a-2. Rooms that unlock (`app/unlocks.py`, 2026-10-25)
+
+- **Pet Room** opens once the home row is taught, with a **free first baby pet** (any species/color,
+  picked in the store's Pets tab). **Bedroom** opens once the top row is taught. Until then the home
+  tile is a "?" block ("Mystery"), the page shows a mystery-room card with the keys still to learn,
+  the store hides that tab, and the API answers 403. Players who already own pets / decorated their
+  bedroom keep them open. The teach lesson that opens a room announces it.
+- The arcade isn't locked: games already wait for 4+ known letters.
+- Home hero greets with ~50 context-aware lines (hello / mid / almost / goal / all done / winding
+  down after spending tokens); the goal chest shows a stack of 2 tokens.
+
 ### 6b. The brain (`app/brain.py`, run by `app/lessons.py`)
 
 A pure function `plan_next_lesson(BrainInput) -> LessonPlan`; `lessons.py` gathers the input (taught

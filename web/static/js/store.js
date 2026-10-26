@@ -88,7 +88,15 @@ previewReset.addEventListener("click", () => {
   renderPreview();
 });
 
+// Locked rooms (app/unlocks.py) keep their tabs hidden until they open.
+function visibleTabs() {
+  const open = (state && state.unlocks) || {};
+  return TABS.filter((t) => (t.id === "pets" ? open.pets : t.id === "bedroom" ? open.bedroom : true));
+}
+
 function loadTab() {
+  const asked = new URLSearchParams(location.search).get("tab"); // e.g. /store?tab=pets
+  if (asked && TABS.some((t) => t.id === asked)) return asked;
   try {
     const saved = localStorage.getItem("store-tab");
     return TABS.some((t) => t.id === saved) ? saved : TABS[0].id;
@@ -108,9 +116,9 @@ function saveTab(id) {
 async function load() {
   const [r, p] = await Promise.all([fetch("/api/store"), fetch("/api/pets")]);
   if (!r.ok) throw new Error(`/api/store returned ${r.status}`);
-  if (!p.ok) throw new Error(`/api/pets returned ${p.status}`);
+  if (!p.ok && p.status !== 403) throw new Error(`/api/pets returned ${p.status}`);
   state = await r.json();
-  petState = await p.json();
+  petState = p.ok ? await p.json() : null; // 403: the pet room is still a mystery
   render();
 }
 
@@ -141,8 +149,10 @@ function renderPreview() {
 
 function render() {
   renderPreview();
+  const tabs = visibleTabs();
+  if (!tabs.some((t) => t.id === currentTab)) currentTab = tabs[0].id;
   tabsEl.replaceChildren(
-    ...TABS.map((tab) => {
+    ...tabs.map((tab) => {
       const btn = document.createElement("button");
       btn.className = "tab-button" + (tab.id === currentTab ? " active" : "");
       btn.dataset.tab = tab.id;
@@ -188,7 +198,11 @@ function renderAdoption() {
   const section = document.createElement("section");
   section.className = "panel shelf";
   section.innerHTML = `<h2 class="panel-title">Adopt a pet</h2>
-    <p class="hint">Pets start as babies. Feed them once a day in the <a href="/pets">pet room</a> to help them grow up!</p>
+    <p class="hint">${
+      state.unlocks.free_pet
+        ? "<b>Your first pet is free!</b> A gift for learning the home row. Pick any one you like."
+        : 'Pets start as babies. Feed them once a day in the <a href="/pets">pet room</a> to help them grow up!'
+    }</p>
     <div class="item-grid"></div>`;
   const grid = section.querySelector(".item-grid");
   for (const kind of petState.species) grid.appendChild(adoptCard(kind));
@@ -211,7 +225,9 @@ function adoptCard(kind) {
   info.innerHTML = `
     <h3>${kind.name}</h3>
     <p class="item-desc">${kind.description}</p>
-    <p class="coins-inline"><span class="coin-icon"></span>${kind.price.toLocaleString()}</p>`;
+    <p class="coins-inline">${
+      state.unlocks.free_pet ? "<b>Free!</b>" : `<span class="coin-icon"></span>${kind.price.toLocaleString()}`
+    }</p>`;
 
   const row = document.createElement("div");
   row.className = "swatch-row";
@@ -229,8 +245,8 @@ function adoptCard(kind) {
   }
 
   const btn = document.createElement("button");
-  if (state.coins >= kind.price) {
-    btn.textContent = "Adopt";
+  if (state.unlocks.free_pet || state.coins >= kind.price) {
+    btn.textContent = state.unlocks.free_pet ? "Adopt for free" : "Adopt";
     btn.className = "button-gold";
     btn.onclick = () => adopt(kind, color);
   } else {

@@ -17,7 +17,13 @@ def _room(page: Page, live_server) -> dict:
     return page.request.get(f"{live_server}/api/room").json()["room"]
 
 
+def _open_bedroom(page: Page, live_server) -> None:
+    """Learning the top row opens the bedroom (app/unlocks.py)."""
+    page.request.put(f"{live_server}/api/profiles/placement", data={"keys": "letters", "speed": "some"})
+
+
 def test_buying_furniture_puts_it_in_the_room_and_dragging_saves(page: Page, live_server, tmp_path):
+    _open_bedroom(page, live_server)
     page.goto(live_server)
     expect(page.locator("#coin-count")).to_have_text("0")
     _give_coins(tmp_path, store.CATALOG["furniture_toy_chest"].price)
@@ -48,6 +54,7 @@ def test_buying_furniture_puts_it_in_the_room_and_dragging_saves(page: Page, liv
 
 
 def test_put_away_moves_it_to_the_inventory(page: Page, live_server, tmp_path):
+    _open_bedroom(page, live_server)
     page.goto(live_server)
     expect(page.locator("#coin-count")).to_have_text("0")
     _give_coins(tmp_path, store.CATALOG["furniture_clock"].price)

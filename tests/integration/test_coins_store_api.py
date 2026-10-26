@@ -149,6 +149,7 @@ def test_night_toggle_endpoint():
 
 
 def test_pets_api_round_trip():
+    _home_row()  # opens the pet room
     _give_coins(10_000)
     data = client.post("/api/pets/adopt", json={"species": "dog", "color": "golden"}).json()
     pet = data["pets"][0]
@@ -162,6 +163,7 @@ def test_pets_api_round_trip():
 
 
 def test_room_api_round_trip():
+    client.put("/api/profiles/placement", json={"keys": "letters", "speed": "some"})  # opens the bedroom
     _give_coins(5_000)
     client.post("/api/store/buy/furniture_bed_blue")
     data = client.post("/api/room/items", json={"item_id": "furniture_bed_blue"}).json()

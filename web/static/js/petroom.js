@@ -14,6 +14,7 @@ let walkers = []; // yard animation state, one per pet
 
 async function load() {
   const r = await fetch("/api/pets");
+  if (r.status === 403) return new Promise(() => {}); // still a mystery: header.js shows why
   if (!r.ok) throw new Error(`/api/pets returned ${r.status}`);
   setState(await r.json());
 }
@@ -80,7 +81,10 @@ function render() {
     ? `Feed each pet once a day (${state.food_price} coins) to help it grow. Up to ${state.max_along} can come along with you.`
     : "";
   if (!state.pets.length) {
-    cardsEl.innerHTML = `<p>No pets yet! Adopt one in the <a href="/store">store</a> (Pets tab).</p>`;
+    cardsEl.innerHTML = state.unlocks.free_pet
+      ? `<p class="free-pet">🎁 You learned the home row! Your first pet is free.</p>
+         <p><a class="button button-gold big-button" href="/store?tab=pets">Pick your pet</a></p>`
+      : `<p>No pets yet! Adopt one in the <a href="/store?tab=pets">store</a> (Pets tab).</p>`;
     return;
   }
   cardsEl.replaceChildren(...state.pets.map((pet) => petCard(pet, along)));

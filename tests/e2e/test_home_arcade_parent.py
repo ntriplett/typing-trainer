@@ -18,15 +18,19 @@ def give_tokens(tmp_path, n: int) -> None:
 
 def test_home_has_a_tile_for_everything(page: Page, live_server):
     page.goto(live_server)
-    for name, href in [
-        ("Practice", "/session"), ("Arcade", "/arcade"), ("Store", "/store"), ("Pet Room", "/pets"),
-        ("Bedroom", "/bedroom"), ("Wardrobe", "/wardrobe"), ("Progress", "/analysis"),
-    ]:
-        expect(page.locator(".home-tile", has_text=name).first).to_have_attribute("href", href)
+    # big ones first, then the four small ones
+    hrefs = page.eval_on_selector_all(".home-tile", "tiles => tiles.map(t => t.getAttribute('href'))")
+    assert hrefs == ["/session", "/arcade", "/analysis", "/store", "/pets", "/bedroom", "/wardrobe"]
     expect(page.locator("#home-day .day-label")).to_have_text("0 / 10 min")
     expect(page.locator("#practice-sub")).to_have_text("Your next lesson is ready!")
     # the art is drawn
     assert page.evaluate("document.querySelector('.tile-art').toDataURL().length") > 2000
+
+
+def test_the_greeting_is_a_hello_and_the_goal_chest_holds_two_tokens(page: Page, live_server):
+    page.goto(live_server)
+    expect(page.locator("#home-greeting")).to_contain_text("Tester")
+    expect(page.locator("#home-day .day-chest.stack .token-icon")).to_have_count(2)
 
 
 def test_token_pill_and_day_tracker_are_in_the_top_bar(page: Page, live_server):

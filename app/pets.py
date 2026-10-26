@@ -113,11 +113,13 @@ def _spend(conn: sqlite3.Connection, learner_id: int, price: int, what: str, ref
     db.add_coins(conn, learner_id, -price, "purchase", ref=ref)
 
 
-def adopt(conn: sqlite3.Connection, learner_id: int, species: str, color: str) -> dict:
+def adopt(conn: sqlite3.Connection, learner_id: int, species: str, color: str, free: bool = False) -> dict:
+    """`free`: the first pet, a gift for learning the home row (app/unlocks.py)."""
     kind = SPECIES.get(species)
     if kind is None or color not in kind.colors:
         raise PetError("There's no pet like that.")
-    _spend(conn, learner_id, kind.price, f"a {kind.name.lower()}", f"pet:{species}_{color}")
+    if not free:
+        _spend(conn, learner_id, kind.price, f"a {kind.name.lower()}", f"pet:{species}_{color}")
     # a new baby comes along straight away if there's a free spot
     used = {p["slot"] for p in db.list_pets(conn, learner_id)}
     free = next((s for s in range(1, MAX_ALONG + 1) if s not in used), None)

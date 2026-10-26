@@ -185,6 +185,17 @@
   color: var(--token);
 }
 
+.home-tile.locked .tile-art {
+  --sky: #39344c;
+  --ground: #2b2838;
+}
+
+.home-tile.locked .tile-name {
+  background: var(--muted-fill);
+  color: var(--outline);
+  text-shadow: 1px 1px 0 var(--parchment);
+}
+
 .home-footnote {
   font-size: 20px;
   text-align: center;

@@ -20,6 +20,7 @@ let walkers = [];
 
 async function load() {
   const r = await fetch("/api/room");
+  if (r.status === 403) return new Promise(() => {}); // still a mystery: header.js shows why
   if (!r.ok) throw new Error(`/api/room returned ${r.status}`);
   setState(await r.json());
 }
