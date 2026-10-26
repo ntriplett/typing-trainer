@@ -7,16 +7,15 @@ from __future__ import annotations
 
 from playwright.sync_api import Page, expect
 
-from .conftest import start_quick_session, type_current_step_prompt
+from .conftest import start_practice_lesson, type_current_lesson
 
 
 def run_one_quick_step(page: Page, live_server: str) -> None:
-    """Generate at least a little real data via the actual session flow,
+    """Generate at least a little real data via the actual lesson flow,
     so the analysis page has something non-empty to show.
     """
-    start_quick_session(page, live_server)
-    type_current_step_prompt(page)
-    expect(page.locator("#step-result")).to_be_visible()
+    start_practice_lesson(page, live_server)
+    type_current_lesson(page)
 
 
 def test_keyboard_heatmap_renders_on_a_fresh_learner(page: Page, live_server):

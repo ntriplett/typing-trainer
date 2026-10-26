@@ -44,5 +44,5 @@ def test_night_toggle_appears_once_unlocked_and_switches_to_dark(page: Page, liv
 
 def test_typing_page_has_no_particles(page: Page, live_server):
     page.goto(f"{live_server}/session")
-    expect(page.locator(".coin-pill")).to_be_visible()
+    expect(page.locator("#coin-count")).to_be_visible()
     assert page.locator(".particles").count() == 0

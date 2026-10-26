@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Typing Trainer — Session</title>
+  <title>Typing Trainer — Practice</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/css/app.css" />
   <link rel="stylesheet" href="/static/css/theme.css" />
@@ -12,65 +12,38 @@
 </head>
 <body>
   <main class="teach-main">
-    <div id="start-screen" class="panel">
-      <h1>Practice time!</h1>
-      <p>Ready for a practice session? Pick how today should go:</p>
+    <p id="loading" class="panel">Picking your next lesson…</p>
 
-      <div class="config-row">
-        <label for="duration-slider">Session length: <output id="duration-value">15</output> min</label>
-        <input type="range" id="duration-slider" min="15" max="30" step="1" value="15" />
-      </div>
-
-      <div class="config-row">
-        <label for="learn-practice-slider">Practice ↔ Learn: <output id="learn-practice-value">Balanced</output></label>
-        <input type="range" id="learn-practice-slider" min="0" max="100" step="5" value="50" />
-      </div>
-
-      <div class="config-row">
-        <label for="focus-slider">General ↔ Problem letters: <output id="focus-value">A bit of both</output></label>
-        <input type="range" id="focus-slider" min="0" max="100" step="5" value="30" />
-      </div>
-
-      <label><input type="checkbox" id="quick-test-checkbox" /> Quick test (short lessons, for trying things out)</label>
-
-      <p><button id="start-button" class="big-button button-go">Start session</button></p>
-    </div>
-
-    <div id="session-screen" hidden>
-      <div id="progress-bar" class="panel">
-        <div id="plan-preview"></div>
-        <div id="progress-bar-row">
-          <span id="time-remaining"></span>
-          <span id="step-progress"></span>
-        </div>
-      </div>
-
+    <div id="lesson-screen" hidden>
       <div class="panel typing-panel">
         <div id="stage"></div>
-        <div id="step-result" hidden>
+        <div id="lesson-result" hidden>
           <h2 id="result-headline"></h2>
           <p id="result-summary"></p>
-          <p id="result-coins" class="coins-inline" hidden></p>
-          <button id="next-button" class="button-go">Next lesson →</button>
+          <p id="result-rewards" class="result-rewards"></p>
+          <nav class="result-nav">
+            <button id="next-button" class="button-go big-button">Next lesson →</button>
+            <a id="arcade-button" class="button button-gold big-button" href="/arcade" hidden>Go to the arcade</a>
+            <a class="button big-button" href="/">Home</a>
+          </nav>
+          <p class="result-keys" id="result-keys">Press <kbd class="keycap">Enter</kbd> for the next lesson, or <kbd class="keycap">Esc</kbd> to go home.</p>
         </div>
       </div>
-
-      <nav id="session-nav">
-        <button id="end-now-button">End this step now</button>
-        <button id="home-button">Home</button>
-        <!-- more nav controls (pause, settings, etc.) land here later -->
+      <nav id="lesson-nav">
+        <button id="end-now-button">End this lesson</button>
+        <a class="button" href="/">Home</a>
       </nav>
     </div>
 
-    <div id="complete-screen" class="panel" hidden>
-      <h2>🎉 Session complete!</h2>
-      <p id="session-coins" class="coins-inline"></p>
-      <ul id="summary-list"></ul>
-      <nav>
-        <button id="complete-home-button">Home</button>
-        <button id="complete-new-session-button" class="button-go">Start another session</button>
+    <section id="rest-screen" class="panel rest-screen" hidden>
+      <h1>All done for today!</h1>
+      <p class="rest-text">You earned every token. Practice opens again <span id="rest-until"></span>.</p>
+      <div id="rest-day"></div>
+      <nav class="result-nav">
+        <a class="button button-gold big-button" href="/arcade">Go to the arcade</a>
+        <a class="button big-button" href="/">Home</a>
       </nav>
-    </div>
+    </section>
   </main>
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>

@@ -7,6 +7,10 @@
 // At the end: Space to go again, Enter to pick another lesson (/teach-lab).
 // The query string (?keys=dk for the key-pair module) is passed through.
 //
+// Brain mode (?lesson=<id>, from the practice page): the content is that
+// lesson's, finishing reports to /api/lesson/<id>/complete (it counts
+// toward the day's goal), and Enter goes on to the next lesson.
+//
 // Needs keyboard_data.js, teach_keyboard.js, prompt_view.js, and rich_text.js loaded first.
 
 const FINGER_NAMES = {
@@ -16,6 +20,11 @@ const FINGER_NAMES = {
   thumb: "thumb",
 };
 const NEXT_STEP_DELAY_MS = 700;
+// Reading a page counts as practice time, up to this long between keys.
+const IDLE_MS = 20000;
+const lessonId = new URLSearchParams(location.search).get("lesson");
+let activeMs = 0;
+let lastAnyKeyAt = performance.now();
 
 const moduleId = decodeURIComponent(location.pathname.split("/").pop());
 const kb = new TeachKeyboard(document.getElementById("teach-keyboard"));
@@ -152,16 +161,33 @@ async function finish() {
   el("teach-lesson").hidden = true;
   el("teach-done").hidden = false;
 
-  const res = await fetch(`/api/teach/${moduleId}/complete${location.search}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ keys: content.keys, keystrokes }),
-  });
+  const res = lessonId
+    ? await fetch(`/api/lesson/${lessonId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keystrokes, active_ms: Math.round(activeMs) }),
+      })
+    : await fetch(`/api/teach/${moduleId}/complete${location.search}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: content.keys, keystrokes }),
+      });
+  if (!res.ok && lessonId) {
+    location.href = "/session"; // the server forgot this lesson: get a fresh one
+    return;
+  }
   const data = await res.json();
   el("teach-result").textContent = `${Math.round(data.result.accuracy * 100)}% of keys right the first time.`;
   const coins = data.coins_earned.reduce((sum, c) => sum + c.amount, 0);
   el("teach-coins").textContent = coins ? `+${coins.toLocaleString()} coins!` : "";
   if (window.Header) Header.celebrate(data.coins_earned, data.coin_balance);
+  if (lessonId) {
+    el("teach-next").innerHTML = `Press ${keycap("Enter")} for your next lesson, or ${keycap("Esc")} to go home.`;
+    if (window.Header) {
+      Header.setDay(data.day);
+      Header.celebrateTokens(data.tokens_earned, data.token_balance);
+    }
+  }
   busy = false;
 }
 
@@ -178,7 +204,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (finished) {
     if (busy) return;
-    if (e.key === " ") {
+    if (lessonId) {
+      if (e.key === "Enter") location.href = "/session";
+      else if (e.key === "Escape") location.href = "/";
+    } else if (e.key === " ") {
       e.preventDefault();
       location.reload();
     } else if (e.key === "Enter") {
@@ -186,6 +215,9 @@ window.addEventListener("keydown", (e) => {
     }
     return;
   }
+  const now = performance.now();
+  activeMs += Math.min(IDLE_MS, now - lastAnyKeyAt);
+  lastAnyKeyAt = now;
   if (e.key.length !== 1) return; // Shift, Tab, arrows, ...
   e.preventDefault(); // Space would scroll the page
   if (busy || e.repeat) return;
@@ -195,12 +227,13 @@ window.addEventListener("keydown", (e) => {
 });
 
 async function start() {
-  const res = await fetch(`/api/teach/${moduleId}/content${location.search}`);
+  const res = await fetch(lessonId ? `/api/lesson/${lessonId}` : `/api/teach/${moduleId}/content${location.search}`);
   if (!res.ok) {
-    el("teach-title").textContent = "Couldn't load this lesson.";
+    if (lessonId) location.href = "/session";
+    else el("teach-title").textContent = "Couldn't load this lesson.";
     return;
   }
-  content = await res.json();
+  content = lessonId ? (await res.json()).content : await res.json();
   steps = content.micro_steps;
   renderStep();
 }

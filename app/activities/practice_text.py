@@ -24,6 +24,7 @@ from app.activities.word_bank import WORDS
 from app.models import BigramStat, KeyStat
 
 FOCUS_WEIGHT = 3
+BIGRAM_FOCUS_SHARE = 0.25
 # A key or bigram is "weak" below this rolling accuracy, once it has enough samples.
 WEAK_ACCURACY = 0.9
 MIN_SAMPLES = 5
@@ -35,6 +36,9 @@ class SkillSnapshot:
 
     weak_keys: tuple[str, ...] = ()
     weak_bigrams: tuple[str, ...] = field(default=())  # "ei" = typing e then i
+    # Pairs the brain picked to work on: about BIGRAM_FOCUS_SHARE of the
+    # words are built around one, at any difficulty.
+    focus_bigrams: tuple[str, ...] = field(default=())
 
 
 def snapshot_from_stats(
@@ -88,6 +92,7 @@ def build_practice_text(
     calm = [k for k in pool if k not in weak]
     calm_weights = [FOCUS_WEIGHT if k in focus else 1 for k in calm]
     weak_pairs = [b for b in skill.weak_bigrams if b[0] in pool and b[1] in pool]
+    focus_pairs = [b for b in skill.focus_bigrams if b[0] in pool and b[1] in pool]
     run_limit = max_weak_run(difficulty)
 
     allowed_set = set(pool)
@@ -119,11 +124,20 @@ def build_practice_text(
             pairs_used += 1
         return word
 
+    def pair_word() -> str:
+        """A focus pair with a letter or two around it ("ei" -> "deil")."""
+        pair = rng.choice(focus_pairs)
+        before = rng.choices(pool, weights)[0] if rng.random() < 0.6 else ""
+        after = rng.choices(pool, weights)[0] if rng.random() < 0.6 else ""
+        return before + pair + after
+
     words: list[str] = []
     total = 0
     while total <= length:  # total counts a space after each word; the text has one fewer
         roll = rng.random()
-        if weak_pairs and roll < difficulty * 0.4:
+        if focus_pairs and rng.random() < BIGRAM_FOCUS_SHARE:
+            word = pair_word()
+        elif weak_pairs and roll < difficulty * 0.4:
             word = tricky_word()
         elif focused_real and roll > 1 - real_word_share:
             word = rng.choice(focused_real)

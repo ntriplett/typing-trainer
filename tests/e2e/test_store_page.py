@@ -9,7 +9,7 @@ from playwright.sync_api import Page, expect
 
 from app import db, store
 
-from .conftest import start_quick_session, type_current_step_prompt
+from .conftest import start_practice_lesson, type_current_lesson
 
 
 def _give_coins(tmp_path, amount: int) -> None:
@@ -24,10 +24,10 @@ def test_header_shows_coins_and_avatar_on_home(page: Page, live_server):
     expect(page.locator(".topbar-avatar canvas")).to_be_visible()
 
 
-def test_finishing_a_step_pays_coins_in_the_header(page: Page, live_server):
-    start_quick_session(page, live_server)
-    type_current_step_prompt(page)
-    expect(page.locator("#result-coins")).to_contain_text("+100")
+def test_finishing_a_lesson_pays_coins_in_the_header(page: Page, live_server):
+    start_practice_lesson(page, live_server)
+    type_current_lesson(page)
+    expect(page.locator("#result-rewards")).to_contain_text("+100")
     expect(page.locator("#coin-count")).not_to_have_text("0")
 
 

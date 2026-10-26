@@ -25,9 +25,9 @@ def test_lab_lists_both_games_with_options(page: Page, live_server):
     assert href.startswith("/game/") and "difficulty=hard" in href
 
 
-def test_home_page_links_to_game_lab(page: Page, live_server):
-    page.goto(live_server)
-    expect(page.get_by_role("link", name="Try games (lab)")).to_have_attribute("href", "/game-lab")
+def test_parent_page_links_to_game_lab(page: Page, live_server):
+    page.goto(f"{live_server}/parent")
+    expect(page.get_by_role("link", name="Games")).to_have_attribute("href", "/game-lab")
 
 
 # --- Crow Patrol ---------------------------------------------------------------------

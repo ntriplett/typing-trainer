@@ -100,28 +100,22 @@ def player(request):
     assert resp.ok, resp.text()
 
 
-def start_quick_session(page: Page, live_server: str) -> None:
+def place_on_home_row(page: Page, live_server: str) -> None:
+    """Skip the first teach lessons: the home row counts as taught, so the
+    brain's first lesson is a warmup on the practice page."""
+    resp = page.request.put(f"{live_server}/api/profiles/placement", data={"keys": "home_row", "speed": "some"})
+    assert resp.ok, resp.text()
+
+
+def start_practice_lesson(page: Page, live_server: str) -> None:
+    place_on_home_row(page, live_server)
     page.goto(f"{live_server}/session")
-    page.check("#quick-test-checkbox")
-    page.click("#start-button")
-    expect(page.locator("#session-screen")).to_be_visible()
+    page.wait_for_function("contentLoaded")
 
 
-def type_current_step_prompt(page: Page) -> None:
-    """Type the full, correct prompt for whichever step is active."""
-    page.wait_for_function("typeof stepIndex !== 'undefined' && !!contentCache[stepIndex] && view.typed === 0")
+def type_current_lesson(page: Page) -> None:
+    """Type the full, correct prompt of the lesson on screen."""
+    page.wait_for_function("contentLoaded && view.typed === 0")
     # what's actually typed: the spaces where lines wrap are dropped
     page.keyboard.type(page.evaluate("view.typeable"))
-
-
-def run_full_quick_session(page: Page, live_server: str) -> None:
-    start_quick_session(page, live_server)
-    for _ in range(30):  # generous upper bound; real sessions are ~10 steps
-        type_current_step_prompt(page)
-        expect(page.locator("#step-result")).to_be_visible()
-        is_last = "summary" in page.locator("#next-button").inner_text().lower()
-        page.click("#next-button")
-        if is_last:
-            break
-    expect(page.locator("#complete-screen")).to_be_visible()
-
+    expect(page.locator("#lesson-result")).to_be_visible()

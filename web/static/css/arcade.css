@@ -1,0 +1,97 @@
+/* The arcade: a dusky purple room of game cabinets. Frames, buttons, and
+   colors come from theme.css. */
+
+.arcade-hero {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.arcade-hero h1 {
+  margin: 0;
+  font-size: 40px;
+  color: var(--heading);
+}
+
+.arcade-wallet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 8rem;
+  padding: 0.75rem 1rem;
+  background: #2a1740;
+  border: 4px solid var(--outline);
+  box-shadow: inset 0 0 0 3px var(--token-deep), 0 0 16px var(--token-glow);
+  color: var(--token);
+  font-size: 40px;
+  text-shadow: 2px 2px 0 var(--outline);
+}
+
+.arcade-wallet .token-icon.big {
+  width: 60px;
+  height: 60px;
+}
+
+.arcade-hint {
+  font-size: 20px;
+  margin: 0.2rem 0 0.5rem;
+}
+
+.arcade-hero .day-tracker {
+  color: var(--ink);
+  text-shadow: none;
+}
+
+.arcade-message {
+  font-size: 20px;
+  color: var(--leaf-red);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+.arcade-games {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border: 12px solid transparent;
+  border-image: var(--panel-frame) 4 fill / 12px stretch;
+}
+
+.game-art {
+  width: 100%;
+  height: 200px;
+  border: 3px solid var(--outline);
+  background: linear-gradient(#5c3a7a 0 78%, #3a2850 78%);
+  image-rendering: pixelated;
+}
+
+.game-card h2 {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 30px;
+  color: var(--heading);
+}
+
+.game-blurb {
+  font-size: 20px;
+  flex: 1;
+}
+
+.game-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.game-card.locked .game-art {
+  filter: grayscale(0.6) brightness(0.8);
+}

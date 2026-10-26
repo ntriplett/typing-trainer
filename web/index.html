@@ -9,21 +9,54 @@
   <link rel="stylesheet" href="/static/css/home.css" />
 </head>
 <body data-particles>
-  <main>
+  <main class="home">
     <section class="panel home-hero">
       <canvas id="home-avatar" class="avatar-canvas" width="192" height="192"></canvas>
-      <div class="home-text">
-        <h1>Typing Trainer</h1>
-        <p id="home-greeting">Welcome back, traveler!</p>
-        <p>Every lesson earns coins. Spend them in the store on hats, clothes, pets, and new places.</p>
-        <nav class="home-actions">
-          <a class="button button-go big-button" href="/session">Start practicing</a>
-          <a class="button button-gold big-button" href="/store">Visit the store</a>
-          <a class="button big-button" href="/profile">My profile</a>
-        </nav>
+      <div class="home-hero-text">
+        <h1 id="home-greeting">Welcome back!</h1>
+        <p id="home-sub" class="home-sub"></p>
+        <div id="home-day"></div>
       </div>
     </section>
-    <p class="home-footnote"><a href="/teach-lab">Try teach lessons (lab)</a> · <a href="/practice-lab">Try practice lessons (lab)</a> · <a href="/game-lab">Try games (lab)</a></p>
+
+    <nav class="home-grid" aria-label="Where to?">
+      <a class="home-tile tile-practice" href="/session" id="tile-practice">
+        <canvas class="tile-art" data-icon="practice" width="360" height="200"></canvas>
+        <span class="tile-name">Practice</span>
+        <span class="tile-sub" id="practice-sub">Your next lesson is ready!</span>
+      </a>
+      <a class="home-tile tile-arcade" href="/arcade">
+        <canvas class="tile-art" data-icon="arcade" width="240" height="140"></canvas>
+        <span class="tile-name">Arcade</span>
+        <span class="tile-sub"><span class="token-icon"></span> <span id="arcade-tokens">0 tokens</span></span>
+      </a>
+      <a class="home-tile tile-store" href="/store">
+        <canvas class="tile-art" data-icon="store" width="160" height="120"></canvas>
+        <span class="tile-name">Store</span>
+        <span class="tile-sub">Hats, pets, places</span>
+      </a>
+      <a class="home-tile tile-pets" href="/pets">
+        <canvas class="tile-art" data-icon="pets" width="160" height="120"></canvas>
+        <span class="tile-name">Pet Room</span>
+        <span class="tile-sub" id="pets-sub">Feed and play</span>
+      </a>
+      <a class="home-tile tile-bedroom" href="/bedroom">
+        <canvas class="tile-art" data-icon="bedroom" width="160" height="120"></canvas>
+        <span class="tile-name">Bedroom</span>
+        <span class="tile-sub">Decorate it</span>
+      </a>
+      <a class="home-tile tile-wardrobe" href="/wardrobe">
+        <canvas class="tile-art" data-icon="wardrobe" width="160" height="120"></canvas>
+        <span class="tile-name">Wardrobe</span>
+        <span class="tile-sub">Get dressed</span>
+      </a>
+      <a class="home-tile tile-progress" href="/analysis">
+        <canvas class="tile-art" data-icon="progress" width="240" height="120"></canvas>
+        <span class="tile-name">Progress</span>
+        <span class="tile-sub">See how you're growing</span>
+      </a>
+    </nav>
+    <p class="home-footnote"><a href="/parent">Grown-ups</a></p>
   </main>
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>
@@ -32,18 +65,7 @@
   <script src="/static/js/avatar.js"></script>
   <script src="/static/js/themes.js"></script>
   <script src="/static/js/header.js"></script>
-  <script>
-    Header.ready.then((me) => {
-      if (!me) return;
-      document.getElementById("home-greeting").textContent = `Welcome back, ${me.learner.name}!`;
-      // Gentle idle bob: the same renderer games will use for poses.
-      const canvas = document.getElementById("home-avatar");
-      let frame = 0;
-      let avatar = me.avatar;
-      document.addEventListener("avatarchange", (e) => (avatar = e.detail.avatar));
-      drawAvatar(canvas, avatar);
-      setInterval(() => drawAvatar(canvas, avatar, { frame: ++frame }), 600);
-    });
-  </script>
+  <script src="/static/js/home_icons.js"></script>
+  <script src="/static/js/home.js"></script>
 </body>
 </html>

@@ -24,9 +24,9 @@ def test_lab_lists_every_module_with_live_scenes(page: Page, live_server):
     assert href.startswith(f"/practice/{FISH}?") and "focus=ei" in href and "length=short" in href
 
 
-def test_home_page_links_to_both_labs(page: Page, live_server):
-    page.goto(live_server)
-    expect(page.get_by_role("link", name="Try practice lessons (lab)")).to_have_attribute("href", "/practice-lab")
+def test_parent_page_links_to_the_practice_lab(page: Page, live_server):
+    page.goto(f"{live_server}/parent")
+    expect(page.get_by_role("link", name="Practice themes")).to_have_attribute("href", "/practice-lab")
 
 
 def test_themed_practice_plays_through_and_pays(page: Page, live_server):

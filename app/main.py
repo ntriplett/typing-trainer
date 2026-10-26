@@ -1,26 +1,17 @@
 """FastAPI app: the local server the launcher starts and the browser talks to.
 
-Two things live here today:
-  - the original walking-skeleton hello-world endpoint/page (kept as-is,
-    still a useful smoke-test surface)
-  - a real session flow: build a scheduler skeleton from the learner's
-    pre-session choices, generate each step's content lazily (so later
-    steps can adapt to today's observed typing speed), and accept
-    completed keystrokes to score + persist
-
-v1 simplification, called out explicitly: the in-progress session
-runtime (skeleton + generated-content cache + the running WPM estimate)
-lives in memory (_SESSION_PLANS), not the DB. A server restart
-mid-session loses where you were -- acceptable for now since sessions
-are short and this is for interactive/manual testing; the durable
-record (key_stat, keystroke_log, session/session_event rows) is
-written on every step completion regardless.
+The main loop: the home page's Practice button asks the brain
+(app/brain.py, run by app/lessons.py) for one lesson at a time; finished
+lessons add up toward the day's practice goal, which pays arcade tokens
+(app/daily.py) to spend in the arcade (app/arcade.py). Coins pay for the
+store, pets, and rooms. The labs (/teach-lab, /practice-lab, /game-lab)
+try any module directly and are linked from the parent page.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,8 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, bigram_model, config, db, pets, profiles, room, scheduler, skill_model, store
-from app.activities import get_activity
+from app import analytics, appearance, arcade, brain, config, daily, db, lessons, pets, profiles, room, skill_model, store
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -40,8 +30,6 @@ from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
-from app.models import KeyStat
-from app.scheduler import SessionConfig, SessionSkeleton, StepPlan
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 # Overridable via env var so a separately-spawned server process (e.g.
@@ -75,28 +63,9 @@ async def no_cache_responses(request, call_next):
     return response
 
 
-@dataclass
-class SessionRuntime:
-    """Everything the server needs to keep track of mid-session.
-
-    `estimated_wpm` is mutable on purpose -- complete_step() updates it
-    after every scored step, and get_step_content() reads the current
-    value when it generates a not-yet-seen step. That's the whole
-    mechanism behind "later lessons adapt to how fast things are going."
-    """
-
-    skeleton: SessionSkeleton
-    estimated_wpm: float
-    learner_id: int
-    content_cache: dict[int, ActivityContent] = field(default_factory=dict)
-
-
-# Bonus coin rules on top of each activity's own coins() (PLAN.md 11c).
-KEY_MASTERED_BONUS = 50
-SESSION_COMPLETE_BONUS = 100
-
-# session_id -> its runtime. See module docstring re: v1 scope.
-_SESSION_PLANS: dict[int, SessionRuntime] = {}
+def now() -> datetime:
+    """The clock for the daily goal and lessons; tests move it forward."""
+    return datetime.now(UTC)
 
 
 def get_db():
@@ -189,6 +158,16 @@ def pets_page() -> FileResponse:
 @app.get("/bedroom")
 def bedroom_page() -> FileResponse:
     return FileResponse(WEB_DIR / "bedroom.html")
+
+
+@app.get("/arcade")
+def arcade_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "arcade.html")
+
+
+@app.get("/parent")
+def parent_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "parent.html")
 
 
 @app.get("/welcome")
@@ -381,7 +360,7 @@ def practice_content(
         focus_keys,
         allowed,
         PRACTICE_LENGTHS[length],
-        chars_per_second=scheduler.chars_per_second_for_wpm(wpm),
+        chars_per_second=brain.chars_per_second_for_wpm(wpm),
         difficulty=PRACTICE_DIFFICULTIES[difficulty],
         skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
     )
@@ -440,7 +419,7 @@ def _lab_letters(conn, learner_id: int, keys: str, focus: str) -> tuple[list[str
     """(focus keys, allowed keys with space, key stats) for a lab's ?keys=&focus= options."""
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     if keys == "mine":
-        allowed = [k for k in skill_model.active_keys(key_stats) if k != " "]
+        allowed = [k for k in skill_model.KEY_ORDER if k in lessons.taught_keys(conn, learner_id) and k != " "]
     elif keys in PRACTICE_KEY_SETS:
         allowed = list(PRACTICE_KEY_SETS[keys])
     else:
@@ -488,7 +467,7 @@ def game_content(
     content = module.generate(
         focus_keys,
         allowed,
-        chars_per_second=scheduler.chars_per_second_for_wpm(_lab_wpm(conn, learner_id)),
+        chars_per_second=brain.chars_per_second_for_wpm(_lab_wpm(conn, learner_id)),
         difficulty=PRACTICE_DIFFICULTIES[difficulty],
         skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
     )
@@ -551,224 +530,117 @@ def analytics_trend(days: int | None = None, conn=Depends(get_db), learner_id: i
     return analytics.daily_trend(conn, learner_id, days=days)
 
 
-# --- session API --------------------------------------------------------------
+# --- lessons (the brain) + the day's goal --------------------------------------------
 
 
-class SessionConfigIn(BaseModel):
-    """The pre-session slider screen's choices."""
-
-    duration_minutes: int = Field(default=15, ge=5, le=60)
-    learn_vs_practice: float = Field(default=0.5, ge=0.0, le=1.0)
-    focus_vs_general: float = Field(default=0.3, ge=0.0, le=1.0)
-
-
-class CompleteStepRequest(BaseModel):
+class LessonCompleteRequest(BaseModel):
     keystrokes: list[KeystrokeIn]
-    # The session timer ran out during this step: finish the session after
-    # it instead of moving on to the next planned step.
-    end_session: bool = False
+    # Typing time with idle stretches left out, measured by the page; the
+    # server caps it at the lesson's wall-clock time.
+    active_ms: int = Field(default=0, ge=0)
     # Spaces the page dropped where lines wrap (prompt_view.js): never typed,
     # so they don't count against how much of the prompt was finished.
     skipped_chars: int = Field(default=0, ge=0)
 
 
-def _serialize_skeleton_step(step: StepPlan) -> dict:
-    return {
-        "phase": step.phase,
-        "activity_id": step.activity_id,
-        "focus_keys": step.focus_keys,
-        "duration_s": step.duration_s,
-    }
+def _resting(exc: daily.PracticeResting) -> HTTPException:
+    return HTTPException(status_code=409, detail={"message": "Practice is done for today!", "resting_until": str(exc)})
 
 
-@app.post("/api/session/start")
-def start_session(
-    config: SessionConfigIn = SessionConfigIn(),
-    quick: bool = False,
-    conn=Depends(get_db),
-    learner_id: int = Depends(current_learner),
+@app.get("/api/day")
+def day_status(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return daily.status(conn, learner_id, now())
+
+
+@app.post("/api/lesson/next")
+def next_lesson(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        lesson = lessons.serve_next(conn, learner_id, now())
+    except daily.PracticeResting as exc:
+        raise _resting(exc) from None
+    return {"lesson": lessons.describe(lesson), "content": asdict(lesson.content)}
+
+
+@app.get("/api/lesson/{lesson_id}")
+def get_lesson(lesson_id: int, learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        lesson = lessons.get_served(lesson_id, learner_id)
+    except lessons.LessonError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    return {"lesson": lessons.describe(lesson), "content": asdict(lesson.content)}
+
+
+@app.post("/api/lesson/{lesson_id}/complete")
+def complete_lesson(
+    lesson_id: int, body: LessonCompleteRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)
 ) -> dict:
-    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
-    bigram_stats = db.list_bigram_stats(conn, learner_id)
-
-    # `quick` is a dev/testing convenience (PLAN.md's "very short smoke
-    # session"), not a different pedagogy: it shrinks both the total
-    # time budget AND each step's length, so a smoke test isn't just
-    # fewer ~1-2 minute steps at the normal length.
-    session_config = SessionConfig(
-        duration_minutes=2 if quick else config.duration_minutes,
-        learn_vs_practice=config.learn_vs_practice,
-        focus_vs_general=config.focus_vs_general,
-    )
-    skeleton = scheduler.build_session_skeleton(
-        key_stats,
-        session_config,
-        now=datetime.now(UTC),
-        bigram_stats=bigram_stats,
-        step_seconds_scale=0.15 if quick else 1.0,
-    )
-
-    placement = profiles.placement_wpm(conn, learner_id)
-    estimated_wpm = (
-        analytics.estimate_starting_wpm(conn, learner_id, default=placement)
-        if placement
-        else analytics.estimate_starting_wpm(conn, learner_id)
-    )
-    session = db.start_session(conn, learner_id)
-    runtime = SessionRuntime(skeleton=skeleton, estimated_wpm=estimated_wpm, learner_id=learner_id)
-    _SESSION_PLANS[session.id] = runtime
-
-    first_content = scheduler.generate_step_content(skeleton.steps[0], estimated_wpm, skill=skeleton.skill)
-    runtime.content_cache[0] = first_content
-
-    return {
-        "session_id": session.id,
-        "active_keys": skeleton.active_keys,
-        "game_options": skeleton.game_options,
-        "estimated_wpm": estimated_wpm,
-        "steps": [_serialize_skeleton_step(s) for s in skeleton.steps],
-        "first_step_content": asdict(first_content),
-    }
-
-
-@app.get("/api/session/{session_id}/steps/{step_index}/content")
-def get_step_content(session_id: int, step_index: int) -> dict:
-    """Generate (if not already cached) and return one step's actual
-    typing content, sized to the session's CURRENT WPM estimate rather
-    than whatever it was when the session started -- this is what lets
-    a later step's content length reflect how today has actually gone.
-    """
-    runtime = _SESSION_PLANS.get(session_id)
-    if runtime is None:
-        raise HTTPException(status_code=404, detail="Unknown or expired session")
-    if step_index < 0 or step_index >= len(runtime.skeleton.steps):
-        raise HTTPException(status_code=404, detail="Unknown step index")
-
-    if step_index not in runtime.content_cache:
-        step = runtime.skeleton.steps[step_index]
-        runtime.content_cache[step_index] = scheduler.generate_step_content(
-            step, runtime.estimated_wpm, skill=runtime.skeleton.skill
-        )
-
-    return {"content": asdict(runtime.content_cache[step_index])}
-
-
-@app.post("/api/session/{session_id}/steps/{step_index}/complete")
-def complete_step(
-    session_id: int, step_index: int, body: CompleteStepRequest, conn=Depends(get_db)
-) -> dict:
-    runtime = _SESSION_PLANS.get(session_id)
-    if runtime is None:
-        raise HTTPException(status_code=404, detail="Unknown or expired session")
-    if step_index < 0 or step_index >= len(runtime.skeleton.steps):
-        raise HTTPException(status_code=404, detail="Unknown step index")
-
-    step = runtime.skeleton.steps[step_index]
-    if step_index not in runtime.content_cache:
-        runtime.content_cache[step_index] = scheduler.generate_step_content(
-            step, runtime.estimated_wpm, skill=runtime.skeleton.skill
-        )
-    content = runtime.content_cache[step_index]
-
-    activity = get_activity(step.activity_id)
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
-    result = activity.score(content, keystrokes)
-
-    learner_id = runtime.learner_id
-    now = datetime.now(UTC)
-
-    event = db.log_session_event(conn, session_id, step.phase, step.activity_id)
-    for seq, ke in enumerate(keystrokes):
-        db.log_keystroke(
-            conn, event.id, seq, ke.expected_char, ke.typed_char, ke.correct, ke.latency_ms
+    try:
+        return lessons.complete(
+            conn, learner_id, lesson_id, keystrokes, body.active_ms, body.skipped_chars, now()
         )
-    db.end_session_event(conn, event.id, summary_stats=asdict(result))
+    except lessons.LessonError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
-    newly_mastered = _apply_keystrokes_to_skill_model(
-        conn, learner_id, content.keys, keystrokes, now
-    )
-    _apply_keystrokes_to_bigram_model(conn, learner_id, keystrokes)
 
-    # Blend this step's real WPM into the running estimate so the next
-    # not-yet-generated step reflects it. Guarded against an empty/zero
-    # result (e.g. "End this step now" with nothing typed yet).
-    if result.attempts > 0 and result.wpm > 0:
-        runtime.estimated_wpm = 0.5 * runtime.estimated_wpm + 0.5 * result.wpm
+# --- parent page -----------------------------------------------------------------------
+# Open for now (a password may come later). Shows every player, so it
+# doesn't use the current-player cookie.
 
-    session_complete = body.end_session or step_index == len(runtime.skeleton.steps) - 1
-    if session_complete:
-        db.end_session(conn, session_id)
-        del _SESSION_PLANS[session_id]
 
-    # Coins (PLAN.md 11c): the activity's own rule, then bonus rules.
-    typed_part = replace(content, prompt=content.prompt[: max(0, len(content.prompt) - body.skipped_chars)])
-    earned = [(activity.coins(typed_part, result), "lesson", f"event:{event.id}")]
-    earned += [(KEY_MASTERED_BONUS, "key_mastered", key) for key in newly_mastered]
-    if session_complete:
-        earned.append((SESSION_COMPLETE_BONUS, "session_complete", f"session:{session_id}"))
-    coins_earned = []
-    for amount, reason, ref in earned:
-        if amount > 0:
-            db.add_coins(conn, learner_id, amount, reason, ref=ref)
-            coins_earned.append({"amount": amount, "reason": reason})
+class SettingsIn(BaseModel):
+    goal_minutes: int = Field(ge=daily.MIN_GOAL_MINUTES, le=daily.MAX_GOAL_MINUTES)
+    learn_vs_practice: float = Field(ge=0.0, le=1.0)
 
+
+def _parent_entry(conn, learner_id: int) -> dict:
+    when = now()
+    inp = lessons.brain_input(conn, learner_id, when)
+    preview = brain.plan_next_lesson(inp)
+    upcoming = brain.next_curriculum_lesson(inp.taught_lessons)
+    learner = db.get_learner(conn, learner_id)
     return {
-        "result": asdict(result),
-        "session_complete": session_complete,
-        "estimated_wpm": runtime.estimated_wpm,
-        "coins_earned": coins_earned,
-        "coin_balance": db.get_coin_balance(conn, learner_id),
+        "id": learner_id,
+        "name": learner.name,
+        "avatar": store.get_avatar(conn, learner_id),
+        "settings": asdict(daily.get_settings(conn, learner_id)),
+        "day": daily.status(conn, learner_id, when),
+        "tokens": db.get_token_balance(conn, learner_id),
+        "solid_bar": brain.solid_bar(inp.learn_vs_practice),
+        "next_new_lesson": upcoming["title"] if upcoming else None,
+        "predicted_wpm": round(brain.predicted_wpm(inp), 1),
+        "brain": {"kind": preview.kind, "activity_id": preview.activity_id, "reasons": list(preview.reasons)},
     }
 
 
-def _apply_keystrokes_to_skill_model(
-    conn, learner_id: int, focus_keys: list[str], keystrokes: list[KeystrokeEvent], now: datetime
-) -> list[str]:
-    """Fold this step's keystrokes into each key's running stats and
-    persist them -- the thing that makes tomorrow's plan different from
-    today's. Returns the keys mastered for the first time by this step
-    (mastered_at is set once and never cleared, so this can't repeat).
-    """
-    touched: dict[str, KeyStat] = {}
-
-    def get_or_new(key: str) -> KeyStat:
-        if key in touched:
-            return touched[key]
-        existing = db.get_key_stat(conn, learner_id, key)
-        return existing if existing is not None else skill_model.new_key_stat(learner_id, key)
-
-    for key in focus_keys:
-        touched[key] = skill_model.mark_unlocked(get_or_new(key), now)
-
-    for ke in keystrokes:
-        stat = get_or_new(ke.expected_char)
-        touched[ke.expected_char] = skill_model.record_attempt(
-            stat, correct=ke.correct, latency_ms=ke.latency_ms, now=now
-        )
-
-    newly_mastered = []
-    for stat in touched.values():
-        before = db.get_key_stat(conn, learner_id, stat.key)
-        if stat.mastered_at is not None and (before is None or before.mastered_at is None):
-            newly_mastered.append(stat.key)
-        db.upsert_key_stat(conn, stat)
-    return newly_mastered
+@app.get("/api/parent")
+def parent_overview(conn=Depends(get_db)) -> list[dict]:
+    return [_parent_entry(conn, p["id"]) for p in profiles.list_profiles(conn)]
 
 
-def _apply_keystrokes_to_bigram_model(
-    conn, learner_id: int, keystrokes: list[KeystrokeEvent]
-) -> None:
-    """Fold this step's consecutive keystroke pairs into bigram_stat.
+@app.put("/api/parent/{learner_id}/settings")
+def parent_settings(learner_id: int, body: SettingsIn, conn=Depends(get_db)) -> dict:
+    if not profiles.exists(conn, learner_id):
+        raise HTTPException(status_code=404, detail="There's no player like that.")
+    daily.save_settings(conn, learner_id, daily.Settings(body.goal_minutes, body.learn_vs_practice))
+    return _parent_entry(conn, learner_id)
 
-    One batch at the end of the step, not a write per keystroke (PLAN.md
-    Section 2's research basis doesn't call for live bigram adaptation --
-    this is detail-level data for the analysis page and recommender).
-    """
-    for key1, key2, correct, latency_ms in bigram_model.bigrams_from_keystrokes(keystrokes):
-        existing = db.get_bigram_stat(conn, learner_id, key1, key2)
-        stat = existing if existing is not None else bigram_model.new_bigram_stat(learner_id, key1, key2)
-        updated = bigram_model.record_bigram_attempt(stat, correct=correct, latency_ms=latency_ms)
-        db.upsert_bigram_stat(conn, updated)
+
+# --- arcade --------------------------------------------------------------------------------
+
+
+@app.get("/api/arcade")
+def arcade_games(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), "games": arcade.games(conn, learner_id)}
+
+
+@app.post("/api/arcade/play/{game_id}")
+def arcade_play(game_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        arcade.play(conn, learner_id, game_id)
+    except arcade.ArcadeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _me(conn, learner_id)
 
 
 # --- player + store API ---------------------------------------------------------
@@ -779,6 +651,8 @@ def _me(conn, learner_id: int) -> dict:
     return {
         "learner": {"id": learner.id, "name": learner.name},
         "coins": db.get_coin_balance(conn, learner_id),
+        "tokens": db.get_token_balance(conn, learner_id),
+        "day": daily.status(conn, learner_id, now()),
         "avatar": store.get_avatar(conn, learner_id),
         "night": store.night_status(conn, learner_id),
     }
@@ -1073,6 +947,7 @@ def placement(body: PlacementIn, conn=Depends(get_db), learner_id: int = Depends
         profiles.apply_placement(conn, learner_id, body.keys, body.speed)
     except profiles.ProfileError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
+    lessons.record_placement(conn, learner_id, set(skill_model.KEY_ORDER[: profiles.PLACEMENT_KEYS[body.keys]]))
     return _me(conn, learner_id)
 
 

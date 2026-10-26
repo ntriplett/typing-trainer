@@ -1,116 +1,68 @@
-/* Session page layout. Frames, fonts, and palette come from theme.css;
-   the typing prompt uses the legible --font-type, never the pixel font. */
+/* Practice page (one brain-picked lesson at a time). Frames, fonts, and
+   palette come from theme.css; the typing prompt uses --font-type. */
 
-/* .pending/.current/.correct/.incorrect/.space are shared with the
-   teach prompt -- defined once in app.css. */
-
-
-
-/* --- pre-session config sliders --- */
-
-.config-row {
-  margin: 0.75rem 0;
-  max-width: 26rem;
-}
-
-.config-row label {
-  display: block;
-  font-size: 20px;
-  margin-bottom: 0.2rem;
-}
-
-.config-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--leaf-orange);
-}
-
-input[type="checkbox"] {
-  accent-color: var(--moss);
-}
-
-/* .big-button is shared with other pages -- defined once in theme.css. */
-
-/* --- in-session progress bar --- */
-
-#plan-preview {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.4rem;
-  font-size: 20px;
-  text-transform: uppercase;
-  flex-wrap: wrap;
-}
-
-#plan-preview .plan-phase {
-  padding: 0.05rem 0.5rem;
-  background: var(--sand);
-  border: 2px solid var(--muted-fill);
-  color: var(--ink-soft);
-}
-
-#plan-preview .plan-phase.done {
-  background: var(--card-good);
-  border-color: var(--moss);
-  color: var(--moss-dark);
-}
-
-#plan-preview .plan-phase.current {
-  background: var(--leaf-gold);
-  border-color: var(--outline);
-  color: var(--outline);
-  font-weight: bold;
-}
-
-#progress-bar-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 20px;
-}
-
-#time-remaining.paused::after {
-  content: " (paused)";
-  color: var(--ink-soft);
-}
-
-#lock-message {
-  color: var(--leaf-red);
-  font-weight: bold;
-}
-
-#progress {
-  color: var(--ink-soft);
-  font-size: 20px;
+#loading {
+  font-size: 30px;
+  text-align: center;
 }
 
 #result-headline {
   margin-bottom: 0.25rem;
 }
 
-#step-result {
+#lesson-result {
   margin-top: 1rem;
 }
 
-#result-coins,
-#session-coins {
+.result-rewards {
   display: flex;
-  font-size: 20px;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 30px;
   margin: 0 0 0.75rem;
+  min-height: 1em;
 }
 
-#phase-label {
-  font-weight: bold;
-  text-transform: uppercase;
-  color: var(--leaf-red);
-  margin: 0;
+.result-rewards .token-icon {
+  margin-left: 0.6rem;
 }
 
-#instructions {
-  margin-top: 0.2rem;
-}
-
-#session-nav,
-#complete-screen nav {
+.result-nav,
+#lesson-nav {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.result-keys {
+  font-size: 20px;
+  color: var(--ink-soft);
+}
+
+.rest-screen {
+  text-align: center;
+}
+
+.rest-screen h1 {
+  font-size: 40px;
+  color: var(--heading);
+}
+
+.rest-text {
+  font-size: 30px;
+}
+
+.rest-screen .day-tracker {
+  max-width: 34rem;
+  margin: 0 auto 1rem;
+  text-align: left;
+}
+
+.rest-screen .result-nav {
+  justify-content: center;
+}
+
+.rest-screen .day-label {
+  display: none; /* the sentence above already says it */
 }

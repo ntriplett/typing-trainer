@@ -97,10 +97,13 @@ function smoothSky(colors, steps) {
 // The page around a game: the HUD line, the play area, overlay screens, and
 // the end-of-round tally (which posts the round and pays its coins).
 class GameShell {
-  constructor(root, content, { moduleId, onDone = () => {} }) {
+  // replay: whether Space plays again for free (the game lab), or the end
+  // just goes back (the arcade, where every play costs tokens).
+  constructor(root, content, { moduleId, onDone = () => {}, replay = true }) {
     this.content = content;
     this.moduleId = moduleId;
     this.onDone = onDone;
+    this.replay = replay;
     root.innerHTML = `
       <p class="stage-label">Game</p>
       <h1 class="stage-title"></h1>
@@ -275,8 +278,12 @@ class GameShell {
       `<h2>${escapeHtml(line)}</h2>
        <p class="tally-total">Final score <b>${this.total.toLocaleString()}</b></p>
        ${this.coins ? `<p class="teach-coins">${this.coins} coins earned this game!</p>` : ""}
-       <p>Press ${keycap(" ")} to play again, or ${keycap("Enter")} for another game.</p>`,
-      { " ": () => location.reload(), Enter: () => this.onDone() }
+       ${
+         this.replay
+           ? `<p>Press ${keycap(" ")} to play again, or ${keycap("Enter")} for another game.</p>`
+           : `<p>Press ${keycap("Enter")} to go back to the arcade.</p>`
+       }`,
+      this.replay ? { " ": () => location.reload(), Enter: () => this.onDone() } : { Enter: () => this.onDone() }
     );
   }
 }

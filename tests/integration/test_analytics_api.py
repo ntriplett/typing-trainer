@@ -1,12 +1,13 @@
 """Integration tests for the analytics read endpoints, driven through
-the real session API so the data is exactly what a real session would
+the real lesson API so the data is exactly what a real lesson would
 produce (not hand-inserted rows).
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app import lessons, main
+from tests.integration.lesson_helpers import run_lesson
 from app.skill_model import KEY_ORDER
 
 client = TestClient(main.app)
@@ -15,22 +16,16 @@ client = TestClient(main.app)
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")
-    main._SESSION_PLANS.clear()
+    lessons._LESSONS.clear()
     client.cookies.clear()
     client.post("/api/profiles", json={"name": "Tester"})  # picks the player (cookie) as learner 1
     yield
 
 
-def _run_one_step():
-    start = client.post("/api/session/start").json()
-    session_id = start["session_id"]
-    step0 = start["steps"][0]
-    keystrokes = [
-        {"expected_char": ch, "typed_char": ch, "correct": True, "latency_ms": 200}
-        for ch in start["first_step_content"]["prompt"]  # spaces included, as the front-end sends them
-    ]
-    client.post(f"/api/session/{session_id}/steps/0/complete", json={"keystrokes": keystrokes})
-    return step0
+def _run_one_step() -> set[str]:
+    """One home-row warmup; returns the keys it typed."""
+    client.put("/api/profiles/placement", json={"keys": "home_row", "speed": "some"})
+    return set(run_lesson(client)["content"]["prompt"])
 
 
 def test_analytics_keys_lists_every_key():
@@ -42,8 +37,7 @@ def test_analytics_keys_lists_every_key():
 
 
 def test_analytics_keys_reflects_a_completed_step():
-    step0 = _run_one_step()
-    focus_key = step0["focus_keys"][0]
+    focus_key = sorted(_run_one_step() - {" "})[0]
 
     data = client.get("/api/analytics/keys").json()
     entry = next(r for r in data if r["key"] == focus_key)

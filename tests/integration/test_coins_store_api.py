@@ -1,12 +1,13 @@
 """Integration tests for coins + store over HTTP (PLAN.md Section 11c):
-step completion pays coins, /api/me reports them, the store endpoints
+lesson completion pays coins, /api/me reports them, the store endpoints
 buy/equip against a real temp SQLite DB.
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, main, store
+from app import db, lessons, main, store
+from tests.integration.lesson_helpers import keystrokes_for, run_lesson
 
 client = TestClient(main.app)
 
@@ -14,17 +15,10 @@ client = TestClient(main.app)
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")
-    main._SESSION_PLANS.clear()
+    lessons._LESSONS.clear()
     client.cookies.clear()
     client.post("/api/profiles", json={"name": "Tester"})  # picks the player (cookie) as learner 1
     yield
-
-
-def _all_correct(prompt: str) -> list[dict]:
-    return [
-        {"expected_char": ch, "typed_char": ch, "correct": True, "latency_ms": 200}
-        for ch in prompt
-    ]
 
 
 def _give_coins(amount: int) -> None:
@@ -41,55 +35,41 @@ def test_me_starts_with_zero_coins_and_a_starter_avatar():
     assert set(data["avatar"]["appearance"]) == {"gender", "skin", "hair_color", "hair_style", "eye_color"}
 
 
-def test_perfect_step_pays_100_coins():
-    start = client.post("/api/session/start", params={"quick": True}).json()
-    prompt = start["first_step_content"]["prompt"]
-    resp = client.post(
-        f"/api/session/{start['session_id']}/steps/0/complete",
-        json={"keystrokes": _all_correct(prompt)},
-    ).json()
+def _home_row():
+    client.put("/api/profiles/placement", json={"keys": "home_row", "speed": "some"})
+
+
+def test_perfect_lesson_pays_100_coins():
+    _home_row()
+    resp = run_lesson(client)["done"]
     lesson = [c for c in resp["coins_earned"] if c["reason"] == "lesson"]
     assert lesson == [{"amount": 100, "reason": "lesson"}]
-    assert resp["coin_balance"] == sum(c["amount"] for c in resp["coins_earned"])
     assert client.get("/api/me").json()["coins"] == resp["coin_balance"]
 
 
 def test_spaces_dropped_at_line_wraps_dont_cost_coins():
-    start = client.post("/api/session/start", params={"quick": True}).json()
-    prompt = start["first_step_content"]["prompt"]
+    _home_row()
+    nxt = client.post("/api/lesson/next").json()
+    prompt = nxt["content"]["prompt"]
     assert prompt.count(" ") >= 2
     typed = prompt.replace(" ", "", 2)  # the page wrapped twice, dropping 2 spaces
     resp = client.post(
-        f"/api/session/{start['session_id']}/steps/0/complete",
-        json={"keystrokes": _all_correct(typed), "skipped_chars": 2},
+        f"/api/lesson/{nxt['lesson']['lesson_id']}/complete",
+        json={"keystrokes": keystrokes_for(typed), "skipped_chars": 2},
     ).json()
     assert [c for c in resp["coins_earned"] if c["reason"] == "lesson"] == [{"amount": 100, "reason": "lesson"}]
 
 
-def test_empty_step_pays_nothing():
-    start = client.post("/api/session/start", params={"quick": True}).json()
-    resp = client.post(
-        f"/api/session/{start['session_id']}/steps/0/complete", json={"keystrokes": []}
-    ).json()
+def test_empty_lesson_pays_nothing():
+    _home_row()
+    nxt = client.post("/api/lesson/next").json()
+    resp = client.post(f"/api/lesson/{nxt['lesson']['lesson_id']}/complete", json={"keystrokes": []}).json()
     assert [c for c in resp["coins_earned"] if c["reason"] == "lesson"] == []
 
 
-def test_finishing_a_session_pays_the_completion_bonus():
-    start = client.post("/api/session/start", params={"quick": True}).json()
-    sid, steps = start["session_id"], len(start["steps"])
-    last = None
-    for i in range(steps):
-        content = (
-            start["first_step_content"]
-            if i == 0
-            else client.get(f"/api/session/{sid}/steps/{i}/content").json()["content"]
-        )
-        last = client.post(
-            f"/api/session/{sid}/steps/{i}/complete",
-            json={"keystrokes": _all_correct(content["prompt"])},
-        ).json()
-    assert last["session_complete"]
-    assert {"amount": main.SESSION_COMPLETE_BONUS, "reason": "session_complete"} in last["coins_earned"]
+def test_the_intro_pays_its_first_time_bonus():
+    resp = run_lesson(client)["done"]
+    assert resp["coins_earned"][0] == {"amount": 250, "reason": "teach_first"}
 
 
 def test_store_lists_catalog_without_starters_and_with_flags():

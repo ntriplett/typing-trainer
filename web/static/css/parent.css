@@ -1,0 +1,88 @@
+/* Parent page; frames, buttons, and colors come from theme.css. */
+
+.parent {
+  max-width: 820px;
+}
+
+.parent-intro,
+.parent-links {
+  font-size: 20px;
+}
+
+.player-head {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.player-head h2 {
+  margin: 0;
+  font-size: 40px;
+  color: var(--heading);
+}
+
+.player-avatar {
+  width: 96px;
+  height: 96px;
+  border: 3px solid var(--outline);
+}
+
+.player-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 20px;
+  margin: 0;
+}
+
+.player-day {
+  margin: 0.75rem 0;
+}
+
+.setting {
+  margin: 0.6rem 0;
+}
+
+.setting label {
+  display: block;
+  font-size: 20px;
+}
+
+.setting small {
+  color: var(--ink-soft);
+  font-size: 20px;
+}
+
+.setting input[type="range"] {
+  width: 100%;
+  accent-color: var(--leaf-orange);
+}
+
+.saved {
+  font-size: 20px;
+  color: var(--moss-dark);
+  min-height: 1em;
+  margin: 0;
+}
+
+.brain {
+  background: var(--sand);
+  border: 3px solid var(--wood-light);
+  padding: 0.4rem 0.8rem;
+  font-size: 20px;
+}
+
+.brain h3 {
+  margin: 0.2rem 0;
+  font-size: 30px;
+  color: var(--heading);
+}
+
+.brain ul {
+  margin: 0.2rem 0;
+  padding-left: 1.2rem;
+}
+
+.next-new {
+  margin: 0.3rem 0;
+}

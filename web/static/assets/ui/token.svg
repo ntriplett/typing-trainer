@@ -1,0 +1,17 @@
+<!-- Pixel arcade token: a purple coin with a gem cut in the middle. Original placeholder art. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges">
+  <rect x="3" y="0" width="4" height="10" fill="#2a1740"/>
+  <rect x="1" y="1" width="8" height="8" fill="#2a1740"/>
+  <rect x="0" y="3" width="10" height="4" fill="#2a1740"/>
+  <rect x="3" y="1" width="4" height="8" fill="#8a55c4"/>
+  <rect x="2" y="2" width="6" height="6" fill="#8a55c4"/>
+  <rect x="1" y="3" width="8" height="4" fill="#8a55c4"/>
+  <rect x="3" y="1" width="3" height="1" fill="#c9a2ff"/>
+  <rect x="2" y="2" width="1" height="2" fill="#c9a2ff"/>
+  <rect x="7" y="6" width="1" height="1" fill="#5c3594"/>
+  <rect x="6" y="7" width="1" height="1" fill="#5c3594"/>
+  <rect x="4" y="3" width="2" height="1" fill="#f3e6ff"/>
+  <rect x="3" y="4" width="4" height="1" fill="#e2c8ff"/>
+  <rect x="4" y="5" width="2" height="1" fill="#b48ae6"/>
+  <rect x="4" y="4" width="1" height="1" fill="#ffffff"/>
+</svg>

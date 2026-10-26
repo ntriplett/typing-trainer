@@ -89,63 +89,52 @@ derived/recomputable from it, so we can change the skill-model formula later wit
 - This model is the single source of truth the scheduler queries to decide: which keys need warmup,
   whether a new key/teach topic is ready, and whether skills are solid enough to run an eval today.
 
-## 6. Session scheduler (the daily arc)
+## 6. The day, the brain, and tokens (replaced the session scheduler 2026-10-25)
 
-Fixed phase order, dynamic content per phase, confirmed with you:
+The old up-front session skeleton (and its slider screen) is gone. The day is free-form: the home page
+is a hub, and **Practice** asks the brain for **one lesson at a time**; the learner can stop after any
+lesson, visit the store or pets, and come back.
 
-1. **Warmup** (~2 min) — drills the 2-4 currently weakest keys (lowest confidence/accuracy).
-2. **Teach/Practice** (~9 min) — if a new key is ready to introduce, a short teach activity runs first,
-   then practice folds it in with the active set. If no new key is ready, this phase is pure adaptive
-   practice. Whether an **evaluation** runs at the end of this block is a scheduler decision (e.g. not
-   every day — only when there's enough fresh practice on the active set to make a check meaningful).
-3. **Games** (~4-5 min) — scheduler filters the game roster by what would reinforce current weak spots,
-   presents a pick of 2-4 to the child, child chooses.
+### 6a. The daily practice chunk and arcade tokens (`app/daily.py`)
 
-The scheduler is a pure function of (skill model state, recent session history) -> a session plan
-(ordered list of phase/activity choices). This is the key seam for testability: given a fixed skill
-state, the scheduler's output is deterministic and unit-testable without any UI or timing involved.
+- Active typing time (idle gaps left out, capped by wall-clock time server-side) adds up in a
+  `practice_chunk`. Reaching the parent's **daily goal** (default 10 min) pays **2 arcade tokens**
+  (+100 coins); 1.5x the goal pays **1 more token** and practice **rests for 12 hours**.
+- A chunk that reached the goal but not the bonus ends 12h after the goal (bonus forfeit); one that
+  never reached the goal resets 18h after its first lesson ("reset overnight"). Multi-day streaks
+  (36h between chunks) come later.
+- Tokens are a second currency with their own append-only `token_ledger`; the top bar shows them
+  (purple, with a glint) next to coins, plus the **day tracker** (a trail with token chests at the
+  goal and at 1.5x).
+- **Arcade** (`app/arcade.py`, `/arcade`): one token buys one whole game of Crow Patrol, two for Pet
+  Battles; rounds still pay coins. Arcade plays end back at the arcade (no free replays).
+- **Parent page** (`/parent`, open for now): per player, the daily goal and the practice <-> learn
+  slider, today's progress, and the brain's next pick with its reasons. Lab links live here.
 
-### 6a. Pre-session config and adaptive content length
+### 6b. The brain (`app/brain.py`, run by `app/lessons.py`)
 
-Before a session starts, the learner picks (PLAN.md's slider screen):
-- **duration** (15-30 min) — scales the total time budget every phase's share comes out of.
-- **learn vs. practice** — gates whether `teach` runs at all (off near the "practice" extreme) and
-  scales its time share (bigger share = more repetition on the new-ish key = "push harder").
-- **focus vs. general** — sizes the key pool `practice` draws from: the full active set at "general",
-  shrinking toward just the weakest few at "focus" (reuses the warmup recommender with a bigger `n`).
+A pure function `plan_next_lesson(BrainInput) -> LessonPlan`; `lessons.py` gathers the input (taught
+curriculum lessons, per-key recent/older accuracy from the keystroke log, bigram stats, lesson
+history, settings, today's chunk) and records the result. In order:
 
-This produces a `SessionSkeleton`: the phase sequence, each phase's time budget, and its key focus —
-but **no typing content yet**. Content is generated lazily, one step at a time, right before that step
-starts, sized to the session's *current* estimated WPM (starts from the learner's historical average,
-then blends in each completed step's real WPM). That's what lets a later step's content length adapt
-to how fast today is actually going, without the earlier, already-decided phase durations changing.
+1. No letters taught yet: **learn** (the intro, then F and J).
+2. First lesson of a sitting (20+ min gap): an easy 50s **warmup**.
+3. Frustration (last lesson < 85%, quit early, a speed crash, or two < 90% in a row): an easy
+   **comfort** practice (weak keys left out, no weak runs, short). Never a new letter right after.
+4. **Learn** the next curriculum lesson (teach_curriculum.py: intro, key pairs, capitals, numbers)
+   when every taught key has 30+ recent tries at or above the bar (98% at "practice", 80% at
+   "learn", interpolated), 3+ practices since the last new lesson, and none yet today. Placement keys
+   with no data don't block.
+5. Otherwise **practice**: focus on slipping keys (recent accuracy 6+ points under their own older
+   level), the newest keys, weak keys, and exceptionally weak bigrams (low AND well under the
+   learner's average pair; ~25% of words get built around one). Difficulty walks up after a great
+   lesson and down after a shaky one; length follows predicted speed (an EMA of recent lessons); the
+   lesson that lands the goal or bonus is trimmed to fit and eased off. Themes don't repeat for 5.
 
-### 6b. Short sub-lessons, key states, and the focus/allowed split
-
-Each step is a **1-2 minute sub-lesson**, not one long block per phase kind — a 15-minute session ends
-up with roughly 10 of them, built one at a time by a priority rule (eval if ready → teach if there's
-room and it's been a couple of steps → game if it's been a few steps → practice otherwise), so the
-sequence can be anything from "warmup, teach, practice, teach, game, practice, eval, practice, game" on
-up, not a fixed shape.
-
-Every key has a live **state**, derived from its stats, not stored separately:
-- **untaught** — never introduced
-- **teaching** — introduced, but not enough attempts yet to trust an accuracy reading
-- **learning** — enough attempts to trust it, but accuracy below 80%
-- **learned** — accuracy at or above 80%
-
-(This is a lighter, separate bar from `is_mastered()`/`mastered_at`, which still gates *when the next
-key ever gets introduced* across sessions. The 4 states are for *this session's* lesson-building.)
-
-Every activity gets **two key pools**, not one: `focus_keys` (what this step should actively work on —
-new or weak keys) and `allowed_keys` (everything introduced so far, safe as filler). A lesson never
-draws a character from outside `allowed_keys` — "it shouldn't use any letters in other lessons that
-weren't taught yet." Each module mixes the two in its own ratio: teach is ~100% focus (one new key at
-a time, blocked pattern, ignoring allowed entirely); warmup leans 75% focus / 25% allowed; practice is
-balanced 50/50; eval leans 70% allowed / 30% focus (a broad check, not another drill on the newest key);
-game is 60% allowed / 40% focus. Within one plan, once a teach step is inserted its key is immediately
-added to the *allowed* pool for every subsequent step — so a practice step right after teaching `d` can
-actually use `d`, and a later teach step targets the next new key instead of repeating the same one.
+Learn lessons run on the teach page (`/teach/<module>?lesson=<id>`) and now feed the skill model and
+mark their keys taught (`taught_lesson`; placement and pre-existing unlocked keys are back-filled).
+Lessons in a row share one `session` row (a sitting); each finished lesson is a `session_event` whose
+summary carries the plan (kind, focus, difficulty, predicted speed, reasons).
 
 ## 7. Module contract (for modularity requirement)
 
@@ -432,8 +421,8 @@ then a few capitals at a time. They get strung together into lessons once enough
   you), goat winds up a headbutt, fox steals stars, llama spits (your next words get longer). Bag:
   Berry, Star candy, Shell charm, typed to use; find one per win. Win tally: 200 + HP x10 + clean
   moves x20 + super hits x30. Losing: nap, pick again, critter 10% easier.
-- `/game-lab` (letters, focus, difficulty) and `/game/<id>`. Not in sessions yet; lab runs don't
-  feed stats.
+- `/game-lab` (letters, focus, difficulty) and `/game/<id>`; lab runs don't feed stats. Played for
+  real from the arcade with tokens (section 6a).
 
 ## 12. Workflow
 

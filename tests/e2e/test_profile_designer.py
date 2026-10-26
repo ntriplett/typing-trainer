@@ -1,4 +1,4 @@
-"""Real-browser e2e tests for the profile hub and character designer
+"""Real-browser e2e tests for the profile page and character designer
 (PLAN.md 11c-2, phase 1)."""
 
 from __future__ import annotations
@@ -6,14 +6,13 @@ from __future__ import annotations
 from playwright.sync_api import Page, expect
 
 
-def test_header_avatar_menu_opens_the_profile_hub(page: Page, live_server):
+def test_header_avatar_menu_opens_the_profile_page(page: Page, live_server):
     page.goto(live_server)
     page.click(".topbar-avatar")
     expect(page.locator(".profile-menu-name")).to_have_text("Tester")
     page.locator(".profile-menu").get_by_role("link", name="My profile").click()
     expect(page).to_have_url(f"{live_server}/profile")
     expect(page.locator("#stats .stat")).to_have_count(5)
-    expect(page.locator(".hub-tile[href='/store']")).to_be_visible()
 
 
 def test_designer_click_saves_the_look(page: Page, live_server):

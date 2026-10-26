@@ -1,5 +1,6 @@
-// Shared top bar on every page (PLAN.md Section 11c): brand, coin
-// counter, and the player's avatar, which opens the profile menu (my
+// Shared top bar on every page (PLAN.md Section 11c): brand, the day
+// tracker (how close today's practice is to its tokens), coin and token
+// counters, and the player's avatar, which opens the profile menu (my
 // profile, wardrobe, switch player -- PLAN.md 11d). With no player picked
 // in this browser, it sends you to the welcome screen.
 //
@@ -10,12 +11,66 @@
 // Exposes window.Header so pages can update coins/avatar without
 // refetching.
 
+// The day tracker: a trail that fills with today's practice, with a token
+// chest at the goal (2/3 of the way) and one at the 1.5x bonus (the end).
+// DayTracker.render(el, day) works for any element; the home page uses a
+// big one ({ big: true }).
+const DayTracker = {
+  minutes(seconds) {
+    return Math.floor(seconds / 60);
+  },
+
+  restingUntil(day) {
+    const when = new Date(day.resting_until);
+    const time = when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const tomorrow = when.toDateString() !== new Date().toDateString();
+    return `${tomorrow ? "tomorrow " : ""}${time}`;
+  },
+
+  label(day) {
+    if (day.resting_until) return `All done! Back ${this.restingUntil(day)}`;
+    const goal = this.minutes(day.goal_seconds);
+    if (day.goal_reached) return `Bonus: ${this.minutes(day.practiced_seconds)} / ${this.minutes(day.bonus_seconds)} min`;
+    return `${this.minutes(day.practiced_seconds)} / ${goal} min`;
+  },
+
+  title(day) {
+    if (day.resting_until) return `You earned all ${day.goal_tokens + day.bonus_tokens} tokens today. Practice opens again ${this.restingUntil(day)}.`;
+    if (day.goal_reached) return `Goal reached! Keep going to ${this.minutes(day.bonus_seconds)} minutes for a bonus token.`;
+    return `Practice ${this.minutes(day.goal_seconds)} minutes today to earn ${day.goal_tokens} arcade tokens.`;
+  },
+
+  render(el, day, { big = false } = {}) {
+    const share = Math.min(1, day.practiced_seconds / day.bonus_seconds);
+    el.classList.add("day-tracker");
+    el.classList.toggle("big", big);
+    el.classList.toggle("goal", day.goal_reached);
+    el.classList.toggle("resting", !!day.resting_until);
+    el.title = this.title(day);
+    const chest = (left, open, n) =>
+      `<span class="day-chest${open ? " open" : ""}" style="left:${left}%" aria-label="${n} token${n > 1 ? "s" : ""}${open ? " earned" : ""}"><span class="token-icon"></span></span>`;
+    el.innerHTML = `
+      <span class="day-track" role="progressbar" aria-valuemin="0" aria-valuemax="${day.bonus_seconds}" aria-valuenow="${day.practiced_seconds}">
+        <span class="day-fill" style="width:${(share * 100).toFixed(1)}%"></span>
+        ${chest(66.667, day.goal_reached, day.goal_tokens)}
+        ${chest(100, day.bonus_reached, day.bonus_tokens)}
+      </span>
+      <span class="day-label">${this.label(day)}</span>
+      ${big ? `<span class="day-legend"><span>Goal: +${day.goal_tokens} tokens</span><span>Extra: +${day.bonus_tokens}</span></span>` : ""}`;
+  },
+};
+
 (function () {
   const bar = document.createElement("header");
   bar.className = "topbar";
   bar.innerHTML = `
     <a class="brand" href="/">Typing Trainer</a>
     <div class="topbar-right">
+      <a class="day-tracker" href="/session" hidden></a>
+      <span class="coin-pill token-pill" title="Arcade tokens: earn them by practicing, spend them in the arcade">
+        <span class="token-icon" aria-hidden="true"></span>
+        <span id="token-count">…</span>
+      </span>
       <span class="coin-pill" title="Your coins">
         <span class="coin-icon" aria-hidden="true"></span>
         <span id="coin-count">…</span>
@@ -35,7 +90,10 @@
   document.body.prepend(bar);
 
   const coinCount = bar.querySelector("#coin-count");
-  const coinPill = bar.querySelector(".coin-pill");
+  const coinPill = bar.querySelector(".coin-pill:not(.token-pill)");
+  const tokenCount = bar.querySelector("#token-count");
+  const tokenPill = bar.querySelector(".token-pill");
+  const tracker = bar.querySelector(".day-tracker");
   const avatarCanvas = makeAvatarCanvas(48);
   const avatarButton = bar.querySelector(".topbar-avatar");
   avatarButton.appendChild(avatarCanvas);
@@ -65,6 +123,8 @@
     teach: "Lesson",
     teach_first: "First lesson bonus!",
     game: "Game",
+    daily_goal: "Daily goal!",
+    daily_bonus: "Bonus token!",
   };
 
   function setCoins(n) {
@@ -72,6 +132,21 @@
     coinPill.classList.remove("bump");
     void coinPill.offsetWidth; // restart the animation
     coinPill.classList.add("bump");
+  }
+
+  function setTokens(n) {
+    tokenCount.textContent = n.toLocaleString();
+    tokenPill.classList.remove("bump");
+    void tokenPill.offsetWidth;
+    tokenPill.classList.add("bump");
+  }
+
+  let day = null;
+  function setDay(d) {
+    day = d;
+    tracker.hidden = false;
+    DayTracker.render(tracker, d);
+    document.dispatchEvent(new CustomEvent("daychange", { detail: d }));
   }
 
   const nightToggle = bar.querySelector(".night-toggle");
@@ -87,6 +162,8 @@
     current = me;
     bar.querySelector(".profile-menu-name").textContent = me.learner.name;
     setCoins(me.coins);
+    tokenCount.textContent = me.tokens.toLocaleString();
+    if (me.day) setDay(me.day);
     setAvatar(me.avatar);
     nightToggle.hidden = !me.night.available;
     nightToggle.textContent = me.night.on ? "☀️" : "🌙";
@@ -103,23 +180,47 @@
     if (r.ok) update(await r.json());
   });
 
-  // `earned` is the step-completion response's coins_earned list.
+  function toastItem(html, i, extraClass = "") {
+    const item = document.createElement("div");
+    item.className = `coin-toast-item ${extraClass}`;
+    item.style.animationDelay = `${i * 0.35}s`;
+    item.innerHTML = html;
+    toast.appendChild(item);
+    setTimeout(() => item.remove(), 2400 + i * 350);
+  }
+
+  // `earned` is a completion response's coins_earned list.
   function celebrate(earned, newBalance) {
-    earned.forEach((c, i) => {
-      const item = document.createElement("div");
-      item.className = "coin-toast-item";
-      item.style.animationDelay = `${i * 0.35}s`;
-      item.innerHTML = `<span class="coin-icon"></span>+${c.amount} ${REASON_LABELS[c.reason] || ""}`;
-      toast.appendChild(item);
-      setTimeout(() => item.remove(), 2400 + i * 350);
-    });
+    earned.forEach((c, i) =>
+      toastItem(`<span class="coin-icon"></span>+${c.amount} ${REASON_LABELS[c.reason] || ""}`, i)
+    );
     setCoins(newBalance);
+  }
+
+  // `earned` is a completion response's tokens_earned list.
+  function celebrateTokens(earned, newBalance) {
+    earned.forEach((t, i) =>
+      toastItem(
+        `<span class="token-icon"></span>+${t.amount} token${t.amount > 1 ? "s" : ""}! ${REASON_LABELS[t.reason] || ""}`,
+        i + 1,
+        "token-toast"
+      )
+    );
+    if (earned.length) {
+      setTokens(newBalance);
+      tracker.querySelectorAll(".day-chest.open").forEach((c) => c.classList.add("pop"));
+    }
   }
 
   // Resolves with /api/me so pages that also need it don't fetch twice.
   const ready = fetch("/api/me")
     .then((r) => {
       if (r.status === 401) {
+        // Pages for everyone (the parent page) work without a player.
+        if ("anyPlayer" in document.body.dataset) {
+          bar.querySelector(".topbar-right").hidden = true;
+          return Promise.reject(new Error("no player picked"));
+        }
         window.location.href = "/welcome"; // nobody picked in this browser yet
         return new Promise(() => {}); // never resolves; we're leaving
       }
@@ -136,5 +237,5 @@
       return null;
     });
 
-  window.Header = { ready, setCoins, setAvatar, update, celebrate };
+  window.Header = { ready, setCoins, setTokens, setDay, setAvatar, update, celebrate, celebrateTokens };
 })();

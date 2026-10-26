@@ -41,7 +41,7 @@ def test_analysis_page_is_served():
 def test_static_js_is_served():
     resp = client.get("/static/js/session.js")
     assert resp.status_code == 200
-    assert "fetchStepContent" in resp.text
+    assert "/api/lesson/next" in resp.text
 
 
 def test_static_assets_are_never_cached():

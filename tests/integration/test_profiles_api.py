@@ -4,13 +4,14 @@ per-browser cookie, switching, placement, and two players at once."""
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, main, skill_model
+from app import db, lessons, main, skill_model
+from app.activities.teach_curriculum import INTRO_ID
 
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")
-    main._SESSION_PLANS.clear()
+    lessons._LESSONS.clear()
     yield
 
 
@@ -76,10 +77,9 @@ def test_placement_marks_known_keys_learned_and_sets_speed():
     assert set(stats) == set(skill_model.KEY_ORDER[:11])
     assert all(s.mastered_at is not None for s in stats.values())
 
-    start = b.post("/api/session/start").json()
-    assert start["estimated_wpm"] == 22
-    # lessons now start past the home row
-    assert skill_model.KEY_ORDER[11] in start["active_keys"]
+    lesson = b.post("/api/lesson/next").json()["lesson"]
+    assert lesson["predicted_wpm"] == 22
+    assert lesson["kind"] == "warmup"  # home row counts as taught: straight to typing
     assert b.put("/api/profiles/placement", json={"keys": "?", "speed": "comfy"}).status_code == 400
 
 
@@ -87,8 +87,8 @@ def test_new_placement_teaches_from_scratch():
     b = browser()
     b.post("/api/profiles", json={"name": "Robin"})
     b.put("/api/profiles/placement", json={"keys": "new", "speed": "starting"})
-    start = b.post("/api/session/start").json()
-    assert start["steps"][0]["focus_keys"] == [" "]  # the space bar lesson first
+    lesson = b.post("/api/lesson/next").json()["lesson"]
+    assert lesson["activity_id"] == INTRO_ID  # from the very start
 
 
 def test_wardrobe_lists_owned_wearables_including_starters():

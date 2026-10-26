@@ -155,6 +155,44 @@ CREATE TABLE IF NOT EXISTS room_item (
 );
 CREATE INDEX IF NOT EXISTS idx_room_item_learner ON room_item(learner_id, room);
 
+-- Arcade tokens: the second currency, same append-only shape as
+-- coin_ledger. Earned by the daily practice goal (app/daily.py), spent in
+-- the arcade (app/arcade.py).
+CREATE TABLE IF NOT EXISTS token_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    ref TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_token_ledger_learner ON token_ledger(learner_id);
+
+-- Curriculum lessons already taught (app/lessons.py). ref is
+-- "module:keys"; source is lesson (taught for real), placement (the
+-- learner said they knew it), or legacy (keys unlocked before lessons
+-- were tracked).
+CREATE TABLE IF NOT EXISTS taught_lesson (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    ref TEXT NOT NULL,
+    source TEXT NOT NULL,
+    taught_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, ref)
+);
+
+-- One day's chunk of practice (app/daily.py): time adds up toward the
+-- goal; goal_at/full_at mark when the goal and the 1.5x bonus landed.
+CREATE TABLE IF NOT EXISTS practice_chunk (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    started_at TEXT NOT NULL,
+    practiced_seconds REAL NOT NULL DEFAULT 0,
+    learns INTEGER NOT NULL DEFAULT 0,
+    goal_at TEXT,
+    full_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_practice_chunk_learner ON practice_chunk(learner_id);
+
 -- Character designer choices (app/appearance.py owns the allowed values).
 CREATE TABLE IF NOT EXISTS appearance (
     learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
@@ -559,6 +597,144 @@ def list_coin_history(
         )
         for row in rows
     ]
+
+
+# --- tokens ---------------------------------------------------------------------
+
+
+def add_tokens(conn: sqlite3.Connection, learner_id: int, amount: int, reason: str, ref: str | None = None) -> None:
+    """Append one token ledger row. Positive earns, negative spends."""
+    conn.execute(
+        "INSERT INTO token_ledger (learner_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, amount, reason, ref, _now_iso()),
+    )
+
+
+def has_token_entry(conn: sqlite3.Connection, learner_id: int, reason: str, ref: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM token_ledger WHERE learner_id = ? AND reason = ? AND ref = ?", (learner_id, reason, ref)
+    ).fetchone()
+    return row is not None
+
+
+def get_token_balance(conn: sqlite3.Connection, learner_id: int) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS balance FROM token_ledger WHERE learner_id = ?", (learner_id,)
+    ).fetchone()
+    return row["balance"]
+
+
+# --- taught lessons + practice chunks ------------------------------------------------
+
+
+def mark_taught(conn: sqlite3.Connection, learner_id: int, ref: str, source: str) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO taught_lesson (learner_id, ref, source, taught_at) VALUES (?, ?, ?, ?)",
+        (learner_id, ref, source, _now_iso()),
+    )
+
+
+def list_taught(conn: sqlite3.Connection, learner_id: int) -> dict[str, str]:
+    """ref -> source."""
+    rows = conn.execute("SELECT ref, source FROM taught_lesson WHERE learner_id = ?", (learner_id,))
+    return {r["ref"]: r["source"] for r in rows}
+
+
+def latest_chunk(conn: sqlite3.Connection, learner_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM practice_chunk WHERE learner_id = ? ORDER BY id DESC LIMIT 1", (learner_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        **dict(row),
+        "started_at": _parse_dt(row["started_at"]),
+        "goal_at": _parse_dt(row["goal_at"]),
+        "full_at": _parse_dt(row["full_at"]),
+    }
+
+
+def create_chunk(conn: sqlite3.Connection, learner_id: int, started_at: datetime) -> int:
+    cur = conn.execute(
+        "INSERT INTO practice_chunk (learner_id, started_at) VALUES (?, ?)", (learner_id, started_at.isoformat())
+    )
+    return cur.lastrowid
+
+
+def update_chunk(
+    conn: sqlite3.Connection,
+    chunk_id: int,
+    practiced_seconds: float,
+    learns: int,
+    goal_at: datetime | None,
+    full_at: datetime | None,
+) -> None:
+    conn.execute(
+        "UPDATE practice_chunk SET practiced_seconds = ?, learns = ?, goal_at = ?, full_at = ? WHERE id = ?",
+        (
+            practiced_seconds,
+            learns,
+            goal_at.isoformat() if goal_at else None,
+            full_at.isoformat() if full_at else None,
+            chunk_id,
+        ),
+    )
+
+
+# --- lesson history (the brain's input) -------------------------------------------------
+
+
+def recent_lesson_events(conn: sqlite3.Connection, learner_id: int, limit: int = 40) -> list[dict]:
+    """The newest finished lesson rows, oldest first: phase, activity_id,
+    ended_at, and the parsed summary_stats."""
+    rows = conn.execute(
+        """
+        SELECT se.phase, se.activity_id, se.ended_at, se.summary_stats
+        FROM session_event se JOIN session s ON se.session_id = s.id
+        WHERE s.learner_id = ? AND se.ended_at IS NOT NULL
+        ORDER BY se.id DESC LIMIT ?
+        """,
+        (learner_id, limit),
+    ).fetchall()
+    return [
+        {
+            "phase": r["phase"],
+            "activity_id": r["activity_id"],
+            "ended_at": _parse_dt(r["ended_at"]),
+            "stats": json.loads(r["summary_stats"] or "{}"),
+        }
+        for r in reversed(rows)
+    ]
+
+
+def recent_keystrokes(conn: sqlite3.Connection, learner_id: int, limit: int = 8000) -> list[tuple[str, bool]]:
+    """(expected_char, correct) for the learner's newest keystrokes, newest first."""
+    rows = conn.execute(
+        """
+        SELECT k.expected_char, k.correct
+        FROM keystroke_log k
+        JOIN session_event se ON k.session_event_id = se.id
+        JOIN session s ON se.session_id = s.id
+        WHERE s.learner_id = ?
+        ORDER BY k.id DESC LIMIT ?
+        """,
+        (learner_id, limit),
+    ).fetchall()
+    return [(r["expected_char"], bool(r["correct"])) for r in rows]
+
+
+def latest_session(conn: sqlite3.Connection, learner_id: int) -> Session | None:
+    row = conn.execute(
+        "SELECT * FROM session WHERE learner_id = ? ORDER BY id DESC LIMIT 1", (learner_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return Session(row["id"], row["learner_id"], _parse_dt(row["started_at"]), _parse_dt(row["ended_at"]))
+
+
+def touch_session(conn: sqlite3.Connection, session_id: int, when: datetime) -> None:
+    """A sitting's ended_at moves forward with every finished lesson."""
+    conn.execute("UPDATE session SET ended_at = ? WHERE id = ?", (when.isoformat(), session_id))
 
 
 # --- store items --------------------------------------------------------------
