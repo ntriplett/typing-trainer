@@ -513,6 +513,110 @@ function applyBand(hex, b) {
   return hex;
 }
 
+// --- coats that follow the body (designs) -----------------------------------------
+// Each pattern places the second (and third) color by body region instead of
+// pure noise: belly/tuxedo on the chest, belly and paws; points on the ears,
+// paws and tail; tabby stripes around the body, legs and tail; patches big
+// and spread out; spots on the back and sides. The body, legs and tail are
+// ranked together so each color still gets its share. The head is painted
+// on its own and the face (eyes to mouth) stays one clean color, apart from
+// a tidy muzzle on belly and points coats; stripes and patches may mark the
+// forehead, but never right up against the eyes.
+
+const HEAD_PARTS = new Set(["head", "ear", "farear", "fold", "snout", "cap"]);
+
+function coatValue(pattern, label, x, y, geo, n, splotch) {
+  const u = (x - geo.cx) / geo.rx;
+  const v = (y - geo.cy) / geo.ry;
+  const t = Math.max(0, Math.min(1, (y - geo.legTop) / Math.max(1, GROUND - geo.legTop)));
+  const [tx, ty, tl] = geo.tail;
+  const d = Math.max(0, Math.min(1, Math.hypot(x - tx, y - ty) / Math.max(1, tl)));
+  const leg = label === "leg" || label === "farleg";
+  const tail = label === "tail";
+  switch (pattern) {
+    case "belly":
+      if (leg) return 0.3 + t;
+      if (tail) return -0.6 + d * 0.2;
+      return v + Math.max(0, u - 0.35) * 1.2 + n * 0.12;
+    case "points":
+      if (leg) return t * 1.2;
+      if (tail) return 0.1 + d;
+      return -0.6 + Math.hypot(u * 0.6, v * 0.4) + n * 0.1;
+    case "stripes": {
+      const k = 2.2 + (1 - splotch) * 3;
+      if (leg) return Math.sin(t * Math.PI * 2.5);
+      if (tail) return Math.sin(d * Math.PI * 4.5);
+      return Math.sin((u * k + v * 0.35 + n * 0.6) * Math.PI);
+    }
+    case "spots":
+      if (leg || tail || v > 0.35) return -1 + n * 0.1;
+      return n;
+    default: // patches
+      return n;
+  }
+}
+
+function paintCoat(out, grid, genes, built, hex) {
+  const geo = built.geo;
+  const coat = genes.coat;
+  const pattern = coat.pattern;
+  const noise = valueNoise(genes.seed);
+  const noise2 = valueNoise(genes.seed ^ 0x5bd1e995);
+  const s = built.scale;
+  const freq = 0.32 - 0.24 * coat.splotch;
+  const spotsFreq = freq * 4.5; // many small spots, not a few blobs
+  const n = (x, y) => {
+    const u = (x - geo.cx) / s;
+    const v = (y - geo.cy) / s;
+    if (pattern === "spots") return noise2(u * spotsFreq, v * spotsFreq);
+    return noise(u * freq + 100, v * freq + 100) * 0.75 + noise2(u * freq * 2, v * freq * 2) * 0.25;
+  };
+  const second = hex[1] && coat.shares[1] > 0 ? hex[1] : hex[0];
+
+  // the body, legs and tail, ranked together
+  const pool = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (c && FUR.has(c.l) && !HEAD_PARTS.has(c.l)) pool.push([coatValue(pattern, c.l, x, y, geo, n(x, y), coat.splotch), x, y]);
+    }
+  }
+  pool.sort((a, b) => a[0] - b[0]);
+  const cut1 = Math.round(pool.length * coat.shares[0]);
+  const cut2 = cut1 + Math.round(pool.length * coat.shares[1]);
+  const colorAt = (i) => (i < cut1 ? hex[0] : i < cut2 || !hex[2] ? second : hex[2]);
+  pool.forEach(([, x, y], i) => (out[y][x] = colorAt(i)));
+  const t1 = cut1 < pool.length ? pool[cut1][0] : Infinity;
+  const t2 = cut2 < pool.length ? pool[cut2][0] : Infinity;
+  const byValue = (v) => (v >= t2 && hex[2] ? hex[2] : v >= t1 ? second : hex[0]);
+
+  // the head: the face stays clean
+  const fb = geo.faceBox;
+  const [hx] = geo.head;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !HEAD_PARTS.has(c.l)) continue;
+      const inFace = fb && x >= fb.x0 && x <= fb.x1 && y >= fb.y0 && y <= fb.y1;
+      const forehead = fb && y < fb.y0 - 1;
+      const ear = c.l !== "head";
+      let color = hex[0];
+      const m = geo.muzzle;
+      const muzzle = m && y >= m.top && Math.abs(x - m.c) <= 3;
+      if (pattern === "belly") {
+        if (muzzle || (fb && y > fb.y1)) color = second;
+      } else if (pattern === "points") {
+        if (muzzle || ear) color = second;
+      } else if (pattern === "stripes") {
+        if (forehead && !ear && Math.sin((x - hx) * 1.4) > 0.55) color = second; // the "M"
+      } else if (pattern === "patches") {
+        if ((forehead || ear) && !inFace) color = byValue(n(x, y));
+      }
+      out[y][x] = color;
+    }
+  }
+}
+
 const petCache = new Map();
 
 // The finished pixels: {w, h, pix: rows of hex or null}. Cached per pet,
@@ -531,6 +635,8 @@ function petPixels(genes, growth, frame = 0) {
   const hex = genes.hex.map((h) => h && liftDark(h));
 
   // coat colors by rank: each color gets exactly its share of fur pixels
+  if (built.geo) paintCoat(out, grid, genes, built, hex);
+  else {
   const field = patternField(genes, built);
   const fur = [];
   for (let y = 0; y < GRID_H; y++) for (let x = 0; x < GRID_W; x++) if (grid[y][x] && FUR.has(grid[y][x].l)) fur.push([field(x, y), x, y]);
@@ -541,6 +647,7 @@ function petPixels(genes, growth, frame = 0) {
   fur.forEach(([, x, y], i) => {
     out[y][x] = i < cut1 ? hex[0] : i < cut2 || !hex[2] ? hex[1] : hex[2];
   });
+  }
 
   // a sheep's face and legs: a darker (or, on dark wool, lighter) shade of its wool
   const skinColor = luminance(hex[0]) > 0.45 ? blend(hex[0], "#3a2a28", 0.62) : blend(hex[0], "#f0e0d0", 0.35);
@@ -935,9 +1042,23 @@ function buildVariant(genes, stage, frame, V) {
 
   relight(grid, "body");
   relight(grid, "head");
+  // where everything is, for painting the coat by body region
+  let faceBox = null;
+  if (face.eyes.length) {
+    const xs = face.eyes.map((e) => e.x);
+    const ew2 = EYE_SHAPES[eyeSize][0].length;
+    const lowest = Math.max(...[...face.smile, ...face.pink, ...face.mouth].map(([, y]) => y), face.nose ? face.nose.y : 0, face.eyes[0].y + 1);
+    faceBox = { x0: Math.min(...xs) - 1, x1: Math.max(...xs) + ew2, y0: face.eyes[0].y - 1, y1: lowest + 1 };
+  }
+  const noseTop = face.pink.length ? Math.min(...face.pink.map(([, y]) => y)) : face.nose ? face.nose.y : null;
+  const geo = {
+    cx, cy, rx, ry, legTop: sit ? GROUND - legLen - ry * 0.6 : cy,
+    tail: [cx - rx + 1, cy - ry * 0.4, tailLen], head: [hx, hy, hrx, hry],
+    faceBox, muzzle: noseTop === null ? null : { top: noseTop, c: Math.round(hx) },
+  };
   return {
     grid, R: { ears: { type: "variant" } }, innerEars: !V.ears.fold, headX: hx, face, center: [cx, cy], scale: s,
-    softOutline: V.softOutline, softNeck: V.softNeck,
+    softOutline: V.softOutline, softNeck: V.softNeck, geo,
   };
 }
 

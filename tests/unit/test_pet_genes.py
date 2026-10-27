@@ -107,3 +107,23 @@ def test_cats_lean_skinny_and_odd_eyes_are_rare():
     assert sum(weights) / len(weights) < -0.1
     odd = sum("odd_eye" in c["face"] for c in cats)
     assert 0 < odd < 150
+
+
+def test_coats_are_mostly_one_color_with_a_highlight():
+    import collections
+
+    styles = collections.Counter(g.roll("cat", "orange", "ash", seed)["coat"]["style"] for seed in range(3000))
+    assert styles["highlight"] > styles["mix"] > styles["accent"] > 0
+    for seed in range(300):
+        coat = g.roll("cat", "orange", "ash", seed)["coat"]
+        if coat["style"] == "highlight":
+            assert coat["shares"][0] >= 0.78 and coat["shares"][2] == 0
+        if coat["style"] == "accent":
+            assert coat["shares"][2] >= g.MIN_THIRD_SHARE and coat["colors"][2]
+
+
+def test_the_palette_is_muted():
+    # every natural color is softer than its raw version
+    assert g.mute("#e46a28", "orange") != "#e46a28"
+    r, gg, b = (int(g.COLORS["flame"].hex[i : i + 2], 16) for i in (1, 3, 5))
+    assert max(r, gg, b) - min(r, gg, b) < 150  # no longer fully saturated

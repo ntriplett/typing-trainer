@@ -17,6 +17,7 @@ third color the learner hasn't had for that species unlocks it.
 
 from __future__ import annotations
 
+import colorsys
 import math
 import random
 from dataclasses import dataclass
@@ -32,8 +33,26 @@ class PetColor:
     family: str
 
 
+FANCIFUL = {"pink", "purple", "blue", "green", "teal", "fancy"}
+
+
+def mute(hex_: str, family: str) -> str:
+    """The cozy version of a color: natural ones lose some saturation and
+    drift toward a middle lightness; fanciful ones become soft pastels."""
+    r, g, b = (int(hex_[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    h, light, sat = colorsys.rgb_to_hls(r, g, b)
+    if family in FANCIFUL:
+        sat *= 0.5
+        light = light * 0.6 + 0.78 * 0.4
+    else:
+        sat *= 0.6
+        light = light * 0.88 + 0.5 * 0.12
+    r, g, b = colorsys.hls_to_rgb(h, light, sat)
+    return "#" + "".join(f"{round(c * 255):02x}" for c in (r, g, b))
+
+
 def _family(family: str, *colors: tuple[str, str]) -> list[PetColor]:
-    return [PetColor(name.lower().replace(" ", "_"), name, hex_, family) for name, hex_ in colors]
+    return [PetColor(name.lower().replace(" ", "_"), name, mute(hex_, family), family) for name, hex_ in colors]
 
 
 COLORS: dict[str, PetColor] = {
@@ -117,6 +136,9 @@ ELEMENTS = {
     "dog": "splash", "llama": "splash",
 }
 
+# How the coat splits: mostly one color with a highlight, sometimes a mix,
+# rarely a third accent color.
+COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points": 1.0}
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -197,16 +219,23 @@ def _trait(rng: random.Random) -> float:
 
 def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
     rng = _rng(seed, "coat")
-    primary = round(rng.uniform(0.5, 0.9), 3)
-    secondary = round(min(rng.uniform(0.2, 0.5), 1 - primary), 3)
-    third = round(1 - primary - secondary, 3)
-    if third < MIN_THIRD_SHARE:
-        secondary, third = round(secondary + third, 3), 0.0
+    style = _pick(rng, COAT_STYLES)
+    if style == "highlight":  # a main color with a small highlight
+        primary = round(rng.uniform(0.78, 0.9), 3)
+        secondary, third = round(1 - primary, 3), 0.0
+    elif style == "mix":  # more of an even mix of two
+        primary = round(rng.uniform(0.5, 0.68), 3)
+        secondary, third = round(1 - primary, 3), 0.0
+    else:  # rarely, a third accent color
+        primary = round(rng.uniform(0.5, 0.68), 3)
+        secondary = round(min(rng.uniform(0.15, 0.3), 1 - primary - MIN_THIRD_SHARE), 3)
+        third = round(1 - primary - secondary, 3)
     third_color = None
     if third:
         weights = third_color_weights(species, ctx["unlocked"], {ctx["primary"], ctx["secondary"]})
         third_color = _pick(rng, weights)
     return {
+        "style": style,
         "colors": [ctx["primary"], ctx["secondary"], third_color],
         "shares": [primary, secondary, third],
         "pattern": _pick(rng, PATTERNS),
