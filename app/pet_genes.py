@@ -140,18 +140,30 @@ ELEMENTS = {
 # rarely a third accent color.
 COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points": 1.0}
+# Species with their own pattern odds. Dogs: mostly belly and points coats,
+# a husky-style mask now and then, spots for dalmatians, stripes (brindle) rare.
+SPECIES_PATTERNS = {
+    "dog": {"belly": 3.0, "points": 2.5, "patches": 2.0, "mask": 1.5, "spots": 1.0, "stripes": 0.4},
+}
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
 SPECIES_EYES = {
     "cat": {"#7ab84a": 4.0, "#e0a828": 4.0, "#c8702a": 2.0, "#e8d040": 2.0, "#5a9ae0": 1.0},
+    "dog": {"#3a2416": 5.0, "#5c3a1a": 4.0, "#8a5a2a": 2.0, "#c8861e": 1.0, "#6aa0d8": 0.4},
 }
-ODD_EYES_CHANCE = {"cat": 0.03}  # one eye a different color
+ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
+
+# Species drawn as a set of breeds: each pet rolls one, and sometimes is a
+# mix that borrows one part (its tail or its ears) from another breed.
+BREEDS = {"dog": ("classic", "hound", "shiba", "dachshund", "husky")}
+MIX_CHANCE = 0.25
+MIX_PARTS = ("tail", "ears")
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
 SHAPE_EXTRAS = {
     "cat": {"weight": (-1.0, 1.0, -0.5)},
-    "dog": {"snout": (-1.0, 1.0, 0.0)},
+    "dog": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "bunny": {"weight": (-1.0, 1.0, 0.2)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
@@ -238,7 +250,7 @@ def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
         "style": style,
         "colors": [ctx["primary"], ctx["secondary"], third_color],
         "shares": [primary, secondary, third],
-        "pattern": _pick(rng, PATTERNS),
+        "pattern": _pick(rng, SPECIES_PATTERNS.get(species, PATTERNS)),
         "splotch": round(rng.uniform(*SPLOTCH_RANGE), 3),
     }
 
@@ -254,6 +266,13 @@ def _roll_shape(seed: int, species: str, ctx: dict) -> dict:
     }
     for name, (low, high, mode) in SHAPE_EXTRAS.get(species, {}).items():
         shape[name] = round(rng.triangular(low, high, mode), 3)
+    if species in BREEDS:
+        breeds = BREEDS[species]
+        shape["breed"] = rng.choice(breeds)
+        shape["mix"] = {}
+        if rng.random() < MIX_CHANCE:
+            donor = rng.choice([b for b in breeds if b != shape["breed"]])
+            shape["mix"] = {rng.choice(MIX_PARTS): donor}
     return shape
 
 

@@ -35,11 +35,6 @@ function petStage(growth) {
 // Sizes in pet pixels for a grown pet. head: rx/ry and an offset from the
 // front-top of the body; leg.min keeps legs readable on babies.
 const PET_RECIPES = {
-  dog: {
-    body: { rx: 10, ry: 5.5 }, leg: { len: 6, w: 3, min: 3 }, head: { rx: 5.5, ry: 5, dx: 1, dy: -1 },
-    snout: { len: 5, r: 2.5, square: true }, ears: { type: "floppy", size: 6 }, tail: { type: "up", len: 7, w: 2 },
-    eye: "round", tongue: true, bigNose: true,
-  },
   fox: {
     body: { rx: 9, ry: 4.5 }, leg: { len: 6, w: 2, min: 3 }, head: { rx: 5, ry: 4.5, dx: 1, dy: 0 },
     snout: { len: 6, r: 2, pointy: true }, ears: { type: "pointy", size: 6.5, w: 1.2, tips: true },
@@ -70,7 +65,7 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold"]);
+const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
 const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest"]);
 // Parts in front of the body that grow out of it (no line where they meet).
@@ -301,7 +296,7 @@ const half = (v) => Math.round(v * 2) / 2;
 // Lays out every part for one pet at one stage. Returns the grid plus the
 // spots the face needs.
 function buildPet(genes, stage, frame) {
-  const R = PET_RECIPES[genes.species] || PET_RECIPES.dog;
+  const R = PET_RECIPES[genes.species] || PET_RECIPES.fox;
   const shape = genes.shape || { length: 0, height: 0, ears: 0, tail: 0 };
   const grid = makeGrid();
   const s = stage.body;
@@ -517,13 +512,14 @@ function applyBand(hex, b) {
 // Each pattern places the second (and third) color by body region instead of
 // pure noise: belly/tuxedo on the chest, belly and paws; points on the ears,
 // paws and tail; tabby stripes around the body, legs and tail; patches big
-// and spread out; spots on the back and sides. The body, legs and tail are
+// and spread out; spots on the back and sides; a mask (dogs) a dark cap
+// and back over a light face, chest and legs. The body, legs and tail are
 // ranked together so each color still gets its share. The head is painted
 // on its own and the face (eyes to mouth) stays one clean color, apart from
 // a tidy muzzle on belly and points coats; stripes and patches may mark the
 // forehead, but never right up against the eyes.
 
-const HEAD_PARTS = new Set(["head", "ear", "farear", "fold", "snout", "cap"]);
+const HEAD_PARTS = new Set(["head", "ear", "farear", "fold", "snout", "cap", "flop"]);
 
 function coatValue(pattern, label, x, y, geo, n, splotch) {
   const u = (x - geo.cx) / geo.rx;
@@ -551,6 +547,10 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
     case "spots":
       if (leg || tail || v > 0.35) return -1 + n * 0.1;
       return n;
+    case "mask": // a dark cap, back and tail; a light chest, belly and legs
+      if (leg) return 0.5 + t;
+      if (tail) return -0.5 + Math.max(0, (y - ty) / Math.max(1, tl)) * 0.5;
+      return v * 1.1 + Math.max(0, u - 0.2) * 1.4 + n * 0.1;
     default: // patches
       return n;
   }
@@ -602,19 +602,35 @@ function paintCoat(out, grid, genes, built, hex) {
       const ear = c.l !== "head";
       let color = hex[0];
       const m = geo.muzzle;
-      const muzzle = m && y >= m.top && Math.abs(x - m.c) <= 3;
+      const muzzle = (m && y >= m.top && Math.abs(x - m.c) <= 3) || c.l === "snout";
       if (pattern === "belly") {
         if (muzzle || (fb && y > fb.y1)) color = second;
       } else if (pattern === "points") {
         if (muzzle || ear) color = second;
+      } else if (pattern === "mask") {
+        if (!ear && fb && y >= fb.y0) color = second; // the light face below a dark cap
       } else if (pattern === "stripes") {
-        if (forehead && !ear && Math.sin((x - hx) * 1.4) > 0.55) color = second; // the "M"
+        // a cat's tabby "M" on the forehead
+        if (genes.species === "cat" && forehead && !ear && Math.sin((x - hx) * 1.4) > 0.55) color = second;
       } else if (pattern === "patches") {
         if ((forehead || ear) && !inFace) color = byValue(n(x, y));
       }
       out[y][x] = color;
     }
   }
+}
+
+// A species' chosen design. Breed species assemble it: the pet's breed,
+// with any part a mix borrowed from another breed.
+function speciesDesign(genes) {
+  const design = PET_DESIGNS[genes.species];
+  if (!design || !design.breeds) return design;
+  const shape = genes.shape || {};
+  const breeds = design.breeds;
+  const base = breeds[shape.breed] || Object.values(breeds)[0];
+  const mixed = { ...base };
+  for (const [part, donor] of Object.entries(shape.mix || {})) if (breeds[donor]) mixed[part] = breeds[donor][part];
+  return mixed;
 }
 
 const petCache = new Map();
@@ -626,7 +642,7 @@ function petPixels(genes, growth, frame = 0) {
   const anim = genes.face && genes.face.sparkle ? frame % 36 : `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
   const key = `${genes.seed}|${genes.species}|${genes.variant}|${stage.id}|${anim}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
   if (petCache.has(key)) return petCache.get(key);
-  const design = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || PET_DESIGNS[genes.species];
+  const design = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || speciesDesign(genes);
   const built = design ? buildVariant(genes, stage, frame, design) : buildPet(genes, stage, frame);
   smoothEdges(built.grid);
   const { grid, R } = built;
@@ -703,8 +719,12 @@ function petPixels(genes, growth, frame = 0) {
           const by = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].find(([i, j]) => at(i, j));
           lines.push([x, y, built.softOutline ? blend(out[by[1]][by[0]], PET_OUTLINE, 0.72) : PET_OUTLINE]);
         }
+      } else if (cell.l === "snout" && near.some((n) => n && n.l === "head")) {
+        lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.22)]); // the muzzle: a soft edge
       } else if (!FRONT.has(cell.l) && !BLENDS_IN.has(cell.l) && near.some((n) => n && n.l !== cell.l && FRONT.has(n.l))) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.62)]);
+      } else if (HEADISH.has(cell.l) && near.some((n) => n && n.l === "flop")) {
+        lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.45)]); // a floppy ear over the head
       } else if (BODYISH.has(cell.l) && near.some((n) => n && HEADISH.has(n.l))) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, built.softNeck ? 0.28 : 0.45)]);
       } else if (cell.l !== "face" && near.some((n) => n && n.l === "face")) {
@@ -827,6 +847,43 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: each dog rolls one of these breeds
+  // (genes.shape.breed), and a mix borrows its tail or ears from another
+  // (genes.shape.mix, e.g. {tail: "husky"})
+  dog: {
+    breeds: {
+    classic: {
+      name: "Classic: side view, boxy snout, floppy ears, tail up", facing: "side", pose: "walk", snout: "square", snoutLen: 3.5, snoutR: 2.3,
+      softOutline: true, softNeck: true, eye: "duo",
+      body: { rx: 10, ry: 5 }, leg: { len: 6, w: 3, min: 3 }, head: { rx: 5.3, ry: 4.9 },
+      ears: { type: "floppy", size: 6.5, w: 1 }, tail: { type: "sickle", len: 7, w: 2 },
+    },
+    hound: {
+      name: "Hound: side view, long snout, floppy ear", facing: "side", pose: "walk", snout: "square", snoutLen: 4, snoutR: 1.9,
+      softOutline: true, softNeck: true, eye: "duo",
+      body: { rx: 10, ry: 4.2 }, leg: { len: 7, w: 2, min: 3 }, head: { rx: 4.6, ry: 4.4 },
+      ears: { type: "floppy", size: 6.5, w: 1 }, tail: { type: "sickle", len: 9, w: 1.8 },
+    },
+    shiba: {
+      name: "Shiba: pointed ears, curled tail", facing: "front", pose: "walk", mouth: "dog",
+      softOutline: true, softNeck: true, eye: "duo",
+      body: { rx: 9, ry: 4 }, leg: { len: 6, w: 2, min: 3 }, head: { rx: 5.8, ry: 5 },
+      ears: { size: 5.2, w: 1 }, tail: { type: "curl", len: 9, w: 2.6 },
+    },
+    dachshund: {
+      name: "Dachshund: side view, long body, tiny legs", facing: "side", pose: "walk", snout: "square", snoutLen: 5, snoutR: 1.7,
+      softOutline: true, softNeck: true, eye: "duo",
+      body: { rx: 11.5, ry: 3.6 }, leg: { len: 2.5, w: 2, min: 2 }, head: { rx: 4.4, ry: 4.2 },
+      ears: { type: "floppy", size: 6, w: 1 }, tail: { type: "whip", len: 9, w: 1.4 },
+    },
+    husky: {
+      name: "Husky: side view, pointed ears, curled tail", facing: "side", pose: "walk", snout: "square", snoutLen: 3.5, snoutR: 1.8,
+      softOutline: true, softNeck: true, eye: "duo",
+      body: { rx: 9.5, ry: 4.2 }, leg: { len: 7, w: 2, min: 3 }, head: { rx: 4.8, ry: 4.4 },
+      ears: { size: 5, w: 0.95 }, tail: { type: "curl", len: 10, w: 2.6 },
+    },
+    },
+  },
   // chosen in the pet lab, 2026-10-27: front-facing face with a 7x4 nose and
   // mouth, duo eyes, soft outline, cute proportions
   cat: {
@@ -836,7 +893,10 @@ const PET_DESIGNS = {
   },
 };
 
-const PET_VARIANTS = {};
+const PET_VARIANTS = {
+  // the dog breeds, one lab row each
+  dog: Object.values(PET_DESIGNS.dog.breeds),
+};
 
 function buildVariant(genes, stage, frame, V) {
   const shape = genes.shape || {};
@@ -853,7 +913,8 @@ function buildVariant(genes, stage, frame, V) {
   const loaf = V.pose === "loaf";
   const rx = half(V.body.rx * s + (shape.length || 0) / 2);
   const ry = half(V.body.ry * s * (1 + 0.28 * weight) + (shape.height || 0) / 5);
-  const legLen = Math.max(V.leg.min, Math.round(V.leg.len * ls * (stalk ? 0.75 : 1) + (shape.height || 0) / 2));
+  const legLen = Math.max(V.leg.min, Math.round(V.leg.len * ls * (stalk ? 0.75 : 1) * (1 + (shape.legs || 0) * 0.3) + (shape.height || 0) / 2));
+  const snoutSize = (V.muzzle || 1) * (1 + (shape.snout || 0) * 0.35); // dogs: the snout gene
   const legW = V.leg.w > 1 && s > 0.55 ? V.leg.w : 1;
   const farOffset = legW + 1; // the far legs stand a little behind, on their own
   const cx = 32;
@@ -876,8 +937,13 @@ function buildVariant(genes, stage, frame, V) {
       thick: [[tx, ty], [tx - L * 0.4, ty - L * 0.6], [tx - L * 0.35 - wag, ty - L * 0.9]],
       low: [[tx, ty], [tx - L * 0.55, ty + 0.5], [tx - L * 0.9, ty - L * 0.25 - wag]],
       s: [[tx, ty], [tx - L * 0.35, ty + L * 0.05], [tx - L * 0.5, ty - L * 0.4], [tx - L * 0.35 - wag, ty - L * 0.8]],
+      // dogs
+      otter: [[tx, ty], [tx - L * 0.5, ty + L * 0.05], [tx - L - wag * 0.6, ty - L * 0.3]],
+      sickle: [[tx, ty], [tx - L * 0.3, ty - L * 0.4], [tx - L * 0.15 - wag, ty - L * 0.9]],
+      curl: [[tx, ty], [tx - L * 0.15, ty - L * 0.55], [tx + L * 0.2, ty - L * 0.8], [tx + L * 0.45 + wag * 0.3, ty - L * 0.45]],
     }[V.tail.type];
     if (pts) fillStroke(grid, pts, tw, "tail");
+    if (V.tail.type === "stub") fillEllipse(grid, tx - 0.5, ty - 0.5 - wag * 0.4, Math.max(1.3, tw * 1.2), Math.max(1.3, tw * 1.1), "tail");
   };
 
   // a body: a deeper chest, a tucked waist, the hips, and a belly from `weight`
@@ -937,7 +1003,7 @@ function buildVariant(genes, stage, frame, V) {
   // the head
   const es = V.ears.size * hs * earScale(shape);
   const ew = es * 0.55 * V.ears.w;
-  const face = { eyes: [], nose: null, pink: [], mouth: [], smile: [], tufts: [] };
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [] };
   const eyeSize = V.eye;
   const odd = genes.face && genes.face.odd_eye;
   const iris = (genes.face && genes.face.eyes) || "#7ab84a";
@@ -945,7 +1011,7 @@ function buildVariant(genes, stage, frame, V) {
   if (V.facing === "front") {
     for (const side of [-1, 1]) {
       const base = hx + side * hrx * 0.55;
-      if (!V.ears.fold) fillTri(grid, [[base - ew, hy - hry * 0.35], [base + ew, hy - hry * 0.6], [base + side * ew * 0.25, hy - hry * 0.75 - es]], "ear");
+      if (!V.ears.fold && !V.ears.type) fillTri(grid, [[base - ew, hy - hry * 0.35], [base + ew, hy - hry * 0.6], [base + side * ew * 0.25, hy - hry * 0.75 - es]], "ear");
     }
     if (V.heart) {
       fillEllipse(grid, hx, hy - hry * 0.12, hrx, hry * 0.8, "head");
@@ -954,6 +1020,12 @@ function buildVariant(genes, stage, frame, V) {
       fillEllipse(grid, hx, hy, hrx, hry, "head");
     }
     if (V.cheeks) fillEllipse(grid, hx, hy + hry * 0.3, hrx * V.cheeks, hry * 0.6, "head");
+    for (const side of [-1, 1]) {
+      // dogs: floppy ears hang down the sides of the head; button ears fold over at the top
+      const base = hx + side * hrx * 0.55;
+      if (V.ears.type === "floppy") fillEllipse(grid, hx + side * hrx * 0.95, hy + hry * 0.15, Math.max(1.3, es * 0.26), es * 0.52, "flop");
+      if (V.ears.type === "button") fillTri(grid, [[base - ew, hy - hry * 0.78], [base + ew, hy - hry * 0.62], [base + side * ew * 0.7, hy - hry * 0.3]], "flop");
+    }
     if (V.ears.fold) {
       // folded ears: small round flaps poking up from the head's top corners
       for (const side of [-1, 1]) {
@@ -990,6 +1062,24 @@ function buildVariant(genes, stage, frame, V) {
       face.pink = [[c - 1, top], [c, top], [c + 1, top], [c, top + 1]];
       face.smile.push([c - 3, top + 2], [c, top + 2], [c + 3, top + 2]);
       face.smile.push([c - 2, top + 3], [c - 1, top + 3], [c + 1, top + 3], [c + 2, top + 3]);
+    } else if (V.mouth === "dog") {
+      // a muzzle with a big dark nose on top, a mouth under it, and a
+      // tongue that comes and goes; the eyes a row of fur above the muzzle
+      //   . k k k .
+      //   . . k . .
+      //   b b t b b     (t: the tongue, some frames)
+      ny = Math.round(hy + hry * 0.12);
+      fillEllipse(grid, hx, ny + 1.3, Math.max(2.5, 3.1 * hs * snoutSize), Math.max(1.8, 2.2 * hs * Math.sqrt(snoutSize)), "snout");
+      const isHead = (x, y) => grid[y] && grid[y][x] && (grid[y][x].l === "head" || grid[y][x].l === "snout");
+      ey = ny - eh - 2;
+      let g = gap;
+      const fits = (x0) => [...Array(w + 2).keys()].every((i) => isHead(x0 - 1 + i, ey) && isHead(x0 - 1 + i, ey + eh - 1));
+      while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
+      face.eyes.push({ x: c - g - w, y: ey, size: eyeSize, iris });
+      face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
+      face.noseDark.push([c - 1, ny], [c, ny], [c + 1, ny], [c, ny + 1]);
+      face.smile.push([c - 2, ny + 2], [c - 1, ny + 2], [c + 1, ny + 2], [c + 2, ny + 2]);
+      face.tongue.push([c, ny + 2], [c, ny + 3]);
     } else {
       const eyeTop = Math.round(hy - hry * 0.3) - 1; // eyes sit a pixel high...
       ey = eyeTop + (V.eyesLow ? 1 : 0); // ...unless this design sets them lower
@@ -1020,37 +1110,53 @@ function buildVariant(genes, stage, frame, V) {
     }
   } else {
     // side view: one eye, a snout pointing ahead
-    fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.3], [hx - hrx * 0.05, hy - hry * 0.85], [hx - hrx * 0.75, hy - hry * 0.75 - es * 0.9]], "farear");
+    const floppy = V.ears.type === "floppy";
+    if (!floppy) fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.3], [hx - hrx * 0.05, hy - hry * 0.85], [hx - hrx * 0.75, hy - hry * 0.75 - es * 0.9]], "farear");
     if (V.heart) {
       fillEllipse(grid, hx, hy - hry * 0.15, hrx, hry * 0.78, "head");
       fillTri(grid, [[hx - hrx * 0.92, hy - hry * 0.1], [hx + hrx * 0.98, hy - hry * 0.1], [hx + hrx * 0.3, hy + hry * 0.95]], "head");
     } else {
       fillEllipse(grid, hx, hy, hrx, hry, "head");
     }
-    const sr = Math.max(1.3, 1.8 * hs);
+    const sr = Math.max(1.3, (V.snoutR || 1.8) * hs);
     const sy = hy + hry * 0.3;
-    if (V.snout === "wedge") fillTri(grid, [[hx + hrx * 0.3, sy - sr], [hx + hrx * 0.3, sy + sr], [hx + hrx + 2.5 * hs, sy + sr * 0.3]], "snout");
+    const sl = (V.snoutLen || 0) * hs * snoutSize;
+    if (V.snout === "square") fillRect(grid, hx + hrx * 0.3, sy - sr, hrx * 0.7 + sl, sr * 2, "snout");
+    else if (V.snout === "wedge") fillTri(grid, [[hx + hrx * 0.3, sy - sr], [hx + hrx * 0.3, sy + sr], [hx + hrx + 2.5 * hs, sy + sr * 0.3]], "snout");
     else fillEllipse(grid, hx + hrx * 0.8, sy, 1.8 * hs + 0.6, sr, "snout");
-    fillTri(grid, [[hx - hrx * 0.45, hy - hry * 0.8], [hx + hrx * 0.45, hy - hry * 0.75], [hx - hrx * 0.05, hy - hry * 0.75 - es]], "ear");
+    if (floppy) fillEllipse(grid, hx - hrx * 0.3, hy + es * 0.08, Math.max(1.4, es * 0.32), es * 0.6, "flop");
+    else fillTri(grid, [[hx - hrx * 0.45, hy - hry * 0.8], [hx + hrx * 0.45, hy - hry * 0.75], [hx - hrx * 0.05, hy - hry * 0.75 - es]], "ear");
     const ey = Math.round(hy - hry * 0.35);
     const ex = Math.round(hx + hrx * 0.1);
     face.eyes.push({ x: ex, y: ey, size: eyeSize, iris: odd || iris });
-    const nx = Math.round(hx + hrx + (V.snout === "wedge" ? 2 * hs : 1.6 * hs));
-    const ny = Math.round(sy - sr * 0.5);
-    face.nose = { x: nx - 1, y: ny, w: 2 };
+    if (V.snout === "square") {
+      // a dog's snout: a big dark nose on the tip, the mouth along the bottom, a tongue
+      const nx = Math.round(hx + hrx + sl) - 1;
+      const ny = Math.round(sy - sr);
+      face.noseDark.push([nx, ny], [nx - 1, ny], [nx, ny + 1]);
+      const my = Math.round(sy + sr) - 1;
+      face.smile.push([nx, my], [nx - 1, my], [nx - 2, my]);
+      face.tongue.push([nx - 2, my + 1], [nx - 2, my + 2], [nx - 3, my + 1]);
+    } else {
+      const nx = Math.round(hx + hrx + (V.snout === "wedge" ? 2 * hs : 1.6 * hs));
+      const ny = Math.round(sy - sr * 0.5);
+      face.nose = { x: nx - 1, y: ny, w: 2 };
+    }
   }
 
   relight(grid, "body");
   relight(grid, "head");
+  relight(grid, "snout");
   // where everything is, for painting the coat by body region
   let faceBox = null;
   if (face.eyes.length) {
     const xs = face.eyes.map((e) => e.x);
     const ew2 = EYE_SHAPES[eyeSize][0].length;
-    const lowest = Math.max(...[...face.smile, ...face.pink, ...face.mouth].map(([, y]) => y), face.nose ? face.nose.y : 0, face.eyes[0].y + 1);
+    const lowest = Math.max(...[...face.smile, ...face.pink, ...face.noseDark, ...face.mouth].map(([, y]) => y), face.nose ? face.nose.y : 0, face.eyes[0].y + 1);
     faceBox = { x0: Math.min(...xs) - 1, x1: Math.max(...xs) + ew2, y0: face.eyes[0].y - 1, y1: lowest + 1 };
   }
-  const noseTop = face.pink.length ? Math.min(...face.pink.map(([, y]) => y)) : face.nose ? face.nose.y : null;
+  const noses = [...face.pink, ...face.noseDark];
+  const noseTop = noses.length ? Math.min(...noses.map(([, y]) => y)) : face.nose ? face.nose.y : null;
   const geo = {
     cx, cy, rx, ry, legTop: sit ? GROUND - legLen - ry * 0.6 : cy,
     tail: [cx - rx + 1, cy - ry * 0.4, tailLen], head: [hx, hy, hrx, hry],
@@ -1102,6 +1208,8 @@ function drawFace(dot, at, face, genes, frame, outline) {
   for (const [x, y] of face.mouth) dot(x, y, PET_OUTLINE);
   for (const [x, y] of face.pink) dot(x, y, PET_FIXED.pinknose);
   for (const [x, y] of face.smile) dot(x, y, outline(x, y));
+  for (const [x, y] of face.noseDark) dot(x, y, PET_FIXED.nose);
+  if (frame % 4 < 2) for (const [x, y] of face.tongue) dot(x, y, PET_FIXED.tongue);
   for (const [x, y] of face.tufts) {
     dot(x, y, PET_OUTLINE);
     dot(x, y - 1, PET_OUTLINE);

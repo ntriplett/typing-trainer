@@ -127,3 +127,27 @@ def test_the_palette_is_muted():
     assert g.mute("#e46a28", "orange") != "#e46a28"
     r, gg, b = (int(g.COLORS["flame"].hex[i : i + 2], 16) for i in (1, 3, 5))
     assert max(r, gg, b) - min(r, gg, b) < 150  # no longer fully saturated
+
+
+def test_dogs_roll_a_breed_and_sometimes_a_mix():
+    import collections
+
+    dogs = [g.roll("dog", "golden", "chestnut", seed)["shape"] for seed in range(2000)]
+    breeds = collections.Counter(d["breed"] for d in dogs)
+    assert set(breeds) == set(g.BREEDS["dog"])
+    mixes = [d["mix"] for d in dogs if d["mix"]]
+    assert 0.15 < len(mixes) / len(dogs) < 0.35
+    for d in dogs:
+        for part, donor in d["mix"].items():
+            assert part in g.MIX_PARTS and donor != d["breed"]
+    assert "breed" not in g.roll("cat", "orange", "ash", 1)["shape"]
+
+
+def test_dogs_have_their_own_pattern_odds():
+    import collections
+
+    dogs = collections.Counter(g.roll("dog", "golden", "chestnut", seed)["coat"]["pattern"] for seed in range(3000))
+    assert dogs["belly"] > dogs["stripes"] * 4
+    assert dogs["mask"] > 0
+    cats = collections.Counter(g.roll("cat", "orange", "ash", seed)["coat"]["pattern"] for seed in range(500))
+    assert "mask" not in cats

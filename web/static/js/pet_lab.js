@@ -10,7 +10,7 @@ const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
 // Species being worked on right now (the rest are hidden for the moment).
-const LAB_SPECIES = ["cat"];
+const LAB_SPECIES = ["dog"];
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
@@ -79,7 +79,8 @@ async function roll() {
 function label(pet) {
   const names = pet.color_names.filter(Boolean);
   const pct = pet.coat.shares.filter(Boolean).map((s) => `${Math.round(s * 100)}%`);
-  return `${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.face.sparkle ? " ✨" : ""}`;
+  const breed = pet.shape.breed ? `${pet.shape.breed}${Object.entries(pet.shape.mix || {}).map(([p, d]) => ` + ${d} ${p}`).join("")}<br>` : "";
+  return `${breed}${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.face.sparkle ? " ✨" : ""}`;
 }
 
 function renderLitter() {
@@ -115,8 +116,11 @@ function select(pet) {
   $("ears-value").textContent = (selected.shape.ears + 1).toFixed(1);
   $("opt-tail").value = selected.shape.tail;
   $("opt-sparkle").checked = selected.face.sparkle;
-  $("weight-knob").hidden = !("weight" in selected.shape);
-  $("opt-weight").value = selected.shape.weight || 0;
+  // species-only looks show their sliders when this pet has them
+  for (const key of ["weight", "snout", "legs"]) {
+    $(`${key}-knob`).hidden = !(key in selected.shape);
+    $(`opt-${key}`).value = selected.shape[key] || 0;
+  }
   document.querySelectorAll(".litter-pet").forEach((b) => b.classList.toggle("selected", litter[b.dataset.i].seed === pet.seed));
   showStats();
   drawStages();
@@ -178,6 +182,8 @@ knob("opt-ears", (el) => {
 knob("opt-tail", (el) => (selected.shape.tail = Number(el.value)));
 knob("opt-sparkle", (el) => (selected.face.sparkle = el.checked));
 knob("opt-weight", (el) => (selected.shape.weight = Number(el.value)));
+knob("opt-snout", (el) => (selected.shape.snout = Number(el.value)));
+knob("opt-legs", (el) => (selected.shape.legs = Number(el.value)));
 
 $("opt-species").addEventListener("change", () => {
   fillColors();
