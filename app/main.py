@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pets, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_genes, pets, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -306,6 +306,41 @@ def buy_keyboard_hint(body: HintIn, conn=Depends(get_db), learner_id: int = Depe
         raise HTTPException(status_code=402, detail=f"A keyboard hint costs {price} coins.")
     db.add_coins(conn, learner_id, -price, "keyboard_hint", ref=body.ref or None)
     return {"spent": price, "coin_balance": db.get_coin_balance(conn, learner_id)}
+
+
+# --- pet lab (grow and roll pets for free; dev only, nothing is saved) -----------
+
+
+@app.get("/pet-lab")
+def pet_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pet_lab.html")
+
+
+@app.get("/api/pet-lab/species")
+def pet_lab_species() -> dict:
+    return {
+        species: {
+            "colors": pet_genes.color_catalog(species, set(pet_genes.STARTER_COLORS[species])),
+            "starters": list(pet_genes.STARTER_COLORS[species]),
+        }
+        for species in pet_genes.SPECIES_COLORS
+    }
+
+
+@app.get("/api/pet-lab/roll")
+def pet_lab_roll(species: str, primary: str, secondary: str, seed: int | None = None, count: int = 1) -> dict:
+    """`count` pets from consecutive seeds (a random start if no seed). The
+    third color rolls as if the starters plus the two picks were unlocked."""
+    unlocked = set(pet_genes.STARTER_COLORS.get(species, ())) | {primary, secondary}
+    start = seed if seed is not None else pet_genes.new_seed()
+    try:
+        rolled = [
+            pet_genes.resolve(pet_genes.roll(species, primary, secondary, start + i, unlocked))
+            for i in range(max(1, min(count, 60)))
+        ]
+    except pet_genes.GeneError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"pets": rolled}
 
 
 # --- practice lab (try every practice module) -----------------------------------

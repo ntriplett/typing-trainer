@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Pet Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/teach.css" />
+  <link rel="stylesheet" href="/static/css/pet_lab.css" />
+</head>
+<body>
+  <main class="lab-main">
+    <section class="panel">
+      <h1>Pet lab</h1>
+      <p class="hint">Roll and grow pets for free. Nothing here is saved. Click a pet in the litter to see it in every design, at every stage.</p>
+      <div class="lab-options">
+        <label>Species <select id="opt-species"></select></label>
+        <label>Primary <select id="opt-primary"></select></label>
+        <label>Secondary <select id="opt-secondary"></select></label>
+        <label>Design <select id="opt-variant"></select></label>
+        <label><input id="opt-plain" type="checkbox" /> Plain test color <input id="opt-plain-color" type="color" value="#a88a6a" /></label>
+        <label>Growth <input id="opt-growth" type="range" min="0" max="10" value="10" /> <span id="growth-value">10</span></label>
+        <button id="roll-button" class="button-go">Roll a litter</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Litter</h2>
+      <div id="litter" class="litter"></div>
+    </section>
+
+    <section class="panel" id="closeup" hidden>
+      <h2 class="panel-title">Close-up: seed <span id="close-seed"></span></h2>
+      <div id="variant-rows" class="variant-rows"></div>
+      <div class="lab-options">
+        <label>Pattern
+          <select id="opt-pattern">
+            <option>patches</option><option>spots</option><option>belly</option><option>stripes</option><option>points</option>
+          </select>
+        </label>
+        <label>Splotch <input id="opt-splotch" type="range" min="0.5" max="1" step="0.05" /></label>
+        <label>Length <input id="opt-length" type="range" min="-3" max="3" step="1" /></label>
+        <label>Height <input id="opt-height" type="range" min="-3" max="3" step="1" /></label>
+        <label>Ears <input id="opt-ears" type="range" min="0" max="2" step="0.1" /> <span id="ears-value"></span></label>
+        <label>Tail <input id="opt-tail" type="range" min="-1" max="1" step="0.1" /></label>
+        <label id="weight-knob">Weight <input id="opt-weight" type="range" min="-1" max="1" step="0.1" /></label>
+        <label><input id="opt-sparkle" type="checkbox" /> Sparkly</label>
+      </div>
+      <pre id="close-stats" class="lab-stats"></pre>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script src="/static/js/pet_lab.js"></script>
+</body>
+</html>
