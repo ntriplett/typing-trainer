@@ -2,6 +2,8 @@
 
 Practice time adds up in a "chunk", roughly one per day, at whatever pace
 the learner likes (a few lessons, then the store, then a few more):
+  - half the goal (SEED_SHARE) pays a seed and waters the garden
+    (app/garden.py),
   - reaching the goal (a parent setting, 10 minutes by default) pays
     GOAL_TOKENS arcade tokens (and a coin bonus),
   - another half of the goal on top (1.5x) pays BONUS_TOKENS more, and
@@ -27,7 +29,9 @@ MIN_GOAL_MINUTES = 2
 MAX_GOAL_MINUTES = 60
 DEFAULT_LEARN_VS_PRACTICE = 0.5
 
+SEED_SHARE = 0.5
 BONUS_SHARE = 1.5
+SEEDS = 1
 GOAL_TOKENS = 2
 BONUS_TOKENS = 1
 GOAL_COINS = 100
@@ -97,6 +101,9 @@ def status(conn: sqlite3.Connection, learner_id: int, now: datetime) -> dict:
     resting = bool(chunk and chunk["full_at"])
     return {
         "goal_seconds": goal,
+        "seed_seconds": round(goal * SEED_SHARE),
+        "seed_reached": bool(chunk and chunk["seed_at"]),
+        "seeds": SEEDS,
         "bonus_seconds": round(goal * BONUS_SHARE),
         "practiced_seconds": round(practiced),
         "goal_reached": bool(chunk and chunk["goal_at"]),
@@ -118,7 +125,8 @@ def add_practice(
     conn: sqlite3.Connection, learner_id: int, seconds: float, now: datetime, learned: bool = False
 ) -> list[dict]:
     """Count one finished lesson toward today's chunk and pay any milestone
-    it crossed. Returns the milestones reached: [{"milestone", "tokens", "coins"}].
+    it crossed. Returns the milestones reached: [{"milestone", "tokens",
+    "coins", "seeds"}]. The caller waters the garden on "seed".
 
     A lesson served before the chunk filled up still counts its time
     (capped at the bonus line); it just can't pay a milestone twice.
@@ -133,21 +141,26 @@ def add_practice(
     goal = settings.goal_seconds
     bonus = goal * BONUS_SHARE
     practiced = min(bonus, chunk["practiced_seconds"] + max(0.0, seconds))
-    goal_at, full_at = chunk["goal_at"], chunk["full_at"]
+    goal_at, full_at, seed_at = chunk["goal_at"], chunk["full_at"], chunk["seed_at"]
     reached = []
+    if seed_at is None and practiced >= goal * SEED_SHARE - GRACE_SECONDS:
+        seed_at = now
+        reached.append({"milestone": "seed", "tokens": 0, "coins": 0, "seeds": SEEDS})
     if goal_at is None and practiced >= goal - GRACE_SECONDS:
         goal_at = now
-        reached.append({"milestone": "goal", "tokens": GOAL_TOKENS, "coins": GOAL_COINS})
+        reached.append({"milestone": "goal", "tokens": GOAL_TOKENS, "coins": GOAL_COINS, "seeds": 0})
     if full_at is None and practiced >= bonus - GRACE_SECONDS:
         full_at = now
         practiced = bonus
-        reached.append({"milestone": "bonus", "tokens": BONUS_TOKENS, "coins": 0})
-    db.update_chunk(conn, chunk_id, practiced, chunk["learns"] + int(learned), goal_at, full_at)
+        reached.append({"milestone": "bonus", "tokens": BONUS_TOKENS, "coins": 0, "seeds": 0})
+    db.update_chunk(conn, chunk_id, practiced, chunk["learns"] + int(learned), goal_at, full_at, seed_at)
 
     for m in reached:
         ref = f"chunk:{chunk_id}"
         reason = f"daily_{m['milestone']}"
-        if not db.has_token_entry(conn, learner_id, reason, ref):
+        if m["seeds"] and not db.has_seed_entry(conn, learner_id, reason, ref):
+            db.add_seeds(conn, learner_id, m["seeds"], reason, ref=ref)
+        if m["tokens"] and not db.has_token_entry(conn, learner_id, reason, ref):
             db.add_tokens(conn, learner_id, m["tokens"], reason, ref=ref)
             if m["coins"]:
                 db.add_coins(conn, learner_id, m["coins"], reason, ref=ref)

@@ -176,9 +176,13 @@
 }
 
 .tile-progress {
-  grid-column: span 2;
   --sky: #a8d5e2;
   --ground: #4a6627;
+}
+
+.tile-garden {
+  --sky: #cfe3a4;
+  --ground: #6b4423;
 }
 
 :root[data-night] .tile-arcade .tile-sub {

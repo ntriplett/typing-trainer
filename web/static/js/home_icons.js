@@ -4,7 +4,8 @@
 // (blinking keys, an arcade screen); `me` is /api/me (the pet tile draws
 // your own pet when one comes along).
 //
-// Needs sprites.js (INK, sym), avatar.js (drawGrid), and pets.js loaded first.
+// Needs sprites.js (INK, sym), avatar.js (drawGrid), pets.js, and (for the
+// garden) veggies.js loaded first.
 
 const HOME_INK = INK;
 
@@ -291,6 +292,30 @@ const HOME_ICONS = {
     h: 14,
     draw(px) {
       gridIcon(SHIRT_ROWS, { o: HOME_INK, t: "#3f7fd0", n: "#2a5a9a", T: "#fbf1dc" })(px);
+    },
+  },
+  // Three plants behind a little fence; as many ripe veggies as are
+  // waiting to be picked (me.garden), or empty soil before any planting.
+  garden: {
+    w: 42,
+    h: 24,
+    draw(px, frame, me) {
+      const g = (me && me.garden) || { ready: 0, growing: 0 };
+      const kinds = ["tomato", "carrot"];
+      let ready = Math.min(10, g.ready);
+      kinds.forEach((kind, i) => {
+        if (i >= Math.max(g.growing, g.ready ? 1 : 0)) return drawPlant(px, i * 22, 0, null, frame);
+        const here = i === 1 ? ready : Math.min(ready, 3);
+        ready -= here;
+        drawPlant(px, i * 22, 0, { kind, picked: 0, ready: Math.min(5, here) }, frame + i);
+      });
+      // the fence in front
+      px(0, 21, 42, 1, HOME_INK);
+      px(0, 22, 42, 1, "#d8b98a");
+      for (let x = 1; x < 42; x += 6) {
+        px(x, 18, 3, 6, HOME_INK);
+        px(x + 1, 19, 1, 4, "#f1dcb0");
+      }
     },
   },
   progress: {

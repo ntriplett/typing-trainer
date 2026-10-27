@@ -2,7 +2,7 @@
 // Asks /api/lesson/next, runs warmups and practice on the shared practice
 // stage (practice_stage.js), and hands learn lessons to the teach page
 // (/teach/<module>?lesson=<id>), which comes back here when it's done.
-// After each lesson: how it went, coins and tokens, and Enter for the next
+// After each lesson: how it went, coins, tokens and seeds, and Enter for the next
 // one -- or Esc/Home, since the day is free-form. When today's practice is
 // all done (the bonus is in), it shows when practice opens again.
 
@@ -85,6 +85,7 @@ function rewardsHtml(data) {
   const parts = [];
   if (coins) parts.push(`<span class="coin-icon"></span>+${coins.toLocaleString()} coins`);
   if (tokens) parts.push(`<span class="token-icon big"></span>+${tokens} arcade token${tokens > 1 ? "s" : ""}!`);
+  if (data.seeds_earned && data.seeds_earned.length) parts.push(`<span class="seed-icon big"></span>+1 seed!`);
   return parts.join(" ");
 }
 
@@ -93,6 +94,10 @@ function dayLine(day) {
   if (day.goal_reached) {
     const left = Math.max(1, Math.ceil((day.bonus_seconds - day.practiced_seconds) / 60));
     return `Goal reached! ${left} more minute${left > 1 ? "s" : ""} for a bonus token.`;
+  }
+  if (!day.seed_reached) {
+    const left = Math.max(1, Math.ceil((day.seed_seconds - day.practiced_seconds) / 60));
+    return `${left} more minute${left > 1 ? "s" : ""} to a seed and watering your garden.`;
   }
   const left = Math.max(1, Math.ceil((day.goal_seconds - day.practiced_seconds) / 60));
   return `${left} more minute${left > 1 ? "s" : ""} to your tokens.`;
@@ -125,6 +130,7 @@ async function finishLesson({ keystrokes, skipped }) {
     Header.celebrate(data.coins_earned, data.coin_balance);
     Header.setDay(data.day);
     Header.celebrateTokens(data.tokens_earned, data.token_balance);
+    Header.celebrateSeeds(data);
   }
 }
 

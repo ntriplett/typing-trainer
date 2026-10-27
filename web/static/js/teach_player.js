@@ -191,6 +191,7 @@ async function finish() {
     if (window.Header) {
       Header.setDay(data.day);
       Header.celebrateTokens(data.tokens_earned, data.token_balance);
+      Header.celebrateSeeds(data);
     }
   }
   busy = false;

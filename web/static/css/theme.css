@@ -593,9 +593,86 @@ body[data-particles] main {
   box-shadow: 3px 3px 0 var(--outline), 0 0 12px var(--token-glow);
 }
 
-/* --- the day tracker: a trail that fills toward two token chests ---------------
+/* --- seeds: the third currency (app/garden.py) --------------------------------- */
+
+.seed-icon {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background: url("/static/assets/ui/seed.svg") no-repeat center / contain;
+  flex: none;
+}
+
+.seed-icon.big {
+  width: 40px;
+  height: 40px;
+}
+
+.seed-pill {
+  color: #c8e89a;
+  border-color: var(--moss-dark);
+  min-width: 3.2rem;
+}
+
+.seed-pill.bump {
+  animation: coin-bump 0.4s steps(4);
+  box-shadow: 0 0 0 3px rgba(159, 208, 122, 0.6);
+}
+
+.coin-toast-item.seed-toast {
+  background: #2f4a1e;
+  color: #c8e89a;
+  border-color: var(--moss-dark);
+  box-shadow: 3px 3px 0 var(--outline);
+}
+
+/* After the seed: the watering can pours over the garden (header.js). */
+.watering {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 11;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.6rem 1rem 0.4rem;
+  background: #cfe3a4;
+  border: 4px solid var(--outline);
+  box-shadow: 4px 4px 0 var(--moss-dark);
+  color: #2f4a1e;
+  font-size: 22px;
+  pointer-events: none;
+  animation: watering-in 0.5s steps(5);
+}
+
+.watering p {
+  margin: 0;
+}
+
+.watering-art {
+  width: 264px;
+  height: 144px;
+  image-rendering: pixelated;
+}
+
+.watering.done {
+  opacity: 0;
+  transition: opacity 1s steps(5);
+}
+
+@keyframes watering-in {
+  from {
+    transform: translate(-50%, 40px);
+    opacity: 0;
+  }
+}
+
+/* --- the day tracker: a trail that fills toward a seed and two token chests ------
    Built by header.js (DayTracker), in the top bar and bigger on the home page.
-   The goal chest sits at 2/3 of the trail; the bonus chest at the end. */
+   The seed sits at 1/3 of the trail (half the goal), the goal chest at 2/3,
+   and the bonus chest at the end. */
 
 .day-tracker {
   display: inline-flex;
@@ -693,6 +770,28 @@ body[data-particles] main {
   transform: translate(9px, -4px);
 }
 
+.seed-chest .seed-icon {
+  width: 14px;
+  height: 14px;
+  filter: grayscale(0.7) brightness(0.8);
+  opacity: 0.8;
+}
+
+.day-tracker.big .seed-chest .seed-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.day-chest.seed-chest.open {
+  border-color: #9fd07a;
+  box-shadow: 0 0 0 2px var(--moss-dark), 0 0 10px rgba(159, 208, 122, 0.6);
+}
+
+.seed-chest.open .seed-icon {
+  filter: none;
+  opacity: 1;
+}
+
 .day-chest.open {
   border-color: var(--token);
   box-shadow: 0 0 0 2px var(--token-deep), 0 0 10px var(--token-glow);
@@ -754,10 +853,10 @@ body[data-particles] main {
   color: var(--heading);
 }
 
-/* each label sits under its chest: the goal at 2/3, the extra at the end */
+/* each label sits under its marker: the seed at 1/3, the goal at 2/3, the extra at the end */
 .day-legend {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   margin-right: 18px;
   font-size: 20px;
   color: var(--ink-soft);
@@ -790,6 +889,8 @@ body[data-particles] main {
   .token-pill.bump,
   .coin-toast-item,
   .day-chest.pop,
+  .seed-pill.bump,
+  .watering,
   .token-icon::after {
     animation: none;
   }

@@ -1,0 +1,157 @@
+/* The garden: a grassy bed of 10 spots, a basket and the veggie pantry.
+   Frames, buttons, and colors come from theme.css. */
+
+.garden-hero {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.garden-hero h1 {
+  margin: 0;
+  font-size: 40px;
+  color: var(--heading);
+}
+
+.garden-wallet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 8rem;
+  padding: 0.75rem 1rem;
+  background: #2f4a1e;
+  border: 4px solid var(--outline);
+  box-shadow: inset 0 0 0 3px var(--moss-dark);
+  color: #c8e89a;
+  font-size: 40px;
+  text-shadow: 2px 2px 0 var(--outline);
+}
+
+.garden-wallet .seed-icon.big {
+  width: 60px;
+  height: 60px;
+}
+
+.garden-hint {
+  font-size: 22px;
+  margin: 0.2rem 0 0;
+}
+
+.garden-message {
+  font-size: 22px;
+  color: var(--moss-dark);
+  text-align: center;
+  min-height: 1.2em;
+}
+
+:root[data-night] .garden-message {
+  color: #9fd07a;
+}
+
+/* the bed: grass with two rows of five spots */
+.garden-bed {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  padding: 1rem;
+  background: repeating-linear-gradient(90deg, #7fa64a 0 8px, #739a40 8px 16px);
+  border: 4px solid var(--outline);
+  box-shadow: inset 0 0 0 4px #5e8f34, 4px 4px 0 var(--wood-dark);
+}
+
+.garden-spot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem 0.2rem 0.4rem;
+  background: rgba(59, 36, 23, 0.12);
+  border: 3px solid transparent;
+  border-image: none;
+  box-shadow: none;
+  color: #fbf1dc;
+  font-size: 18px;
+  text-shadow: 2px 2px 0 var(--outline);
+  cursor: pointer;
+}
+
+.garden-spot:hover,
+.garden-spot.selected {
+  border-color: #f6d465;
+  background: rgba(246, 212, 101, 0.18);
+}
+
+.garden-spot.selected {
+  box-shadow: 0 0 0 3px var(--outline);
+}
+
+.garden-spot.ripe .spot-label {
+  color: #f6d465;
+}
+
+.spot-art {
+  width: 100%;
+  max-width: 120px;
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
+
+.garden-keys {
+  font-size: 18px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.garden-shelf {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 1rem;
+}
+
+.garden-shelf h2 {
+  margin: 0 0 0.4rem;
+  font-size: 28px;
+  color: var(--heading);
+}
+
+.garden-basket.full {
+  box-shadow: 0 0 0 3px var(--leaf-gold);
+}
+
+.veggie-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.veggie-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 24px;
+}
+
+.veggie-icon {
+  width: 32px;
+  height: 40px;
+  image-rendering: pixelated;
+}
+
+.veggie-empty {
+  margin: 0;
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 760px) {
+  .garden-bed {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .garden-shelf {
+    grid-template-columns: 1fr;
+  }
+}

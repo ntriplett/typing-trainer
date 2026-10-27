@@ -189,9 +189,54 @@ CREATE TABLE IF NOT EXISTS practice_chunk (
     practiced_seconds REAL NOT NULL DEFAULT 0,
     learns INTEGER NOT NULL DEFAULT 0,
     goal_at TEXT,
-    full_at TEXT
+    full_at TEXT,
+    seed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_practice_chunk_learner ON practice_chunk(learner_id);
+
+-- Seeds: the third currency (same shape as token_ledger). Earned at half
+-- the daily goal, spent by planting in the garden (app/garden.py).
+CREATE TABLE IF NOT EXISTS seed_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    ref TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seed_ledger_learner ON seed_ledger(learner_id);
+
+-- Picked veggies (pet food), one ledger per kind of veggie.
+CREATE TABLE IF NOT EXISTS veggie_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    kind TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_veggie_ledger_learner ON veggie_ledger(learner_id);
+
+-- One planted seed per garden spot (app/garden.py): ripe counts how many
+-- of its veggies have ripened, picked how many of those were taken.
+CREATE TABLE IF NOT EXISTS garden_plot (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    slot INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    planted_at TEXT NOT NULL,
+    watered_at TEXT NOT NULL,
+    ripe INTEGER NOT NULL DEFAULT 0,
+    picked INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learner_id, slot)
+);
+
+-- Ripe veggies saved from withered plants, waiting to be collected.
+CREATE TABLE IF NOT EXISTS garden_basket (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    kind TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (learner_id, kind)
+);
 
 -- Character designer choices (app/appearance.py owns the allowed values).
 CREATE TABLE IF NOT EXISTS appearance (
@@ -235,6 +280,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 # won't touch an existing table, so older DBs get them via ALTER TABLE.
 _ADDED_COLUMNS = [
     ("appearance", "eye_color", "TEXT NOT NULL DEFAULT 'brown'"),
+    ("practice_chunk", "seed_at", "TEXT"),
 ]
 
 
@@ -624,6 +670,94 @@ def get_token_balance(conn: sqlite3.Connection, learner_id: int) -> int:
     return row["balance"]
 
 
+# --- seeds, veggies + the garden ------------------------------------------------
+
+
+def add_seeds(conn: sqlite3.Connection, learner_id: int, amount: int, reason: str, ref: str | None = None) -> None:
+    """Append one seed ledger row. Positive earns, negative plants."""
+    conn.execute(
+        "INSERT INTO seed_ledger (learner_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, amount, reason, ref, _now_iso()),
+    )
+
+
+def has_seed_entry(conn: sqlite3.Connection, learner_id: int, reason: str, ref: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM seed_ledger WHERE learner_id = ? AND reason = ? AND ref = ?", (learner_id, reason, ref)
+    ).fetchone()
+    return row is not None
+
+
+def get_seed_balance(conn: sqlite3.Connection, learner_id: int) -> int:
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS balance FROM seed_ledger WHERE learner_id = ?", (learner_id,)
+    ).fetchone()
+    return row["balance"]
+
+
+def add_veggies(conn: sqlite3.Connection, learner_id: int, kind: str, amount: int, reason: str) -> None:
+    conn.execute(
+        "INSERT INTO veggie_ledger (learner_id, kind, amount, reason, created_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, kind, amount, reason, _now_iso()),
+    )
+
+
+def get_veggies(conn: sqlite3.Connection, learner_id: int) -> dict[str, int]:
+    """kind -> count, kinds with none left out."""
+    rows = conn.execute(
+        "SELECT kind, SUM(amount) AS n FROM veggie_ledger WHERE learner_id = ? GROUP BY kind HAVING n > 0",
+        (learner_id,),
+    )
+    return {r["kind"]: r["n"] for r in rows}
+
+
+def list_plots(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute("SELECT * FROM garden_plot WHERE learner_id = ? ORDER BY slot", (learner_id,))
+    return [
+        {**dict(r), "planted_at": _parse_dt(r["planted_at"]), "watered_at": _parse_dt(r["watered_at"])}
+        for r in rows
+    ]
+
+
+def plant_plot(conn: sqlite3.Connection, learner_id: int, slot: int, kind: str, when: datetime) -> None:
+    conn.execute(
+        "INSERT INTO garden_plot (learner_id, slot, kind, planted_at, watered_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, slot, kind, when.isoformat(), when.isoformat()),
+    )
+
+
+def update_plot(
+    conn: sqlite3.Connection, learner_id: int, slot: int, ripe: int, picked: int, watered_at: datetime
+) -> None:
+    conn.execute(
+        "UPDATE garden_plot SET ripe = ?, picked = ?, watered_at = ? WHERE learner_id = ? AND slot = ?",
+        (ripe, picked, watered_at.isoformat(), learner_id, slot),
+    )
+
+
+def clear_plot(conn: sqlite3.Connection, learner_id: int, slot: int) -> None:
+    conn.execute("DELETE FROM garden_plot WHERE learner_id = ? AND slot = ?", (learner_id, slot))
+
+
+def add_to_basket(conn: sqlite3.Connection, learner_id: int, kind: str, count: int) -> None:
+    conn.execute(
+        """
+        INSERT INTO garden_basket (learner_id, kind, count) VALUES (?, ?, ?)
+        ON CONFLICT (learner_id, kind) DO UPDATE SET count = count + excluded.count
+        """,
+        (learner_id, kind, count),
+    )
+
+
+def get_basket(conn: sqlite3.Connection, learner_id: int) -> dict[str, int]:
+    rows = conn.execute("SELECT kind, count FROM garden_basket WHERE learner_id = ? AND count > 0", (learner_id,))
+    return {r["kind"]: r["count"] for r in rows}
+
+
+def empty_basket(conn: sqlite3.Connection, learner_id: int) -> None:
+    conn.execute("DELETE FROM garden_basket WHERE learner_id = ?", (learner_id,))
+
+
 # --- taught lessons + practice chunks ------------------------------------------------
 
 
@@ -651,6 +785,7 @@ def latest_chunk(conn: sqlite3.Connection, learner_id: int) -> dict | None:
         "started_at": _parse_dt(row["started_at"]),
         "goal_at": _parse_dt(row["goal_at"]),
         "full_at": _parse_dt(row["full_at"]),
+        "seed_at": _parse_dt(row["seed_at"]),
     }
 
 
@@ -668,14 +803,16 @@ def update_chunk(
     learns: int,
     goal_at: datetime | None,
     full_at: datetime | None,
+    seed_at: datetime | None = None,
 ) -> None:
     conn.execute(
-        "UPDATE practice_chunk SET practiced_seconds = ?, learns = ?, goal_at = ?, full_at = ? WHERE id = ?",
+        "UPDATE practice_chunk SET practiced_seconds = ?, learns = ?, goal_at = ?, full_at = ?, seed_at = ? WHERE id = ?",
         (
             practiced_seconds,
             learns,
             goal_at.isoformat() if goal_at else None,
             full_at.isoformat() if full_at else None,
+            seed_at.isoformat() if seed_at else None,
             chunk_id,
         ),
     )

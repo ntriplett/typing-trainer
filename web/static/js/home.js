@@ -115,6 +115,16 @@ function render(me) {
   DayTracker.render($("home-day"), me.day, { big: true });
   $("arcade-tokens").textContent = `${me.tokens} token${me.tokens === 1 ? "" : "s"}`;
   renderLocks(me);
+  $("garden-sub").textContent = gardenWords(me);
+}
+
+function gardenWords(me) {
+  const g = me.garden;
+  if (g.ready) return `${g.ready} veggie${g.ready > 1 ? "s" : ""} to pick!`;
+  if (g.basket_total) return "Veggies in your basket!";
+  if (g.seeds && g.growing < 10) return "Plant your seed!";
+  if (g.growing) return "Growing nicely";
+  return "Practice for a seed";
 }
 
 Header.ready.then((me) => {

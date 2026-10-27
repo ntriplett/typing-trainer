@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, lessons, pets, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pets, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -163,6 +163,11 @@ def bedroom_page() -> FileResponse:
 @app.get("/arcade")
 def arcade_page() -> FileResponse:
     return FileResponse(WEB_DIR / "arcade.html")
+
+
+@app.get("/garden")
+def garden_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "garden.html")
 
 
 @app.get("/parent")
@@ -646,6 +651,46 @@ def arcade_play(game_id: str, conn=Depends(get_db), learner_id: int = Depends(cu
     return _me(conn, learner_id)
 
 
+# --- garden ---------------------------------------------------------------------
+
+
+def _garden_summary(g: dict) -> dict:
+    """The bit of the garden the home tile shows."""
+    return {k: g[k] for k in ("ready", "growing", "basket_total", "seeds")}
+
+
+class SpotIn(BaseModel):
+    slot: int
+
+
+def _garden_action(action, conn, learner_id: int, *args) -> dict:
+    try:
+        done = action(conn, learner_id, *args, now())
+    except garden.GardenError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {**_me(conn, learner_id), "done": done, "garden": garden.status(conn, learner_id, now())}
+
+
+@app.get("/api/garden")
+def garden_status(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), "garden": garden.status(conn, learner_id, now())}
+
+
+@app.post("/api/garden/plant")
+def garden_plant(body: SpotIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _garden_action(garden.plant, conn, learner_id, body.slot)
+
+
+@app.post("/api/garden/pick")
+def garden_pick(body: SpotIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _garden_action(garden.pick, conn, learner_id, body.slot)
+
+
+@app.post("/api/garden/basket")
+def garden_basket(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _garden_action(garden.collect_basket, conn, learner_id)
+
+
 # --- player + store API ---------------------------------------------------------
 
 
@@ -655,6 +700,8 @@ def _me(conn, learner_id: int) -> dict:
         "learner": {"id": learner.id, "name": learner.name},
         "coins": db.get_coin_balance(conn, learner_id),
         "tokens": db.get_token_balance(conn, learner_id),
+        "seeds": db.get_seed_balance(conn, learner_id),
+        "garden": _garden_summary(garden.status(conn, learner_id, now())),
         "day": daily.status(conn, learner_id, now()),
         "unlocks": unlocks.status(conn, learner_id),
         "avatar": store.get_avatar(conn, learner_id),

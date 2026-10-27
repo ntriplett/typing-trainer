@@ -19,7 +19,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 
-from app import analytics, bigram_model, brain, daily, db, profiles, skill_model
+from app import analytics, bigram_model, brain, daily, db, garden, profiles, skill_model
 from app.activities.base import ActivityContent, ActivityResult, KeystrokeEvent
 from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import SkillSnapshot, snapshot_from_stats
@@ -360,13 +360,21 @@ def complete(
 
     milestones = daily.add_practice(conn, learner_id, active_seconds, now, learned=p.kind == "learn")
     coins_earned += [{"amount": m["coins"], "reason": f"daily_{m['milestone']}"} for m in milestones if m["coins"]]
+    watered = None
+    if any(m["milestone"] == "seed" for m in milestones):
+        watered = {"ripened": garden.water(conn, learner_id, now)}
     return {
         "result": asdict(result),
         "kind": p.kind,
         "finished_share": finished_share,
         "active_seconds": active_seconds,
         "coins_earned": coins_earned,
-        "tokens_earned": [{"amount": m["tokens"], "reason": f"daily_{m['milestone']}"} for m in milestones],
+        "tokens_earned": [
+            {"amount": m["tokens"], "reason": f"daily_{m['milestone']}"} for m in milestones if m["tokens"]
+        ],
+        "seeds_earned": [{"amount": m["seeds"], "reason": f"daily_{m['milestone']}"} for m in milestones if m["seeds"]],
+        "watered": watered,
+        "seed_balance": db.get_seed_balance(conn, learner_id),
         "coin_balance": db.get_coin_balance(conn, learner_id),
         "token_balance": db.get_token_balance(conn, learner_id),
         "day": daily.status(conn, learner_id, now),

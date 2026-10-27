@@ -92,7 +92,11 @@ def test_reaching_the_goal_pays_tokens_and_the_bonus_rests_practice(page: Page, 
     type_current_lesson(page)
     expect(page.locator("#result-rewards")).to_contain_text("+2 arcade tokens")
     expect(page.locator("#token-count")).to_have_text("2")
-    expect(page.locator(".topbar .day-chest.open")).to_have_count(1)
+    # it crossed half the goal too: a seed, and the garden got watered
+    expect(page.locator(".topbar .day-chest.open")).to_have_count(2)
+    expect(page.locator("#result-rewards")).to_contain_text("+1 seed")
+    expect(page.locator("#seed-count")).to_have_text("1")
+    expect(page.locator(".watering")).to_contain_text("garden got watered")
 
     practiced_already(tmp_path, 175)
     page.keyboard.press("Enter")

@@ -20,7 +20,7 @@ def test_home_has_a_tile_for_everything(page: Page, live_server):
     page.goto(live_server)
     # big ones first, then the four small ones
     hrefs = page.eval_on_selector_all(".home-tile", "tiles => tiles.map(t => t.getAttribute('href'))")
-    assert hrefs == ["/session", "/arcade", "/analysis", "/store", "/pets", "/bedroom", "/wardrobe"]
+    assert hrefs == ["/session", "/arcade", "/analysis", "/garden", "/store", "/pets", "/bedroom", "/wardrobe"]
     expect(page.locator("#home-day .day-label")).to_have_text("0 / 10 min")
     expect(page.locator("#practice-sub")).to_have_text("Your next lesson is ready!")
     # the art is drawn
@@ -37,7 +37,7 @@ def test_token_pill_and_day_tracker_are_in_the_top_bar(page: Page, live_server):
     page.goto(f"{live_server}/store")
     expect(page.locator("#token-count")).to_have_text("0")
     expect(page.locator(".topbar .day-tracker")).to_be_visible()
-    expect(page.locator(".topbar .day-chest")).to_have_count(2)
+    expect(page.locator(".topbar .day-chest")).to_have_count(3)  # seed, goal, bonus
 
 
 def test_arcade_play_spends_tokens_and_opens_the_game(page: Page, live_server, tmp_path):
