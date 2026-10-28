@@ -207,3 +207,13 @@ def test_cats_roll_breeds_and_cat_coats():
     pats = collections.Counter(c["coat"]["pattern"] for c in cats)
     assert set(pats) == set(g.CAT_PATTERNS)
     assert pats["tabby"] > pats["van"]
+
+
+def test_goats_roll_breeds_mixes_and_goat_coats():
+    import collections
+
+    goats = [g.roll("goat", "snow", "chestnut", seed) for seed in range(2000)]
+    assert {x["shape"]["breed"] for x in goats} == set(g.BREEDS["goat"])
+    assert all(set(x["shape"]["mix"]) <= {"ears", "goatHorns", "beard"} for x in goats)
+    pats = collections.Counter(x["coat"]["pattern"] for x in goats)
+    assert set(pats) == {"solid", "swiss", "chamoisee", "coublanc", "sundgau", "blacktan", "spotted", "boer"}

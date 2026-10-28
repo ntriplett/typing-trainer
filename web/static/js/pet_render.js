@@ -560,7 +560,7 @@ function paintCoat(out, grid, genes, built, hex) {
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
-    sheep: [SHEEP_PATTERNS, paintSheep],
+    sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1266,6 +1266,158 @@ function paintCat(out, grid, genes, built, hex) {
   }
 }
 
+// --- goat coats: real goat markings -------------------------------------------------
+// Three passes (body and neck, head and beard, ears). Face stripes run in
+// the fur just inside the eyes, never across them. The first pick is the
+// coat; light parts take the second pick if it's lighter (else a cream of
+// the coat), dark parts the second if darker (else a deep shade), and black
+// and tan points the second pick.
+
+const GOAT_PATTERNS = new Set(["solid", "swiss", "chamoisee", "coublanc", "sundgau", "blacktan", "spotted", "boer"]);
+const GOAT_BODY = new Set(["body", "neck", "leg", "farleg", "tail", "fluff"]);
+const GOAT_HEAD = new Set(["head", "snout", "beard"]);
+const GOAT_EARS = new Set(["ear", "farear", "flop"]);
+
+function paintGoat(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const face = built.face;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const main = c0;
+  const light = luminance(c1) > luminance(c0) + 0.1 ? c1 : blend(c0, "#fbf6ec", 0.72);
+  const dark = luminance(c1) < luminance(c0) - 0.1 ? c1 : blend(c0, PET_OUTLINE, 0.5);
+  const tan = c1 !== c0 ? c1 : blend(c0, "#c8a06a", 0.6);
+  const noise2 = valueNoise(genes.seed ^ 0x5bd1e995);
+  const s = built.scale;
+
+  let minX = GRID_W;
+  let maxX = -1;
+  let minY = GRID_H;
+  let maxY = -1;
+  const topAt = {};
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || c.l !== "body") continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      if (topAt[x] === undefined) topAt[x] = y;
+    }
+  }
+  const bw = Math.max(1, maxX - minX);
+  const bh = Math.max(1, maxY - minY);
+  const legTop = geo.legTop;
+
+  // 1. the body, neck, legs and tail
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !GOAT_BODY.has(c.l)) continue;
+      const fx = (x - minX) / bw; // 0 rump .. 1 chest
+      const fy = (y - minY) / bh;
+      const leg = c.l === "leg" || c.l === "farleg";
+      const lowLeg = leg && y >= legTop + (GROUND - legTop) * 0.45;
+      const belly = c.l === "body" && fy > 0.78;
+      const spine = c.l === "body" && topAt[x] !== undefined && y - topAt[x] <= 1;
+      const front = c.l === "neck" || (c.l === "body" && fx > 0.55) || (leg && x > geo.cx);
+      let color = main;
+      switch (pattern) {
+        case "swiss":
+          if (lowLeg) color = light;
+          break;
+        case "chamoisee":
+          if (spine || belly || lowLeg) color = dark;
+          break;
+        case "coublanc":
+          color = front ? light : main;
+          break;
+        case "sundgau":
+          if (lowLeg || belly) color = light;
+          break;
+        case "blacktan":
+          if (lowLeg || belly) color = tan;
+          break;
+        case "spotted": {
+          const u = (x - geo.cx) / s;
+          const v = (y - geo.cy) / s;
+          if (!leg && noise2(u * 0.5 + 5, v * 0.5) > 0.7) color = light;
+          break;
+        }
+        case "boer":
+          color = c.l === "neck" ? main : light;
+          break;
+        default:
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 2. the head and beard
+  const [hx] = geo.head;
+  const eyes = face.eyes;
+  const eyeTop = eyes.length ? Math.min(...eyes.map((e) => e.y)) : 0;
+  const eyeBottom = eyes.length ? Math.max(...eyes.map((e) => e.y + 1)) : 0;
+  const c = Math.round(hx);
+  // front: the fur columns just inside each eye; side: a line above the eye running forward
+  const stripeCols = built.geo.faceBox && V_FRONT(face) ? eyes.map((e) => (e.x < c ? e.x + 2 : e.x - 1)) : [];
+  const sideEyeX = eyes.length ? eyes[0].x : c;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const cell = grid[y][x];
+      if (!cell || !GOAT_HEAD.has(cell.l)) continue;
+      const stripe = stripeCols.length
+        ? stripeCols.includes(x) && y >= eyeTop - 3
+        : y === eyeTop - 1 && x >= sideEyeX - 1;
+      const muzzle = cell.l === "snout" && y > eyeBottom;
+      const eyebrow = eyes.some((e) => y === e.y - 1 && x >= e.x && x <= e.x + 1);
+      let color = main;
+      switch (pattern) {
+        case "swiss":
+        case "sundgau":
+          if (stripe || muzzle) color = light;
+          break;
+        case "chamoisee":
+          if (muzzle || (stripeCols.length && Math.abs(x - c) <= 0.6 && y >= eyeTop - 3)) color = dark;
+          break;
+        case "coublanc":
+          color = light;
+          break;
+        case "blacktan":
+          if (muzzle || eyebrow) color = tan;
+          break;
+        case "boer":
+          color = main;
+          break;
+        default:
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 3. the ears
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const cell = grid[y][x];
+      if (!cell || !GOAT_EARS.has(cell.l)) continue;
+      const isEar = (n) => n && GOAT_EARS.has(n.l);
+      const rim = !isEar(grid[y - 1] && grid[y - 1][x]) || !isEar(grid[y + 1] && grid[y + 1][x]);
+      let color = pattern === "coublanc" ? light : main;
+      if (pattern === "swiss" && rim) color = light;
+      out[y][x] = color;
+    }
+  }
+}
+
+// A face drawn front-on has two eyes.
+function V_FRONT(face) {
+  return face.eyes.length > 1;
+}
+
 const petCache = new Map();
 
 // The finished pixels: {w, h, pix: rows of hex or null}. Cached per pet,
@@ -1480,6 +1632,48 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: six goat breeds; a mix borrows
+  // another breed's ears, horns or beard
+  goat: {
+    breeds: {
+      horned: {
+        name: "Face to us: horns, beard, ears out", facing: "front", pose: "walk", mouth: "goat", beard: true, goatHorns: 4.5,
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 9, ry: 4.2 }, leg: { len: 7, w: 1, min: 4 }, head: { rx: 4.2, ry: 5.2 },
+        ears: { type: "out", size: 4.5, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+      nubian: {
+        name: "Nubian: long floppy ears, Roman nose, side view", facing: "side", pose: "walk", snout: "goat", roman: true, beard: true, neck: { len: 5, w: 3.2 },
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 9, ry: 4.2 }, leg: { len: 7.5, w: 1, min: 4 }, head: { rx: 4.3, ry: 4 },
+        ears: { type: "floppy", size: 7, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+      pygmy: {
+        name: "Pygmy: stout, short legs, little horns, face to us", facing: "front", pose: "walk", mouth: "goat", beard: true, goatHorns: 2.6,
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 8.6, ry: 4.7 }, leg: { len: 4.5, w: 1, min: 3 }, head: { rx: 4.4, ry: 5 },
+        ears: { type: "out", size: 4, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+      ibex: {
+        name: "Ibex: huge swept horns, side view", facing: "side", pose: "walk", snout: "goat", beard: true, goatHorns: 8, neck: { len: 5, w: 3.4 },
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 9.5, ry: 4.4 }, leg: { len: 7, w: 1, min: 4 }, head: { rx: 4.4, ry: 3.9 },
+        ears: { type: "out", size: 3.5, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+      saanen: {
+        name: "Saanen: white dairy goat, no horns, tall neck, side view", facing: "side", pose: "walk", snout: "goat", beard: true, neck: { len: 6, w: 3.2 },
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 9.2, ry: 4.2 }, leg: { len: 7.5, w: 1, min: 4 }, head: { rx: 4.3, ry: 3.9 },
+        ears: { type: "out", size: 4.8, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+      dwarf: {
+        name: "Nigerian Dwarf: small and compact, little horns, side view", facing: "side", pose: "walk", snout: "goat", beard: true, goatHorns: 2.8, neck: { len: 4, w: 3 },
+        softOutline: true, softNeck: true, hooves: true, eye: "duo",
+        body: { rx: 7.8, ry: 4 }, leg: { len: 5, w: 1, min: 3 }, head: { rx: 4.2, ry: 3.9 },
+        ears: { type: "out", size: 4.2, w: 1 }, tail: { type: "flag", len: 4, w: 2 },
+      },
+    },
+  },
   // chosen in the pet lab, 2026-10-27: five sheep breeds; a mix borrows
   // another breed's ears, horns or forehead tuft
   sheep: {
@@ -1675,6 +1869,7 @@ const PET_VARIANTS = {
   fox: Object.values(PET_DESIGNS.fox.breeds),
   sheep: Object.values(PET_DESIGNS.sheep.breeds),
   cat: Object.values(CAT_BREEDS),
+  goat: Object.values(PET_DESIGNS.goat.breeds),
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -1866,6 +2061,15 @@ function buildVariant(genes, stage, frame, V) {
     leg(frontX - 0.5, cy, step ? 0 : 1, "leg");
     hx = cx + rx * (stalk ? 0.95 : V.headMin ? 0.9 : V.woolly ? 1.02 : 0.78);
     hy = stalk ? cy - ry * 0.4 : V.woolly ? cy - ry * 0.55 - hry * 0.25 : cy - ry * (V.headMin ? 1 : 0.75) - hry * (V.headMin ? 0.7 : 0.45);
+    if (V.neck) {
+      // a goat holds its head up on a short neck
+      const nl = V.neck.len * s;
+      const nw = Math.max(2.5, V.neck.w * Math.max(s, 0.7));
+      hx = cx + rx * 0.92;
+      hy = cy - ry * 0.75 - nl;
+      // angled forward: from the top of the chest up to under the head
+      fillStroke(grid, [[cx + rx * 0.62, cy - ry * 0.2], [hx - 0.5, hy + hry * 0.4]], nw / 2, "neck");
+    }
   }
 
   // the head
@@ -1981,6 +2185,21 @@ function buildVariant(genes, stage, frame, V) {
       while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
       face.eyes.push({ x: c - g - w, y: ey, size: eyeSize, iris });
       face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
+    } else if (V.mouth === "goat") {
+      // a long face: eyes high, nostrils low on the muzzle, a beard below
+      const isFace = (x, y) => grid[y] && grid[y][x] && (grid[y][x].l === "head" || grid[y][x].l === "snout");
+      fillEllipse(grid, hx, hy + hry * 0.55, Math.max(2.2, hrx * 0.62), Math.max(1.8, hry * 0.45), "snout");
+      let chin = Math.round(hy);
+      while (isFace(c, chin + 1)) chin++;
+      ny = chin - 2;
+      face.smile.push([c - 1, ny], [c + 1, ny], [c, ny + 1]);
+      if (V.beard) fillTri(grid, [[c - 1.5, chin + 0.5], [c + 2.5, chin + 0.5], [c + 0.5, chin + 0.5 + 4.2 * hs]], "beard");
+      ey = Math.round(hy - hry * 0.35) - eh + 1;
+      let g = gap;
+      const fits = (x0) => [...Array(w + 2).keys()].every((i) => isFace(x0 - 1 + i, ey) && isFace(x0 - 1 + i, ey + eh - 1));
+      while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
+      face.eyes.push({ x: c - g - w, y: ey, size: eyeSize, iris });
+      face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
     } else if (V.mouth === "fox") {
       fillTri(grid, [[hx - hrx * 0.5, hy - hry * 0.05], [hx + hrx * 0.5, hy - hry * 0.05], [hx, hy + hry * 1.02]], "snout");
       const isFace = (x, y) => grid[y] && grid[y][x] && (grid[y][x].l === "head" || grid[y][x].l === "snout");
@@ -2059,7 +2278,11 @@ function buildVariant(genes, stage, frame, V) {
     const sr = Math.max(1.3, (V.snoutR || 1.8) * hs);
     const sy = hy + hry * 0.3;
     const sl = (V.snoutLen || 0) * hs * snoutSize;
-    if (V.snout === "sheep") fillEllipse(grid, hx + hrx * 0.7, sy + 0.5, Math.max(1.8, 2.3 * hs), Math.max(1.6, 1.9 * hs), "snout");
+    if (V.snout === "goat") {
+      // a long face tapering to the muzzle; a Roman nose bulges along the top
+      fillEllipse(grid, hx + hrx * 0.9, sy, Math.max(2.4, 3.1 * hs * snoutSize), Math.max(1.4, 1.7 * hs), "snout");
+      if (V.roman) fillEllipse(grid, hx + hrx * 0.75, sy - 1.2 * hs, Math.max(1.8, 2.4 * hs), Math.max(1.2, 1.3 * hs), "snout");
+    } else if (V.snout === "sheep") fillEllipse(grid, hx + hrx * 0.7, sy + 0.5, Math.max(1.8, 2.3 * hs), Math.max(1.6, 1.9 * hs), "snout");
     else if (V.snout === "bunny") fillEllipse(grid, hx + hrx * 0.75, sy, Math.max(1.4, 1.7 * hs), Math.max(1.3, 1.6 * hs), "snout");
     else if (V.snout === "square") fillRect(grid, hx + hrx * 0.3, sy - sr, hrx * 0.7 + sl, sr * 2, "snout");
     else if (V.snout === "wedge") fillTri(grid, [[hx + hrx * 0.3, sy - sr], [hx + hrx * 0.3, sy + sr], [hx + hrx + (V.snoutLen || 2.5) * hs * snoutSize, sy + sr * 0.3]], "snout");
@@ -2090,6 +2313,16 @@ function buildVariant(genes, stage, frame, V) {
       const ny = Math.round(sy - 1);
       face.pink.push([nx - 1, ny], [nx, ny]);
       face.smile.push([nx - 1, ny + 2]);
+    } else if (V.snout === "goat") {
+      // a nostril at the tip, a short mouth line, a beard under the chin
+      const tipX = Math.round(hx + hrx * 0.9 + Math.max(2.4, 3.1 * hs * snoutSize)) - 1;
+      const ny = Math.round(sy - 0.5);
+      face.smile.push([tipX - 1, ny], [tipX - 1, ny + 2], [tipX - 2, ny + 2]);
+      if (V.beard) {
+        const bx = hx + hrx * 0.95;
+        const by = sy + Math.max(1.4, 1.7 * hs) - 0.5;
+        fillTri(grid, [[bx - 1.8, by - 0.5], [bx + 1.2, by - 0.5], [bx - 1, by + 4.2 * hs]], "beard");
+      }
     } else if (V.snout === "sheep") {
       // a long round muzzle: nostrils near the front, a mouth line under
       const tipX = Math.round(hx + hrx * 0.7 + 2.3 * hs);
@@ -2129,6 +2362,17 @@ function buildVariant(genes, stage, frame, V) {
         fillStroke(grid, [[bx, hy - hry * 0.8], [bx + side * 0.8, hy - hry * 0.8 - 3 * hs], [bx + side * 1.8, hy - hry * 0.8 - 4.2 * hs]], r, "horn");
       }
     }
+  }
+  if (V.goatHorns) {
+    const L = V.goatHorns * hs * (1 + (shape.horns || 0) * 0.3);
+    const top = hy - hry * 0.8;
+    const horn = (bx, dir) => {
+      // thick at the base, curving up then back, a thin point
+      const pts = [[bx, top + 0.5], [bx + dir * L * 0.25, top - L * 0.65], [bx + dir * L * 0.7, top - L * 0.9], [bx + dir * L * 1.05, top - L * 0.65]];
+      pts.slice(1).forEach((p, i) => fillStroke(grid, [pts[i], p], Math.max(0.55, (1.15 - i * 0.28) * hs), "horn"));
+    };
+    if (V.facing === "front") for (const side of [-1, 1]) horn(hx + side * hrx * 0.38, side * 0.55);
+    else horn(hx - hrx * 0.1, -1);
   }
   if (V.hooves) {
     relabel(grid, ["leg"], "hoof", (x, y) => y >= GROUND - 1);
@@ -2197,6 +2441,7 @@ const EYE_SHAPES = {
   almond: [".II", "IPI", "II."], // slanted cat eye
   duo: ["IP", "IP"], // color on the left, dark on the right
   closed: ["..", "KK"], // asleep: just a lash line
+  goat: ["III", "PPP"], // a goat's sideways bar pupil
 };
 
 // Draws a variant's face: eyes (with blinks), nose, mouth, ear tufts.
