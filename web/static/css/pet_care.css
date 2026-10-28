@@ -1,0 +1,300 @@
+/* The Pet Care Center book (pet_care.js); frames, buttons, and colors come from theme.css. */
+
+.pet-care {
+  max-width: 1100px;
+}
+
+.pet-care h1 {
+  margin-top: 0;
+}
+
+/* Two parchment pages on a wooden cover, with a spine down the middle. */
+.book {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 12px;
+  background: var(--wood);
+  border: 4px solid var(--outline);
+  box-shadow: 6px 6px 0 rgba(59, 36, 23, 0.35);
+}
+
+.book-page {
+  min-height: 560px;
+  padding: 1rem 1.1rem;
+  background: var(--parchment);
+  border: 3px solid var(--wood-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.book-left {
+  border-right: 6px double var(--wood-dark);
+}
+
+.book-right {
+  border-left: none;
+}
+
+.book-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 20px;
+}
+
+.book-tools select {
+  font: inherit;
+  font-size: 18px;
+}
+
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: min-content;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.book-pet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.25rem;
+  border: 3px solid var(--wood-light);
+  border-image: none;
+  background: var(--sand);
+  color: var(--ink);
+  text-shadow: none;
+}
+
+.book-pet:hover,
+.book-pet:focus-visible {
+  border-color: var(--leaf-gold);
+}
+
+.book-pet.current {
+  border-color: var(--moss);
+  background: var(--card-good);
+}
+
+.book-pet canvas {
+  width: 96px;
+  height: 72px;
+  image-rendering: pixelated;
+}
+
+.book-pet-name {
+  font-size: 18px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-pet-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 14px;
+}
+
+.book-turn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 20px;
+}
+
+.book-turn button:disabled {
+  visibility: hidden;
+}
+
+.book-empty {
+  font-size: 22px;
+  color: var(--ink-soft);
+  grid-column: 1 / -1;
+}
+
+/* --- the right page: one pet --- */
+
+.detail-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.detail-name h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.rename-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rename-form input {
+  font: inherit;
+  font-size: 22px;
+  width: 12em;
+}
+
+.detail-kind {
+  margin: 0;
+  font-size: 20px;
+  color: var(--ink-soft);
+}
+
+.detail-portrait {
+  display: flex;
+  justify-content: center;
+  background: linear-gradient(#cfe6c0, #e9efd2);
+  border: 3px solid var(--wood-light);
+}
+
+.detail-portrait canvas {
+  width: 300px;
+  max-width: 100%;
+  image-rendering: pixelated;
+}
+
+.growth,
+.trait {
+  display: grid;
+  grid-template-columns: 5.5em 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 19px;
+}
+
+.meter {
+  height: 12px;
+  background: var(--sand);
+  border: 2px solid var(--outline);
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--leaf-gold);
+}
+
+.meter.grow > span {
+  background: var(--moss);
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background: var(--sand);
+  border: 3px dashed var(--wood-light);
+}
+
+.picker p {
+  width: 100%;
+  margin: 0;
+  font-size: 19px;
+}
+
+.veggie-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.veggie-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.veggie-pick.favorite {
+  outline: 3px solid var(--leaf-gold);
+}
+
+.veggie-icon {
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+
+.detail-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0;
+  font-size: 19px;
+}
+
+.detail-facts dt {
+  color: var(--ink-soft);
+}
+
+.detail-facts dd {
+  margin: 0;
+}
+
+.detail-colors .swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin: 0 0.15rem 0 0.4rem;
+  border: 2px solid var(--outline);
+  vertical-align: -1px;
+}
+
+.detail-colors .swatch:first-child {
+  margin-left: 0;
+}
+
+.detail-rare {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.traits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.traits .trait {
+  grid-template-columns: 5.5em 1fr;
+}
+
+@media (max-width: 760px) {
+  .book {
+    grid-template-columns: 1fr;
+    padding: 6px;
+  }
+
+  .book-left {
+    border-right: 3px solid var(--wood-dark);
+    border-bottom: 6px double var(--wood-dark);
+  }
+
+  .book-right {
+    border-left: 3px solid var(--wood-dark);
+  }
+
+  .book-page {
+    min-height: 0;
+  }
+
+  .book-pet canvas {
+    width: 72px;
+    height: 54px;
+  }
+}

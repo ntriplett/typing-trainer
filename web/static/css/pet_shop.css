@@ -223,6 +223,37 @@
 
 /* --- special orders ------------------------------------------------------------------ */
 
+.shop-grid.habitats-floor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.habitat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  max-width: 340px;
+  background: var(--sand);
+  border: 3px solid var(--wood-light);
+}
+
+.habitat-card h3 {
+  margin: 0;
+}
+
+.habitat-card canvas {
+  width: 100%;
+  image-rendering: pixelated;
+  border: 3px solid var(--outline);
+}
+
+.habitat-card .card-price {
+  font-size: 22px;
+  margin: 0;
+}
+
 .shop-grid.orders-floor {
   display: block;
 }

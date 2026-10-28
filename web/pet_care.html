@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Pet Care Center</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/pet_care.css" />
+</head>
+<body data-particles>
+  <main class="pet-care">
+    <p class="back-link"><a href="/pets">← Pets</a></p>
+    <h1>Pet Care Center</h1>
+    <p id="care-message" class="error-text" role="status"></p>
+    <div class="book">
+      <section class="book-page book-left" aria-label="Your pets">
+        <div class="book-tools">
+          <label>Sort <select id="care-sort"></select></label>
+          <label>Show <select id="care-filter"></select></label>
+        </div>
+        <div id="book-grid" class="book-grid"></div>
+        <nav class="book-turn" aria-label="Pages">
+          <button id="page-prev" class="link-button">◀ Back</button>
+          <span id="page-count"></span>
+          <button id="page-next" class="link-button">Next ▶</button>
+        </nav>
+      </section>
+      <section id="book-detail" class="book-page book-right" aria-live="polite"></section>
+    </div>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/veggies.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script src="/static/js/pet_care.js"></script>
+</body>
+</html>

@@ -568,6 +568,7 @@ def _roll_personality(seed: int, species: str, ctx: dict) -> dict:
         "curious": _trait(rng),
         "sleepy": _trait(rng),
         "favorite": rng.choice(VEGGIES),
+        "playful": _trait(rng),  # added later: drawn last so older traits keep their values
     }
 
 
@@ -670,6 +671,8 @@ def fill_missing(genes: dict, ctx: dict | None = None) -> dict:
 def resolve(genes: dict) -> dict:
     """Genes plus what the renderer needs: hex colors and color names."""
     colors = genes["coat"]["colors"]
+    if "playful" not in genes.get("personality", {"playful": 0}):  # stored before playful existed
+        genes = {**genes, "personality": _roll_personality(genes["seed"], genes["species"], {})}
     return {
         **genes,
         "hex": [COLORS[c].hex if c else None for c in colors],

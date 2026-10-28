@@ -511,6 +511,40 @@ shop slots). Genes are stored, not re-rolled: the third color depends on unlocks
 stock/restock/save over a fake calendar; (3) tables, buying, API; (4) shop UI; (5) Special Orders
 (a small pet-lab picker); (6) the hub page. Then: Pet Care Center, habitats, Aquarium, supplies.
 
+## 11i. Pets v3: the Pet Care Center and the Trailhead (agreed 2026-10-28)
+
+**Pet Care Center** (`/pets/care`): a book. Left page: 3x4 pet icons, page buttons at the bottom,
+sort (species, age, time owned, name, rarity, size, energy) and filter (all, waiting for a home,
+one habitat). Right page: the pet large, name + rename, species, colors, growth, personality
+bars, favorite veggie, rare features, adopted date; buttons Feed, Move to habitat / Take out,
+Bring along. New pet actions get added here later.
+- **Feeding**: one garden veggie per pet per day, +1 growth (+2 for its favorite veggie), up to
+  10 (all grown up). Fully grown pets don't eat (no veggie spent).
+- **Bring along**: at most 2 pets ride with the avatar (`pet.along` 1 right, 2 left). Fish can't.
+- **Homes**: `pet.home` is `trail:<spot>` (a habitat) or NULL (waiting in the Care Center). 6
+  pets per habitat; fish never (the Aquarium will hold 10).
+
+**Habitats**: bought in the Pet Shop's **Habitats** department: Meadow only for now (more looks
+later: mountain, ...). The first is free, then 1,500 coins. `habitat` table (learner, spot 0..9
+on the trail, kind, name, bought_at); a new one takes the first empty spot. 10 spots.
+
+**Trailhead** (`/pets/trail`): a path view, one stop at a time: signpost, a small live view of
+the habitat (or an empty lot), up/down the trail, click to open it full. A map button shows all
+10 spots along a winding path like a zoo map. The full habitat is a scene where its pets move.
+
+**Movement** (`pet_motion.js`, shared by the hub and habitats): each pet is a small state
+machine (wander, rest/nap, hop, look at a prop, go to a friend, play). Energy: faster walk and
+animation, more hops, shorter rests. Sleepy: more and longer naps. Friendly: drift toward other
+friendly pets, shy ones keep distance. Curious: visit props. **Playful** (new trait, appended so
+old pets keep theirs; stored pets get it filled in from their seed): jump, chase other playful pets.
+
+**The hub field** shows the 2 pets along, plus the newest 4 land pets without a home; visitors
+top it up to 4 for new players.
+
+**Build order**: (1) tables, rules, API; (2) the Care Center book; (3) `pet_motion.js` + the
+meadow; (4) the Trailhead path + map; (5) cleanup: the avatar, Pet Battles and every other use
+of the old pets switch to v3, then `owned_pet` is wiped.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

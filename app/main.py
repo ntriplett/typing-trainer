@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_genes, pet_shop, pets, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, pets, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -164,6 +164,11 @@ def pet_room_page() -> FileResponse:
 @app.get("/pets/shop")
 def pet_shop_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pet_shop.html")
+
+
+@app.get("/pets/care")
+def pet_care_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pet_care.html")
 
 
 @app.get("/bedroom")
@@ -1039,6 +1044,78 @@ def save_shop_pet(body: SavePetIn, conn=Depends(get_db), learner_id: int = Depen
 def unsave_shop_pet(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     dept = _shop_call(pet_shop.unsave_pet, conn, learner_id, _today())
     return _department(conn, learner_id, dept)
+
+
+@app.post("/api/pets/shop/habitats/{kind}")
+def buy_habitat(kind: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _care_call(pet_care.buy_habitat, conn, learner_id, kind)
+    return {**_department(conn, learner_id, "habitats"), "bought": bought}
+
+
+# --- Pet Care Center + Trailhead API (pets v3, PLAN.md 11i) ----------------------------
+# Under /api/care until the old pets (/api/pets/{id}/...) are gone.
+
+
+class FeedIn(BaseModel):
+    veggie: str
+
+
+class HomeIn(BaseModel):
+    spot: int | None = None
+
+
+def _care_call(action, *args):
+    try:
+        return action(*args)
+    except pet_care.CareError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def _care(conn, learner_id: int, **extra) -> dict:
+    return {**_me(conn, learner_id), **pet_care.care_state(conn, learner_id, _today()), **extra}
+
+
+@app.get("/api/care")
+def care_center(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _care(conn, learner_id)
+
+
+@app.put("/api/care/{pet_id}/name")
+def care_rename(pet_id: int, body: PetNameIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _care_call(pet_care.rename, conn, learner_id, pet_id, body.name)
+    return _care(conn, learner_id)
+
+
+@app.post("/api/care/{pet_id}/feed")
+def care_feed(pet_id: int, body: FeedIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    fed = _care_call(pet_care.feed, conn, learner_id, pet_id, body.veggie, _today())
+    return _care(conn, learner_id, fed=fed)
+
+
+@app.put("/api/care/{pet_id}/home")
+def care_home(pet_id: int, body: HomeIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _care_call(pet_care.set_home, conn, learner_id, pet_id, body.spot)
+    return _care(conn, learner_id)
+
+
+@app.put("/api/care/{pet_id}/along")
+def care_along(pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _care_call(pet_care.set_along, conn, learner_id, pet_id, body.slot)
+    return _care(conn, learner_id)
+
+
+@app.get("/api/trail")
+def trail(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), **pet_care.trail(conn, learner_id, _today())}
+
+
+@app.get("/api/trail/{spot}")
+def trail_habitat(spot: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        found = pet_care.habitat(conn, learner_id, spot, _today())
+    except pet_care.CareError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    return {**_me(conn, learner_id), "habitat": found}
 
 
 # --- room API -------------------------------------------------------------------------

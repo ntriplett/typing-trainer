@@ -54,9 +54,9 @@ def owned():
         return db.list_v3_pets(conn, 1)
 
 
-def test_a_new_player_can_only_shop_for_fish(clock):
+def test_a_new_player_can_shop_for_fish_and_habitats(clock):
     d = depts()
-    assert [k for k, v in d.items() if v["open"]] == ["fish"]
+    assert [k for k, v in d.items() if v["open"]] == ["fish", "habitats"]
     assert d["household"]["missing"] == "asdfghjkl;" and d["supplies"]["soon"]
     fish = client.get("/api/pets/shop/fish").json()
     assert len(fish["slots"]) == 16 and all(s["species"] == "fish" for s in fish["slots"])

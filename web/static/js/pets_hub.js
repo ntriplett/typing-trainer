@@ -18,7 +18,7 @@ const FRAME_EVERY = 3; // ticks per animation frame
 
 const BUILDINGS = [
   { id: "shop", name: "Pet Shop", href: "/pets/shop", x: 5, y: 18, w: 36, h: 32, draw: drawShop },
-  { id: "care", name: "Pet Care Center", soon: true, x: 45, y: 18, w: 34, h: 32, draw: drawCare },
+  { id: "care", name: "Pet Care Center", href: "/pets/care", x: 45, y: 18, w: 34, h: 32, draw: drawCare },
   { id: "aquarium", name: "Aquarium", soon: true, x: 83, y: 18, w: 36, h: 32, draw: drawAquarium },
   { id: "trailhead", name: "Trailhead", soon: true, x: 124, y: 18, w: 32, h: 32, draw: drawTrailhead },
 ];
@@ -149,7 +149,7 @@ const isEgg = (p) => p.growth === 0 && (p.species === "dragon" || p.species === 
 
 function makeWalkers(data) {
   const pets = [
-    ...data.pets.filter((p) => p.species !== "fish").map((p) => ({ ...p, owned: true })),
+    ...data.field.map((p) => ({ ...p, owned: true })),
     ...data.visitors.map((p) => ({ ...p, owned: false })),
   ];
   return pets.map((p, i) => {

@@ -90,6 +90,13 @@ def test_rolls_include_personality_and_battle_hooks():
     assert b["element"] == "splash" and b["level"] == 1
 
 
+def test_playful_is_drawn_last_and_filled_in_for_older_pets():
+    genes = g.roll("dog", "cocoa", "ivory", 1234)
+    assert 0 <= genes["personality"]["playful"] <= 1
+    old = {**genes, "personality": {k: v for k, v in genes["personality"].items() if k != "playful"}}
+    assert g.resolve(old)["personality"] == genes["personality"]
+
+
 def test_resolve_adds_hex_and_names():
     r = g.resolve(g.roll("cat", "orange", "ash", 5, unlocked={"orange", "ash"}))
     assert r["hex"][0] == g.COLORS["orange"].hex

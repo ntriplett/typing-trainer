@@ -22,7 +22,7 @@ const RARE_LABEL = {
   sparkle: "Sparkly eyes",
   "main color": "Rare color",
 };
-const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", supplies: "🦴" };
+const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", habitats: "🌳", supplies: "🦴" };
 
 let front = null; // /api/pets/shop
 let dept = null; // /api/pets/shop/{id}
@@ -188,6 +188,7 @@ function renderBanners() {
 function renderFloor() {
   const d = dept.department;
   if (d.id === "orders") return renderOrders();
+  if (d.id === "habitats") return renderHabitats();
   $("dept-title").textContent = d.name;
   $("dept-hint").textContent = dept.coupon
     ? "Use your coupon on any pet here, or buy with coins. Click a pet to meet it!"
@@ -243,6 +244,64 @@ function badges(slot) {
   if (rare.some((r) => r.superRare)) out.push(`<span class="badge badge-super">★ Super rare</span>`);
   else if (rare.length) out.push(`<span class="badge badge-rare">★ Rare</span>`);
   return out.length ? `<p class="card-badges">${out.join("")}</p>` : "";
+}
+
+// --- habitats (app/pet_care.py, looks in habitats.js) -----------------------------------
+
+let habitatConfirm = null; // the kind whose Buy button asks "Are you sure?"
+
+function renderHabitats() {
+  const h = dept.habitats;
+  $("dept-title").textContent = "Habitats";
+  $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned} of ${h.spots}.`;
+  const grid = $("shop-grid");
+  grid.className = "shop-grid habitats-floor";
+  grid.replaceChildren(
+    ...h.kinds.map((kind) => {
+      const card = document.createElement("div");
+      card.className = "habitat-card";
+      card.dataset.kind = kind.id;
+      const view = habitatBackground(kind.id, 2);
+      const full = h.owned >= h.spots;
+      const short = dept.coins < kind.price;
+      const confirm = habitatConfirm === kind.id;
+      card.innerHTML = `<h3>${kind.name}</h3>
+        <p class="card-price">${kind.price ? coins(kind.price) : "<b>Free!</b> Your first habitat is on us."}</p>`;
+      card.insertBefore(view, card.querySelector(".card-price"));
+      const btn = document.createElement("button");
+      btn.className = "button-gold big-button";
+      btn.disabled = full || short;
+      btn.textContent = full
+        ? "Your trail is full"
+        : short
+          ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
+          : confirm
+            ? "Yes, get it!"
+            : kind.price
+              ? `Buy for ${kind.price.toLocaleString()} coins`
+              : "Get it free!";
+      btn.onclick = () => buyHabitat(kind);
+      card.appendChild(btn);
+      return card;
+    })
+  );
+}
+
+async function buyHabitat(kind) {
+  if (habitatConfirm !== kind.id) {
+    habitatConfirm = kind.id;
+    return renderHabitats();
+  }
+  habitatConfirm = null;
+  try {
+    const data = await call(`/api/pets/shop/habitats/${kind.id}`, "POST");
+    setDept(data);
+    say("");
+    $("dept-hint").innerHTML = `🎉 Your <b>${data.bought.name}</b> is ready! Find it on the <a href="/pets/trail">Trailhead</a>, and move pets in at the <a href="/pets/care">Pet Care Center</a>.`;
+  } catch (err) {
+    say(err.message);
+    renderHabitats();
+  }
 }
 
 // --- special orders ------------------------------------------------------------------

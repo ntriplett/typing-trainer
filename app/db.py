@@ -152,6 +152,16 @@ CREATE TABLE IF NOT EXISTS pet (
 );
 CREATE INDEX IF NOT EXISTS idx_pet_learner ON pet(learner_id);
 
+-- Habitats on the Trailhead (PLAN.md 11i): spot 0..9 along the trail.
+CREATE TABLE IF NOT EXISTS habitat (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    spot INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    bought_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, spot)
+);
+
 -- Pet colors a learner has unlocked (for every species they suit).
 CREATE TABLE IF NOT EXISTS pet_color_unlock (
     learner_id INTEGER NOT NULL REFERENCES learner(id),
@@ -336,6 +346,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 _ADDED_COLUMNS = [
     ("appearance", "eye_color", "TEXT NOT NULL DEFAULT 'brown'"),
     ("practice_chunk", "seed_at", "TEXT"),
+    ("pet", "along", "INTEGER"),
 ]
 
 
@@ -1139,7 +1150,7 @@ def remove_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int) 
 
 # --- pets v3 and the pet shop (PLAN.md 11h) ---------------------------------------
 
-_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, adopted_at"
+_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, along, adopted_at"
 
 
 def _v3_pet(row: sqlite3.Row) -> dict:
@@ -1164,6 +1175,31 @@ def get_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int) -> dict |
         f"SELECT {_V3_PET_COLUMNS} FROM pet WHERE learner_id = ? AND id = ?", (learner_id, pet_id)
     ).fetchone()
     return _v3_pet(row) if row else None
+
+
+_V3_PET_UPDATABLE = {"name", "growth", "last_fed", "home", "along"}
+
+
+def update_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, **fields) -> None:
+    bad = set(fields) - _V3_PET_UPDATABLE
+    if bad:
+        raise ValueError(f"can't update {bad}")
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE pet SET {sets} WHERE learner_id = ? AND id = ?", (*fields.values(), learner_id, pet_id))
+
+
+def list_habitats(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT spot, kind, name, bought_at FROM habitat WHERE learner_id = ? ORDER BY spot", (learner_id,)
+    )
+    return [dict(r) for r in rows]
+
+
+def add_habitat(conn: sqlite3.Connection, learner_id: int, spot: int, kind: str, name: str) -> None:
+    conn.execute(
+        "INSERT INTO habitat (learner_id, spot, kind, name, bought_at) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, spot, kind, name, _now_iso()),
+    )
 
 
 def list_pet_color_unlocks(conn: sqlite3.Connection, learner_id: int) -> set[str]:
