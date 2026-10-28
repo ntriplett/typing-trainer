@@ -185,3 +185,14 @@ def test_foxes_roll_breeds_and_fox_coats():
     pats = collections.Counter(f["coat"]["pattern"] for f in foxes)
     assert set(pats) == {"red", "cross", "silver", "arctic", "marble"}
     assert pats["red"] > pats["marble"]
+
+
+def test_sheep_roll_breeds_mixes_and_sheep_coats():
+    import collections
+
+    sheep = [g.roll("sheep", "snow", "charcoal", seed) for seed in range(2000)]
+    assert {x["shape"]["breed"] for x in sheep} == set(g.BREEDS["sheep"])
+    assert all(set(x["shape"]["mix"]) <= {"ears", "ramHorns", "tuft"} for x in sheep)
+    pats = collections.Counter(x["coat"]["pattern"] for x in sheep)
+    assert set(pats) == {"whiteface", "blackface", "self", "speckled", "jacob", "badger", "valais"}
+    assert "wool" in sheep[0]["shape"]

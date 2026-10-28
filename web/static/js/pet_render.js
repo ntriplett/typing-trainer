@@ -65,18 +65,18 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff"]);
+const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
 const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold"]);
+const BLENDS_IN = new Set(["leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
 // Parts drawn behind the body: darker, like they're in shadow.
 const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof"]);
 const PET_FIXED = {
-  hoof: "#5a4030", farhoof: "#5a4030", horn: "#e2d2b0", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
+  hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
   tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
 };
 const PET_OUTLINE = "#1a0f08";
@@ -519,7 +519,7 @@ function applyBand(hex, b) {
 // a tidy muzzle on belly and points coats; stripes and patches may mark the
 // forehead, but never right up against the eyes.
 
-const HEAD_PARTS = new Set(["head", "ear", "farear", "fold", "snout", "cap", "flop", "mane"]);
+const HEAD_PARTS = new Set(["head", "ear", "farear", "fold", "snout", "cap", "flop", "mane", "tuft"]);
 
 function coatValue(pattern, label, x, y, geo, n, splotch) {
   const u = (x - geo.cx) / geo.rx;
@@ -557,8 +557,11 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
 }
 
 function paintCoat(out, grid, genes, built, hex) {
-  if (BUNNY_PATTERNS.has(genes.coat.pattern)) return paintBunny(out, grid, genes, built, hex);
-  if (FOX_PATTERNS.has(genes.coat.pattern)) return paintFox(out, grid, genes, built, hex);
+  // species with their own real-life coats paint them (patterns can share names)
+  const own = {
+    bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox], sheep: [SHEEP_PATTERNS, paintSheep],
+  }[genes.species];
+  if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
   const coat = genes.coat;
   const pattern = coat.pattern;
@@ -826,7 +829,7 @@ const FOX_BODY = new Set(["body", "chest", "leg", "farleg", "sock", "farsock", "
 const FOX_HEAD = new Set(["head", "snout"]);
 const FOX_EARS = new Set(["ear", "farear", "eartip"]);
 // Fixed-color marks a species painter may color itself.
-const PAINTED_MARKS = new Set(["cotton", "sock", "farsock", "tip", "eartip"]);
+const PAINTED_MARKS = new Set(["cotton", "sock", "farsock", "tip", "eartip", "face", "skin", "farskin"]);
 
 function paintFox(out, grid, genes, built, hex) {
   built.coatDone = true;
@@ -944,6 +947,154 @@ function paintFox(out, grid, genes, built, hex) {
       const c = grid[y][x];
       if (!c || !FOX_EARS.has(c.l)) continue;
       out[y][x] = c.l === "eartip" ? dark : pattern === "marble" ? dark : main;
+    }
+  }
+}
+
+// --- sheep coats: wool color plus real breeds' face and leg markings ---------------
+// Three passes: the wool body and legs, the head (bare face and the wool
+// tuft), the ears. The first pick is the wool; the face takes the second
+// pick when it suits (darker for black faces, lighter for pale ones) or a
+// shade of the wool. Jacob and badger coats go by light and dark.
+
+const SHEEP_PATTERNS = new Set(["whiteface", "blackface", "self", "speckled", "jacob", "badger", "valais"]);
+
+function paintSheep(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const face = built.face;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const lightC = luminance(c0) >= luminance(c1) ? c0 : c1;
+  const darkC = lightC === c0 ? c1 : c0;
+  const darkFace = luminance(c1) < luminance(c0) - 0.15 ? c1 : blend(c0, PET_OUTLINE, 0.62);
+  const paleFace = luminance(c1) > luminance(c0) ? blend(c1, "#f4dcd0", 0.3) : blend(c0, "#f4dcd0", 0.55);
+  const jacobOrBadger = pattern === "jacob" || pattern === "badger";
+  const wool = jacobOrBadger ? lightC : c0;
+  const spotC = jacobOrBadger ? (luminance(darkC) < luminance(lightC) - 0.15 ? darkC : blend(lightC, PET_OUTLINE, 0.62)) : darkFace;
+  const faceColor = {
+    whiteface: paleFace, blackface: darkFace, self: blend(c0, PET_OUTLINE, 0.35), speckled: paleFace,
+    jacob: spotC, badger: paleFace, valais: blend(darkFace, PET_OUTLINE, 0.3),
+  }[pattern];
+  const legColor = { jacob: paleFace, badger: spotC, valais: paleFace }[pattern] || faceColor;
+  const noise = valueNoise(genes.seed);
+  const s = built.scale;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+
+  let minY = GRID_H;
+  let maxY = -1;
+  let legTop = GRID_H;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (c.l === "body") {
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+      if (c.l === "skin" || c.l === "farskin") legTop = Math.min(legTop, y);
+    }
+  }
+
+  // 1. wool and legs
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (c.l === "body" || c.l === "fluff" || c.l === "tail") {
+        let color = wool;
+        if (pattern === "jacob") {
+          const u = (x - geo.cx) / s;
+          const v = (y - geo.cy) / s;
+          if (noise(u * 0.17 + 40, v * 0.17 + 40) > 0.6) color = spotC;
+        } else if (pattern === "badger" && (y - minY) / Math.max(1, maxY - minY) > 0.72) {
+          color = spotC; // the dark belly
+        }
+        out[y][x] = color;
+      } else if (c.l === "skin" || c.l === "farskin") {
+        let color = legColor;
+        const t = (y - legTop) / Math.max(1, GROUND - legTop);
+        if (pattern === "valais" && t < 0.5) color = faceColor; // the dark knees
+        if ((pattern === "speckled" || pattern === "jacob") && tick(x, y) < 0.3) color = spotC;
+        out[y][x] = color;
+      }
+    }
+  }
+
+  // the wool's texture: rows of little curls, each a touch darker on its
+  // lower right and lighter on its upper left
+  const cs = Math.max(3, Math.round(4 * s + 0.5));
+  const rowH = cs * 0.8;
+  const curl = (x, y) => {
+    const row = Math.floor((y - minY) / rowH);
+    const off = (row % 2) * cs * 0.5;
+    const col = Math.floor((x - off) / cs);
+    const dx = (x + 0.5 - (col * cs + off + cs / 2)) / (cs / 2);
+    const dy = (y + 0.5 - (minY + row * rowH + rowH / 2)) / (rowH / 2);
+    const d = Math.hypot(dx, dy);
+    if (d > 0.8 && dx + dy > 0.2) return -1;
+    if (d < 0.5 && dx + dy < -0.3) return 1;
+    return 0;
+  };
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !(c.l === "body" || c.l === "fluff" || c.l === "tuft" || c.l === "tail") || !out[y][x]) continue;
+      const k = curl(x, y);
+      if (k < 0) out[y][x] = blend(out[y][x], SHADOW_TINT, 0.17);
+      else if (k > 0) out[y][x] = blend(out[y][x], LIGHT_TINT, 0.22);
+    }
+  }
+
+  // 2. the head: the bare face, and the tuft (wool)
+  const eyes = face.eyes;
+  const eyeTop = eyes.length ? Math.min(...eyes.map((e) => e.y)) : 0;
+  const eyeBottom = eyes.length ? Math.max(...eyes.map((e) => e.y + 1)) : 0;
+  const eyeCols = eyes.flatMap((e) => [e.x, e.x + 1]);
+  const [hx] = geo.head;
+  let chin = 0;
+  grid.forEach((row, y) => row.forEach((c) => c && c.l === "face" && !c.isEar && (chin = Math.max(chin, y))));
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (c.l === "tuft") {
+        out[y][x] = curl(x, y) < 0 ? blend(wool, SHADOW_TINT, 0.17) : curl(x, y) > 0 ? blend(wool, LIGHT_TINT, 0.22) : wool;
+        continue;
+      }
+      if (c.l !== "face" || c.isEar) continue;
+      let color = faceColor;
+      const nearEyes = eyes.some((e) => Math.abs(x - e.x - 0.5) <= 2 && Math.abs(y - e.y - 0.5) <= 2);
+      switch (pattern) {
+        case "speckled":
+          if (nearEyes && tick(x, y) < 0.35) color = spotC;
+          else if (y > eyeBottom + 1 && tick(x, y) < 0.18) color = spotC;
+          break;
+        case "jacob":
+          if (Math.abs(x - hx) <= 1 && y >= eyeTop - 2) color = paleFace; // the white blaze
+          break;
+        case "badger": {
+          // dark stripes from the forehead down over each eye, and a dark chin
+          const stripe = eyeCols.some((ex) => Math.abs(x - ex) <= 0.5) && y <= eyeBottom + 2;
+          if (stripe || y >= chin - 1) color = spotC;
+          break;
+        }
+        default:
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 3. the ears
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !c.isEar) continue;
+      let color = faceColor;
+      if (pattern === "jacob" || pattern === "badger") color = spotC;
+      if (pattern === "speckled" && tick(x, y) < 0.4) color = spotC;
+      out[y][x] = color;
     }
   }
 }
@@ -1162,6 +1313,42 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: five sheep breeds; a mix borrows
+  // another breed's ears, horns or forehead tuft
+  sheep: {
+    breeds: {
+      fluffy: {
+        name: "Fluffy, face to us, ears out", facing: "front", pose: "walk", mouth: "sheep", tuft: 1,
+        softOutline: true, softNeck: true, eye: "duo", woolly: 1, bareFace: true, hooves: true,
+        body: { rx: 9, ry: 4.6 }, leg: { len: 6, w: 1, min: 4 }, head: { rx: 3.8, ry: 4.6 },
+        ears: { type: "out", size: 4.5, w: 1 }, tail: { type: "none", len: 0, w: 1 },
+      },
+      merino: {
+        name: "Merino: extra woolly, short legs, side view", facing: "side", pose: "walk", snout: "sheep", tuft: 1.2,
+        softOutline: true, softNeck: true, eye: "duo", woolly: 1, bareFace: true, hooves: true,
+        body: { rx: 10, ry: 5.2 }, leg: { len: 4.5, w: 1, min: 3 }, head: { rx: 3.6, ry: 3.9 },
+        ears: { type: "out", size: 4, w: 1 }, tail: { type: "none", len: 0, w: 1 },
+      },
+      ram: {
+        name: "Ram: curled horns, side view", facing: "side", pose: "walk", snout: "sheep", ramHorns: "curl",
+        softOutline: true, softNeck: true, eye: "duo", woolly: 1, bareFace: true, hooves: true,
+        body: { rx: 9.5, ry: 4.7 }, leg: { len: 6, w: 1, min: 4 }, head: { rx: 3.9, ry: 4.1 },
+        ears: { type: "out", size: 3.5, w: 1 }, tail: { type: "none", len: 0, w: 1 },
+      },
+      ramfront: {
+        name: "Ram, face to us: curled horns", facing: "front", pose: "walk", mouth: "sheep", tuft: 0.9, ramHorns: "curl",
+        softOutline: true, softNeck: true, eye: "duo", woolly: 1, bareFace: true, hooves: true,
+        body: { rx: 9.3, ry: 4.7 }, leg: { len: 6, w: 1, min: 4 }, head: { rx: 3.9, ry: 4.7 },
+        ears: { type: "out", size: 3.6, w: 1 }, tail: { type: "none", len: 0, w: 1 },
+      },
+      longwool: {
+        name: "Longwool: shaggy fringe over the forehead, face to us", facing: "front", pose: "walk", mouth: "sheep", tuft: 1.7,
+        softOutline: true, softNeck: true, eye: "duo", woolly: 1.2, bareFace: true, hooves: true,
+        body: { rx: 9.5, ry: 4.9 }, leg: { len: 5.5, w: 1, min: 4 }, head: { rx: 3.9, ry: 4.7 },
+        ears: { type: "out", size: 4.2, w: 1 }, tail: { type: "none", len: 0, w: 1 },
+      },
+    },
+  },
   // chosen in the pet lab, 2026-10-27: four fox breeds; a mix borrows
   // another breed's ears or head
   fox: {
@@ -1297,6 +1484,7 @@ const PET_VARIANTS = {
   dog: Object.values(PET_DESIGNS.dog.breeds),
   bunny: Object.values(PET_DESIGNS.bunny.breeds),
   fox: Object.values(PET_DESIGNS.fox.breeds),
+  sheep: Object.values(PET_DESIGNS.sheep.breeds),
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -1453,15 +1641,31 @@ function buildVariant(genes, stage, frame, V) {
     leg(backX + farOffset, cy, step ? 0 : 1, "farleg");
     leg(frontX + farOffset, cy, step ? 1 : 0, "farleg");
     tail(cx - rx + 1, cy - ry * 0.4);
-    body(cx, cy);
+    if (V.woolly) {
+      // sheep: an oval with bumps of wool all the way round; the bumps keep
+      // their own label so the outline stays scalloped
+      const wool = 1 + (shape.wool || 0) * 0.25;
+      fillEllipse(grid, cx, cy - ry * 0.1, rx, ry * 1.05, "body");
+      // many small bumps close to the edge: a gentle scallop, not big mounds
+      // (the wool's texture comes from shading in paintSheep)
+      const r = Math.max(1.2, 1.5 * Math.max(s, 0.6) * wool * (V.woolly || 1));
+      const n = Math.max(10, Math.round((rx + ry) / 1.05));
+      for (let i = 0; i < n; i++) {
+        const a = (Math.PI * 2 * i) / n;
+        if (Math.sin(a) > 0.55) continue; // no bumps along the belly, so the legs show
+        fillEllipse(grid, cx + Math.cos(a) * (rx - r * 0.2), cy - ry * 0.1 + Math.sin(a) * (ry * 1.05 - r * 0.2), r, r, "fluff");
+      }
+    } else {
+      body(cx, cy);
+    }
     if (V.ruff) {
       fillEllipse(grid, cx + rx * 0.62, cy - ry * 0.1, Math.max(2, rx * 0.3), ry * 1.05, "chest");
       for (const dy of [0.5, 0.95]) fillEllipse(grid, cx + rx * 0.62, cy + ry * dy, Math.max(1.3, rx * 0.2), 1.3, "chest");
     }
     leg(backX - 0.5, cy, step ? 1 : 0, "leg");
     leg(frontX - 0.5, cy, step ? 0 : 1, "leg");
-    hx = cx + rx * (stalk ? 0.95 : V.headMin ? 0.9 : 0.78);
-    hy = stalk ? cy - ry * 0.4 : cy - ry * (V.headMin ? 1 : 0.75) - hry * (V.headMin ? 0.7 : 0.45);
+    hx = cx + rx * (stalk ? 0.95 : V.headMin ? 0.9 : V.woolly ? 1.02 : 0.78);
+    hy = stalk ? cy - ry * 0.4 : V.woolly ? cy - ry * 0.55 - hry * 0.25 : cy - ry * (V.headMin ? 1 : 0.75) - hry * (V.headMin ? 0.7 : 0.45);
   }
 
   // the head
@@ -1500,8 +1704,14 @@ function buildVariant(genes, stage, frame, V) {
       // dogs: floppy ears hang down the sides of the head; button ears fold over at the top
       const base = hx + side * hrx * 0.55;
       if (V.ears.type === "floppy") fillEllipse(grid, hx + side * hrx * 0.95, hy + hry * 0.15, Math.max(1.3, es * 0.26), es * 0.52, "flop");
+      if (V.ears.type === "out") fillEllipse(grid, hx + side * (hrx + es * 0.3), hy - hry * 0.3, es * 0.5, Math.max(1, es * 0.22), "flop");
       if (V.ears.type === "lop") fillEllipse(grid, hx + side * hrx * 0.95, hy + hry * 0.25, Math.max(1.4, es * 0.2), es * 0.55, "flop");
       if (V.ears.type === "button") fillTri(grid, [[base - ew, hy - hry * 0.78], [base + ew, hy - hry * 0.62], [base + side * ew * 0.7, hy - hry * 0.3]], "flop");
+    }
+    if (V.tuft) {
+      // a sheep's tuft of wool on the forehead
+      const r = Math.max(1.5, 1.9 * hs * V.tuft);
+      for (const dx of [-0.55, 0, 0.55]) fillEllipse(grid, hx + dx * hrx, hy - hry * 0.88 + Math.abs(dx) * 1.2, r, r, "tuft");
     }
     if (V.ears.fold) {
       // folded ears: small round flaps poking up from the head's top corners
@@ -1557,6 +1767,20 @@ function buildVariant(genes, stage, frame, V) {
       face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
       face.pink = [[c - 1, top], [c, top], [c + 1, top], [c, top + 1]];
       face.smile.push([c, top + 2], [c - 1, top + 3], [c + 1, top + 3]);
+    } else if (V.mouth === "sheep") {
+      //   k . k      nostrils
+      //   . k .      the mouth
+      const isFace = (x, y) => grid[y] && grid[y][x] && grid[y][x].l === "head";
+      let chin = Math.round(hy);
+      while (isFace(c, chin + 1)) chin++;
+      ny = chin - 2;
+      face.smile.push([c - 1, ny], [c + 1, ny], [c, ny + 1]);
+      ey = Math.round(hy - hry * 0.2) - eh + 1;
+      let g = gap;
+      const fits = (x0) => [...Array(w + 2).keys()].every((i) => isFace(x0 - 1 + i, ey) && isFace(x0 - 1 + i, ey + eh - 1));
+      while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
+      face.eyes.push({ x: c - g - w, y: ey, size: eyeSize, iris });
+      face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
     } else if (V.mouth === "fox") {
       fillTri(grid, [[hx - hrx * 0.5, hy - hry * 0.05], [hx + hrx * 0.5, hy - hry * 0.05], [hx, hy + hry * 1.02]], "snout");
       const isFace = (x, y) => grid[y] && grid[y][x] && (grid[y][x].l === "head" || grid[y][x].l === "snout");
@@ -1618,7 +1842,7 @@ function buildVariant(genes, stage, frame, V) {
     }
   } else {
     // side view: one eye, a snout pointing ahead
-    const floppy = V.ears.type === "floppy" || V.ears.type === "lop" || V.ears.type === "half";
+    const floppy = V.ears.type === "floppy" || V.ears.type === "lop" || V.ears.type === "half" || V.ears.type === "out";
     const longEars = V.ears.type === "long" || V.ears.type === "half";
     const earTop = hy - hry * 0.6;
     if (longEars) {
@@ -1635,11 +1859,17 @@ function buildVariant(genes, stage, frame, V) {
     const sr = Math.max(1.3, (V.snoutR || 1.8) * hs);
     const sy = hy + hry * 0.3;
     const sl = (V.snoutLen || 0) * hs * snoutSize;
-    if (V.snout === "bunny") fillEllipse(grid, hx + hrx * 0.75, sy, Math.max(1.4, 1.7 * hs), Math.max(1.3, 1.6 * hs), "snout");
+    if (V.snout === "sheep") fillEllipse(grid, hx + hrx * 0.7, sy + 0.5, Math.max(1.8, 2.3 * hs), Math.max(1.6, 1.9 * hs), "snout");
+    else if (V.snout === "bunny") fillEllipse(grid, hx + hrx * 0.75, sy, Math.max(1.4, 1.7 * hs), Math.max(1.3, 1.6 * hs), "snout");
     else if (V.snout === "square") fillRect(grid, hx + hrx * 0.3, sy - sr, hrx * 0.7 + sl, sr * 2, "snout");
     else if (V.snout === "wedge") fillTri(grid, [[hx + hrx * 0.3, sy - sr], [hx + hrx * 0.3, sy + sr], [hx + hrx + (V.snoutLen || 2.5) * hs * snoutSize, sy + sr * 0.3]], "snout");
     else fillEllipse(grid, hx + hrx * 0.8, sy, 1.8 * hs + 0.6, sr, "snout");
-    if (V.ears.type === "lop" || V.ears.type === "half") fillEllipse(grid, hx - hrx * 0.35, hy + es * 0.18, Math.max(1.4, es * 0.22), es * 0.55, "flop");
+    if (V.tuft) {
+      const r = Math.max(1.5, 1.9 * hs * V.tuft);
+      for (const dx of [-0.6, -0.1]) fillEllipse(grid, hx + dx * hrx, hy - hry * 0.85, r, r, "tuft");
+    }
+    if (V.ears.type === "out") fillEllipse(grid, hx - hrx * 0.75, hy - hry * 0.2, es * 0.55, Math.max(1, es * 0.24), "flop");
+    else if (V.ears.type === "lop" || V.ears.type === "half") fillEllipse(grid, hx - hrx * 0.35, hy + es * 0.18, Math.max(1.4, es * 0.22), es * 0.55, "flop");
     else if (floppy) fillEllipse(grid, hx - hrx * 0.3, hy + es * 0.08, Math.max(1.4, es * 0.32), es * 0.6, "flop");
     else if (longEars) fillStroke(grid, [[hx - hrx * 0.1, earTop + 1], [hx - hrx * 0.3, earTop - es * 0.55], [hx - hrx * 0.45, earTop - es]], Math.max(0.9, ew * 0.21), "ear");
     else fillTri(grid, [[hx - hrx * 0.45, hy - hry * 0.8], [hx + hrx * 0.45, hy - hry * 0.75], [hx - hrx * 0.05, hy - hry * 0.75 - es]], "ear");
@@ -1660,6 +1890,11 @@ function buildVariant(genes, stage, frame, V) {
       const ny = Math.round(sy - 1);
       face.pink.push([nx - 1, ny], [nx, ny]);
       face.smile.push([nx - 1, ny + 2]);
+    } else if (V.snout === "sheep") {
+      // a long round muzzle: nostrils near the front, a mouth line under
+      const tipX = Math.round(hx + hrx * 0.7 + 2.3 * hs);
+      const ny = Math.round(sy);
+      face.smile.push([tipX - 1, ny], [tipX - 2, ny + 2], [tipX - 1, ny + 2]);
     } else if (V.darkNose && V.snout === "wedge") {
       // a fox: a small dark nose on the point of the snout
       const tipX = Math.round(hx + hrx + (V.snoutLen || 2.5) * hs * snoutSize) - 1;
@@ -1672,6 +1907,33 @@ function buildVariant(genes, stage, frame, V) {
     }
   }
 
+  if (V.ramHorns) {
+    const r = Math.max(0.8, 1.1 * hs);
+    const curl = (bx, by, dir, size) => {
+      const pts = [];
+      for (let k = 0; k <= 10; k++) {
+        const a = -Math.PI * 0.6 + (k / 10) * Math.PI * 1.7;
+        const rr = size * (1 - k * 0.055);
+        pts.push([bx + dir * Math.cos(a) * rr, by + Math.sin(a) * rr]);
+      }
+      fillStroke(grid, pts, r, "horn");
+    };
+    const size = 3.4 * hs * (V.hornSize || 1);
+    // from the front the curls sit out beside the head, clear of the eyes
+    if (V.facing === "front") for (const side of [-1, 1]) curl(hx + side * (hrx + size * 0.55), hy - hry * 0.15, side, size * 0.85);
+    else curl(hx - hrx * 0.3, hy - hry * 0.1, -1, size);
+    if (V.ramHorns === "jacob") {
+      // Jacob sheep: a second pair standing up off the top of the head
+      for (const side of V.facing === "front" ? [-1, 1] : [-1]) {
+        const bx = hx + side * hrx * (V.facing === "front" ? 0.35 : 0.15);
+        fillStroke(grid, [[bx, hy - hry * 0.8], [bx + side * 0.8, hy - hry * 0.8 - 3 * hs], [bx + side * 1.8, hy - hry * 0.8 - 4.2 * hs]], r, "horn");
+      }
+    }
+  }
+  if (V.hooves) {
+    relabel(grid, ["leg"], "hoof", (x, y) => y >= GROUND - 1);
+    relabel(grid, ["farleg"], "farhoof", (x, y) => y >= GROUND - 1);
+  }
   if (V.earTips) {
     let top = GRID_H;
     grid.forEach((row, y) => row.forEach((c) => c && (c.l === "ear" || c.l === "farear") && (top = Math.min(top, y))));
@@ -1685,6 +1947,14 @@ function buildVariant(genes, stage, frame, V) {
   if (V.tailTip && tailEnd) {
     const r = Math.max(1.6, tw * 1.5);
     relabel(grid, ["tail"], "tip", (x, y) => Math.hypot(x + 0.5 - tailEnd[0], y + 0.5 - tailEnd[1]) <= r);
+  }
+  if (V.bareFace) {
+    // a sheep's face, ears and legs aren't wool: they wear the skin color
+    relabel(grid, ["flop", "ear", "farear"], "face", (x, y, c) => (c.isEar = true));
+    relabel(grid, ["head", "snout"], "face", () => true);
+    relabel(grid, ["leg"], "skin", () => true);
+    relabel(grid, ["farleg"], "farskin", () => true);
+    relight(grid, "face");
   }
   relight(grid, "body");
   relight(grid, "head");

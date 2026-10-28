@@ -150,6 +150,8 @@ SPECIES_PATTERNS = {
     "bunny": {"self": 30, "agouti": 20, "broken": 20, "dutch": 12, "himalayan": 10, "tan": 5, "english": 3},
     # foxes wear real fox coats (paintFox)
     "fox": {"red": 40, "cross": 15, "silver": 15, "arctic": 15, "marble": 15},
+    # sheep: wool color plus the face and leg markings real breeds have (paintSheep)
+    "sheep": {"whiteface": 25, "blackface": 25, "self": 15, "speckled": 12, "jacob": 10, "badger": 8, "valais": 5},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -158,6 +160,8 @@ SPECIES_EYES = {
     "dog": {"#3a2416": 5.0, "#5c3a1a": 4.0, "#8a5a2a": 2.0, "#c8861e": 1.0, "#6aa0d8": 0.4},
     "bunny": {"#2a1810": 6.0, "#4a2a1a": 3.0, "#5a7aa8": 0.6, "#b03040": 0.3},
     "fox": {"#c8861e": 4.0, "#e0a828": 3.0, "#5c3a1a": 2.0, "#8a5a2a": 1.0},
+    "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
+    "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
 
@@ -167,9 +171,10 @@ BREEDS = {
     "dog": ("classic", "hound", "shiba", "dachshund", "husky"),
     "bunny": ("classic", "front", "dwarf", "sidelop", "holland", "halflop", "wild", "dwarfside"),
     "fox": ("red", "sitting", "kit", "curled"),
+    "sheep": ("fluffy", "merino", "ram", "ramfront", "longwool"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head")}
+MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -178,6 +183,8 @@ SHAPE_EXTRAS = {
     "dog": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "bunny": {"weight": (-1.0, 1.0, 0.2)},
     "fox": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
+    "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
+    "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
 
