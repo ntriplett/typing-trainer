@@ -65,19 +65,19 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill"]);
+const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
 const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff"]);
+const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
-const BODYISH = new Set(["body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
+const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
 // Parts drawn behind the body: darker, like they're in shadow.
 const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof"]);
 const PET_FIXED = {
   hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
-  hole: "#24170e", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
+  hole: "#24170e", rattle: "#d8c08a", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
 };
 const PET_OUTLINE = "#1a0f08";
 const LIGHT_TINT = "#fff4d8";
@@ -561,7 +561,7 @@ function paintCoat(out, grid, genes, built, hex) {
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
     sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
-    turtle: [TURTLE_PATTERNS, paintTurtle], lizard: [LIZARD_PATTERNS, paintLizard],
+    turtle: [TURTLE_PATTERNS, paintTurtle], lizard: [LIZARD_PATTERNS, paintLizard], snake: [SNAKE_PATTERNS, paintSnake],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1747,6 +1747,98 @@ function paintLizard(out, grid, genes, built, hex) {
   }
 }
 
+// --- snake coats -------------------------------------------------------------------
+// Markings follow the body: the builder notes on each pixel how far down the
+// body it is (along, in pixels from the head) and which side of the tube it
+// sits on (across: -1 back .. +1 belly). The first pick is the base, the
+// second the markings; a third color edges them. The neck right behind the
+// head stays clean, and side-on snakes get a lighter belly band.
+//   diamondback  a chain of dark diamonds down the back, edged in light
+//   banded       king snake rings: wide base bands split by light and dark rings
+//   saddles      corn snake blotches across the back, darker-edged
+//   striped      garter stripes: a dark back, a light stripe down the side
+//   speckled     fine speckles
+//   plain        one color
+
+const SNAKE_PATTERNS = new Set(["diamondback", "banded", "saddles", "striped", "speckled", "plain"]);
+const SNAKE_TUBE = new Set(["body", "tail", "thin", "neck"]);
+
+function paintSnake(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const fromAbove = built.geo.fromAbove;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const markC = c1 !== c0 ? c1 : blend(c0, PET_OUTLINE, 0.45);
+  const edge = hex[2] || blend(c0, "#f6ecc8", 0.6);
+  const darkMark = blend(markC, PET_OUTLINE, 0.3);
+  // a plain snake shows a third color on its belly
+  const belly = hex[2] && pattern === "plain" ? hex[2] : blend(c0, "#f0e2b8", 0.55);
+  const P = Math.max(6, built.geo.ry * 4.2); // the length of one repeat of the pattern, in pixels
+  const tick = (x, y) => {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + genes.seed) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (FUR.has(c.l)) out[y][x] = c0;
+      if (c.l === "head") {
+        continue;
+      }
+      if (c.l === "hood") {
+        out[y][x] = blend(c0, "#f6ecc8", 0.25);
+        continue;
+      }
+      if (!SNAKE_TUBE.has(c.l) || c.along === undefined) continue;
+      const u = (c.along % P) / P; // 0..1 within one repeat
+      const a = c.across; // -1 back .. +1 belly
+      let color = c0;
+      const neck = c.along < P * 0.7; // the neck just behind the head stays clean
+      const third = !!hex[2]; // a rolled third color gets more room
+      switch (neck ? "plain" : pattern) {
+        case "diamondback": {
+          // diamonds centered a little above the middle of the side
+          const dd = Math.abs(u - 0.5) * 2 + Math.abs(a + 0.15) * 0.6;
+          if (dd < (third ? 0.5 : 0.6)) color = markC;
+          else if (dd < (third ? 0.98 : 0.86)) color = edge;
+          break;
+        }
+        case "banded":
+          // with a third color: king snake rings (base, edge, marking, edge)
+          if (third) color = u < 0.4 ? c0 : u < 0.6 ? edge : u < 0.8 ? markC : edge;
+          else color = u < 0.55 ? c0 : u < 0.68 ? edge : u < 0.88 ? darkMark : edge;
+          break;
+        case "saddles":
+          // square blotches over the back, edged darker (or in the third
+          // color), belly left clear
+          if (a < 0.45 && Math.abs(u - 0.5) < (third ? 0.34 : 0.3)) {
+            const rim = Math.abs(u - 0.5) > (third ? 0.2 : 0.2) || a < -0.75;
+            color = rim ? (third ? edge : darkMark) : markC;
+          }
+          break;
+        case "striped":
+          // a dark back with a light stripe running down the side
+          if (Math.abs(a - 0.05) < (third ? 0.36 : 0.28)) color = edge;
+          else if (a < -0.3) color = markC;
+          break;
+        case "speckled":
+          if (tick(x, y) < (third ? 0.3 : 0.22)) color = tick(y, x) < (third ? 0.75 : 0.5) ? edge : darkMark;
+          break;
+        default:
+          break;
+      }
+      // a lighter belly band along the underside (side-on snakes); the third
+      // color stays bright through it
+      if (!fromAbove && pattern === "plain" && third && !neck) {
+        if (a > 0.3) color = belly;
+      } else if (!fromAbove && a > 0.6 && pattern !== "banded" && !(third && color === edge)) color = blend(color, belly, 0.7);
+      out[y][x] = color;
+    }
+  }
+}
+
 // A face drawn front-on has two eyes.
 function V_FRONT(face) {
   return face.eyes.length > 1;
@@ -1756,11 +1848,50 @@ const petCache = new Map();
 
 // The finished pixels: {w, h, pix: rows of hex or null}. Cached per pet,
 // growth stage, and animation frame.
+// The finished pixels for one frame, cropped with a box shared by all of a
+// pet's frames (see stableBox), so the pet doesn't shift as it animates.
 function petPixels(genes, growth, frame = 0) {
   const stage = petStage(growth);
   const anim = genes.face && genes.face.sparkle ? frame % 36 : `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
-  const key = `${genes.seed}|${genes.species}|${genes.variant}|${stage.id}|${anim}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
+  const base = `${genes.seed}|${genes.species}|${genes.variant}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
+  const key = `${base}|${anim}`;
   if (petCache.has(key)) return petCache.get(key);
+  const { out, noShadow } = petFrame(genes, growth, frame);
+  const { minX, maxX, minY } = stableBox(base, genes, growth);
+  const pix = out.slice(minY, GROUND + 1).map((row) => row.slice(minX, maxX + 1));
+  const result = { w: maxX - minX + 1, h: GROUND + 1 - minY, pix, noShadow };
+  if (petCache.size > 2000) petCache.clear();
+  petCache.set(key, result);
+  return result;
+}
+
+// The outline box covering a pet's walking frames (0-3), so every frame is
+// cropped the same way.
+const boxCache = new Map();
+function stableBox(base, genes, growth) {
+  if (boxCache.has(base)) return boxCache.get(base);
+  let minX = GRID_W;
+  let maxX = -1;
+  let minY = GRID_H;
+  for (const f of [0, 1, 2, 3]) {
+    petFrame(genes, growth, f).out.forEach((row, y) =>
+      row.forEach((c, x) => {
+        if (!c) return;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+      })
+    );
+  }
+  const box = { minX, maxX, minY };
+  if (boxCache.size > 2000) boxCache.clear();
+  boxCache.set(base, box);
+  return box;
+}
+
+// One frame, uncropped: the full grid of colors.
+function petFrame(genes, growth, frame) {
+  const stage = petStage(growth);
   const design = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || speciesDesign(genes);
   const built = design ? buildVariant(genes, stage, frame, design) : buildPet(genes, stage, frame);
   smoothEdges(built.grid);
@@ -1842,6 +1973,8 @@ function petPixels(genes, growth, frame = 0) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.22)]); // the muzzle: a soft edge
       } else if (!FRONT.has(cell.l) && !BLENDS_IN.has(cell.l) && near.some((n) => n && n.l !== cell.l && FRONT.has(n.l))) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.62)]);
+      } else if (cell.l === "coilbase" && near.some((n) => n && n.l === "body")) {
+        lines.push([x, y, blend(out[y][x], PET_OUTLINE, 0.7)]); // a snake's coils: the top tier sits on the bottom
       } else if (HEADISH.has(cell.l) && near.some((n) => n && n.l === "flop")) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.45)]); // a floppy ear over the head
       } else if (BODYISH.has(cell.l) && near.some((n) => n && HEADISH.has(n.l))) {
@@ -1913,23 +2046,7 @@ function petPixels(genes, growth, frame = 0) {
     }
   }
 
-  // crop to the pet; the feet always sit on the bottom row
-  let minX = GRID_W;
-  let maxX = -1;
-  let minY = GRID_H;
-  out.forEach((row, y) =>
-    row.forEach((c, x) => {
-      if (!c) return;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-    })
-  );
-  const pix = out.slice(minY, GROUND + 1).map((row) => row.slice(minX, maxX + 1));
-  const result = { w: maxX - minX + 1, h: GROUND + 1 - minY, pix, noShadow: !!built.noShadow };
-  if (petCache.size > 2000) petCache.clear();
-  petCache.set(key, result);
-  return result;
+  return { out, noShadow: !!built.noShadow };
 }
 
 // Draws a pet with its feet at (x, bottom) and its left edge at x, `scale`
@@ -1966,6 +2083,13 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: eight snake breeds; a mix borrows
+  // another breed's viper head, rattle or hood
+  snake: {
+    get breeds() {
+      return SNAKE_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: five lizard breeds (iguanas and the
   // skink seen from above, the monitor and chameleon from the side); a mix
   // borrows another breed's crest, dewlap or head
@@ -2277,6 +2401,22 @@ const LIZARD_BREEDS = {
   chameleon: LIZARD({ name: "Chameleon: helmet, spiral tail (side view)", stance: "stand", chameleon: true, casque: true, crest: 0.6, body: { rx: 6.4, ry: 3.2 }, leg: { len: 4.2, w: 1.6 }, tail: { type: "curl", len: 11 }, head: { rx: 3, ry: 2.8 }, snout: 1.4, headUp: 1.5 }),
 };
 
+// Snake trial designs start from the classic "2".
+function SNAKE(over) {
+  return { snake: true, facing: "side", softOutline: true, pose: "two", height: 17, body: { w: 2.2 }, split: 0.55, ...over };
+}
+
+const SNAKE_BREEDS = {
+  classic: SNAKE({ name: "Classic: a coil rising in a 2, head up, side view" }),
+  cobra: SNAKE({ name: "Cobra: raised, hood flared, face to us", pose: "cobra", hood: true, facing: "front", height: 20 }),
+  wave: SNAKE({ name: "Side-on wave, head held up", pose: "wave", body: { w: 1.8 }, split: 1 }),
+  diamondback: SNAKE({ name: "Diamondback slither: low waves, viper head, rattle raised", pose: "slide", viper: true, rattle: true, body: { w: 2 }, split: 1 }),
+  strike: SNAKE({ name: "Diamondback ready to strike: front pulled back in an S", pose: "strike", viper: true, rattle: true, body: { w: 2 }, split: 0.35 }),
+  slider: SNAKE({ name: "Long slider, head up", pose: "wave", body: { w: 1.6 }, split: 1, height: 20 }),
+  rattler: SNAKE({ name: "Rattler 2: the classic pose with a viper head and rattle", viper: true, rattle: true }),
+  baby: SNAKE({ name: "Baby slither", pose: "slide", body: { w: 2.2 }, split: 1 }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2288,10 +2428,12 @@ const PET_VARIANTS = {
   llama: Object.values(LLAMA_BREEDS),
   turtle: Object.values(TURTLE_BREEDS),
   lizard: Object.values(LIZARD_BREEDS),
+  snake: Object.values(SNAKE_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
   if (V.shell) return buildTurtle(genes, stage, frame, V);
+  if (V.snake) return buildSnake(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
@@ -3345,6 +3487,306 @@ function buildLizardTop(genes, stage, frame, V) {
   return {
     grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, cy], scale: s,
     softOutline: true, softNeck: true, geo, noShadow: true,
+  };
+}
+
+// --- snakes ------------------------------------------------------------------------
+// A tapering tube laid along a smooth path, head end first. Each pose is a
+// path: the classic "2" (a coil on the ground rising to the head), a cobra
+// with its hood, a stack of coils, a slither seen from above, a ball, a
+// side-on wave. Where the body crosses itself, the front part (nearer the
+// head) gets an outline so the coils read.
+
+// A smooth curve through points (Catmull-Rom), `n` samples per span.
+function smoothPath(pts, n = 6) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    for (let k = 0; k < n; k++) {
+      const t = k / n;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+function snakePath(V, cx, s, frame) {
+  const B = GROUND - 1.5;
+  const H = V.height * s;
+  const wv = (frame % 2) * 0.6;
+  switch (V.pose) {
+    case "cobra": // the tail in an S on the ground, the front raised with the hood
+      return [[cx + 4 * s, B - H], [cx + 4.5 * s, B - H * 0.75], [cx + 3.5 * s, B - H * 0.4], [cx + 1 * s, B - 1], [cx - 5 * s, B - 1.5], [cx - 9 * s, B - 3 - wv], [cx - 12 * s, B - 1]];
+    case "stack": { // two coils stacked, the neck rising to the head
+      const pts = [[cx + 3 * s, B - H], [cx + 4 * s, B - H * 0.78], [cx + 1 * s, B - H * 0.6]];
+      // rounder rings, so the hole in each shows
+      for (const [rr, yc] of [[6.2 * s, B - H * 0.55], [8 * s, B - 3.8 * s]]) {
+        for (let k = 0; k <= 10; k++) {
+          const a = Math.PI * 0.5 + (k / 10) * Math.PI * 2;
+          pts.push([cx + Math.cos(a) * rr, yc + Math.sin(a) * rr * 0.55]);
+        }
+      }
+      pts.push([cx - 9 * s, B - 1]);
+      return pts;
+    }
+    case "slither": { // seen from above: an S across the ground
+      const pts = [];
+      for (let k = 0; k <= 8; k++) {
+        const t = k / 8;
+        pts.push([cx + 13 * s - t * 26 * s, B - 6 * s + Math.sin(t * Math.PI * 2.2 + (frame % 2) * 0.5) * 4 * s * (1 - t * 0.3)]);
+      }
+      return pts;
+    }
+    case "ball": { // curled into a ball, seen from above, the head resting on top
+      const pts = [[cx + 3 * s, B - 7 * s], [cx - 1 * s, B - 7.5 * s]];
+      for (let k = 0; k <= 14; k++) {
+        const a = Math.PI + (k / 14) * Math.PI * 3.2;
+        const r = (3 + k * 0.42) * s;
+        pts.push([cx + Math.cos(a) * r, B - 6 * s + Math.sin(a) * r * 0.75]);
+      }
+      return pts;
+    }
+    case "wave": { // side-on, waving along the ground, the head held up
+      // a smooth wave rolling along the body (the ends stay put), so the thin
+      // tail never pinches off
+      const roll = (frame % 2) * Math.PI * 0.5;
+      const pts = [[cx + 12 * s, B - 7 * s], [cx + 10 * s, B - 4 * s]];
+      for (let k = 0; k <= 9; k++) {
+        const t = k / 9;
+        const env = Math.sin(t * Math.PI); // no movement at either end
+        pts.push([cx + 8 * s - t * 22 * s, B - 1.5 - (0.5 + 0.5 * Math.sin(t * Math.PI * 3 + roll)) * 2.2 * s * env]);
+      }
+      return pts;
+    }
+    case "slide": { // a diamondback slithering: low waves, head a little up, the tail tip raised for the rattle
+      const roll = (frame % 2) * Math.PI * 0.5;
+      const pts = [[cx + 13 * s, B - 4.5 * s], [cx + 10.5 * s, B - 2.5 * s]];
+      for (let k = 0; k <= 9; k++) {
+        const t = k / 9;
+        const env = Math.sin(t * Math.PI);
+        pts.push([cx + 8 * s - t * 22 * s, B - 1.5 - (0.5 + 0.5 * Math.sin(t * Math.PI * 3 + roll)) * 1.6 * s * env]);
+      }
+      pts.push([cx - 15.5 * s, B - 4 * s]);
+      return pts;
+    }
+    case "strike": { // ready to strike: the front pulled back in an S, the rest low on the ground
+      const roll = (frame % 2) * Math.PI * 0.5;
+      const pts = [[cx + 11 * s, B - 11 * s], [cx + 8 * s, B - 12 * s], [cx + 5 * s, B - 9 * s], [cx + 7 * s, B - 5 * s], [cx + 4 * s, B - 2 * s]];
+      for (let k = 1; k <= 7; k++) {
+        const t = k / 7;
+        pts.push([cx + 4 * s - t * 18 * s, B - 1.5 - (0.5 + 0.5 * Math.sin(t * Math.PI * 2.5 + roll)) * 1.4 * s * Math.sin(t * Math.PI)]);
+      }
+      pts.push([cx - 15.5 * s, B - 4 * s]);
+      return pts;
+    }
+    case "long": // a "2" with an extra bend in the neck
+      return [[cx + 2 * s, B - H], [cx + 5.5 * s, B - H * 0.88], [cx + 4 * s, B - H * 0.68], [cx - 1 * s, B - H * 0.56], [cx + 3 * s, B - H * 0.36], [cx + 2 * s, B - H * 0.16], [cx - 3 * s, B - 2], [cx + 4 * s, B - 1], [cx + 11 * s, B - 1.5], [cx + 13 * s, B - 3.5 - wv]];
+    default: // the classic "2": the head up top, the neck curving down to a coil on the ground
+      return [[cx + 2 * s, B - H], [cx + 5.5 * s, B - H * 0.82], [cx + 4.5 * s, B - H * 0.55], [cx - 1 * s, B - H * 0.3], [cx - 3 * s, B - 2.5], [cx + 3 * s, B - 1], [cx + 9 * s, B - 1.5], [cx + 11 * s, B - 3.5 - wv]];
+  }
+}
+
+// A coiled snake, seen from a little above: two stacked rings (a wider one
+// below, a smaller one on top) drawn solid, with an outline between the
+// tiers; the neck rises from the middle of the top ring to the head, a light
+// belly stripe up its front; the tail tip pokes out from the bottom ring.
+function buildCoiledSnake(genes, stage, frame, V, { s, hs, w, len, cx, grid }) {
+  const t = Math.max(2.2, w * 2.2); // how tall each ring is (the tube's thickness, seen from the side)
+  const R1 = 8 * len * 0.85; // the bottom ring
+  const R2 = R1 * 0.56; // the top ring: clearly smaller, sitting inside the bottom one
+  const y1 = GROUND - t * 0.5 - 0.5;
+  const y2 = y1 - t * 0.9;
+  const ring = (cy, R, label) => {
+    // a slab: the ring's flat top face and its side, as one solid shape
+    fillEllipse(grid, cx, cy, R, R * 0.3, label);
+    fillEllipse(grid, cx, cy + t * 0.5, R, R * 0.3, label);
+    fillRect(grid, cx - R, cy, R * 2, t * 0.5, label);
+  };
+  // the tail tip pokes out at the back of the bottom ring
+  fillStroke(grid, [[cx - R1 * 0.7, y1 + t * 0.3], [cx - R1 - 1.5 * s, y1 + t * 0.6 - (frame % 2) * 0.5]], Math.max(0.6, w * 0.4), "tail");
+  ring(y1, R1, "coilbase"); // a strong line where the top tier sits on it
+  ring(y2, R2, "body");
+  // the neck: up from the top ring, an S on the way to the head
+  const H = V.height * len;
+  const neck = smoothPath([[cx - R2 * 0.1, y2], [cx + 1.5 * s, y2 - H * 0.35], [cx - 0.5 * s, y2 - H * 0.65], [cx + 1.5 * s, y2 - H]], 5);
+  if (V.hood) fillEllipse(grid, neck[neck.length - 1][0], neck[neck.length - 1][1] + w * 2.4, w * 3.1, w * 2.3, "hood");
+  neck.forEach(([x, y], i) => fillEllipse(grid, x, y, w * (0.85 - i / neck.length * 0.05), w * (0.85 - i / neck.length * 0.05), "neck"));
+  // the head
+  const [hx0, hy0] = neck[neck.length - 1];
+  const front = V.facing === "front";
+  const hrx = w * 1.35 * hs;
+  const hry = w * 1.1 * hs;
+  const hx = front ? hx0 : hx0 + hrx * 0.45;
+  const hy = hy0;
+  fillEllipse(grid, hx, hy, hrx, hry, "head");
+  relight(grid, "coilbase");
+  relight(grid, "body");
+  relight(grid, "head");
+
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const c = Math.round(hx);
+  if (front) {
+    const ey = Math.round(hy - hry * 0.3);
+    face.eyes.push({ x: c - 3, y: ey, size: "duo", iris }, { x: c + 2, y: ey, size: "duo", iris });
+    face.smile.push([c - 2, ey + 3], [c - 1, ey + 4], [c, ey + 4], [c + 1, ey + 4], [c + 2, ey + 3]);
+    face.tongue.push([c, ey + 5], [c, ey + 6], [c - 1, ey + 7], [c + 1, ey + 7]);
+  } else {
+    face.eyes.push({ x: c, y: Math.round(hy - hry * 0.45), size: "duo", iris });
+    const tip = Math.round(hx + hrx) - 1;
+    const my = Math.round(hy + hry * 0.4);
+    face.smile.push([c, my], [c + 1, my], [tip, my]);
+    face.tongue.push([tip + 1, my], [tip + 2, my], [tip + 3, my - 1], [tip + 3, my + 1]);
+  }
+  const geo = {
+    cx, cy: y2, rx: R1, ry: w, legTop: GROUND, tail: [cx - R1, y1, R1], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, neckPath: neck, coil: true,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, y2], scale: s,
+    softOutline: true, softNeck: true, geo,
+  };
+}
+
+function buildSnake(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const s = 0.62 + stage.body * 0.38;
+  const hs = 0.75 + stage.head * 0.25;
+  const w = V.body.w * (0.7 + stage.body * 0.22) * (1 + (shape.thick || 0) * 0.25); // the tube's radius at its thickest
+  const len = s * (1 + stage.body * 0.35); // grown snakes are much longer for their width
+  const cx = 32;
+  if (V.pose === "coil") return buildCoiledSnake(genes, stage, frame, V, { s, hs, w, len, cx, grid });
+  const path = smoothPath(snakePath(V, cx, len, frame), 6);
+  const n = path.length;
+  const radius = (i) => {
+    const t = i / (n - 1); // 0 head .. 1 tail tip
+    // never thinner than ~1.6 pixels across, so the tip's pixels always touch side to side
+    return Math.max(0.8, t < 0.18 ? w * (0.78 + t * 1.2) : w * Math.max(0.3, 1 - (t - 0.18) * 1.05));
+  };
+  // tail first, so the parts nearer the head lie on top; the far end is "tail"
+  // (no outline of its own where the front part crosses it)
+  const split = Math.round(n * (V.split || 0.5));
+  // arc length along the path (head = 0), for markings that follow the body
+  const arc = [0];
+  for (let i = 1; i < n; i++) arc.push(arc[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+  // for each pixel, the stamp whose center is nearest says how far down the
+  // body it is (along) and which side of the tube it sits on (across: +1 belly
+  // side, -1 back); fillEllipse replaces cells, so this is kept aside and laid
+  // on once the tube is done
+  const track = new Map();
+  const mark = (x, y, r, i, along) => {
+    const a = path[Math.min(n - 1, i + 1)];
+    const b = path[Math.max(0, i - 1)];
+    let px = -(a[1] - b[1]);
+    let py = a[0] - b[0];
+    const d = Math.hypot(px, py) || 1;
+    px /= d;
+    py /= d;
+    if (py < 0 || (py === 0 && px < 0)) {
+      px = -px;
+      py = -py;
+    }
+    for (let yy = Math.floor(y - r - 1); yy <= Math.ceil(y + r + 1); yy++) {
+      for (let xx = Math.floor(x - r - 1); xx <= Math.ceil(x + r + 1); xx++) {
+        const dist = Math.hypot(xx + 0.5 - x, yy + 0.5 - y) / r;
+        const key = yy * GRID_W + xx;
+        const was = track.get(key);
+        if (dist > 1.05 || (was && was.dist <= dist)) continue;
+        track.set(key, { dist, along, across: ((xx + 0.5 - x) * px + (yy + 0.5 - y) * py) / r });
+      }
+    }
+  };
+  for (let i = n - 1; i >= 0; i--) {
+    const r = radius(i);
+    // the thin end is "thin": outline smoothing leaves it alone (it would
+    // shave a thin diagonal line apart) and it blends into the body, no seam
+    const label = i >= split ? "tail" : r < 1.3 ? "thin" : "body";
+    fillEllipse(grid, path[i][0], path[i][1], r, r, label);
+    mark(path[i][0], path[i][1], r, i, arc[i]);
+    // fill in between points that a long snake stretches far apart
+    if (i > 0) {
+      const [x0, y0] = path[i];
+      const [x1, y1] = path[i - 1];
+      const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / Math.max(0.5, r * 0.6));
+      for (let k = 1; k < steps; k++) {
+        const x = x0 + ((x1 - x0) * k) / steps;
+        const y = y0 + ((y1 - y0) * k) / steps;
+        fillEllipse(grid, x, y, r, r, label);
+        mark(x, y, r, i, arc[i] + ((arc[i - 1] - arc[i]) * k) / steps);
+      }
+    }
+  }
+  for (const [key, t] of track) {
+    const c = grid[Math.floor(key / GRID_W)] && grid[Math.floor(key / GRID_W)][key % GRID_W];
+    if (c) {
+      c.along = t.along;
+      c.across = Math.max(-1, Math.min(1, t.across));
+    }
+  }
+  // the cobra's hood, behind the head
+  const [hx0, hy0] = path[0];
+  // a cobra's hood: flared wide beside the neck, just below the head
+  if (V.hood) fillEllipse(grid, hx0, hy0 + w * 2.4, w * 3.1, w * 2.3, "hood");
+  // the head: a little wider than the neck, pointing the way the snake faces
+  const hrx = w * 1.35 * hs;
+  const hry = w * 1.1 * hs;
+  const front = V.facing === "front";
+  const hx = front ? hx0 : hx0 + hrx * 0.45;
+  const hy = hy0;
+  if (V.hood) {
+    // re-lay the neck over the hood so it reads in front
+    for (let i = Math.round(n * 0.18); i >= 0; i--) fillEllipse(grid, path[i][0], path[i][1], radius(i), radius(i), "body");
+  }
+  fillEllipse(grid, hx, hy, hrx, hry, "head");
+  // a viper's head: wide at the jaws, narrowing to the snout -- a triangle
+  if (V.viper && !front) fillEllipse(grid, hx - hrx * 0.4, hy + hry * 0.1, hrx * 0.75, hry * 1.3, "head");
+  if (V.rattle) {
+    // a rattle: tan segments on the tail tip, carrying on the way the tail points
+    const [ax, ay] = path[n - 2];
+    const [bx, by] = path[n - 1];
+    const d = Math.hypot(bx - ax, by - ay) || 1;
+    const r = Math.max(0.9, w * 0.5);
+    for (let k = 1; k <= 3; k++) fillEllipse(grid, bx + ((bx - ax) / d) * r * 1.4 * k, by + ((by - ay) / d) * r * 1.4 * k - (frame % 2) * 0.4 * k, r * (1 - k * 0.12), r * (1 - k * 0.12), "rattle");
+  }
+  relight(grid, "body");
+  relight(grid, "head");
+
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const c = Math.round(hx);
+  if (front) {
+    const ey = Math.round(hy - hry * 0.3);
+    face.eyes.push({ x: c - 3, y: ey, size: "duo", iris }, { x: c + 2, y: ey, size: "duo", iris });
+    face.smile.push([c - 2, ey + 3], [c - 1, ey + 4], [c, ey + 4], [c + 1, ey + 4], [c + 2, ey + 3]);
+    face.tongue.push([c, ey + 5], [c, ey + 6], [c - 1, ey + 7], [c + 1, ey + 7]);
+  } else if (V.view === "top") {
+    face.eyes.push({ x: c, y: Math.round(hy - hry * 0.85), size: "duo", iris }, { x: c, y: Math.round(hy + hry * 0.3), size: "duo", iris });
+    const tip = Math.round(hx + hrx);
+    face.tongue.push([tip, Math.round(hy)], [tip + 1, Math.round(hy)], [tip + 2, Math.round(hy) - 1], [tip + 2, Math.round(hy) + 1]);
+  } else {
+    face.eyes.push({ x: c, y: Math.round(hy - hry * 0.45), size: "duo", iris });
+    const tip = Math.round(hx + hrx) - 1;
+    const my = Math.round(hy + hry * 0.4);
+    face.smile.push([c, my], [c + 1, my], [tip, my]);
+    face.tongue.push([tip + 1, my], [tip + 2, my], [tip + 3, my - 1], [tip + 3, my + 1]);
+  }
+
+  const tailEnd = path[n - 1];
+  const geo = {
+    cx, cy: GROUND - 6, rx: 12 * s, ry: w, legTop: GROUND, tail: [path[Math.min(split, n - 1)][0], path[Math.min(split, n - 1)][1], 20 * s], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, path, tailEnd, fromAbove: V.view === "top",
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, GROUND - 6], scale: s,
+    softOutline: true, softNeck: true, geo, noShadow: V.view === "top",
   };
 }
 

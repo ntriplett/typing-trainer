@@ -247,3 +247,23 @@ def test_lizards_roll_breeds_and_lizard_patterns():
     assert all(set(x["shape"]["mix"]) <= {"crest", "dewlap", "head"} for x in lizards)
     pats = collections.Counter(x["coat"]["pattern"] for x in lizards)
     assert set(pats) == {"plain", "banded", "striped", "spotted", "chameleon", "twotone", "speckled"}
+
+
+def test_snakes_roll_breeds_and_snake_patterns():
+    import collections
+
+    snakes = [g.roll("snake", "moss", "rust", seed) for seed in range(2000)]
+    assert {x["shape"]["breed"] for x in snakes} == set(g.BREEDS["snake"])
+    assert all(set(x["shape"]["mix"]) <= {"viper", "rattle", "hood"} for x in snakes)
+    pats = collections.Counter(x["coat"]["pattern"] for x in snakes)
+    assert set(pats) == {"diamondback", "banded", "saddles", "striped", "speckled", "plain"}
+    assert pats["diamondback"] > pats["speckled"]
+
+
+def test_snakes_often_roll_a_third_color_banded_half_the_time():
+    snakes = [g.roll("snake", "moss", "rust", seed)["coat"] for seed in range(4000)]
+    banded = [c for c in snakes if c["pattern"] == "banded"]
+    share = sum(1 for c in banded if c["colors"][2]) / len(banded)
+    assert 0.42 < share < 0.58
+    overall = sum(1 for c in snakes if c["colors"][2]) / len(snakes)
+    assert overall > 0.3

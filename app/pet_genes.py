@@ -122,6 +122,7 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     "llama": {"white": NATURAL, "cream": NATURAL, "tan": NATURAL, "brown": NATURAL, "gray": NATURAL, "black": NATURAL, "red": NATURAL, "teal": RARE},
     "turtle": {"green": NATURAL, "brown": NATURAL, "tan": NATURAL, "gold": NATURAL, "gray": NATURAL, "black": NATURAL, "orange": RARE, "teal": RARE},
     "lizard": {"green": NATURAL, "brown": NATURAL, "tan": NATURAL, "orange": NATURAL, "gold": NATURAL, "gray": NATURAL, "teal": RARE, "blue": RARE},
+    "snake": {"green": NATURAL, "brown": NATURAL, "orange": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "cream": NATURAL, "purple": RARE},
 }
 
 STARTER_COLORS: dict[str, tuple[str, str, str]] = {
@@ -134,11 +135,12 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "llama": ("ivory", "cocoa", "sand"),
     "turtle": ("moss", "khaki", "chestnut"),
     "lizard": ("fern", "sand", "ginger"),
+    "snake": ("moss", "rust", "buttercream"),
 }
 
 # Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
 ELEMENTS = {
-    "bunny": "leaf", "goat": "leaf", "sheep": "leaf",
+    "bunny": "leaf", "goat": "leaf", "sheep": "leaf", "snake": "leaf",
     "fox": "ember", "cat": "ember", "lizard": "ember",
     "dog": "splash", "llama": "splash", "turtle": "splash",
 }
@@ -146,6 +148,11 @@ ELEMENTS = {
 # How the coat splits: mostly one color with a highlight, sometimes a mix,
 # rarely a third accent color.
 COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
+# Species whose markings show a third color off well: the pattern is picked
+# first and sets the chance of a third color (the rest split highlight/mix).
+ACCENT_CHANCE = {
+    "snake": {"banded": 0.5, "diamondback": 0.45, "saddles": 0.4, "striped": 0.4, "speckled": 0.35, "plain": 0.3},
+}
 PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points": 1.0}
 # Cats wear real cat coats (paintCat in web/static/js/pet_render.js).
 CAT_PATTERNS = {"tabby": 25, "solid": 15, "tuxedo": 12, "bicolor": 12, "calico": 10, "tortie": 10, "colorpoint": 8, "van": 8}
@@ -168,6 +175,8 @@ SPECIES_PATTERNS = {
     "turtle": {"plain": 22, "flecks": 18, "rings": 16, "star": 12, "mottled": 12, "checker": 10, "keel": 10},
     # lizards: real lizard looks (paintLizard)
     "lizard": {"plain": 18, "banded": 18, "striped": 15, "spotted": 15, "chameleon": 10, "twotone": 12, "speckled": 12},
+    # snakes: real snake markings laid along the body (paintSnake)
+    "snake": {"diamondback": 25, "banded": 18, "saddles": 16, "striped": 15, "speckled": 12, "plain": 14},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -181,6 +190,7 @@ SPECIES_EYES = {
     "llama": {"#2a1810": 5.0, "#4a2a1a": 3.0, "#6a9ad0": 0.6},
     "turtle": {"#c8861e": 3.0, "#2a1810": 3.0, "#b84a2a": 1.0, "#7ab84a": 1.0},
     "lizard": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 1.5},
+    "snake": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 2.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
@@ -197,9 +207,10 @@ BREEDS = {
     "llama": ("llama", "front", "alpaca", "cria", "guanaco", "kushed", "suri"),
     "turtle": ("box", "tortoise", "baby", "snapper", "shy"),
     "lizard": ("iguana", "iguana_s", "monitor", "skink", "chameleon"),
+    "snake": ("classic", "cobra", "wave", "diamondback", "strike", "slider", "rattler", "baby"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -213,6 +224,7 @@ SHAPE_EXTRAS = {
     "llama": {"neck": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0), "wool": (-1.0, 1.0, 0.0)},
     "turtle": {"dome": (-1.0, 1.0, 0.0), "neck": (-1.0, 1.0, 0.0)},
     "lizard": {"legs": (-1.0, 1.0, 0.0), "crest": (-1.0, 1.0, 0.0)},
+    "snake": {"thick": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
@@ -285,7 +297,12 @@ def _trait(rng: random.Random) -> float:
 
 def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
     rng = _rng(seed, "coat")
-    style = _pick(rng, COAT_STYLES)
+    accent = ACCENT_CHANCE.get(species)
+    if accent:
+        pattern = _pick(rng, SPECIES_PATTERNS[species])
+        style = "accent" if rng.random() < accent[pattern] else _pick(rng, {"highlight": 0.65, "mix": 0.27})
+    else:
+        style = _pick(rng, COAT_STYLES)
     if style == "highlight":  # a main color with a small highlight
         primary = round(rng.uniform(0.78, 0.9), 3)
         secondary, third = round(1 - primary, 3), 0.0
@@ -304,7 +321,7 @@ def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
         "style": style,
         "colors": [ctx["primary"], ctx["secondary"], third_color],
         "shares": [primary, secondary, third],
-        "pattern": _pick(rng, SPECIES_PATTERNS.get(species, PATTERNS)),
+        "pattern": pattern if accent else _pick(rng, SPECIES_PATTERNS.get(species, PATTERNS)),
         "splotch": round(rng.uniform(*SPLOTCH_RANGE), 3),
     }
 
