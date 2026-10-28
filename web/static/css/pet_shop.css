@@ -1,0 +1,334 @@
+/* The Pet Shop (pet_shop.js); frames, buttons, and colors come from theme.css. */
+
+.pet-shop h1 {
+  margin-top: 0;
+}
+
+.back-link {
+  margin: 0 0 0.25rem;
+  font-size: 20px;
+}
+
+#shop-message:empty {
+  display: none;
+}
+
+/* --- department signs: little wooden shop signs ---------------------------------- */
+
+.shop-depts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dept-sign {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 118px;
+  gap: 0.1rem;
+}
+
+.dept-sign.current {
+  border-image-source: url("/static/assets/ui/button-gold.svg");
+  color: var(--outline);
+  text-shadow: 1px 1px 0 var(--parchment);
+}
+
+.dept-sign.closed {
+  filter: grayscale(0.85) brightness(0.92);
+}
+
+.dept-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.dept-lock {
+  font-size: 16px;
+}
+
+/* --- banners: the coupon and the saved pet ---------------------------------------- */
+
+.shop-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 22px;
+}
+
+.shop-banner[hidden] {
+  display: none;
+}
+
+.shop-banner > span:nth-child(2) {
+  flex: 1;
+}
+
+.banner-icon {
+  font-size: 32px;
+}
+
+/* --- the shop floor ------------------------------------------------------------------ */
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 0.75rem;
+}
+
+.shop-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.5rem;
+  background: var(--sand);
+  border: 3px solid var(--wood-light);
+  cursor: pointer;
+}
+
+.shop-card:hover,
+.shop-card:focus-visible {
+  background: var(--card-hover);
+  outline: none;
+  border-color: var(--leaf-gold);
+}
+
+.shop-card.saved {
+  border-color: var(--moss);
+  background: var(--card-good);
+}
+
+.shop-card canvas {
+  width: 150px;
+  height: 110px;
+  image-rendering: pixelated;
+  border: 3px solid var(--outline);
+}
+
+/* Each department's pets stand in their own little scene. */
+.shop-card canvas,
+.detail-canvas canvas {
+  background: linear-gradient(#cfe6c4 0 70%, #9cc46a 70%);
+}
+
+.dept-fish canvas {
+  background: linear-gradient(#bfe6f0, #5aa8c8 85%, #d8c28a 85%);
+}
+
+.dept-reptiles canvas {
+  background: linear-gradient(#f0e0b0 0 70%, #c8a874 70%);
+}
+
+.dept-mythical canvas {
+  background: linear-gradient(#d8c8f0 0 70%, #a890c8 70%);
+}
+
+.card-info h3 {
+  margin: 0.2rem 0 0;
+  font-size: 22px;
+}
+
+.card-price {
+  margin: 0;
+  font-size: 22px;
+}
+
+.card-badges {
+  margin: 0.2rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 16px;
+  padding: 0 0.35rem;
+  border: 2px solid var(--outline);
+  background: var(--parchment);
+  white-space: nowrap;
+}
+
+.badge-new {
+  background: #f6e3ff;
+  color: #5a2a7a;
+}
+
+.badge-rare {
+  background: #fff1c0;
+  color: #6a4a00;
+}
+
+.badge-super {
+  background: var(--leaf-gold);
+  color: var(--outline);
+}
+
+.badge-last {
+  background: var(--leaf-red);
+  color: var(--on-wood);
+  font-size: 18px;
+}
+
+/* Corner ribbons: "Last day!" and "Saved!" */
+.ribbon {
+  position: absolute;
+  top: 14px;
+  right: -36px;
+  width: 140px;
+  transform: rotate(35deg);
+  text-align: center;
+  font-size: 18px;
+  color: var(--on-wood);
+  text-shadow: 1px 1px 0 var(--outline);
+  border-top: 2px solid var(--outline);
+  border-bottom: 2px solid var(--outline);
+  pointer-events: none;
+}
+
+.ribbon-last {
+  background: var(--leaf-red);
+}
+
+.ribbon-saved {
+  background: var(--moss);
+}
+
+.shop-card.sold {
+  cursor: default;
+  justify-content: center;
+  min-height: 190px;
+  background: var(--muted-fill);
+  border-style: dashed;
+}
+
+.sold-sign {
+  font-size: 30px;
+  color: var(--heading);
+  transform: rotate(-6deg);
+}
+
+.card-note {
+  margin: 0.25rem 0 0;
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+
+/* --- the close-up ------------------------------------------------------------------- */
+
+.pet-detail {
+  width: min(560px, calc(100vw - 32px));
+  background: transparent;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.pet-detail::backdrop {
+  background: rgba(40, 24, 16, 0.55);
+}
+
+.detail-close {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.5rem;
+  font-size: 26px;
+  text-decoration: none;
+}
+
+.detail-pets {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.detail-pets figure {
+  margin: 0;
+  text-align: center;
+}
+
+.detail-canvas canvas {
+  width: 220px;
+  height: 160px;
+  image-rendering: pixelated;
+  border: 3px solid var(--outline);
+}
+
+.detail-colors {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  justify-content: center;
+}
+
+.swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 0.3rem;
+  vertical-align: -3px;
+  border: 2px solid var(--outline);
+}
+
+.detail-rare {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  justify-content: center;
+  margin: 0.25rem 0;
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.detail-actions .hint {
+  flex-basis: 100%;
+  text-align: center;
+  margin: 0;
+}
+
+.unlocked-colors {
+  font-size: 22px;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .dept-sign {
+    min-width: 0;
+    flex: 1 1 30%;
+    font-size: 16px;
+    padding: 0.1rem 0.2rem 0.2rem;
+  }
+
+  .dept-icon {
+    font-size: 22px;
+  }
+
+  .dept-lock {
+    font-size: 13px;
+  }
+
+  .shop-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .shop-card canvas {
+    width: 100%;
+    height: auto;
+  }
+}

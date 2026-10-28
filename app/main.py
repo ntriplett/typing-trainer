@@ -155,6 +155,11 @@ def pets_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pets.html")
 
 
+@app.get("/pets/shop")
+def pet_shop_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pet_shop.html")
+
+
 @app.get("/bedroom")
 def bedroom_page() -> FileResponse:
     return FileResponse(WEB_DIR / "bedroom.html")
