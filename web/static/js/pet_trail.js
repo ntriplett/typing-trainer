@@ -170,7 +170,8 @@ function go(spot) {
     : `Empty lot<small>Get a habitat at the Pet Shop</small>`;
 
   $("trail-stop").textContent = `Stop ${at + 1} of ${trail.spots.length}`;
-  $("trail-down").disabled = at === 0;
+  // walking down past the first stop takes you back to the Pets hub
+  $("trail-down").textContent = at === 0 ? "▼ Back to Pets" : "▼ Down the trail";
   $("trail-up").disabled = at === trail.spots.length - 1;
   setupMini(at);
 }
@@ -261,7 +262,7 @@ async function load() {
   const first = trail.spots.findIndex(Boolean);
   go(asked !== null ? Number(asked) : Math.max(0, first));
   $("trail-up").onclick = () => go(at + 1);
-  $("trail-down").onclick = () => go(at - 1);
+  $("trail-down").onclick = () => (at === 0 ? (location.href = "/pets") : go(at - 1));
   $("trail-map-open").onclick = openMap;
   document.querySelector(".map-close").onclick = () => $("trail-map").close();
   document.addEventListener("keydown", (e) => {
@@ -269,9 +270,9 @@ async function load() {
     if (e.key === "ArrowUp" && at < trail.spots.length - 1) {
       e.preventDefault();
       go(at + 1);
-    } else if (e.key === "ArrowDown" && at > 0) {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      go(at - 1);
+      $("trail-down").click();
     }
   });
 }

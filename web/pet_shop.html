@@ -10,14 +10,19 @@
 </head>
 <body data-particles>
   <main class="pet-shop">
-    <p class="back-link"><a href="/pets">← Pets</a></p>
-    <h1>The Pet Shop</h1>
-    <nav id="shop-depts" class="shop-depts" aria-label="Departments"></nav>
+    <header class="page-head">
+      <h1>The Pet Shop</h1>
+      <nav class="signposts" aria-label="Go back"><a class="signpost" href="/pets">🐾 Pets</a><a class="signpost" href="/">🏠 Home</a></nav>
+    </header>
     <div id="shop-coupon" class="panel shop-banner coupon-banner" hidden></div>
     <div id="shop-saved" class="panel shop-banner saved-banner" hidden></div>
     <p id="shop-message" class="error-text" role="status"></p>
     <section class="panel shop-floor">
       <h2 id="dept-title" class="panel-title"></h2>
+      <div id="shop-scene" class="shop-scene">
+        <canvas id="shop-canvas" width="960" height="540" aria-hidden="true"></canvas>
+        <div id="shop-spots"></div>
+      </div>
       <p id="dept-hint" class="hint"></p>
       <div id="shop-grid" class="shop-grid"></div>
     </section>
@@ -31,11 +36,13 @@
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>
   <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pet_render.js"></script>
   <script src="/static/js/avatar.js"></script>
   <script src="/static/js/themes.js"></script>
   <script src="/static/js/header.js"></script>
-  <script src="/static/js/pet_render.js"></script>
   <script src="/static/js/habitats.js"></script>
+  <script src="/static/js/pet_motion.js"></script>
+  <script src="/static/js/shop_scenes.js"></script>
   <script src="/static/js/pet_shop.js"></script>
 </body>
 </html>

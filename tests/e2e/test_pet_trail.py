@@ -14,7 +14,7 @@ def test_walk_the_trail_and_use_the_map(page: Page, live_server):
     expect(page.locator("#trail-stop")).to_have_text("Stop 1 of 10")
     expect(page.locator("#trail-sign")).to_contain_text("Empty lot")
     expect(page.locator("#trail-window")).to_have_attribute("href", "/pets/shop?dept=habitats")
-    expect(page.locator("#trail-down")).to_be_disabled()
+    expect(page.locator("#trail-down")).to_have_text("▼ Back to Pets")
     page.keyboard.press("ArrowUp")
     expect(page.locator("#trail-stop")).to_have_text("Stop 2 of 10")
     page.get_by_role("button", name="🗺️ Map").click()
@@ -40,10 +40,19 @@ def test_visit_a_habitat_with_its_pets(page: Page, live_server, tmp_path):
     page.get_by_role("link", name="Pickles").click()
     expect(page.locator("#book-detail h2")).to_have_text("Pickles")
     page.goto(f"{live_server}/pets/trail/0")
-    page.get_by_role("link", name="← Trailhead").click()
+    page.get_by_role("link", name="⬅ To the trail").click()
     expect(page.locator("#trail-stop")).to_have_text("Stop 1 of 10")
 
 
 def test_an_empty_spot_has_no_habitat_page(page: Page, live_server):
     page.goto(f"{live_server}/pets/trail/3")
     expect(page.locator("#habitat-message")).to_contain_text("no habitat there")
+
+
+def test_down_from_the_first_stop_goes_back_to_pets(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    expect(page.locator("#trail-down")).to_have_text("▼ Back to Pets")
+    page.keyboard.press("ArrowDown")
+    expect(page).to_have_url(f"{live_server}/pets")
+    page.get_by_role("link", name="🏠 Home").click()
+    expect(page).to_have_url(f"{live_server}/")

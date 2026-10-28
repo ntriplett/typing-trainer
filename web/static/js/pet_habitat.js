@@ -43,7 +43,7 @@ function renderResidents() {
 
 async function load() {
   const spot = Number(location.pathname.split("/").pop());
-  $("habitat-back").href = `/pets/trail?at=${spot}`;
+  $("habitat-back").href = $("habitat-gate").href = `/pets/trail?at=${spot}`;
   const r = await fetch(`/api/trail/${spot}`);
   const data = await r.json();
   if (!r.ok) throw new Error(data.detail || `/api/trail/${spot} returned ${r.status}`);

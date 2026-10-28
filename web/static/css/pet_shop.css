@@ -4,49 +4,8 @@
   margin-top: 0;
 }
 
-.back-link {
-  margin: 0 0 0.25rem;
-  font-size: 20px;
-}
-
 #shop-message:empty {
   display: none;
-}
-
-/* --- department signs: little wooden shop signs ---------------------------------- */
-
-.shop-depts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.dept-sign {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 118px;
-  gap: 0.1rem;
-}
-
-.dept-sign.current {
-  border-image-source: url("/static/assets/ui/button-gold.svg");
-  color: var(--outline);
-  text-shadow: 1px 1px 0 var(--parchment);
-}
-
-.dept-sign.closed {
-  filter: grayscale(0.85) brightness(0.92);
-}
-
-.dept-icon {
-  font-size: 28px;
-  line-height: 1;
-}
-
-.dept-lock {
-  font-size: 16px;
 }
 
 /* --- banners: the coupon and the saved pet ---------------------------------------- */
@@ -70,7 +29,189 @@
   font-size: 32px;
 }
 
-/* --- the shop floor ------------------------------------------------------------------ */
+/* --- the shop floor: a scene with real buttons over it ---------------------------- */
+
+.shop-scene {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 0.5rem;
+}
+
+.shop-scene[hidden] {
+  display: none;
+}
+
+.shop-scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  border: 4px solid var(--outline);
+}
+
+.shop-spot,
+.shop-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0;
+  border: none;
+  border-image: none;
+  background: none;
+  text-shadow: none;
+}
+
+.shop-spot:hover,
+.shop-spot:focus-visible,
+.shop-slot:hover,
+.shop-slot:focus-visible {
+  outline: 3px dashed var(--leaf-gold);
+  outline-offset: 1px;
+  background: rgba(255, 244, 216, 0.14);
+}
+
+.shop-spot:active,
+.shop-slot:active {
+  transform: none;
+}
+
+/* the department's sign under its doorway or corner */
+.spot-sign {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: clamp(12px, 1.7vw, 18px);
+  line-height: 1.05;
+  padding: 0.05rem 0.35rem 0.12rem;
+  margin-bottom: -0.4em;
+  background: var(--wood);
+  border: 3px solid var(--wood-dark);
+  color: var(--on-wood);
+  text-shadow: 1px 1px 0 var(--outline);
+  white-space: nowrap;
+}
+
+.spot-sign small {
+  font-size: 0.75em;
+  color: var(--leaf-gold);
+}
+
+.shop-spot.closed .spot-sign {
+  background: #8a8278;
+  border-color: #5a544c;
+}
+
+/* a pet's price tag, hanging under its station */
+.slot-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-family: var(--font-ui);
+  font-size: clamp(12px, 1.7vw, 18px);
+  line-height: 1;
+  padding: 0.05rem 0.3rem 0.1rem;
+  background: var(--parchment);
+  color: var(--ink);
+  border: 2px solid var(--outline);
+  white-space: nowrap;
+}
+
+.slot-tag .coin-icon {
+  width: 0.8em;
+  height: 0.8em;
+}
+
+.tag-mark {
+  font-size: 0.85em;
+}
+
+.shop-slot.saved .slot-tag {
+  background: var(--card-good);
+  border-color: var(--moss);
+}
+
+.shop-slot.sold {
+  cursor: default;
+}
+
+.shop-slot.sold:hover {
+  outline: none;
+  background: none;
+}
+
+.shop-slot.sold .slot-tag {
+  transform: rotate(-6deg);
+  background: var(--muted-fill);
+  margin-bottom: 45%;
+}
+
+.slot-ribbon {
+  position: absolute;
+  top: -0.6em;
+  left: 50%;
+  transform: translateX(-50%) rotate(-4deg);
+  font-family: var(--font-ui);
+  font-size: clamp(11px, 1.5vw, 16px);
+  padding: 0 0.3rem;
+  white-space: nowrap;
+  background: var(--leaf-red);
+  color: var(--on-wood);
+  text-shadow: 1px 1px 0 var(--outline);
+  border: 2px solid var(--outline);
+}
+
+.slot-ribbon.saved {
+  background: var(--moss);
+}
+
+/* phones: department signs show just their icon, tags shrink */
+@media (max-width: 600px) {
+  .spot-name,
+  .spot-sign small {
+    display: none;
+  }
+
+  .slot-tag {
+    font-size: 11px;
+  }
+
+  .shop-slot.sold .slot-tag {
+    font-size: 10px;
+  }
+}
+
+/* wooden signs inside a room: back to the entrance, to the next room */
+.scene-nav {
+  position: absolute;
+  top: 2%;
+  font-family: var(--font-ui);
+  font-size: clamp(13px, 1.9vw, 20px);
+  padding: 0.05rem 0.5rem 0.12rem;
+  background: var(--wood);
+  border: 3px solid var(--wood-dark);
+  border-image: none;
+  color: var(--on-wood);
+  text-shadow: 1px 1px 0 var(--outline);
+}
+
+.scene-nav:hover,
+.scene-nav:focus-visible {
+  background: var(--wood-light);
+  outline: 3px dashed var(--leaf-gold);
+  outline-offset: 2px;
+}
+
+.scene-nav.sign-left {
+  left: 1.5%;
+}
+
+.scene-nav.sign-right {
+  right: 1.5%;
+}
+
 
 .shop-grid {
   display: grid;
@@ -78,54 +219,24 @@
   gap: 0.75rem;
 }
 
-.shop-card {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 0.5rem;
-  background: var(--sand);
-  border: 3px solid var(--wood-light);
-  cursor: pointer;
-}
-
-.shop-card:hover,
-.shop-card:focus-visible {
-  background: var(--card-hover);
-  outline: none;
-  border-color: var(--leaf-gold);
-}
-
-.shop-card.saved {
-  border-color: var(--moss);
-  background: var(--card-good);
-}
-
-.shop-card canvas {
-  width: 150px;
-  height: 110px;
-  image-rendering: pixelated;
-  border: 3px solid var(--outline);
-}
-
-/* Each department's pets stand in their own little scene. */
-.shop-card canvas,
+/* The close-up and the order sample: each department's pets in a little scene. */
 .detail-canvas canvas,
 .order-sample canvas {
   background: linear-gradient(#cfe6c4 0 70%, #9cc46a 70%);
 }
 
-.dept-fish canvas {
+.detail-pets.dept-fish canvas,
+.order-sample.dept-fish canvas {
   background: linear-gradient(#bfe6f0, #5aa8c8 85%, #d8c28a 85%);
 }
 
-.dept-reptiles canvas {
+.detail-pets.dept-reptiles canvas,
+.order-sample.dept-reptiles canvas {
   background: linear-gradient(#f0e0b0 0 70%, #c8a874 70%);
 }
 
-.dept-mythical canvas {
+.detail-pets.dept-mythical canvas,
+.order-sample.dept-mythical canvas {
   background: linear-gradient(#d8c8f0 0 70%, #a890c8 70%);
 }
 

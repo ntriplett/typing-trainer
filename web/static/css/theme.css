@@ -919,3 +919,51 @@ body[data-particles] main {
 .mystery-keys {
   font-size: 30px;
 }
+
+/* Signposts: wooden arrow signs back to where you came from (the Pets
+   pages). Used in a .page-head next to the title:
+   <header class="page-head"><h1>..</h1><nav class="signposts">
+   <a class="signpost" href="/pets">Pets</a></nav></header> */
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.page-head h1 {
+  margin: 0;
+}
+
+.signposts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  /* the clip-path cuts borders off, so the outline is a shadow on the row */
+  filter: drop-shadow(2px 0 0 var(--outline)) drop-shadow(-2px 0 0 var(--outline))
+    drop-shadow(0 2px 0 var(--outline)) drop-shadow(0 -2px 0 var(--outline)) drop-shadow(3px 3px 0 rgba(59, 36, 23, 0.3));
+}
+
+.signpost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.9rem 0.2rem 1.4rem;
+  font-family: var(--font-ui);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--on-wood);
+  text-decoration: none;
+  text-shadow: 1px 1px 0 var(--outline);
+  background: linear-gradient(var(--wood) 0 45%, #7e5126 45% 50%, var(--wood) 50%);
+  clip-path: polygon(16px 0, 100% 0, 100% 100%, 16px 100%, 0 50%);
+}
+
+.signpost:hover,
+.signpost:focus-visible {
+  background: var(--wood-light);
+  color: var(--on-wood);
+  outline: none;
+}

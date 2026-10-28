@@ -1,13 +1,20 @@
-// The Pet Shop (PLAN.md 11h): department signs across the top, then that
-// department's pets as cards. Click a pet for a close-up: as a baby and
-// all grown up, its colors, what's rare about it, and Buy / Save for me.
-// Special Orders swaps the stock for an order form (species, colors, a
-// sample pet) and, once they arrive, the ordered pets.
+// The Pet Shop (PLAN.md 11h): you walk in to the entrance hall and click a
+// department's doorway or corner; each department is a themed room
+// (shop_scenes.js) where its pets wait at their stations, moving about
+// (pet_motion.js), with price tags. Big departments have two rooms. Click a
+// pet for a close-up: as a baby and all grown up, its colors, what's rare
+// about it, and Buy / Save for me. Special Orders adds an order form
+// (species, colors, a sample pet); Habitats sells habitats instead of pets.
 // Rules live in app/pet_shop.py; pets are drawn by pet_render.js.
 
 const $ = (id) => document.getElementById(id);
 const TICK_MS = 400;
+const SCENE_PX = 6; // the 160x90 scenes on a 960x540 canvas
+const SCENE_TICK_MS = 120;
+// Room pet scales to try, biggest first: whole screen pixels per pet pixel.
+const ROOM_SCALES = [1, 5 / 6, 2 / 3, 1 / 2, 1 / 3];
 const BABY = 0;
+const ORDER_SAMPLE_GROWTH = 10; // the order form's sample shows what the pets grow into
 const GROWN = 10;
 // rare_features() multipliers worth a badge, and the "super rare" ones
 const RARE_SHOWN = 1.2;
@@ -26,14 +33,13 @@ const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "�
 
 let front = null; // /api/pets/shop
 let dept = null; // /api/pets/shop/{id}
-let deptId = null;
+let deptId = null; // null: the entrance hall
+let page = 0; // which of a department's rooms
+let scene = null; // what's drawn: {bg, front, pets: [{slot, world}]}
 let detailIndex = null; // the slot in the close-up
-let confirming = false; // the Buy button asks "Are you sure?" first
 let frame = 0;
-let cardScale = 3;
 let pick = null; // the order form: {species, primary, secondary}
 let preview = null; // a sample pet for the order form
-let confirmOrder = false;
 
 const PLURAL = { bunny: "bunnies", fish: "fish", fox: "foxes", sheep: "sheep", phoenix: "phoenixes" };
 const speciesName = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -75,7 +81,7 @@ function tick() {
     if (slot && !slot.sold) paint(canvas, slot.genes, Number(canvas.dataset.growth), Number(canvas.dataset.scale));
   }
   const sample = $("order-preview");
-  if (sample && preview) paint(sample, preview, BABY, Number(sample.dataset.scale));
+  if (sample && preview) paint(sample, preview, ORDER_SAMPLE_GROWTH, Number(sample.dataset.scale));
 }
 
 function petCanvas(slot, growth, w, h, scale) {
@@ -109,15 +115,14 @@ function say(text) {
 
 async function loadFront() {
   front = await call("/api/pets/shop");
-  renderDepts();
   renderBanners();
 }
 
-async function openDept(id) {
+async function openDept(id, toPage = 0) {
   say("");
   deptId = id;
-  history.replaceState(null, "", `?dept=${id}`);
-  renderDepts();
+  page = toPage;
+  history.replaceState(null, "", `?dept=${id}${page ? `&page=${page}` : ""}`);
   try {
     setDept(await call(`/api/pets/shop/${id}`));
   } catch (err) {
@@ -129,29 +134,80 @@ function setDept(data) {
   dept = data;
   front.saved = data.saved;
   front.coupon = deptId === "household" ? data.coupon : front.coupon;
-  const pets = data.slots.filter((s) => !s.sold).map((s) => s.genes);
-  cardScale = fitScale(pets, BABY, 150, 110, 5);
   renderBanners();
   renderFloor();
   if (detailIndex !== null) renderDetail();
 }
 
-// --- department signs and banners ----------------------------------------------------
+// --- the entrance hall --------------------------------------------------------------
 
-function renderDepts() {
-  const nav = $("shop-depts");
-  nav.replaceChildren(
+function goEntrance() {
+  say("");
+  deptId = null;
+  dept = null;
+  history.replaceState(null, "", location.pathname);
+  renderEntrance();
+  renderBanners();
+}
+
+function renderEntrance() {
+  $("dept-title").textContent = "Welcome to the Pet Shop!";
+  $("dept-hint").textContent = "Click a department to look around. New pets arrive every night.";
+  $("shop-grid").replaceChildren();
+  $("shop-scene").hidden = false;
+  const open = Object.fromEntries(front.departments.map((d) => [d.id, d.open]));
+  const bg = sceneCanvas();
+  drawShopEntrance(habitatPainter(bg.getContext("2d"), SCENE_PX), open);
+  scene = { bg, front: null, pets: [] };
+  drawScene();
+  $("shop-spots").replaceChildren(
     ...front.departments.map((d) => {
+      const spot = SHOP_SPOTS[d.id];
       const btn = document.createElement("button");
-      btn.className = "dept-sign" + (d.id === deptId ? " current" : "") + (d.open ? "" : " closed");
+      btn.className = "shop-spot" + (d.open ? "" : " closed");
       btn.dataset.dept = d.id;
-      const lock = d.soon ? "Coming soon" : `Learn ${d.missing.toUpperCase().split("").join(" ")}`;
-      btn.innerHTML = `<span class="dept-icon">${DEPT_ICON[d.id] || "🐾"}</span>
-        <span class="dept-name">${d.name}</span>${d.open ? "" : `<span class="dept-lock">🔒 ${lock}</span>`}`;
-      btn.onclick = () => (d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${lock.slice(6)}.`));
+      place(btn, spot);
+      const lock = d.soon ? "Coming soon" : `🔒 Learn ${d.missing.toUpperCase().split("").join(" ")}`;
+      btn.setAttribute("aria-label", d.open ? d.name : `${d.name}: ${lock}`);
+      btn.innerHTML = `<span class="spot-sign">${DEPT_ICON[d.id] || "🐾"} <span class="spot-name">${d.name}</span>${d.open ? "" : `<small>${lock}</small>`}</span>`;
+      btn.onclick = () =>
+        d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${lock.slice(9)}.`);
       return btn;
     })
   );
+}
+
+// Lays an element over the scene at a 160x90 box.
+function place(el, { x, y, w, h }) {
+  Object.assign(el.style, {
+    left: `${(x / SHOP_W) * 100}%`,
+    top: `${(y / SHOP_H) * 100}%`,
+    width: `${(w / SHOP_W) * 100}%`,
+    height: `${(h / SHOP_H) * 100}%`,
+  });
+}
+
+function sceneCanvas() {
+  const c = document.createElement("canvas");
+  c.width = SHOP_W * SCENE_PX;
+  c.height = SHOP_H * SCENE_PX;
+  return c;
+}
+
+function drawScene() {
+  if (!scene) return;
+  const ctx = $("shop-canvas").getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(scene.bg, 0, 0);
+  const px = habitatPainter(ctx, SCENE_PX);
+  for (const { world } of scene.pets) PetMotion.draw(world, px);
+  if (scene.front) ctx.drawImage(scene.front, 0, 0);
+}
+
+function sceneTick() {
+  if (!scene || !scene.pets.length) return;
+  for (const { world } of scene.pets) PetMotion.step(world);
+  drawScene();
 }
 
 function renderBanners() {
@@ -187,47 +243,118 @@ function renderBanners() {
 
 function renderFloor() {
   const d = dept.department;
-  if (d.id === "orders") return renderOrders();
+  $("shop-grid").replaceChildren();
+  $("shop-grid").className = "shop-grid";
   if (d.id === "habitats") return renderHabitats();
-  $("dept-title").textContent = d.name;
+  renderRoom();
+  if (d.id === "orders") return renderOrders();
   $("dept-hint").textContent = dept.coupon
     ? "Use your coupon on any pet here, or buy with coins. Click a pet to meet it!"
     : "New pets arrive every night. Click a pet to meet it!";
-  const grid = $("shop-grid");
-  grid.className = `shop-grid dept-${d.id}`;
-  grid.replaceChildren(...dept.slots.map(card));
 }
 
-function card(slot) {
-  const el = document.createElement("article");
-  el.className = "shop-card";
-  el.dataset.index = slot.index;
-  if (slot.sold) {
-    el.classList.add("sold");
-    el.innerHTML = `<div class="sold-sign">Adopted!</div><p class="card-note">A new pet comes tomorrow.</p>`;
-    return el;
+// --- a department's room ----------------------------------------------------------
+
+function roomPages(def) {
+  return Math.max(1, Math.ceil(dept.slots.length / def.perPage));
+}
+
+// The biggest of ROOM_SCALES that fits every pet on this page in its
+// station, so sizes compare truthfully.
+function roomScale(def, slots, stations) {
+  return (
+    ROOM_SCALES.find((sc) =>
+      slots.every((slot, i) => {
+        const a = def.area(stations[i]);
+        const { w, h } = petSize(slot.genes, BABY);
+        return w * sc <= a.right - a.left && h * sc <= stations[i].h - 2;
+      })
+    ) || ROOM_SCALES[ROOM_SCALES.length - 1]
+  );
+}
+
+function renderRoom() {
+  const id = dept.department.id;
+  const def = SHOP_ROOMS[id];
+  const pages = roomPages(def);
+  page = Math.min(page, pages - 1);
+  const slots = dept.slots.slice(page * def.perPage, (page + 1) * def.perPage);
+  const stations = def.stations();
+  $("dept-title").textContent = dept.department.name + (pages > 1 ? `: ${def.pages[page]}` : "");
+  $("shop-scene").hidden = false;
+
+  const bg = sceneCanvas();
+  const front = sceneCanvas();
+  const r = habitatPainter(bg.getContext("2d"), SCENE_PX);
+  const f = habitatPainter(front.getContext("2d"), SCENE_PX);
+  def.drawRoom(r, page);
+  stations.forEach((st) => def.back(r, st));
+  stations.forEach((st) => def.front(f, st));
+  const scale = roomScale(def, slots.filter((sl) => !sl.sold), stations);
+  const pets = [];
+  slots.forEach((slot, i) => {
+    if (slot.sold) return;
+    const area = def.area(stations[i]);
+    const world = PetMotion.create([{ genes: slot.genes, growth: BABY, species: slot.species }], area, scale);
+    const w = world.walkers[0];
+    area.top = Math.min(area.bottom, Math.max(area.top, stations[i].y + 3 + w.height)); // keep heads inside
+    w.x = area.left + Math.random() * Math.max(0, area.right - area.left - w.width);
+    w.y = area.top + Math.random() * (area.bottom - area.top);
+    pets.push({ slot, world });
+  });
+  scene = { bg, front, pets };
+  drawScene();
+
+  const spots = slots.map((slot, i) => stationButton(slot, stations[i]));
+  spots.push(sceneSign("⬅ Entrance", "sign-left", goEntrance));
+  if (pages > 1) {
+    const next = (page + 1) % pages;
+    spots.push(sceneSign(next > page ? `${def.pages[next]} ▶` : `◀ ${def.pages[next]}`, "sign-right", () => openRoomPage(next)));
   }
-  if (slot.saved) el.classList.add("saved");
-  el.tabIndex = 0;
-  el.setAttribute("role", "button");
-  el.setAttribute("aria-label", `${speciesName(slot.species)}, ${slot.price} coins`);
-  // zoomed in up to 2x past the department's shared scale: sizes still compare,
-  // and the smallest pets aren't specks
-  el.appendChild(petCanvas(slot, BABY, 150, 110, Math.min(fitScale([slot.genes], BABY, 150, 110, 6), cardScale * 2)));
-  const info = document.createElement("div");
-  info.className = "card-info";
-  info.innerHTML = `<h3>${speciesName(slot.species)}</h3><p class="card-price">${dept.coupon ? "<b>Free with coupon!</b>" : coins(slot.price)}</p>${badges(slot)}`;
-  el.appendChild(info);
-  if (slot.saved) el.insertAdjacentHTML("beforeend", `<div class="ribbon ribbon-saved">Saved!</div>`);
-  else if (slot.last_day) el.insertAdjacentHTML("beforeend", `<div class="ribbon ribbon-last">Last day!</div>`);
-  el.onclick = () => showDetail(slot.index);
-  el.onkeydown = (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      showDetail(slot.index);
-    }
-  };
-  return el;
+  $("shop-spots").replaceChildren(...spots);
+}
+
+function openRoomPage(n) {
+  page = n;
+  history.replaceState(null, "", `?dept=${deptId}${page ? `&page=${page}` : ""}`);
+  renderFloor();
+}
+
+function sceneSign(text, cls, onclick) {
+  const b = document.createElement("button");
+  b.className = `scene-nav ${cls}`;
+  b.textContent = text;
+  b.onclick = onclick;
+  return b;
+}
+
+// A pet's station: click it to meet the pet; its price tag hangs below.
+function stationButton(slot, st) {
+  const btn = document.createElement("button");
+  btn.className = "shop-slot" + (slot.sold ? " sold" : "") + (slot.saved ? " saved" : "");
+  btn.dataset.index = slot.index;
+  place(btn, { x: st.x, y: st.y, w: st.w, h: st.h + 5 });
+  if (slot.sold) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="slot-tag">Adopted!</span>`;
+    btn.title = "A new pet comes tomorrow.";
+    return btn;
+  }
+  btn.setAttribute("aria-label", `${speciesName(slot.species)}, ${slot.price} coins`);
+  const ribbon = slot.saved ? `<span class="slot-ribbon saved">Saved!</span>` : slot.last_day ? `<span class="slot-ribbon">Last day!</span>` : "";
+  const price = dept.coupon ? "🎟️ Free" : coins(slot.price);
+  btn.innerHTML = `${ribbon}<span class="slot-tag">${price}${tagBadges(slot)}</span>`;
+  btn.onclick = () => showDetail(slot.index);
+  return btn;
+}
+
+function tagBadges(slot) {
+  const rare = rareList(slot);
+  const marks = [];
+  if (slot.new_colors.length) marks.push(`<span title="New color" class="tag-mark">✨</span>`);
+  if (rare.some((x) => x.superRare)) marks.push(`<span title="Super rare" class="tag-mark">🌟</span>`);
+  else if (rare.length) marks.push(`<span title="Rare" class="tag-mark">⭐</span>`);
+  return marks.join("");
 }
 
 function rareList(slot) {
@@ -248,10 +375,11 @@ function badges(slot) {
 
 // --- habitats (app/pet_care.py, looks in habitats.js) -----------------------------------
 
-let habitatConfirm = null; // the kind whose Buy button asks "Are you sure?"
-
 function renderHabitats() {
   const h = dept.habitats;
+  scene = null;
+  $("shop-scene").hidden = true;
+  $("shop-spots").replaceChildren();
   $("dept-title").textContent = "Habitats";
   $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned} of ${h.spots}.`;
   const grid = $("shop-grid");
@@ -264,7 +392,6 @@ function renderHabitats() {
       const view = habitatBackground(kind.id, 2);
       const full = h.owned >= h.spots;
       const short = dept.coins < kind.price;
-      const confirm = habitatConfirm === kind.id;
       card.innerHTML = `<h3>${kind.name}</h3>
         <p class="card-price">${kind.price ? coins(kind.price) : "<b>Free!</b> Your first habitat is on us."}</p>`;
       card.insertBefore(view, card.querySelector(".card-price"));
@@ -275,9 +402,7 @@ function renderHabitats() {
         ? "Your trail is full"
         : short
           ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
-          : confirm
-            ? "Yes, get it!"
-            : kind.price
+          : kind.price
               ? `Buy for ${kind.price.toLocaleString()} coins`
               : "Get it free!";
       btn.onclick = () => buyHabitat(kind);
@@ -288,11 +413,6 @@ function renderHabitats() {
 }
 
 async function buyHabitat(kind) {
-  if (habitatConfirm !== kind.id) {
-    habitatConfirm = kind.id;
-    return renderHabitats();
-  }
-  habitatConfirm = null;
   try {
     const data = await call(`/api/pets/shop/habitats/${kind.id}`, "POST");
     setDept(data);
@@ -323,11 +443,6 @@ function renderOrders() {
         : `📦 <b>Your special order is here!</b> They go home ${o.days_left === 1 ? "after today" : `in ${o.days_left} days`}.`;
     parts.push(note);
   }
-  const cards = document.createElement("div");
-  const orderDept = o && dept.choices.find((c) => c.species === o.species);
-  cards.className = `shop-grid order-pets dept-${orderDept ? orderDept.dept : ""}`;
-  cards.replaceChildren(...dept.slots.map(card));
-  if (dept.slots.length) parts.push(cards);
   parts.push(orderForm());
   grid.replaceChildren(...parts);
   if (!preview) loadPreview();
@@ -366,19 +481,18 @@ function orderForm() {
         : `<p class="hint">Learn your capital letters to pick a second color too!</p>`
     }
     <div class="order-sample dept-${choice.dept}">
-      <figure><canvas id="order-preview" width="220" height="160" data-scale="4"></canvas><figcaption>Something like this</figcaption></figure>
+      <figure><canvas id="order-preview" width="220" height="160" data-scale="4"></canvas><figcaption>Something like this, all grown up</figcaption></figure>
       <button class="link-button" id="order-another">Show me another</button>
     </div>
     <p class="order-explain">Sending the order costs <b>${coins(choice.fee)} coins</b>. Tomorrow, <b>4 ${name}</b> in your colors will be waiting here.
       You can buy the ones you love. If you don't, they go home after 3 days.</p>
     ${replacing}
     <div class="detail-actions"><button id="order-send" class="button-gold big-button"${short ? " disabled" : ""}>${
-      short ? `Need ${(choice.fee - dept.coins).toLocaleString()} more coins` : confirmOrder ? "Yes, send it!" : `Send my order`
+      short ? `Need ${(choice.fee - dept.coins).toLocaleString()} more coins` : `Send my order`
     }</button></div>`;
 
   const repick = (changes) => {
     Object.assign(pick, changes);
-    confirmOrder = false;
     preview = null;
     renderOrders();
   };
@@ -400,16 +514,11 @@ async function loadPreview() {
   preview = data.pet;
   const canvas = $("order-preview");
   if (!canvas) return;
-  canvas.dataset.scale = fitScale([preview], BABY, canvas.width, canvas.height, 7);
-  paint(canvas, preview, BABY, Number(canvas.dataset.scale));
+  canvas.dataset.scale = fitScale([preview], ORDER_SAMPLE_GROWTH, canvas.width, canvas.height, 7);
+  paint(canvas, preview, ORDER_SAMPLE_GROWTH, Number(canvas.dataset.scale));
 }
 
 async function sendOrder() {
-  if (!confirmOrder) {
-    confirmOrder = true;
-    return renderOrders();
-  }
-  confirmOrder = false;
   try {
     setDept(await call("/api/pets/shop/orders", "POST", pick));
     say("");
@@ -423,7 +532,6 @@ async function sendOrder() {
 
 function showDetail(index) {
   detailIndex = index;
-  confirming = false;
   renderDetail();
   const dialog = $("pet-detail");
   if (!dialog.open) dialog.showModal();
@@ -476,12 +584,12 @@ function actions(slot) {
     return b;
   };
   if (dept.coupon) {
-    button(confirming === "coupon" ? "Yes, use my coupon!" : "Use my coupon (free!)", "button-gold big-button", () => buy(slot, true));
+    button("Use my coupon (free!)", "button-gold big-button", () => buy(slot, true));
   }
   const coinsLeft = dept.coins;
   const short = coinsLeft < slot.price;
   button(
-    short ? `Need ${(slot.price - coinsLeft).toLocaleString()} more coins` : confirming === "coins" ? "Yes, buy it!" : `Buy for ${slot.price.toLocaleString()} coins`,
+    short ? `Need ${(slot.price - coinsLeft).toLocaleString()} more coins` : `Buy for ${slot.price.toLocaleString()} coins`,
     dept.coupon ? "button-go" : "button-gold big-button",
     () => buy(slot, false),
     short
@@ -496,11 +604,6 @@ function actions(slot) {
 }
 
 async function buy(slot, coupon) {
-  const kind = coupon ? "coupon" : "coins";
-  if (confirming !== kind) {
-    confirming = kind;
-    return renderDetail();
-  }
   try {
     const data = await call(`/api/pets/shop/${deptId}/${slot.index}/buy`, "POST", { coupon });
     const pet = data.bought;
@@ -509,7 +612,6 @@ async function buy(slot, coupon) {
     renderBanners();
     welcome(pet);
   } catch (err) {
-    confirming = false;
     say(err.message);
     closeDetail();
   }
@@ -555,12 +657,14 @@ $("pet-detail").addEventListener("close", () => (detailIndex = null));
 
 loadFront()
   .then(() => {
-    const asked = new URLSearchParams(location.search).get("dept");
-    const open = front.departments.filter((d) => d.open);
-    const pick = open.find((d) => d.id === asked) || (front.coupon && open.find((d) => d.id === "household")) || open[0];
-    return openDept(pick.id);
+    const q = new URLSearchParams(location.search);
+    const asked = front.departments.find((d) => d.open && d.id === q.get("dept"));
+    return asked ? openDept(asked.id, Number(q.get("page")) || 0) : goEntrance();
   })
-  .then(() => setInterval(tick, TICK_MS))
+  .then(() => {
+    setInterval(tick, TICK_MS);
+    setInterval(sceneTick, SCENE_TICK_MS);
+  })
   .catch((err) => {
     console.error(err);
     say(`Couldn't open the shop (${err.message}). Try reloading.`);

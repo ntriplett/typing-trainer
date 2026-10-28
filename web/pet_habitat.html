@@ -10,10 +10,15 @@
 </head>
 <body data-particles>
   <main class="pet-trail">
-    <p class="back-link"><a id="habitat-back" href="/pets/trail">← Trailhead</a></p>
-    <h1 id="habitat-name">Habitat</h1>
+    <header class="page-head">
+      <h1 id="habitat-name">Habitat</h1>
+      <nav class="signposts" aria-label="Go back"><a class="signpost" id="habitat-back" href="/pets/trail">🌲 Trailhead</a><a class="signpost" href="/pets">🐾 Pets</a><a class="signpost" href="/">🏠 Home</a></nav>
+    </header>
     <section class="panel habitat-panel">
-      <canvas id="habitat-canvas" width="960" height="540"></canvas>
+      <div class="habitat-scene">
+        <canvas id="habitat-canvas" width="960" height="540"></canvas>
+        <a id="habitat-gate" class="scene-sign" href="/pets/trail">⬅ To the trail</a>
+      </div>
     </section>
     <p id="habitat-message" class="trail-message" role="status"></p>
     <section class="panel habitat-residents">
@@ -24,10 +29,10 @@
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>
   <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pet_render.js"></script>
   <script src="/static/js/avatar.js"></script>
   <script src="/static/js/themes.js"></script>
   <script src="/static/js/header.js"></script>
-  <script src="/static/js/pet_render.js"></script>
   <script src="/static/js/habitats.js"></script>
   <script src="/static/js/pet_motion.js"></script>
   <script src="/static/js/pet_habitat.js"></script>

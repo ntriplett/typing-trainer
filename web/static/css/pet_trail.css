@@ -177,6 +177,34 @@
 
 /* --- one habitat --- */
 
+.habitat-scene {
+  position: relative;
+}
+
+/* A wooden sign planted in the habitat, back to the trail. */
+.scene-sign {
+  position: absolute;
+  left: 2%;
+  bottom: 5%;
+  font-family: var(--font-ui);
+  font-size: clamp(14px, 2.1vw, 22px);
+  padding: 0.05rem 0.5rem 0.15rem;
+  background: var(--wood);
+  border: 3px solid var(--wood-dark);
+  color: var(--on-wood);
+  text-decoration: none;
+  text-shadow: 1px 1px 0 var(--outline);
+  box-shadow: 0 6px 0 -1px var(--wood-dark);
+}
+
+.scene-sign:hover,
+.scene-sign:focus-visible {
+  background: var(--wood-light);
+  color: var(--on-wood);
+  outline: 3px dashed var(--leaf-gold);
+  outline-offset: 2px;
+}
+
 .habitat-pets {
   display: flex;
   flex-wrap: wrap;

@@ -18,8 +18,8 @@ def test_the_pets_hub_is_open_from_the_start(page: Page, live_server):
     page.locator("[data-building='aquarium']").click()
     expect(page.locator("#hub-message")).to_contain_text("Aquarium is still being built")
     page.locator("[data-building='shop']").click()
-    expect(page).to_have_url(f"{live_server}/pets/shop?dept=fish")
-    page.get_by_role("link", name="← Pets").click()
+    expect(page.locator("#dept-title")).to_have_text("Welcome to the Pet Shop!")
+    page.get_by_role("link", name="🐾 Pets").click()
     expect(page.locator("#hub-canvas")).to_be_visible()
 
 
