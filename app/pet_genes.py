@@ -9,7 +9,8 @@ stable value for it without changing anything they already rolled
 (fill_missing). The third color depends on the colors unlocked at
 adoption time, so genes are stored, not re-derived.
 
-Colors: COLORS is the shared pool (90). Unlocked colors are one set per
+Colors: COLORS is the shared pool (90), plus phoenix flames (24, their own
+palette: SPECIAL_PALETTE) and treasure metals (5). Unlocked colors are one set per
 learner, shared by every species (starting_unlocks(): every species'
 starter colors), so a color found on any pet can be picked for any pet.
 Each species' families and realism weights (SPECIES_COLORS) only steer
@@ -62,7 +63,9 @@ def mute(hex_: str, family: str) -> str:
 
 
 def _family(family: str, *colors: tuple[str, str]) -> list[PetColor]:
-    return [PetColor(name.lower().replace(" ", "_"), name, mute(hex_, family), family) for name, hex_ in colors]
+    # flames stay bright: the cozy muting would put them out
+    tone = (lambda h, f: h) if family.startswith("fire") else mute
+    return [PetColor(name.lower().replace(" ", "_"), name, tone(hex_, family), family) for name, hex_ in colors]
 
 
 COLORS: dict[str, PetColor] = {
@@ -112,11 +115,26 @@ COLORS: dict[str, PetColor] = {
         ),
         *_family("teal", ("Teal", "#3a9a9a"), ("Aqua", "#70d0d8"), ("Turquoise", "#40c0b0"), ("Lagoon", "#2a7a8a"), ("Jade", "#3aa070")),
         *_family("fancy", ("Coral", "#f08068"), ("Peach", "#f8c8a8"), ("Mauve", "#b88aa0"), ("Sunset", "#f07850"), ("Berry", "#9a2a6a")),
+        # --- flames: only phoenixes wear these (24), each family ending in a
+        # pale glow color that's only ever the second (the glow) ---
+        *_family(
+            "fire_orange", ("Blaze", "#ff7a1a"), ("Tangerine", "#ff9a2a"), ("Ember", "#f0601c"), ("Marigold", "#ffb030"),
+            ("Firecracker", "#ff5a1e"), ("Pumpkin Flame", "#ff8410"),
+        ),
+        *_family("fire_red", ("Scarlet", "#f23c28"), ("Ruby Flame", "#e02848"), ("Cinder", "#d84a2a")),
+        *_family("fire_gold", ("Sunfire", "#ffd23a"), ("Saffron", "#ffc22a"), ("Lemon Flame", "#ffe45a"), ("White Gold", "#fff2b8")),
+        *_family("fire_blue", ("Sapphire Flame", "#2a70ff"), ("Azure Flame", "#3aa8ff"), ("Cyan Flame", "#40e0ff"), ("Starlight", "#dcf4ff")),
+        *_family("fire_green", ("Emerald Flame", "#1ec060"), ("Jade Flame", "#3ae08a"), ("Lime Flame", "#a8f040"), ("Mint Glow", "#d4ffc0")),
+        *_family("fire_violet", ("Violet Flame", "#9a5aff"), ("Magenta Flame", "#e050f0"), ("Lilac Glow", "#f0d8ff")),
         # --- treasure metals: only ever a dragon's third color (5) ---
         *_family("metal", ("Gilt", "#f0c040"), ("Sterling", "#c8ccd8"), ("Bronze", "#b87a38"), ("Rose Gold", "#e8a088"), ("Platinum", "#ecebe4")),
     ]
 }
 METALS = [c.id for c in COLORS.values() if c.family == "metal"]
+# The palest color of each flame family: a glow, never a phoenix's main color.
+GLOW_ONLY = {"white_gold", "starlight", "mint_glow", "lilac_glow"}
+# Species with a palette of their own instead of the shared one.
+SPECIAL_PALETTE = {"phoenix"}
 # Species whose third color is always a treasure metal.
 TREASURE_THIRD = {"dragon", "unicorn"}
 
@@ -138,6 +156,9 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     # mythical: storybook colors are the natural ones (never the metals,
     # which are only third colors)
     "dragon": {"green": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "purple": NATURAL, "blue": NATURAL, "teal": NATURAL, "white": RARE},
+    # flames: bright oranges most often, then reds and golds; blue, green and
+    # violet fire are rare (about 1 in 10 between them)
+    "phoenix": {"fire_orange": NATURAL, "fire_red": 0.6, "fire_gold": 0.5, "fire_blue": 0.15, "fire_green": 0.12, "fire_violet": 0.1},
     "unicorn": {"white": NATURAL, "cream": NATURAL, "pink": NATURAL, "purple": NATURAL, "blue": NATURAL, "gray": NATURAL, "teal": NATURAL, "gold": NATURAL, "black": RARE},
 }
 
@@ -154,12 +175,13 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "snake": ("moss", "rust", "buttercream"),
     "dragon": ("fern", "crimson", "golden"),
     "unicorn": ("snow", "lavender", "sky"),
+    "phoenix": ("blaze", "tangerine", "sunfire"),
 }
 
 # Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
 ELEMENTS = {
     "bunny": "leaf", "goat": "leaf", "sheep": "leaf", "snake": "leaf",
-    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember", "unicorn": "splash",
+    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember", "unicorn": "splash", "phoenix": "ember",
     "dog": "splash", "llama": "splash", "turtle": "splash",
 }
 
@@ -169,6 +191,7 @@ COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 # Species whose markings show a third color off well: the pattern is picked
 # first and sets the chance of a third color (the rest split highlight/mix).
 ACCENT_CHANCE = {
+    "phoenix": {"pure": 0, "wingtips": 0, "embers": 0, "starburst": 0, "smoke": 0},  # their flames are enough
     "unicorn": {"solid": 0.4, "blaze": 0.4, "dapple": 0.4, "pinto": 0.4, "appaloosa": 0.4, "rainbow": 0.4, "starry": 0.4},
     "dragon": {"storybook": 0.4, "ombre": 0.4, "ridgeback": 0.4, "scaled": 0.4, "tiger": 0.4, "jeweled": 0.4, "shadow": 0.4},
     "snake": {"banded": 0.5, "diamondback": 0.45, "saddles": 0.4, "striped": 0.4, "speckled": 0.35, "plain": 0.3},
@@ -200,6 +223,8 @@ SPECIES_PATTERNS = {
     # dragons: storybook looks built on real reptile markings (paintDragon)
     "dragon": {"storybook": 25, "ombre": 15, "ridgeback": 15, "scaled": 15, "tiger": 12, "jeweled": 10, "shadow": 8},
     # unicorns: real horse markings plus a little magic (paintUnicorn)
+    # phoenixes: subtle touches on the fire (paintFire)
+    "phoenix": {"pure": 30, "wingtips": 20, "embers": 20, "starburst": 15, "smoke": 15},
     "unicorn": {"solid": 22, "blaze": 16, "dapple": 14, "pinto": 12, "appaloosa": 12, "rainbow": 12, "starry": 12},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
@@ -215,6 +240,7 @@ SPECIES_EYES = {
     "turtle": {"#c8861e": 3.0, "#2a1810": 3.0, "#b84a2a": 1.0, "#7ab84a": 1.0},
     "lizard": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 1.5},
     "snake": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 2.0},
+    "phoenix": {"#3a1408": 4.0, "#2a1810": 3.0, "#5a1a3a": 1.0},  # dark, so they show against the glow
     "unicorn": {"#5a3a8a": 3.0, "#3a6ab8": 3.0, "#2a1810": 3.0, "#c8608a": 1.0},
     "dragon": {"#e0a828": 4.0, "#e8d040": 2.0, "#c8702a": 2.0, "#5a9ae0": 1.0, "#b03a2a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
@@ -235,10 +261,11 @@ BREEDS = {
     "lizard": ("iguana", "iguana_s", "monitor", "skink", "chameleon"),
     "snake": ("classic", "cobra", "wave", "diamondback", "strike", "slider", "rattler", "baby"),
     "dragon": ("classic", "wyvern", "flying", "fire", "chubby"),
+    "phoenix": ("classic", "rising", "flying", "emblem"),
     "unicorn": ("classic", "prance", "rear", "gallop", "pony", "lying", "alicorn"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head"), "unicorn": ("wings", "horn", "neck")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head"), "unicorn": ("wings", "horn", "neck"), "phoenix": ("flame", "tail", "crest")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -255,6 +282,7 @@ SHAPE_EXTRAS = {
     "snake": {"thick": (-1.0, 1.0, 0.0)},
     "dragon": {"horns": (-1.0, 1.0, 0.0), "wings": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "unicorn": {"horns": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
+    "phoenix": {"crest": (-1.0, 1.0, 0.0), "wings": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
@@ -296,6 +324,16 @@ NEAR_FAMILIES = {
 # colors is white, and a white one's second color is an accent from any other
 # family (each family as likely as the next).
 WHITE_ACCENT = {"unicorn": 0.5}
+# A phoenix's glow (second color) by its flame's family: family -> weight.
+# The glow is always lighter than the flame when it can be.
+GLOW_FAMILIES = {
+    "fire_orange": {"fire_gold": 0.75, "fire_orange": 0.25},
+    "fire_red": {"fire_orange": 0.5, "fire_gold": 0.5},
+    "fire_gold": {"fire_gold": 1.0},
+    "fire_blue": {"fire_blue": 1.0},
+    "fire_green": {"fire_green": 0.8, "fire_gold": 0.2},
+    "fire_violet": {"fire_violet": 0.6, "fire_blue": 0.4},
+}
 
 
 def starting_unlocks() -> set[str]:
@@ -317,6 +355,11 @@ def _rgb(color_id: str) -> tuple[int, int, int]:
     return int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)
 
 
+def _lum(color_id: str) -> float:
+    r, g, b = _rgb(color_id)
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
 def color_distance(a: str, b: str) -> float:
     """0 (same) .. ~1 (black vs white); 'redmean' weighted RGB."""
     (r1, g1, b1), (r2, g2, b2) = _rgb(a), _rgb(b)
@@ -329,7 +372,7 @@ def color_distance(a: str, b: str) -> float:
 def primary_color_weights(species: str) -> dict[str, float]:
     """The game picking a pet's main color: any of the species' colors, by
     realism (WHITE_ACCENT species: white that share of the time)."""
-    weights = {c: realism(species, c) for c in eligible_colors(species)}
+    weights = {c: realism(species, c) for c in eligible_colors(species) if c not in GLOW_ONLY}
     white = WHITE_ACCENT.get(species)
     if white is None:
         return weights
@@ -345,6 +388,16 @@ def second_color_weights(species: str, primary: str) -> dict[str, float]:
     neighbors, and the rest; others go by realism alone."""
     colors = [c for c in eligible_colors(species) if c != primary]
     family = COLORS[primary].family
+    if family in GLOW_FAMILIES:
+        # a flame's glow: from the families that suit it, lighter than the flame
+        glows = GLOW_FAMILIES[family]
+        pool = [c for c in colors if COLORS[c].family in glows]
+        lighter = [c for c in pool if _lum(c) > _lum(primary)]
+        pool = lighter or pool
+        counts: dict[str, int] = {}
+        for c in pool:
+            counts[COLORS[c].family] = counts.get(COLORS[c].family, 0) + 1
+        return {c: glows[COLORS[c].family] / counts[COLORS[c].family] for c in pool}
     if species in WHITE_ACCENT and family == "white":
         # an accent: every other family equally likely
         sizes: dict[str, float] = {}
@@ -505,6 +558,9 @@ def roll(species: str, primary: str | None, secondary: str | None, seed: int, un
     picked = [c for c in (primary, secondary) if c is not None]
     if any(c not in unlocked or COLORS[c].family == "metal" for c in picked):
         raise GeneError("You haven't unlocked that color yet.")
+    # any unlocked color fits any pet, except that flames are only for phoenixes
+    if any(COLORS[c].family.startswith("fire") != (species in SPECIAL_PALETTE) for c in picked):
+        raise GeneError("That color isn't one this pet can have.")
     rng = _rng(seed, "colors")
     if primary is None:
         primary = _pick(rng, primary_color_weights(species))
@@ -542,10 +598,12 @@ def new_colors(genes: dict, unlocked: set[str]) -> list[str]:
     return [c for c in genes["coat"]["colors"] if c and c not in unlocked and COLORS[c].family != "metal"]
 
 
-def color_catalog(unlocked: set[str]) -> list[dict]:
-    """Every color, unlocked ones flagged (the same list for every species)."""
+def color_catalog(unlocked: set[str], species: str | None = None) -> list[dict]:
+    """Every color a pet can be picked in, unlocked ones flagged: the shared
+    list, or a SPECIAL_PALETTE species' own colors."""
+    special = species in SPECIAL_PALETTE
     return [
         {"id": c.id, "name": c.name, "hex": c.hex, "family": c.family, "unlocked": c.id in unlocked}
         for c in COLORS.values()
-        if c.family != "metal"
+        if c.family != "metal" and c.family.startswith("fire") == special
     ]

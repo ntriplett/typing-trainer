@@ -320,7 +320,7 @@ def pet_lab_page() -> FileResponse:
 def pet_lab_species() -> dict:
     return {
         species: {
-            "colors": pet_genes.color_catalog(pet_genes.starting_unlocks()),
+            "colors": pet_genes.color_catalog(pet_genes.starting_unlocks(), species),
             "starters": list(pet_genes.STARTER_COLORS[species]),
         }
         for species in pet_genes.SPECIES_COLORS

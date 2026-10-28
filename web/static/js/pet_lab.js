@@ -9,8 +9,8 @@ const $ = (id) => document.getElementById(id);
 const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
-// Species being worked on right now (the rest are hidden for the moment).
-const LAB_SPECIES = ["unicorn"];
+// The species picked first when the lab opens (every species is listed).
+const LAB_FIRST = "phoenix";
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
@@ -54,8 +54,10 @@ function fillColors() {
     .join("");
   $("opt-primary").innerHTML = `<option value="">(game picks)</option>` + options;
   $("opt-secondary").innerHTML = `<option value="">(game picks)</option>` + options;
-  $("opt-primary").value = info.starters[0];
-  $("opt-secondary").value = info.starters[1];
+  // the game picks both colors to start, so a litter shows the variety
+  $("opt-primary").value = "";
+  $("opt-secondary").value = "";
+  $("opt-secondary").disabled = true;
   $("opt-variant").innerHTML =
     `<option value="0" selected>Current</option>` +
     variants().map((v, i) => `<option value="${i + 1}">${i + 1}. ${v.name}</option>`).join("");
@@ -93,12 +95,21 @@ function renderLitter() {
   drawLitter();
 }
 
+// The biggest whole-pixel scale (up to `most`) at which pets of these sizes fit
+// in w x h: the big mythical pets step down so nothing gets cut off.
+function fitScale(sizes, w, h, most) {
+  let scale = most;
+  while (scale > 1 && sizes.some((p) => p.w * scale > w || p.h * scale > h)) scale -= 1;
+  return scale;
+}
+
 function drawLitter() {
   document.querySelectorAll(".litter-pet canvas").forEach((canvas, i) => {
     const pet = withVariant(litter[i]);
     const px = canvasPx(canvas);
-    const scale = 3;
-    const { w } = petSize(pet, growth());
+    const size = petSize(pet, growth());
+    const scale = fitScale([size], canvas.width - 4, canvas.height - 8, 3);
+    const { w } = size;
     drawPet(px, Math.round((canvas.width - w * scale) / 2), canvas.height - 6, pet, growth(), { frame: frame + i, scale });
   });
 }
@@ -153,8 +164,9 @@ function drawStages() {
     const v = Number(canvas.dataset.variant);
     const pet = plain(v ? { ...selected, variant: v } : selected);
     const px = canvasPx(canvas);
-    const scale = 4;
     const slot = canvas.width / STAGE_GROWTH.length;
+    // one scale for the whole row, so the stages still compare
+    const scale = fitScale(STAGE_GROWTH.map((g) => petSize(pet, g)), slot - 4, canvas.height - 18, 4);
     STAGE_GROWTH.forEach((g, i) => {
       const { w } = petSize(pet, g);
       drawPet(px, Math.round(i * slot + (slot - w * scale) / 2), canvas.height - 14, pet, g, { frame, scale });
@@ -225,8 +237,7 @@ $("litter").addEventListener("click", (e) => {
 (async () => {
   species = await (await fetch("/api/pet-lab/species")).json();
   $("opt-species").innerHTML = Object.keys(species)
-    .filter((s) => LAB_SPECIES.includes(s))
-    .map((s) => `<option>${s}</option>`)
+    .map((s) => `<option${s === LAB_FIRST ? " selected" : ""}>${s}</option>`)
     .join("");
   fillColors();
   buildRows();

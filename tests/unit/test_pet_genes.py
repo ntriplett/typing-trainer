@@ -8,12 +8,15 @@ import pytest
 from app import pet_genes as g
 
 
-def test_the_color_pool_is_90_plus_5_metals_with_about_45_per_species():
-    assert len(g.COLORS) == 95  # 90 to pick from, 5 treasure metals
+def test_the_color_pool_is_90_plus_flames_and_metals_with_about_45_per_species():
+    assert len(g.COLORS) == 90 + 24 + 5  # shared, phoenix flames, treasure metals
     for species, starters in g.STARTER_COLORS.items():
         eligible = g.eligible_colors(species)
-        assert 40 <= len(eligible) <= 55, species
         assert set(starters) <= set(eligible)
+        if species in g.SPECIAL_PALETTE:
+            assert all(g.COLORS[c].family.startswith("fire") for c in eligible)
+        else:
+            assert 40 <= len(eligible) <= 55, species
 
 
 def test_the_same_seed_rolls_the_same_pet():
@@ -173,7 +176,8 @@ def test_unlocked_colors_are_shared_by_every_species():
     # a dog's starter color can be picked for a cat
     assert g.roll("cat", "golden", "snow", 1)["coat"]["colors"][:2] == ["golden", "snow"]
     catalog = g.color_catalog(start)
-    assert len(catalog) == 90 and sum(c["unlocked"] for c in catalog) == len(start)
+    flames = {c for c in start if g.COLORS[c].family.startswith("fire")}
+    assert len(catalog) == 90 and sum(c["unlocked"] for c in catalog) == len(start - flames)
 
 
 def test_foxes_roll_breeds_and_fox_coats():
@@ -330,3 +334,27 @@ def test_unicorns_are_often_white_with_an_accent_else_close_colors():
     assert set(thirds) == set(g.METALS) and 0.35 < len(thirds) / 4000 < 0.45
     pats = collections.Counter(u["coat"]["pattern"] for u in unicorns)
     assert set(pats) == {"solid", "blaze", "dapple", "pinto", "appaloosa", "rainbow", "starry"}
+
+
+def test_phoenixes_burn_bright_flames_with_a_lighter_glow():
+    import collections
+
+    birds = [g.roll("phoenix", None, None, seed) for seed in range(4000)]
+    fams = collections.Counter(g.COLORS[b["coat"]["colors"][0]].family for b in birds)
+    assert fams["fire_orange"] > fams["fire_red"] > fams["fire_blue"]
+    rare = fams["fire_blue"] + fams["fire_green"] + fams["fire_violet"]
+    assert 0.06 < rare / 4000 < 0.14
+    for b in birds:
+        flame, glow, _ = b["coat"]["colors"]
+        assert flame not in g.GLOW_ONLY
+        assert g.COLORS[glow].family in g.GLOW_FAMILIES[g.COLORS[flame].family]
+        assert g._lum(glow) > g._lum(flame)
+    assert {b["shape"]["breed"] for b in birds} == set(g.BREEDS["phoenix"])
+    assert {b["coat"]["pattern"] for b in birds} == {"pure", "wingtips", "embers", "starburst", "smoke"}
+    assert not any(b["coat"]["colors"][2] for b in birds)  # no treasure metal
+    # flames are only for phoenixes, and phoenixes only wear flames
+    with pytest.raises(g.GeneError):
+        g.roll("cat", "blaze", None, 1)
+    with pytest.raises(g.GeneError):
+        g.roll("phoenix", "golden", None, 1)
+    assert len(g.color_catalog(g.starting_unlocks(), "phoenix")) == 24

@@ -67,18 +67,18 @@ const PET_RECIPES = {
 // or, for "face" and "skin", a shade of the coat).
 const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill", "fin"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
-const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "belly", "egg", "eggspot", "eggspot2"]);
+const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2"]);
+const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
 // Parts drawn behind the body: darker, like they're in shadow.
-const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof", "farwing", "farbone", "farhorn", "farclaw", "farfeather"]);
+const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof", "farwing", "farbone", "farhorn", "farclaw", "farfeather", "farpfeather", "farbirdleg"]);
 const PET_FIXED = {
   hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
   hole: "#24170e", rattle: "#d8c08a", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
-  farhorn: "#c8aa7a", claw: "#f2e6c8", farclaw: "#f2e6c8", uhorn: "#f6e6b8", uhornline: "#d8b878", egg: "#f4ecd8", eggback: "#d8ccb0",
+  farhorn: "#c8aa7a", claw: "#f2e6c8", farclaw: "#f2e6c8", uhorn: "#f6e6b8", uhornline: "#d8b878", beak: "#f0c050", birdleg: "#c8963c", farbirdleg: "#c8963c", ash: "#8e8680", ember: "#ffb040", egg: "#f4ecd8", eggback: "#d8ccb0",
 };
 // Parts colored from the coat: a dragon's pale belly and wing membranes.
 const DERIVED = {
@@ -94,6 +94,15 @@ const DERIVED = {
   umane: (hex) => hex[1] || hex[0],
   utail: (hex) => hex[1] || hex[0],
   feather: (hex) => blend(hex[0], "#ffffff", 0.25),
+  pfeather: (hex) => hex[0],
+  pfeather2: (hex) => blend(hex[0], SHADOW_TINT, 0.15),
+  farpfeather: (hex) => hex[0],
+  breast: (hex) => blend(hex[0], "#f8e0a0", 0.35),
+  plume: (hex) => hex[1] || hex[0],
+  plumetip: (hex) => blend(hex[1] || hex[0], "#fff0b0", 0.45),
+  pegg: (hex) => blend(hex[0], "#1e1210", 0.72),
+  crack: (hex) => blend(hex[1] || hex[0], "#fff4c0", 0.25),
+  crack2: (hex) => blend(hex[1] || hex[0], "#fffbe8", 0.6),
   feather2: (hex) => blend(hex[0], SHADOW_TINT, 0.12),
   farfeather: (hex) => blend(hex[0], "#ffffff", 0.15),
   flame: () => "#f07830",
@@ -577,6 +586,7 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
 }
 
 function paintCoat(out, grid, genes, built, hex) {
+  if (built.fire) return paintFire(out, grid, genes, built, hex);
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
@@ -1988,8 +1998,10 @@ function petFrame(genes, growth, frame) {
         if (near.some(Boolean)) {
           // a soft outline is a deep shade of the fur next to it; otherwise near-black
           const by = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].find(([i, j]) => at(i, j));
-          lines.push([x, y, built.softOutline ? blend(out[by[1]][by[0]], PET_OUTLINE, 0.72) : PET_OUTLINE]);
+          lines.push([x, y, built.softOutline ? blend(out[by[1]][by[0]], PET_OUTLINE, built.fire ? 0.55 : 0.72) : PET_OUTLINE]);
         }
+      } else if (built.fire) {
+        // fire: no lines inside, it glows as one shape
       } else if (cell.l === "snout" && near.some((n) => n && n.l === "head")) {
         lines.push([x, y, blend(out[y][x], SHADOW_TINT, 0.22)]); // the muzzle: a soft edge
       } else if (!FRONT.has(cell.l) && !BLENDS_IN.has(cell.l) && near.some((n) => n && n.l !== cell.l && FRONT.has(n.l))) {
@@ -2203,6 +2215,123 @@ function paintDragon(out, grid, genes, built, hex) {
   }
 }
 
+// --- fire: a phoenix glows ------------------------------------------------------------
+// Every part of the bird made of fire is shaded by how deep inside the shape it
+// is: the deep flame color at the edge, the flame color, then the glow color,
+// and a white-hot core where it's thickest. The depths shimmer a little from
+// frame to frame. The beak, legs, eyes, ashes and egg keep their colors.
+// Patterns are subtle touches on top:
+//   pure       just the fire
+//   wingtips   the far ends of the wings and plumes burn bright
+//   embers     sparks flicker here and there across the body and wings
+//   starburst  a white-hot burst with four rays on the chest
+//   smoke      sooty, smoky tips on the wings and plumes
+
+const PHOENIX_PATTERNS = new Set(["pure", "wingtips", "embers", "starburst", "smoke"]);
+const FIRE_WING = new Set(["pfeather", "pfeather2", "farpfeather", "plume", "plumetip"]);
+const FIRE_PARTS = new Set(["body", "breast", "head", "neck", "pfeather", "pfeather2", "farpfeather", "plume", "plumetip", "flame", "flamecore", "lick"]);
+
+function paintFire(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  built.painted = FIRE_PARTS;
+  const flame = hex[0];
+  const glow = hex[1] || blend(hex[0], "#fff0a0", 0.6);
+  const frame = built.frame || 0;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ (genes.seed + frame * 7919)) >>> 0) % 1000 / 1000;
+  const isFire = (x, y) => grid[y] && grid[y][x] && FIRE_PARTS.has(grid[y][x].l);
+  // depth: steps to the nearest pixel that isn't fire (or isn't anything)
+  const depth = Array.from({ length: GRID_H }, () => new Array(GRID_W).fill(0));
+  let edge = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (!isFire(x, y)) continue;
+      const open = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].some(([i, j]) => !(grid[j] && grid[j][i]));
+      if (open) {
+        depth[y][x] = 1;
+        edge.push([x, y]);
+      }
+    }
+  }
+  for (let d = 2; edge.length; d++) {
+    const next = [];
+    for (const [x, y] of edge) {
+      for (const [i, j] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        if (isFire(i, j) && !depth[j][i]) {
+          depth[j][i] = d;
+          next.push([i, j]);
+        }
+      }
+    }
+    edge = next;
+  }
+  const deep = blend(flame, "#160a14", 0.4);
+  const hot = blend(glow, "#fffbe8", 0.55);
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (!isFire(x, y)) continue;
+      // thin parts (no deeper pixel beside them) burn in the flame color, not
+      // the deep edge; plume tips glow; deeper in, it shimmers now and then
+      const d0 = depth[y][x] || 6;
+      const thin = d0 === 1 && ![[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].some(([i, j]) => depth[j] && depth[j][i] >= 2);
+      const d = d0 + (d0 >= 2 && tick(x, y) < 0.1 ? 1 : 0);
+      out[y][x] = grid[y][x].l === "plumetip" ? glow : thin ? flame : d <= 1 ? deep : d === 2 ? flame : d === 3 ? blend(flame, glow, 0.5) : d <= 5 ? glow : hot;
+    }
+  }
+
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  if (pattern === "wingtips" || pattern === "smoke") {
+    // the tips: the wing and plume pixels farthest out from the body
+    const far = (x, y) => Math.hypot(x - geo.cx, (y - geo.cy) * 1.2);
+    let reach = 0;
+    grid.forEach((row, y) => row.forEach((c, x) => c && FIRE_WING.has(c.l) && (reach = Math.max(reach, far(x, y)))));
+    grid.forEach((row, y) =>
+      row.forEach((c, x) => {
+        if (!c || !FIRE_WING.has(c.l) || far(x, y) < reach * 0.72) return;
+        out[y][x] = pattern === "smoke" ? blend(out[y][x], "#2a2028", 0.5) : blend(glow, "#ffffff", 0.4);
+      })
+    );
+  }
+  if (pattern === "embers") {
+    // bright sparks on the darker flame (they'd vanish in the glow), a new
+    // scatter each frame
+    for (let y = 0; y < GRID_H; y++) for (let x = 0; x < GRID_W; x++) if (isFire(x, y) && depth[y][x] >= 2 && depth[y][x] <= 3 && tick(x * 3, y) < 0.14) out[y][x] = "#fffbe8";
+  }
+  if (pattern === "starburst" && geo.chest) {
+    // a white-hot core on the chest with four short rays
+    const [sx, sy] = geo.chest;
+    // a four-point star of pure white, its rays reaching into the flame
+    const r = Math.max(1, 1.2 * built.scale);
+    const reach = r * 3.5;
+    for (let y = Math.floor(sy - reach); y <= sy + reach; y++) {
+      for (let x = Math.floor(sx - reach); x <= sx + reach; x++) {
+        if (!isFire(x, y)) continue;
+        const dx = Math.abs(x + 0.5 - sx);
+        const dy = Math.abs(y + 0.5 - sy);
+        // the rays taper: wide near the middle, one pixel out at the ends
+        const ray = (dx < 0.6 && dy <= reach) || (dy < 0.6 && dx <= reach) || (dx < 1.6 && dy < 1.6);
+        if (ray) out[y][x] = "#ffffff";
+        else if (dx + dy <= reach * 0.6) out[y][x] = blend(out[y][x], "#ffffff", 0.45);
+      }
+    }
+  }
+}
+
+// Flames licking up off the top of a fire shape: every few columns a tongue
+// of fire rises from the topmost fire pixel, its height flickering with the
+// frame. `lean` tips them back (negative: to the left).
+function addLicks(grid, frame, s, lean) {
+  const tops = {};
+  grid.forEach((row, y) => row.forEach((c, x) => c && FIRE_PARTS.has(c.l) && c.l !== "lick" && tops[x] === undefined && (tops[x] = y)));
+  const xs = Object.keys(tops).map(Number).sort((a, b) => a - b);
+  xs.forEach((x, i) => {
+    if ((x + frame) % 3) return;
+    const h = (1.6 + ((x * 7 + frame * 3) % 4) * 0.55) * Math.max(0.8, s);
+    const y = tops[x];
+    fillTri(grid, [[x - 0.8, y + 1], [x + 1.8, y + 1], [x + 0.5 + lean * h * 0.5, y + 1 - h]], "lick");
+  });
+}
+
 // --- unicorn coats: real horse markings, and a little magic --------------------------
 // The body is the first color and the mane and tail the second, except:
 //   solid      just that
@@ -2316,6 +2445,13 @@ function paintUnicorn(out, grid, genes, built, hex) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: four phoenix breeds, ember egg to
+  // grown; a mix borrows another breed's flame tail, tail or crest
+  phoenix: {
+    get breeds() {
+      return PHOENIX_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: seven unicorn breeds, foal to grown;
   // a mix borrows another breed's wings, horn or neck
   unicorn: {
@@ -2700,6 +2836,22 @@ const UNICORN_BREEDS = {
   alicorn: UNICORN({ name: "Alicorn: feathered wings", wings: 13 }),
 };
 
+// Phoenix trial designs start from a firebird perched side-on.
+function PHOENIX(over) {
+  return {
+    phoenix: true, facing: "side", pose: "perch", softOutline: true, crest: 4.5, head: 3.4, legs: 6, tail: 22, plumes: 3, fold: true,
+    body: { rx: 7, ry: 5.2 },
+    ...over,
+  };
+}
+
+const PHOENIX_BREEDS = {
+  classic: PHOENIX({ name: "Classic firebird: wings raised, long flaming plumes", fold: false, wings: 13 }),
+  rising: PHOENIX({ name: "Rising: wings raised, a tail of pure fire", fold: false, wings: 14, flame: true, tail: 18 }),
+  flying: PHOENIX({ name: "Flying: wings beating, plumes streaming", pose: "fly", fold: false, wings: 13, tail: 18 }),
+  emblem: PHOENIX({ name: "Emblem: facing us, wings spread wide, tail fanned", facing: "front", fold: false, wings: 12, tail: 14, head: 3.2 }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2714,6 +2866,7 @@ const PET_VARIANTS = {
   snake: Object.values(SNAKE_BREEDS),
   dragon: Object.values(DRAGON_BREEDS),
   unicorn: Object.values(UNICORN_BREEDS),
+  phoenix: Object.values(PHOENIX_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -2721,6 +2874,7 @@ function buildVariant(genes, stage, frame, V) {
   if (V.snake) return buildSnake(genes, stage, frame, V);
   if (V.dragon) return buildDragon(genes, stage, frame, V);
   if (V.unicorn) return buildUnicorn(genes, stage, frame, V);
+  if (V.phoenix) return buildPhoenix(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
@@ -4491,25 +4645,6 @@ function buildUnicorn(genes, stage, frame, V) {
   let hx;
   let hy;
   // the wings sit behind on the far side, in front on the near side
-  const featherWing = (sx, sy, size, near) => {
-    const flap = frame % 2;
-    const label = near ? "feather" : "farfeather";
-    // the arm: up and back to the wrist (the wing's top corner)
-    const wrist = [sx - size * 0.3, sy - size * (0.95 - flap * 0.12)];
-    // the feathers: long ones fanning down and back from along the arm,
-    // longest at the wrist, rounded tips, every other one a shade darker
-    const n = 6;
-    for (let k = n - 1; k >= 0; k--) {
-      const t = k / (n - 1); // 0 at the shoulder .. 1 at the wrist
-      const root = [sx + (wrist[0] - sx) * t, sy + (wrist[1] - sy) * t];
-      const a = Math.PI * (0.62 + t * 0.38); // down-back at the shoulder, straight back at the wrist
-      const len = size * (0.45 + t * 0.55);
-      const tip = [root[0] + Math.cos(a) * len, root[1] + Math.sin(a) * len * -1 * (t > 0.5 ? 0.15 : -0.3) + (t > 0.5 ? 0 : len * 0.2)];
-      tube([root, tip], [Math.max(1, 1.25 * s), Math.max(0.8, 1.05 * s)], near && k % 2 ? "feather2" : label);
-    }
-    fillStroke(grid, [[sx, sy], wrist], Math.max(1, 1.4 * s), label); // the arm, over the feather roots
-  };
-
   {
     // side-on, facing right
     const backX = cx - rx * 0.55;
@@ -4541,7 +4676,7 @@ function buildUnicorn(genes, stage, frame, V) {
       hy += nl * 0.25;
     }
     const shoulder = rear ? [chest[0] - rx * 0.15, chest[1] - ry * 0.5] : [cx + rx * 0.2, by - ry * 0.85];
-    if (V.wings) featherWing(shoulder[0] + 2, shoulder[1] + 0.5, V.wings * s * 0.9, false);
+    if (V.wings) featherWing(grid, frame, s, shoulder[0] + 2, shoulder[1] + 0.5, V.wings * s * 0.9, -1, "farfeather", "farfeather");
     // the tail: a fall of hair from the top of the rump, rippling
     const tx = cx - rx * 1.0;
     const ty = by - ry * 0.55 + (rear ? ry * 0.6 : 0);
@@ -4607,7 +4742,7 @@ function buildUnicorn(genes, stage, frame, V) {
     }
     // the forelock, falling over the forehead
     tube([[hx - hrx * 0.1, hy - hry * 0.95], [hx + hrx * 0.45, hy - hry * 0.5], [hx + hrx * 0.5, hy - hry * 0.05]], [1.1 * hs, 1 * hs, 0.6], "umane");
-    if (V.wings) featherWing(shoulder[0], shoulder[1], V.wings * s, true);
+    if (V.wings) featherWing(grid, frame, s, shoulder[0], shoulder[1], V.wings * s, -1, "feather", "feather2");
     // the horn: from the forehead, leaning forward
     const hb = [hx + hrx * 0.3, hy - hry * 0.8];
     hornAt(grid, hb, [hb[0] + hornL * 0.4, hb[1] - hornL * 0.92], hs);
@@ -4633,6 +4768,39 @@ function buildUnicorn(genes, stage, frame, V) {
   };
 }
 
+// A tapering tube through points, its radius running through `widths`.
+function taper(grid, pts, widths, label) {
+  pts.slice(1).forEach((p, i) => {
+    const steps = Math.max(2, Math.ceil(Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]) * 1.5));
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps;
+      const r = Math.max(0.55, widths[i] + (widths[i + 1] - widths[i]) * t);
+      fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, label);
+    }
+  });
+}
+
+// A feathered wing from the shoulder, raised up with long feathers fanning
+// from the arm (dir -1 sweeps back to the left, +1 to the right); every other
+// feather wears `alt`, so they read one by one. It flaps with the frame.
+function featherWing(grid, frame, s, sx, sy, size, dir, label, alt) {
+  const flap = frame % 2;
+  const mx = (x) => sx + (x - sx) * -dir; // drawn sweeping left, mirrored for +1
+  // the arm: up and back to the wrist (the wing's top corner)
+  const wrist = [sx - size * 0.3, sy - size * (0.95 - flap * 0.12)];
+  // the feathers: longest at the wrist, rounded tips
+  const n = 6;
+  for (let k = n - 1; k >= 0; k--) {
+    const t = k / (n - 1); // 0 at the shoulder .. 1 at the wrist
+    const root = [sx + (wrist[0] - sx) * t, sy + (wrist[1] - sy) * t];
+    const a = Math.PI * (0.62 + t * 0.38); // down-back at the shoulder, straight back at the wrist
+    const len = size * (0.45 + t * 0.55);
+    const tip = [root[0] + Math.cos(a) * len, root[1] + Math.sin(a) * len * -1 * (t > 0.5 ? 0.15 : -0.3) + (t > 0.5 ? 0 : len * 0.2)];
+    taper(grid, [[mx(root[0]), root[1]], [mx(tip[0]), tip[1]]], [Math.max(1, 1.25 * s), Math.max(0.8, 1.05 * s)], k % 2 ? alt : label);
+  }
+  fillStroke(grid, [[sx, sy], [mx(wrist[0]), wrist[1]]], Math.max(1, 1.4 * s), label); // the arm, over the feather roots
+}
+
 // A unicorn's horn: a tapering cone from base to tip with a spiral groove
 // winding round it.
 function hornAt(grid, a, b, hs) {
@@ -4651,6 +4819,224 @@ function hornAt(grid, a, b, hs) {
     const c = grid[y] && grid[y][x];
     if (c && c.l === "uhorn") c.l = "uhornline";
   }
+}
+
+// --- phoenixes -------------------------------------------------------------------------
+// A firebird: a round-breasted bird standing tall on thin gold legs, a small
+// hooked beak, a crest of plumes curling back off the head, wings folded along
+// the side (or raised, or spread in flight), and long tail plumes that sweep
+// back and curl up at their tips -- or a tail made of flame. Side-on unless it
+// faces us with its wings spread like an emblem. It's made of fire: painted by
+// paintFire, with flames licking off its top. Reborn from ashes: it starts as
+// a dark egg with glowing cracks in a pile of ash, hatches into a round flame
+// chick sitting in the ashes, then grows to bigger than other pets.
+
+const PHOENIX_GROWTH = {
+  hatch: { body: 0.78, head: 0.95 },
+  mid: { body: 0.7, head: 0.86 },
+  big: { body: 0.92, head: 0.96 },
+  grown: { body: 1.2, head: 1.1 },
+};
+const PHOENIX_CHICK = { facing: "side", pose: "chick", body: { rx: 6.4, ry: 6 }, head: 4, legs: 0, tail: 9, crest: 3, plumes: 2, fold: true, wings: 0, flame: false };
+
+// A mound of grey ash with embers glowing in it.
+function ashPile(grid, cx, rx, frame) {
+  fillEllipse(grid, cx, GROUND - 0.5, rx, 2.4, "ash");
+  for (let k = -3; k <= 3; k++) if ((k + frame) % 2) put(grid, Math.round(cx + k * rx * 0.28), GROUND - 1 - (k % 2 ? 1 : 0), { l: "ember", nx: 0, ny: -0.5 });
+}
+
+// The egg: dark as a coal, glowing cracks running round it, sitting in ash.
+function buildPhoenixEgg(genes, frame) {
+  const grid = makeGrid();
+  const cx = 46;
+  const rx = 6;
+  const ry = 7.6;
+  const cy = GROUND - 1.5 - ry;
+  for (let y = Math.floor(cy - ry); y < GROUND; y++) {
+    const ny = (y + 0.5 - cy) / ry;
+    const w = rx * Math.sqrt(Math.max(0, 1 - ny * ny)) * (ny < 0 ? 1 + ny * 0.18 : 1);
+    for (let x = Math.floor(cx - w - 1); x <= Math.ceil(cx + w + 1); x++) {
+      const nx = (x + 0.5 - cx) / Math.max(1, w);
+      if (Math.abs(nx) <= 1) put(grid, x, y, { l: "pegg", nx, ny });
+    }
+  }
+  // the cracks: a zigzag round the middle, branches up and down from it
+  // the glow pulses: on odd frames the cracks burn brighter
+  const crack = (pts) => pts.slice(1).forEach((p, i) => line(grid, pts[i], p, frame % 2 ? "crack2" : "crack"));
+  crack([[cx - rx, cy + 0.5], [cx - 3, cy - 1], [cx - 1, cy + 1], [cx + 1, cy - 1], [cx + 3, cy + 1], [cx + rx, cy - 0.5]]);
+  crack([[cx - 1, cy + 1], [cx - 2, cy + 3], [cx - 1.5, cy + 4.5]]);
+  crack([[cx + 1, cy - 1], [cx + 2, cy - 3], [cx + 1, cy - 4.5]]);
+  ashPile(grid, cx, 9, frame);
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: { eyes: [], pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [] },
+    center: [cx, cy], scale: 1, softOutline: true, softNeck: true,
+    geo: { cx, cy, rx, ry, legTop: GROUND, tail: [cx, cy, 0], head: [cx, cy - ry, 1, 1], faceBox: null, muzzle: null },
+  };
+}
+
+function buildPhoenix(genes, stage, frame, V) {
+  if (stage.id === "baby") return buildPhoenixEgg(genes, frame);
+  if (stage.id === "small") return buildPhoenix(genes, { id: "hatch" }, frame, { ...V, ...PHOENIX_CHICK });
+  const grid = makeGrid();
+  const shape = genes.shape || {};
+  const G = PHOENIX_GROWTH[stage.id];
+  const s = G.body;
+  const hs = G.head;
+  const step = frame % 2;
+  const pose = V.pose || "perch";
+  const front = V.facing === "front";
+  const fly = pose === "fly";
+  const sitting = pose === "chick"; // a hatchling sits in the ashes
+  const rx = V.body.rx * s + (shape.length || 0) / 2;
+  const ry = V.body.ry * s + (shape.height || 0) / 5;
+  const legH = sitting ? 0 : Math.max(2, V.legs * s * (1 + (shape.legs || 0) * 0.35) + (shape.height || 0) / 3);
+  const cx = 46;
+  const lift = fly ? 12 * s + step : 0;
+  const by = GROUND - legH - ry * 0.95 - lift - (sitting ? 2 * s : 0);
+  const hr = V.head * hs;
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const eye = V.eye || "duo";
+  const L = V.tail * s * (1 + (shape.tail || 0) * 0.3);
+  const wings = (V.wings || 0) * (1 + (shape.wings || 0) * 0.25);
+  const sway = step * 0.6;
+
+  // a plume: a thin quill sweeping along `pts`, ending in a teardrop tip
+  const plume = (pts, w, tipR) => {
+    taper(grid, pts, pts.map((_, i) => (i === pts.length - 1 ? w * 0.7 : w)), "plume");
+    const [ex, ey] = pts[pts.length - 1];
+    fillEllipse(grid, ex, ey, tipR, tipR * 1.15, "plumetip");
+  };
+  // a crest of plumes off the back of the head, curling back
+  const crest = (x, y, dir, n) => {
+    for (let k = 0; k < n; k++) {
+      const a = -Math.PI / 2 - dir * (0.35 + k * 0.32);
+      const len = (V.crest || 4) * hs * (1 + (shape.crest || 0) * 0.4) * (1 - k * 0.12);
+      const mid = [x + Math.cos(a) * len * 0.6, y + Math.sin(a) * len * 0.6];
+      const end = [x + Math.cos(a - dir * 0.35) * len, y + Math.sin(a - dir * 0.35) * len - step * 0.4 * (k % 2)];
+      plume([[x, y], mid, end], 0.5, Math.max(0.6, 0.7 * hs));
+    }
+  };
+  // a flame tail: tongues of fire streaming back from the rump, flickering
+  const flameTail = (x, y, dir) => {
+    // one big tongue of fire: wide at the rump, sweeping back and tapering,
+    // with smaller tongues splitting off it, all flickering
+    const pts = [[x, y], [x + dir * L * 0.35, y + L * 0.12], [x + dir * L * 0.7, y + L * 0.05 - step * 0.6], [x + dir * L, y - L * 0.15 + step * 0.6]];
+    taper(grid, pts, [3 * s, 2.6 * s, 1.6 * s, 0.6], "flame");
+    for (let k = 0; k < 3; k++) {
+      const t = 0.3 + k * 0.22;
+      const bx = x + dir * L * t;
+      const byy = y + L * 0.1;
+      const up = k % 2 ? -1 : 1;
+      taper(grid, [[bx, byy], [bx + dir * L * 0.2, byy + up * L * 0.18 + (k % 2 ? step : -step) * 0.5]], [1.3 * s, 0.55], "flame");
+    }
+  };
+
+  let hx;
+  let hy;
+  let chest = [cx + rx * 0.45, by];
+  if (front) {
+    // facing us, wings spread wide and up like an emblem, the tail fanned below
+    const fy = GROUND - legH - ry - 1;
+    for (const dir of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const a = Math.PI / 2 + dir * (0.25 + k * 0.3);
+        const len = L * (0.75 - k * 0.12);
+        plume([[cx + dir * 1, fy + ry * 0.4], [cx + Math.cos(a) * len * 0.6, fy + ry * 0.4 + Math.sin(a) * len * 0.35], [cx + Math.cos(a) * len + dir * sway, Math.min(GROUND - 2, fy + ry * 0.4 + Math.sin(a) * len * 0.45)]], 0.6, Math.max(0.9, 1.1 * s));
+      }
+      featherWing(grid, frame, s, cx + dir * rx * 0.55, fy - ry * 0.4, wings * s, dir, "pfeather", "pfeather2");
+    }
+    for (const dir of [-1, 1]) {
+      fillRect(grid, cx + dir * rx * 0.35 - 0.5, fy + ry * 0.7, 1, GROUND - fy - ry * 0.7, "birdleg");
+      fillRect(grid, cx + dir * rx * 0.35 - 1.5, GROUND - 1, 3, 1, "birdleg");
+    }
+    fillEllipse(grid, cx, fy, rx * 0.75, ry, "body");
+    fillEllipse(grid, cx, fy + ry * 0.25, rx * 0.45, ry * 0.65, "breast");
+    hx = cx;
+    hy = fy - ry * 0.95 - hr * 0.55;
+    chest = [cx, fy + ry * 0.15];
+    crest(hx, hy - hr * 0.6, 1, 2);
+    crest(hx, hy - hr * 0.6, -1, 2);
+    fillEllipse(grid, hx, hy, hr, hr * 0.95, "head");
+    // the beak: a little hooked triangle pointing down from between the eyes
+    const c = Math.round(hx);
+    fillTri(grid, [[c - 1, hy + 0.2], [c + 2, hy + 0.2], [c + 0.5, hy + 2.6 * hs]], "beak");
+    const ey = Math.round(hy - hr * 0.35);
+    face.eyes.push({ x: c - 3, y: ey, size: eye, iris }, { x: c + 2, y: ey, size: eye, iris });
+  } else {
+    // side-on, facing right; a little upright, the breast forward
+    const tx = cx - rx * 0.75;
+    const ty = by + ry * 0.3;
+    // the far leg, the tail (behind everything)
+    if (!sitting && !fly) {
+      fillRect(grid, cx + 1, by + ry * 0.6, 1, GROUND - by - ry * 0.6, "farbirdleg");
+      fillRect(grid, cx + 1, GROUND - 1, 3, 1, "farbirdleg");
+    }
+    if (V.flame) {
+      flameTail(tx, ty, -1);
+    } else {
+      // long ribbons of plumes arcing back from the rump, spread apart,
+      // each drooping and then curling up at its tip
+      const n = V.plumes || 3;
+      const low = (y) => Math.min(GROUND - 2, y);
+      for (let k = n - 1; k >= 0; k--) {
+        const d = (k - (n - 1) / 2) * (fly ? 0.1 : 0.14) + (fly ? 0 : 0.02); // fanned: up, level, down
+        const w = (k % 2 ? sway : -sway) * (fly ? 1.5 : 1);
+        const pts = [[tx + 1, ty - 0.5], [tx - L * 0.3, low(ty + L * d * 0.6)], [tx - L * 0.65, low(ty + L * d * 1.1) + w * 0.5], [tx - L * (0.92 - k * 0.07), low(ty + L * d) - 2 * s + w]];
+        taper(grid, pts, [0.95 * s, 0.8 * s, 0.65 * s, 0.55], "plume");
+        const [ex, ey] = pts[3];
+        fillEllipse(grid, ex, ey, Math.max(1, 1.2 * s), Math.max(1.1, 1.4 * s), "plumetip");
+      }
+    }
+    if (V.wings && !fly) featherWing(grid, frame, s, cx + rx * 0.1 + 1.5, by - ry * 0.5, wings * s * 0.85, -1, "farpfeather", "farpfeather");
+    if (fly) featherWing(grid, frame, s, cx + 1.5, by - ry * 0.4, wings * s * 0.9, -1, "farpfeather", "farpfeather");
+    // the body: upright, the breast high and forward, tapering down and back
+    fillEllipse(grid, cx + rx * 0.2, by - ry * 0.15, rx * 0.75, ry, "body");
+    fillEllipse(grid, cx - rx * 0.45, by + ry * 0.3, rx * 0.6, ry * 0.65, "body");
+    fillEllipse(grid, cx + rx * 0.5, by - ry * 0.05, rx * 0.42, ry * 0.8, "breast");
+    if (sitting) ashPile(grid, cx, rx * 1.4, frame);
+    // the near leg
+    if (!sitting && !fly) {
+      fillRect(grid, cx - 0.5, by + ry * 0.6, 1, GROUND - by - ry * 0.6, "birdleg");
+      fillRect(grid, cx - 0.5, GROUND - 1, 3, 1, "birdleg");
+      put(grid, Math.round(cx - 1.5), GROUND - 1, { l: "birdleg", nx: 0, ny: 0 }); // the back toe
+    }
+    if (fly) taper(grid, [[cx - 1, by + ry * 0.7], [cx - 3 * s, by + ry + 1.5 * s]], [0.6, 0.5], "birdleg"); // tucked
+    // the folded wing along the side: a long teardrop, the long feathers at the back
+    if (V.fold) {
+      const w0 = [cx + rx * 0.45, by - ry * 0.35];
+      const w1 = [cx - rx * 0.9, by + ry * 0.25];
+      taper(grid, [w0, [cx - rx * 0.1, by - ry * 0.05], w1], [ry * 0.55, ry * 0.6, 0.8], "pfeather");
+      for (let k = 0; k < 3; k++) taper(grid, [[cx - rx * (0.1 + k * 0.25), by + ry * (0.15 + k * 0.08)], [w1[0] - k * 1.2 * s - 1, w1[1] + k * 0.8]], [0.7, 0.55], k % 2 ? "pfeather2" : "pfeather");
+    }
+    // the head and neck
+    hx = cx + rx * 0.75 + hr * 0.3;
+    hy = by - ry * 0.85 - hr * 0.5 + (fly ? ry * 0.5 : 0);
+    if (fly) hx += hr * 0.5;
+    taper(grid, [[cx + rx * 0.45, by - ry * 0.3], [hx - hr * 0.2, hy + hr * 0.2]], [ry * 0.55, hr * 0.7], "neck");
+    crest(hx - hr * 0.35, hy - hr * 0.55, 1, V.crestN || 3);
+    fillEllipse(grid, hx, hy, hr, hr * 0.92, "head");
+    // the beak: short and hooked, pointing forward
+    const bx = hx + hr * 0.85;
+    const byy = hy + hr * 0.1;
+    fillTri(grid, [[bx - 0.5, byy - 1.2 * hs], [bx - 0.5, byy + 1 * hs], [bx + 2.6 * hs, byy + 0.6 * hs]], "beak");
+    face.eyes.push({ x: Math.round(hx), y: Math.round(hy - hr * 0.35), size: eye, iris });
+    if (V.wings && !fly) featherWing(grid, frame, s, cx + rx * 0.1, by - ry * 0.55, wings * s, -1, "pfeather", "pfeather2");
+    if (fly) featherWing(grid, frame, s, cx, by - ry * 0.45, wings * s, -1, "pfeather", "pfeather2");
+  }
+
+  addLicks(grid, frame, s, fly ? -1.4 : -0.5);
+  relight(grid, "body");
+  relight(grid, "head");
+  relight(grid, "breast");
+  const geo = {
+    cx, cy: by, rx, ry, legTop: GROUND - legH, tail: [cx - rx, by, L], head: [hx, hy, hr, hr],
+    faceBox: null, muzzle: null, front, chest,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, by], scale: s,
+    softOutline: true, softNeck: true, geo, fire: true, frame,
+  };
 }
 
 // A one-pixel line between two points (wing bones).
