@@ -35,7 +35,8 @@ class PetColor:
     family: str
 
 
-FANCIFUL = {"pink", "purple", "blue", "green", "teal", "fancy"}
+# Green is natural (reptiles wear it); it stays rare for furry species.
+FANCIFUL = {"pink", "purple", "blue", "teal", "fancy"}
 
 
 def mute(hex_: str, family: str) -> str:
@@ -119,6 +120,7 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     "sheep": {"white": NATURAL, "cream": NATURAL, "gray": NATURAL, "black": NATURAL, "pink": 0.25, "purple": RARE, "blue": RARE, "green": RARE},
     "goat": {"white": NATURAL, "cream": NATURAL, "tan": NATURAL, "brown": NATURAL, "gray": NATURAL, "black": NATURAL, "gold": NATURAL, "green": RARE},
     "llama": {"white": NATURAL, "cream": NATURAL, "tan": NATURAL, "brown": NATURAL, "gray": NATURAL, "black": NATURAL, "red": NATURAL, "teal": RARE},
+    "turtle": {"green": NATURAL, "brown": NATURAL, "tan": NATURAL, "gold": NATURAL, "gray": NATURAL, "black": NATURAL, "orange": RARE, "teal": RARE},
 }
 
 STARTER_COLORS: dict[str, tuple[str, str, str]] = {
@@ -129,13 +131,14 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "sheep": ("snow", "cream", "charcoal"),
     "goat": ("snow", "chestnut", "sand"),
     "llama": ("ivory", "cocoa", "sand"),
+    "turtle": ("moss", "khaki", "chestnut"),
 }
 
 # Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
 ELEMENTS = {
     "bunny": "leaf", "goat": "leaf", "sheep": "leaf",
     "fox": "ember", "cat": "ember",
-    "dog": "splash", "llama": "splash",
+    "dog": "splash", "llama": "splash", "turtle": "splash",
 }
 
 # How the coat splits: mostly one color with a highlight, sometimes a mix,
@@ -159,6 +162,8 @@ SPECIES_PATTERNS = {
     "goat": {"solid": 20, "swiss": 15, "chamoisee": 15, "coublanc": 12, "sundgau": 10, "blacktan": 10, "spotted": 10, "boer": 8},
     # llamas and alpacas: real coats (paintLlama)
     "llama": {"solid": 25, "paint": 18, "guanaco": 15, "twotone": 12, "appaloosa": 10, "tuxedo": 8, "roan": 7, "saddle": 5},
+    # turtles: the painter lays a pattern over the shell's plates (paintTurtle)
+    "turtle": {"plain": 22, "flecks": 18, "rings": 16, "star": 12, "mottled": 12, "checker": 10, "keel": 10},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -170,6 +175,7 @@ SPECIES_EYES = {
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
     "goat": {"#d8a830": 4.0, "#c8861e": 3.0, "#8aa8c8": 1.5, "#5c3a1a": 1.5},
     "llama": {"#2a1810": 5.0, "#4a2a1a": 3.0, "#6a9ad0": 0.6},
+    "turtle": {"#c8861e": 3.0, "#2a1810": 3.0, "#b84a2a": 1.0, "#7ab84a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
@@ -184,9 +190,10 @@ BREEDS = {
     "sheep": ("fluffy", "merino", "ram", "ramfront", "longwool"),
     "goat": ("horned", "nubian", "pygmy", "ibex", "saanen", "dwarf"),
     "llama": ("llama", "front", "alpaca", "cria", "guanaco", "kushed", "suri"),
+    "turtle": ("box", "tortoise", "baby", "snapper", "shy"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -198,6 +205,7 @@ SHAPE_EXTRAS = {
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
     "goat": {"horns": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "llama": {"neck": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0), "wool": (-1.0, 1.0, 0.0)},
+    "turtle": {"dome": (-1.0, 1.0, 0.0), "neck": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")

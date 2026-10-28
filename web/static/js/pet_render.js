@@ -65,9 +65,9 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft"]);
+const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
-const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest"]);
+const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim"]);
 // Parts in front of the body that grow out of it (no line where they meet).
 const BLENDS_IN = new Set(["leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff"]);
 // The head stands apart from the body with a shade line and a chin shadow.
@@ -77,7 +77,7 @@ const BODYISH = new Set(["body", "wool", "chest", "neck", "leg", "tail", "fluff"
 const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof"]);
 const PET_FIXED = {
   hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
-  tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
+  hole: "#24170e", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
 };
 const PET_OUTLINE = "#1a0f08";
 const LIGHT_TINT = "#fff4d8";
@@ -231,7 +231,7 @@ function relabel(grid, from, to, test) {
 // Tidy the silhouette: fill one-pixel notches and shave one-pixel bumps off
 // the big round parts, so outlines run smooth instead of lumpy. Thin parts
 // (legs, tails, ears) are left alone.
-const SMOOTHED = new Set(["body", "head", "wool", "chest", "face", "neck", "cap"]);
+const SMOOTHED = new Set(["body", "head", "wool", "chest", "face", "neck", "cap", "shell"]);
 function smoothEdges(grid) {
   const at = (x, y) => (grid[y] && grid[y][x]) || null;
   for (let pass = 0; pass < 2; pass++) {
@@ -561,6 +561,7 @@ function paintCoat(out, grid, genes, built, hex) {
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
     sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
+    turtle: [TURTLE_PATTERNS, paintTurtle],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1545,6 +1546,107 @@ function paintLlama(out, grid, genes, built, hex) {
   woolCurls(out, grid, s, topY, ["body", "fluff", "neck", "tail", "tuft"], fleecy);
 }
 
+// --- turtle coats: patterns over the shell's plates ----------------------------------
+// Both picks (and a rare third color) go into the shell, laid out in rows of
+// plates with seams; the pattern decides how each plate is colored. The skin
+// is its own olive-to-gray shade worked out from the shell, with markings to
+// suit the pattern (speckles or light stripes on the head, neck and legs).
+//   plain    plates in the coat color, darker seams
+//   flecks   dark plates with light flecks (box turtle)
+//   rings    a light ring round each plate's darker middle
+//   star     dark plates with light rays from each middle (star tortoise)
+//   mottled  irregular two-tone marbling
+//   checker  plates alternating the two colors
+//   keel     a dark stripe down the middle of the shell, a bright rim
+
+const TURTLE_PATTERNS = new Set(["plain", "flecks", "rings", "star", "mottled", "checker", "keel"]);
+const TURTLE_SKIN = new Set(["head", "neck", "leg", "farleg", "tail"]);
+
+function paintTurtle(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const lightC = luminance(c1) > luminance(c0) + 0.08 ? c1 : blend(c0, "#f0e0a0", 0.6);
+  const darkC = luminance(c1) < luminance(c0) - 0.08 ? c1 : blend(c0, PET_OUTLINE, 0.45);
+  const accent = hex[2];
+  const noise = valueNoise(genes.seed);
+  const tick = (x, y) => {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + genes.seed) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  // star and ring plates need room for their rays and rings
+  const roomy = pattern === "star" || pattern === "rings" ? 1.45 : 1;
+  const ps = Math.max(3, Math.round(geo.plate * built.scale * roomy + 0.5));
+  const rowH = ps * 0.8;
+  const top = geo.base - geo.ry;
+  const plateAt = (x, y) => {
+    const row = Math.floor((y - top) / rowH);
+    const off = (row % 2) * ps * 0.5;
+    const col = Math.floor((x - geo.cx - off) / ps);
+    const dx = (x + 0.5 - (geo.cx + off + col * ps + ps / 2)) / (ps / 2);
+    const dy = (y + 0.5 - (top + row * rowH + rowH / 2)) / (rowH / 2);
+    return { row, col, dx, dy, seam: Math.abs(dx) > 0.78 || dy > 0.72, d: Math.hypot(dx, dy) };
+  };
+  const darkShell = { flecks: darkC, star: darkC }[pattern] || c0;
+  const seamOf = (base) => blend(base, PET_OUTLINE, 0.4);
+
+  // the shell
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || c.l !== "shell") continue;
+      const p = plateAt(x, y);
+      let base = darkShell;
+      if (pattern === "checker") base = (p.row + p.col) % 2 ? c1 : c0;
+      if (pattern === "mottled") base = noise((x - geo.cx) * 0.3 + 50, (y - top) * 0.3) > 0.52 ? lightC : c0;
+      if (pattern === "keel" && Math.abs(x + 0.5 - geo.cx) <= Math.max(1, ps * 0.3)) base = darkC;
+      let color = base;
+      if (p.seam) color = seamOf(base);
+      else {
+        switch (pattern) {
+          case "flecks":
+            if (tick(x, y) < 0.22) color = lightC;
+            break;
+          case "rings":
+            color = p.d > 0.42 ? blend(c0, lightC, 0.55) : blend(c0, PET_OUTLINE, 0.2);
+            break;
+          case "star": {
+            // rays out from each plate's middle at 0, 60 and 120 degrees
+            const a = Math.atan2(p.dy, p.dx);
+            const ray = [0, Math.PI / 3, (2 * Math.PI) / 3].some((r) => Math.abs(Math.sin(a - r)) * p.d < 0.18);
+            if (ray || p.d < 0.2) color = accent || lightC;
+            break;
+          }
+          default:
+            if (p.d < 0.42 && pattern !== "mottled") color = blend(base, LIGHT_TINT, 0.18);
+        }
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // the rim, and the skin
+  const rim = pattern === "checker" ? c1 : pattern === "keel" ? blend(lightC, "#fff4d8", 0.3) : blend(c0, "#e8d8a0", 0.45);
+  const skinBase = blend(luminance(c0) < luminance(c1) ? c0 : c1, "#8a8660", 0.55);
+  const skinMark = blend(skinBase, "#f0e0a0", 0.6);
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (c.l === "rim") {
+        out[y][x] = rim;
+      } else if (TURTLE_SKIN.has(c.l)) {
+        let color = skinBase;
+        if ((pattern === "flecks" || pattern === "star") && tick(x, y) < 0.18) color = skinMark; // speckles
+        if ((pattern === "rings" || pattern === "keel") && y % 3 === 0 && c.l !== "tail") color = skinMark; // light stripes
+        out[y][x] = color;
+      }
+    }
+  }
+}
+
 // A face drawn front-on has two eyes.
 function V_FRONT(face) {
   return face.eyes.length > 1;
@@ -1764,6 +1866,13 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: five turtle breeds; a mix borrows
+  // another breed's head, ridges or tail
+  turtle: {
+    get breeds() {
+      return TURTLE_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: seven llama breeds on 1b's build; a
   // mix borrows another breed's ears, head or topknot
   llama: {
@@ -2026,6 +2135,23 @@ const LLAMA_BREEDS = {
   suri: llamaBreed({ name: "Suri alpaca: long drapey fleece, side view", woolly: 1.3, tuft: 1.4, snoutLen: 2.6, neck: { len: 8, w: 4.2, lean: 0.95, thick: true }, body: { rx: 10.4, ry: 5.2 }, leg: { len: 6, w: 2, min: 4 }, ears: { size: 4.6 } }),
 };
 
+// Turtle trial designs start from a box turtle.
+function TURTLE(over) {
+  return {
+    shell: true, facing: "side", softOutline: true,
+    body: { rx: 10, ry: 7.4 }, leg: { len: 3.4, w: 3.4 }, head: { rx: 3.6, ry: 3.1 }, plate: 4.6,
+    ...over,
+  };
+}
+
+const TURTLE_BREEDS = {
+  box: TURTLE({ name: "Box turtle: domed shell, side view" }),
+  tortoise: TURTLE({ name: "Tortoise: tall dome, thick legs, side view", body: { rx: 10.6, ry: 9.2 }, leg: { len: 4.2, w: 4.4 }, plate: 5.4 }),
+  baby: TURTLE({ name: "Baby turtle: big head, little round shell, face to us", facing: "front", body: { rx: 8, ry: 6.2 }, leg: { len: 2.7, w: 3.2 }, head: { rx: 5, ry: 4.4 }, plate: 4 }),
+  snapper: TURTLE({ name: "Snapping turtle: ridged shell, big head, long tail, side view", ridges: true, body: { rx: 11.4, ry: 6.6 }, head: { rx: 4.5, ry: 3.7 }, tailLen: 6 }),
+  shy: TURTLE({ name: "Shy: hiding in its shell, eyes peeking", tucked: true, leg: { len: 1.8, w: 3.2 } }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2035,9 +2161,11 @@ const PET_VARIANTS = {
   cat: Object.values(CAT_BREEDS),
   goat: Object.values(PET_DESIGNS.goat.breeds),
   llama: Object.values(LLAMA_BREEDS),
+  turtle: Object.values(TURTLE_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
+  if (V.shell) return buildTurtle(genes, stage, frame, V);
   const shape = genes.shape || {};
   const grid = makeGrid();
   const s = stage.body;
@@ -2655,6 +2783,125 @@ function buildVariant(genes, stage, frame, V) {
   };
 }
 
+// --- turtles ----------------------------------------------------------------------
+// A domed shell (plates painted by paintTurtle) with a rim along the bottom,
+// four stubby legs (or flippers) under it, a tiny tail, and a head poking out
+// on a neck -- side-on, facing us, or tucked in with just the eyes peeking.
+
+function buildTurtle(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  // turtles stay readable as babies: they shrink less than furry pets
+  const s = 0.62 + stage.body * 0.38;
+  const hs = 0.75 + stage.head * 0.25;
+  const step = frame % 2;
+  const rx = half(V.body.rx * s + (shape.length || 0) / 2);
+  const ry = half(V.body.ry * s * (1 + (shape.dome || 0) * 0.2));
+  const legLen = Math.max(1.5, V.leg.len * stage.leg);
+  const base = GROUND - legLen; // the bottom of the shell
+  const cx = 30;
+  const legW = Math.max(2, V.leg.w * Math.max(s, 0.7));
+  const frontX = cx + rx * 0.55;
+  const backX = cx - rx * 0.55;
+
+  const leg = (x, lift, label) => fillEllipse(grid, x, (base + GROUND) / 2 - lift * 0.6, legW / 2, (GROUND - base) / 2 + 1, label);
+  // a sea turtle's flipper reaches forward and down from under the shell
+  const flipper = (x, len, lift, label) =>
+    fillTri(grid, [[x - 2, base - 1.5], [x + 2, base - 1.5], [x + len * 0.7, base + 2.8 - lift]], label);
+
+  // far legs, then the tail
+  if (V.flippers) {
+    flipper(frontX + 2, 9 * s, step, "farleg");
+  } else {
+    leg(backX + 2, step ? 0 : 1, "farleg");
+    leg(frontX + 2, step ? 1 : 0, "farleg");
+  }
+  const tl = (V.tailLen || 2.2) * s + 0.8;
+  fillTri(grid, [[cx - rx + 1, base - 1.6], [cx - rx + 1, base + 0.4], [cx - rx - tl, base]], "tail");
+
+  // the neck and head (side view: behind the shell's front edge)
+  const hrx = V.head.rx * hs;
+  const hry = V.head.ry * hs;
+  const neckLen = (V.neck || 2.2) * s * (1 + (shape.neck || 0) * 0.35);
+  let hx = cx + rx + neckLen + hrx * 0.55;
+  let hy = base - ry * 0.3 - (V.headUp || 0) * s;
+  if (V.facing === "front") {
+    hx = cx + rx * 0.85;
+    hy = base - ry * 0.12;
+  }
+  if (!V.tucked && V.facing !== "front") {
+    fillStroke(grid, [[cx + rx - 1.5, base - 1.2], [hx - hrx * 0.5, hy + hry * 0.25]], Math.max(1.1, hry * 0.55), "neck");
+  }
+
+  // the shell: a dome over a rim
+  for (let y = Math.floor(base - ry - 1); y < base; y++) {
+    for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+      const nx = (x + 0.5 - cx) / rx;
+      const ny = (y + 0.5 - base) / ry;
+      if (nx * nx + ny * ny <= 1) put(grid, x, y, { l: "shell", nx, ny: ny * 0.9 + 0.1 });
+    }
+  }
+  if (V.ridges) {
+    // a snapper's ridged shell: three little peaks along the top
+    for (const t of [-0.45, 0, 0.45]) {
+      const px = cx + t * rx;
+      const top = base - ry * Math.sqrt(Math.max(0, 1 - t * t));
+      fillTri(grid, [[px - 1.6, top + 1.2], [px + 1.6, top + 1.2], [px, top - 1.6 * s - 0.5]], "shell");
+    }
+  }
+  fillRect(grid, cx - rx * 0.97, base - 1, rx * 1.94, 1.6, "rim");
+  relight(grid, "shell");
+
+  // near legs (or flippers) in front of the rim
+  if (V.flippers) {
+    flipper(frontX, 11 * s, step, "leg");
+    fillEllipse(grid, backX - 2, base + 0.8, Math.max(2, 3 * s), 1.5, "leg");
+  } else {
+    leg(backX, step ? 1 : 0, "leg");
+    leg(frontX, step ? 0 : 1, "leg");
+  }
+
+  // the face
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#c8861e";
+  if (V.tucked) {
+    // hiding: a dark opening at the front of the shell, two eyes peeking out
+    const ox = cx + rx * 0.78;
+    const oy = base - ry * 0.32;
+    fillEllipse(grid, ox, oy, Math.max(1.6, 2.4 * s), Math.max(1.3, 1.7 * s), "hole");
+    const c = Math.round(ox);
+    const ey = Math.round(oy) - 1;
+    face.glints.push([c - 1, ey, iris], [c + 1, ey, iris]);
+  } else {
+    fillEllipse(grid, hx, hy, hrx, hry, "head");
+    relight(grid, "head");
+    const c = Math.round(hx);
+    if (V.facing === "front") {
+      const ey = Math.round(hy - hry * 0.35);
+      const g = Math.max(1, Math.round(hrx * 0.22));
+      face.eyes.push({ x: c - g - 2, y: ey, size: "duo", iris }, { x: c + g + 1, y: ey, size: "duo", iris });
+      const my = ey + 3;
+      face.smile.push([c - 2, my], [c - 1, my + 1], [c, my + 1], [c + 1, my + 1], [c + 2, my]);
+    } else {
+      const ex = Math.round(hx + hrx * 0.05);
+      const ey = Math.round(hy - hry * 0.5);
+      face.eyes.push({ x: ex, y: ey, size: "duo", iris });
+      const my = Math.round(hy + hry * 0.4);
+      face.smile.push([c + 1, my], [Math.round(hx + hrx) - 1, my], [Math.round(hx + hrx) - 2, my]);
+      face.noseDark.push([Math.round(hx + hrx) - 1, Math.round(hy - hry * 0.2)]);
+    }
+  }
+
+  const geo = {
+    cx, cy: base - ry * 0.5, rx, ry, base, legTop: base - 1, tail: [cx - rx, base, tl], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, plate: V.plate || 3.6,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, base - ry * 0.5], scale: s,
+    softOutline: true, softNeck: false, geo,
+  };
+}
+
 // Eye shapes, rows top to bottom: K lash/outline, W glint, I iris, P pupil.
 const EYE_SHAPES = {
   s: ["WK", "IK"],
@@ -2699,6 +2946,7 @@ function drawFace(dot, at, face, genes, frame, outline) {
   for (const [x, y] of face.smile) dot(x, y, outline(x, y));
   for (const [x, y] of face.noseDark) dot(x, y, PET_FIXED.nose);
   if (frame % 4 < 2) for (const [x, y] of face.tongue) dot(x, y, PET_FIXED.tongue);
+  for (const [x, y, c] of face.glints || []) dot(x, y, c);
   for (const [x, y] of face.tufts) {
     dot(x, y, PET_OUTLINE);
     dot(x, y - 1, PET_OUTLINE);
