@@ -216,7 +216,7 @@ const PetMotion = (() => {
   function draw(world, px, { ctx, unit, tags = false } = {}) {
     for (const w of [...world.walkers].sort((a, b) => a.y - b.y)) {
       px(w.x + w.width * 0.15, w.y - 0.5, w.width * 0.7, 1, "rgba(40, 60, 20, 0.25)"); // shadow
-      drawPet(px, w.x, w.y - w.hop, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale });
+      drawPet(px, w.x, w.y - w.hop, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
       if (ctx && w.state === "nap") snore(ctx, unit, w);
       if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
     }

@@ -4,7 +4,7 @@
 // game can show the player's dressed avatar without knowing anything
 // about the store.
 //
-// Needs sprites.js, backgrounds.js, wardrobe.js, and pets.js loaded first.
+// Needs sprites.js, backgrounds.js, wardrobe.js, and pet_render.js loaded first.
 
 // Back-to-front draw order. Worn slots match app/catalog.py's
 // WEARABLE_SLOTS; the hair_back/body/hair_front/bow layers come from the
@@ -34,6 +34,18 @@ function drawAvatar(canvas, equipped, opts = {}) {
   paintAvatar(px, equipped, opts);
 }
 
+// A pet that comes along (app/pet_care.py along_pets), at the avatar's
+// feet: slot 1 bottom-right facing left, slot 2 bottom-left facing right,
+// both toward the character. Pets are drawn at twice the avatar's density.
+const ALONG_PET_SCALE = 0.5;
+
+function drawAlongPet(px, pet) {
+  const { w } = petSize(pet.genes, pet.growth);
+  const width = w * ALONG_PET_SCALE;
+  const x = pet.slot === 1 ? 47 - width : 1;
+  drawPet(px, x, 47, pet.genes, pet.growth, { faceLeft: pet.slot === 1, scale: ALONG_PET_SCALE });
+}
+
 // The same drawing through any pixel-fill function, so other scenes (the
 // bedroom, future games) can paint the avatar wherever they like.
 // opts.pets: false to leave pets out (a scene that draws them itself).
@@ -46,7 +58,7 @@ function paintAvatar(px, equipped, opts = {}) {
     if (slot === "background" && !background) continue;
     if (slot === "pet") {
       // pets stay planted while the character bobs
-      if (pets) for (const pet of equipped.pets || []) drawGrid(px, petSprite(pet), 0);
+      if (pets) for (const pet of equipped.pets || []) drawAlongPet(px, pet);
       continue;
     }
     const sprite = APPEARANCE_LAYERS[slot] ? APPEARANCE_LAYERS[slot](look) : spriteFor(equipped[slot]);

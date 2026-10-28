@@ -4,7 +4,7 @@
 // (blinking keys, an arcade screen); `me` is /api/me (the pet tile draws
 // your own pet when one comes along).
 //
-// Needs sprites.js (INK, sym), avatar.js (drawGrid), pets.js, and (for the
+// Needs sprites.js (INK, sym), avatar.js (drawGrid), pet_render.js, and (for the
 // garden) veggies.js loaded first.
 
 const HOME_INK = INK;
@@ -273,8 +273,10 @@ const HOME_ICONS = {
     draw(px, frame, me) {
       const pet = me && me.avatar && (me.avatar.pets || [])[0];
       if (pet) {
-        const sprite = petSprite(pet, { x: 0, y: 0, faceLeft: false });
-        drawGrid(px, { ...sprite, x: Math.floor((16 - sprite.rows[0].length) / 2), y: 13 - sprite.rows.length }, frame % 2);
+        // a v3 pet (pet_render.js), shrunk to fit the 16x13 icon
+        const { w, h } = petSize(pet.genes, pet.growth);
+        const scale = Math.min(16 / w, 13 / h, 0.5);
+        drawPet(px, (16 - w * scale) / 2, 13, pet.genes, pet.growth, { frame, scale, shadow: false });
         return;
       }
       gridIcon(PAW_ROWS, { o: HOME_INK, p: "#b07a43" })(px);

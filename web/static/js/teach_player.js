@@ -183,7 +183,7 @@ async function finish() {
   if (window.Header) Header.celebrate(data.coins_earned, data.coin_balance);
   if (lessonId) {
     el("teach-next").innerHTML = `Press ${keycap("Enter")} for your next lesson, or ${keycap("Esc")} to go home.`;
-    const opened = { pets: "the Pet Room, and your first pet is free", bedroom: "your Bedroom" };
+    const opened = { bedroom: "your Bedroom" };
     if (data.unlocked && data.unlocked.length) {
       el("teach-unlock").textContent = `🎉 You unlocked ${data.unlocked.map((r) => opened[r]).join(" and ")}!`;
       el("teach-unlock").hidden = false;

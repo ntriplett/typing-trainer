@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import replace
 
-from app import appearance, db, pets, room
+from app import appearance, db, pet_care, room
 from app.catalog import (
     CATALOG, DEFAULT_BACKGROUND, ITEMS, SLOT_DEFAULTS, WEARABLE_SLOTS, StoreItem, group_places, night_item_id,
     place_group,
@@ -60,13 +60,12 @@ def get_avatar(conn: sqlite3.Connection, learner_id: int) -> dict:
     """slot -> item_id for each worn slot, plus "appearance", "night", and
     the pets that come along; the shape the front-end avatar renderer draws."""
     look = appearance.load(conn, learner_id)
-    pets.migrate_legacy(conn, learner_id)
     worn = {
         slot: item_id
         for slot, item_id in db.get_equipped(conn, learner_id).items()
         if slot in WEARABLE_SLOTS
     }
-    return {**worn, "night": night_status(conn, learner_id)["on"], "pets": pets.along(conn, learner_id), "appearance": {
+    return {**worn, "night": night_status(conn, learner_id)["on"], "pets": pet_care.along_pets(conn, learner_id), "appearance": {
         "gender": look.gender, "skin": look.skin,
         "hair_color": look.hair_color, "hair_style": look.hair_style, "eye_color": look.eye_color,
     }}

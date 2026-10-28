@@ -4,6 +4,7 @@ app/db.py's v3 `pet` table; habitats are bought in the Pet Shop."""
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from datetime import date
 
@@ -124,6 +125,19 @@ def set_home(conn, learner_id: int, pet_id: int, spot: int | None) -> None:
     db.update_v3_pet(conn, learner_id, pet_id, home=home_id(spot) if spot is not None else None)
 
 
+def along_pets(conn, learner_id: int) -> list[dict]:
+    """The pets riding with the avatar (avatar.js draws them by `slot`)."""
+    return sorted(
+        (
+            {"id": p["id"], "name": p["name"], "species": p["species"], "growth": p["growth"],
+             "genes": g.resolve(p["genes"]), "slot": p["along"]}
+            for p in db.list_v3_pets(conn, learner_id)
+            if p["along"]
+        ),
+        key=lambda p: p["slot"],
+    )
+
+
 # --- habitats -------------------------------------------------------------------------
 
 
@@ -219,3 +233,27 @@ def field_pets(conn, learner_id: int, today: date) -> list[dict]:
     along = sorted((p for p in pets if p["along"]), key=lambda p: p["along"])
     waiting = [p for p in pets if not p["along"] and p["spot"] is None and not p["water"]]
     return along + sorted(waiting, key=lambda p: p["id"], reverse=True)[:FIELD_UNASSIGNED]
+
+
+# --- Pet Battles ----------------------------------------------------------------
+
+
+# Partners for players without pets along: fixed seeds, so they look the same every game.
+BATTLE_STARTERS = (("Clover", "bunny", 101), ("Pip", "fox", 202), ("Puddle", "dog", 303))
+STARTER_GROWTH = 5
+WILD_GROWTH = 10
+
+
+def battle_pets(game: dict, rng: random.Random | None = None) -> dict:
+    """Pet Battles' game data with v3 looks: each level's wild critter
+    (`foe_genes`, new every game, in starter colors) and the starters."""
+    rng = rng or random.Random()
+    wild = lambda species: g.resolve(g.shop_roll(species, set(), g.new_seed(rng)))  # noqa: E731
+    return {
+        **game,
+        "levels": [{**lv, "foe_genes": wild(lv["foe"]), "foe_growth": WILD_GROWTH} for lv in game["levels"]],
+        "starters": [
+            {"name": name, "species": sp, "growth": STARTER_GROWTH, "genes": g.resolve(g.shop_roll(sp, set(), seed))}
+            for name, sp, seed in BATTLE_STARTERS
+        ],
+    }

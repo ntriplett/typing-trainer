@@ -120,20 +120,6 @@ CREATE TABLE IF NOT EXISTS learner_setting (
     PRIMARY KEY (learner_id, key)
 );
 
--- Pets are individuals (app/pets.py): a learner can own several of the
--- same species. slot is 1/2 while the pet comes along on the avatar.
-CREATE TABLE IF NOT EXISTS owned_pet (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    learner_id INTEGER NOT NULL REFERENCES learner(id),
-    species TEXT NOT NULL,
-    color TEXT NOT NULL,
-    name TEXT NOT NULL,
-    growth INTEGER NOT NULL DEFAULT 0,
-    last_fed TEXT,
-    slot INTEGER,
-    adopted_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_owned_pet_learner ON owned_pet(learner_id);
 
 -- Pets v3 (PLAN.md 11h): genes are app/pet_genes.py's JSON, stored rather
 -- than re-rolled. home is NULL while the pet waits in the Pet Care Center.
@@ -350,7 +336,13 @@ _ADDED_COLUMNS = [
 ]
 
 
+# Tables from retired features, dropped on start (the pets before v3).
+_DROPPED_TABLES = ("owned_pet",)
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
+    for table in _DROPPED_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.executescript(SCHEMA)
     for table, column, decl in _ADDED_COLUMNS:
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
@@ -1052,51 +1044,6 @@ def set_setting(conn: sqlite3.Connection, learner_id: int, key: str, value: str)
         ON CONFLICT(learner_id, key) DO UPDATE SET value = excluded.value
         """,
         (learner_id, key, value),
-    )
-
-
-# --- pets -------------------------------------------------------------------------
-
-_PET_COLUMNS = "id, species, color, name, growth, last_fed, slot, adopted_at"
-
-
-def add_pet(
-    conn: sqlite3.Connection, learner_id: int, species: str, color: str, name: str,
-    growth: int = 0, slot: int | None = None,
-) -> int:
-    cur = conn.execute(
-        "INSERT INTO owned_pet (learner_id, species, color, name, growth, slot, adopted_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (learner_id, species, color, name, growth, slot, _now_iso()),
-    )
-    return cur.lastrowid
-
-
-def list_pets(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
-    rows = conn.execute(
-        f"SELECT {_PET_COLUMNS} FROM owned_pet WHERE learner_id = ? ORDER BY id", (learner_id,)
-    ).fetchall()
-    return [dict(r) for r in rows]
-
-
-def get_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int) -> dict | None:
-    row = conn.execute(
-        f"SELECT {_PET_COLUMNS} FROM owned_pet WHERE learner_id = ? AND id = ?", (learner_id, pet_id)
-    ).fetchone()
-    return dict(row) if row else None
-
-
-_PET_UPDATABLE = {"name", "growth", "last_fed", "slot"}
-
-
-def update_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, **fields) -> None:
-    unknown = set(fields) - _PET_UPDATABLE
-    if unknown:
-        raise ValueError(f"can't update pet fields {unknown}")
-    assignments = ", ".join(f"{k} = ?" for k in fields)
-    conn.execute(
-        f"UPDATE owned_pet SET {assignments} WHERE learner_id = ? AND id = ?",
-        (*fields.values(), learner_id, pet_id),
     )
 
 

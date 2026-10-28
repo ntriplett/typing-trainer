@@ -4,7 +4,7 @@
 // flooring_*, and furniture_* ids. The bedroom page (bedroom.js) adds
 // dragging; the store uses drawRoomThumb() for item thumbnails.
 //
-// Needs sprites.js, backgrounds.js, wardrobe.js, pets.js, avatar.js.
+// Needs sprites.js, backgrounds.js, wardrobe.js, pet_render.js, avatar.js.
 
 const ROOM = 96;
 const WALL_BOTTOM = 60; // wall is y 0..59, baseboard 60..61, floor 62..95
@@ -398,9 +398,8 @@ function paintRoom(px, room, scene = {}) {
     standing.push({ bottom: ay + 44, draw: () => paintAvatar(at, scene.avatar, { background: false, pets: false, frame: scene.frame }) });
   }
   for (const w of scene.walkers || []) {
-    const rows = PET_ROWS[w.pet.species][w.pet.stage];
-    const y = Math.round(w.y) - rows.length;
-    standing.push({ bottom: w.y, draw: () => drawGrid(px, petSprite(w.pet, { x: Math.round(w.x), y, faceLeft: w.dir < 0 }), 0) });
+    const opts = { frame: scene.frame, faceLeft: w.dir < 0, scale: ALONG_PET_SCALE };
+    standing.push({ bottom: w.y, draw: () => drawPet(px, Math.round(w.x), w.y, w.pet.genes, w.pet.growth, opts) });
   }
   standing.sort((a, b) => a.bottom - b.bottom).forEach((s) => s.draw());
 

@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, pets, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -153,12 +153,6 @@ def designer_page() -> FileResponse:
 @app.get("/pets")
 def pets_hub_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pets_hub.html")
-
-
-@app.get("/pets/room")
-def pet_room_page() -> FileResponse:
-    """The old pet room (pets before v3), until the Pet Care Center replaces it."""
-    return FileResponse(WEB_DIR / "pets.html")
 
 
 @app.get("/pets/shop")
@@ -540,7 +534,10 @@ def game_content(
         difficulty=PRACTICE_DIFFICULTIES[difficulty],
         skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
     )
-    return asdict(content)
+    out = asdict(content)
+    if module.game == "pet_battle":
+        out["game"] = pet_care.battle_pets(out["game"])
+    return out
 
 
 class GameRoundRequest(BaseModel):
@@ -652,7 +649,7 @@ def complete_lesson(
     except lessons.LessonError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     after = unlocks.status(conn, learner_id)
-    return {**done, "unlocked": unlocks.newly_unlocked(before, after), "free_pet": after["free_pet"]}
+    return {**done, "unlocked": unlocks.newly_unlocked(before, after)}
 
 
 # --- parent page -----------------------------------------------------------------------
@@ -898,11 +895,6 @@ def save_appearance(
 # --- pets API -----------------------------------------------------------------------
 
 
-class AdoptIn(BaseModel):
-    species: str
-    color: str
-
-
 class PetNameIn(BaseModel):
     name: str
 
@@ -911,64 +903,11 @@ class AlongIn(BaseModel):
     slot: int | None = None
 
 
-def _pets_state(conn, learner_id: int) -> dict:
-    _require(conn, learner_id, "pets")
-    return {
-        **_me(conn, learner_id),
-        "pets": pets.list_pets(conn, learner_id),
-        "species": pets.catalog(),
-        "food_price": pets.FOOD_PRICE,
-        "max_along": pets.MAX_ALONG,
-    }
-
-
 def _require(conn, learner_id: int, room_name: str) -> None:
     try:
         unlocks.require(conn, learner_id, room_name)
     except unlocks.Locked as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from None
-
-
-def _pet_action(action, conn, learner_id: int, *args) -> dict:
-    _require(conn, learner_id, "pets")
-    try:
-        action(conn, learner_id, *args)
-    except pets.PetError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    return _pets_state(conn, learner_id)
-
-
-@app.get("/api/pets")
-def list_pets(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _pets_state(conn, learner_id)
-
-
-@app.post("/api/pets/adopt")
-def adopt_pet(body: AdoptIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    free = unlocks.status(conn, learner_id)["free_pet"]
-    state = _pet_action(pets.adopt, conn, learner_id, body.species, body.color, free)
-    if free:
-        unlocks.claim_free_pet(conn, learner_id)
-    return state
-
-
-@app.post("/api/pets/{pet_id}/feed")
-def feed_pet(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _pet_action(pets.feed, conn, learner_id, pet_id)
-
-
-@app.put("/api/pets/{pet_id}/name")
-def rename_pet(
-    pet_id: int, body: PetNameIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
-) -> dict:
-    return _pet_action(pets.rename, conn, learner_id, pet_id, body.name)
-
-
-@app.put("/api/pets/{pet_id}/along")
-def pet_along(
-    pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
-) -> dict:
-    return _pet_action(pets.set_along, conn, learner_id, pet_id, body.slot)
 
 
 # --- pet shop API (pets v3, PLAN.md 11h) --------------------------------------------

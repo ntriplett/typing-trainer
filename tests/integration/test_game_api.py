@@ -70,3 +70,11 @@ def test_a_round_with_no_points_pays_nothing():
 def test_round_rejects_silly_scores():
     res = client.post(f"/api/game/{CROWS}/round", json={"keys": ["a"], "keystrokes": [], "score": 100000})
     assert res.status_code == 422
+
+
+def test_pet_battles_get_v3_critters_and_starters():
+    game = client.get(f"/api/game/{BATTLE}/content", params={"keys": "home"}).json()["game"]
+    assert [lv["foe"] for lv in game["levels"]] == ["bunny", "lizard", "goat", "fox", "llama"]
+    assert all(lv["foe_genes"]["species"] == lv["foe"] and lv["foe_genes"]["hex"][0] for lv in game["levels"])
+    assert [s["name"] for s in game["starters"]] == ["Clover", "Pip", "Puddle"]
+    assert {s["genes"]["battle"]["element"] for s in game["starters"]} == {"leaf", "ember", "splash"}

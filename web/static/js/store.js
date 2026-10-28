@@ -20,7 +20,6 @@ const TABS = [
     title: "Accessories",
     shelves: [{ title: "Accessories", match: (i) => i.slot === "accessory" }],
   },
-  { id: "pets", title: "Pets", shelves: [] }, // adoption: rendered from /api/pets
   {
     id: "places",
     title: "Places",
@@ -78,7 +77,6 @@ const previewLabel = document.getElementById("preview-label");
 const previewReset = document.getElementById("preview-reset");
 
 let state = null; // latest /api/store response
-let petState = null; // latest /api/pets response (adoption shelf)
 let tryingOn = null; // item being previewed, or null
 let currentTab = loadTab();
 const shownVariant = {}; // family key -> item id the card is showing
@@ -91,11 +89,11 @@ previewReset.addEventListener("click", () => {
 // Locked rooms (app/unlocks.py) keep their tabs hidden until they open.
 function visibleTabs() {
   const open = (state && state.unlocks) || {};
-  return TABS.filter((t) => (t.id === "pets" ? open.pets : t.id === "bedroom" ? open.bedroom : true));
+  return TABS.filter((t) => (t.id === "bedroom" ? open.bedroom : true));
 }
 
 function loadTab() {
-  const asked = new URLSearchParams(location.search).get("tab"); // e.g. /store?tab=pets
+  const asked = new URLSearchParams(location.search).get("tab"); // e.g. /store?tab=places
   if (asked && TABS.some((t) => t.id === asked)) return asked;
   try {
     const saved = localStorage.getItem("store-tab");
@@ -114,11 +112,9 @@ function saveTab(id) {
 }
 
 async function load() {
-  const [r, p] = await Promise.all([fetch("/api/store"), fetch("/api/pets")]);
+  const r = await fetch("/api/store");
   if (!r.ok) throw new Error(`/api/store returned ${r.status}`);
-  if (!p.ok && p.status !== 403) throw new Error(`/api/pets returned ${p.status}`);
   state = await r.json();
-  petState = p.ok ? await p.json() : null; // 403: the pet room is still a mystery
   render();
 }
 
@@ -167,10 +163,6 @@ function render() {
   );
 
   itemsEl.innerHTML = "";
-  if (currentTab === "pets") {
-    renderAdoption();
-    return;
-  }
   const tab = TABS.find((t) => t.id === currentTab);
   for (const shelf of tab.shelves) {
     const items = state.items.filter(shelf.match);
@@ -188,92 +180,6 @@ function render() {
     for (const [key, variants] of families) grid.appendChild(familyCard(key, variants));
     itemsEl.appendChild(section);
   }
-}
-
-// --- adopting pets ---------------------------------------------------------------
-
-const adoptColor = {}; // species -> coloring shown on its card
-
-function renderAdoption() {
-  const section = document.createElement("section");
-  section.className = "panel shelf";
-  section.innerHTML = `<h2 class="panel-title">Adopt a pet</h2>
-    <p class="hint">${
-      state.unlocks.free_pet
-        ? "<b>Your first pet is free!</b> A gift for learning the home row. Pick any one you like."
-        : 'Pets start as babies. Feed them once a day in the <a href="/pets/room">pet room</a> to help them grow up!'
-    }</p>
-    <div class="item-grid"></div>`;
-  const grid = section.querySelector(".item-grid");
-  for (const kind of petState.species) grid.appendChild(adoptCard(kind));
-  itemsEl.appendChild(section);
-}
-
-function adoptCard(kind) {
-  const color = adoptColor[kind.species] || kind.colors[0];
-  const grownPet = { species: kind.species, color, stage: "grown", slot: 1 };
-  const card = document.createElement("article");
-  card.className = "item-card";
-  card.dataset.species = kind.species;
-
-  const thumb = makeAvatarCanvas(144);
-  const others = (state.avatar.pets || []).filter((p) => p.slot !== 1);
-  drawAvatar(thumb, { ...state.avatar, pets: [...others, grownPet] });
-
-  const info = document.createElement("div");
-  info.className = "item-info";
-  info.innerHTML = `
-    <h3>${kind.name}</h3>
-    <p class="item-desc">${kind.description}</p>
-    <p class="coins-inline">${
-      state.unlocks.free_pet ? "<b>Free!</b>" : `<span class="coin-icon"></span>${kind.price.toLocaleString()}`
-    }</p>`;
-
-  const row = document.createElement("div");
-  row.className = "swatch-row";
-  for (const c of kind.colors) {
-    const btn = document.createElement("button");
-    btn.className = "color-swatch" + (c === color ? " selected" : "");
-    btn.style.background = PET_COLORS[kind.species][c][0];
-    btn.title = `${c} ${kind.name.toLowerCase()}`;
-    btn.setAttribute("aria-label", btn.title);
-    btn.onclick = () => {
-      adoptColor[kind.species] = c;
-      render();
-    };
-    row.appendChild(btn);
-  }
-
-  const btn = document.createElement("button");
-  if (state.unlocks.free_pet || state.coins >= kind.price) {
-    btn.textContent = state.unlocks.free_pet ? "Adopt for free" : "Adopt";
-    btn.className = "button-gold";
-    btn.onclick = () => adopt(kind, color);
-  } else {
-    btn.textContent = `Need ${(kind.price - state.coins).toLocaleString()} more`;
-    btn.disabled = true;
-  }
-  card.append(thumb, info, row, btn);
-  return card;
-}
-
-async function adopt(kind, color) {
-  messageEl.textContent = "";
-  messageEl.classList.remove("ok");
-  const r = await fetch("/api/pets/adopt", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ species: kind.species, color }),
-  });
-  const data = await r.json();
-  if (!r.ok) {
-    messageEl.textContent = data.detail || "Something went wrong.";
-    return;
-  }
-  Header.update(data);
-  await load();
-  messageEl.classList.add("ok");
-  messageEl.innerHTML = `Welcome home, little ${kind.name.toLowerCase()}! Give it a name in the <a href="/pets/room">pet room</a>.`;
 }
 
 function pickVariant(key, variants) {

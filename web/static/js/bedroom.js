@@ -187,7 +187,7 @@ async function act(url, method, body = null) {
 function tick() {
   frame += 1;
   for (const w of walkers) {
-    const width = PET_ROWS[w.pet.species][w.pet.stage][0].length;
+    const width = petSize(w.pet.genes, w.pet.growth).w * ALONG_PET_SCALE;
     w.x += w.dir * 0.4;
     if (w.x < 1 || w.x > ROOM - width - 1) w.dir *= -1;
     if (Math.random() < 0.01) w.dir *= -1;

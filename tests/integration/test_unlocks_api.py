@@ -1,5 +1,6 @@
-"""Integration tests for rooms that unlock as letters are learned: the Pet
-Room (home row, with a free first pet) and the Bedroom (top row)."""
+"""Integration tests for rooms that unlock as letters are learned: the
+Bedroom (top row). Pets are open from the start (the Pet Shop opens its
+departments itself, tests/integration/test_pet_shop_api.py)."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,13 +32,11 @@ def teach(*pairs):
             db.mark_taught(conn, 1, lesson_ref(PAIR_ID, pair), "lesson")
 
 
-def test_a_new_player_has_both_rooms_locked():
+def test_a_new_player_has_the_bedroom_locked():
     u = unlocks()
-    assert (u["pets"], u["bedroom"], u["free_pet"]) == (False, False, False)
-    assert u["missing"]["pets"] == "asdfghjkl;"
-    assert client.get("/api/pets").status_code == 403
+    assert not u["bedroom"] and "pets" not in u and not u["pet_coupon"]
+    assert u["missing"]["bedroom"] == "qwertyuiop"
     assert client.get("/api/room").status_code == 403
-    assert "home row" in client.post("/api/pets/adopt", json={"species": "dog", "color": "golden"}).json()["detail"]
 
 
 def test_bedroom_things_cant_be_bought_while_its_locked():
@@ -46,16 +45,10 @@ def test_bedroom_things_cant_be_bought_while_its_locked():
     assert client.post("/api/store/buy/furniture_bed_blue").status_code == 403
 
 
-def test_the_home_row_opens_the_pet_room_with_one_free_pet():
+def test_the_home_row_brings_the_pet_coupon():
     teach("fj", "dk", "sl", "a;", "gh")
     u = unlocks()
-    assert u["pets"] and u["free_pet"] and not u["bedroom"]
-    data = client.post("/api/pets/adopt", json={"species": "fox", "color": "red"}).json()
-    assert data["coins"] == 0  # free
-    assert data["pets"][0]["stage"] == "baby"
-    assert not data["unlocks"]["free_pet"]
-    again = client.post("/api/pets/adopt", json={"species": "fox", "color": "red"})
-    assert again.status_code == 400  # the next one costs coins
+    assert u["pet_coupon"] and not u["bedroom"]
 
 
 def test_the_top_row_opens_the_bedroom():
@@ -74,12 +67,5 @@ def test_finishing_the_last_home_row_lesson_reports_the_unlock(monkeypatch):
     monkeypatch.setattr(lessons.brain, "frustration", lambda *a: None)
     done = run_lesson(client)
     assert done["lesson"]["teach_keys"] == "gh"
-    assert done["done"]["unlocked"] == ["pets"]
-    assert done["done"]["free_pet"]
-
-
-def test_players_with_pets_keep_their_pet_room():
-    with db.open_db(main.DB_PATH) as conn:
-        db.add_pet(conn, 1, "dog", "golden", "Rex", growth=3, slot=None)
-    u = unlocks()
-    assert u["pets"] and not u["free_pet"]
+    assert done["done"]["unlocked"] == []  # nothing to unlock: pets are open from the start
+    assert unlocks()["pet_coupon"]

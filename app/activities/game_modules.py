@@ -175,10 +175,11 @@ PET_BATTLE = GameModule(
     how_to="Type a move's word to use it. Watch what the critter will do next!",
     game="pet_battle",
     coins_per_point=0.15,
-    # foe: a critter in pet_battle.js (its type, tricks and art); foe_hp: its HP.
+    # foe: a critter in pet_battle.js (its type and tricks; its look is a v3 pet,
+    # app/pet_care.py battle_pets); foe_hp: its HP.
     levels=(
         {"name": "Meadow", "foe": "bunny", "foe_hp": 12},
-        {"name": "Hedge", "foe": "hedgehog", "foe_hp": 14},
+        {"name": "Rocks", "foe": "lizard", "foe_hp": 14},
         {"name": "Hillside", "foe": "goat", "foe_hp": 16},
         {"name": "Woods", "foe": "fox", "foe_hp": 17},
         {"name": "Mountain", "foe": "llama", "foe_hp": 20},

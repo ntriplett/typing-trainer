@@ -541,9 +541,15 @@ old pets keep theirs; stored pets get it filled in from their seed): jump, chase
 **The hub field** shows the 2 pets along, plus the newest 4 land pets without a home; visitors
 top it up to 4 for new players.
 
-**Build order**: (1) tables, rules, API; (2) the Care Center book; (3) `pet_motion.js` + the
-meadow; (4) the Trailhead path + map; (5) cleanup: the avatar, Pet Battles and every other use
-of the old pets switch to v3, then `owned_pet` is wiped.
+**Build order** (all done 2026-10-28): (1) tables, rules, API; (2) the Care Center book; (3)
+`pet_motion.js` + the meadow; (4) the Trailhead path + map; (5) cleanup: the avatar, bedroom,
+home tile and Pet Battles draw v3 pets (`pet_render.js` replaces `pets.js` everywhere; battle
+critters and starters are rolled server-side, `pet_care.battle_pets`; the Hedge level's hedgehog
+became a lizard); the store's Pets tab, the old pet room, the free-pet unlock, `app/pets.py`
+and the `owned_pet` table are gone.
+
+**Temporary**: the `pet_shop_open_all` learner setting opens every shop department for testing
+(`app/pet_shop.py` `_taught`); remove it when testing is done.
 
 ## 12. Workflow
 

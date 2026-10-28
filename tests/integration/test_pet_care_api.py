@@ -104,6 +104,15 @@ def test_bring_along_two_at_most_and_never_fish():
     assert client.put(f"/api/care/{fish}/along", json={"slot": 1}).status_code == 400
 
 
+def test_pets_along_ride_with_the_avatar():
+    a, b = add_pet(seed=1), add_pet("cat", seed=2)
+    client.put(f"/api/care/{a}/along", json={"slot": 2})
+    client.put(f"/api/care/{b}/along", json={"slot": 1})
+    along = client.get("/api/me").json()["avatar"]["pets"]
+    assert [(p["id"], p["slot"]) for p in along] == [(b, 1), (a, 2)]
+    assert along[0]["genes"]["hex"][0].startswith("#") and along[0]["name"] == "Cat"
+
+
 def test_the_first_meadow_is_free_then_1500():
     shop = client.get("/api/pets/shop/habitats").json()
     assert shop["department"]["open"] and shop["slots"] == []

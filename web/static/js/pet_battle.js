@@ -17,7 +17,7 @@
 // Win: an arcade tally (paid right away) and you find an item. Lose: your pet
 // naps and you try again (pick again; the critter is 10% easier).
 //
-// Needs practice_scenes.js (Scene, C), pets.js, avatar.js, and game_kit.js.
+// Needs practice_scenes.js (Scene, C), pet_render.js, avatar.js, and game_kit.js.
 
 const ARENA_W = 240;
 const ARENA_H = 96;
@@ -31,12 +31,10 @@ const TYPES = {
   splash: { name: "Splash", beats: "ember" },
   ember: { name: "Ember", beats: "leaf" },
 };
-const SPECIES_TYPE = { bunny: "leaf", goat: "leaf", sheep: "leaf", fox: "ember", cat: "ember", hedgehog: "ember", dog: "splash", llama: "splash" };
-const STARTERS = [
-  { name: "Clover", species: "bunny", color: "brown", stage: "young" },
-  { name: "Pip", species: "fox", color: "red", stage: "young" },
-  { name: "Puddle", species: "dog", color: "golden", stage: "young" },
-];
+// A pet's type is its v3 genes' battle element (app/pet_genes.py ELEMENTS).
+const typeOf = (pet) => pet.genes.battle.element;
+// Pets are v3 pets (pet_render.js), fit into this box in the arena.
+const FIGHTER_BOX = { w: 64, h: 56 };
 
 function effectiveness(moveType, targetType) {
   if (!moveType || !targetType) return 1;
@@ -85,12 +83,12 @@ const CRITTERS = {
       rest: { says: "Rest: heals 2", heal: 2, w: 1 },
     },
   },
-  hedgehog: {
-    name: "Hedgehog", trick: "Gets spiky: hitting it pricks you.",
+  lizard: {
+    name: "Lizard", trick: "Puffs up its spiky frill: hitting it pricks you.",
     intents: {
       nibble: { says: "Nibble: 1 hit", hit: 1, w: 2 },
-      roll: { says: "Roll: 3 hits", hit: 3, w: 2 },
-      spiky: { says: "Spiky! Hitting it pricks you 2.", spiky: 2, w: 2 },
+      roll: { says: "Tail whip: 3 hits", hit: 3, w: 2 },
+      spiky: { says: "Frill up! Hitting it pricks you 2.", spiky: 2, w: 2 },
     },
   },
   goat: {
@@ -131,7 +129,7 @@ class PetBattle {
     this.game = content.game;
     this.levels = this.game.levels;
     this.avatar = me && me.avatar;
-    this.team = makeTeam((this.avatar && this.avatar.pets) || []);
+    this.team = makeTeam((this.avatar && this.avatar.pets) || [], this.game.starters);
     this.typer = new Typer();
     this.levelIndex = 0;
     this.foeEase = 1;
@@ -176,13 +174,12 @@ class PetBattle {
 
   setupFoe() {
     const lv = this.level;
-    const colors = Object.keys(PET_COLORS[lv.foe] || {});
     this.foe = {
       name: `Wild ${this.critter.name}`,
       species: lv.foe,
-      type: SPECIES_TYPE[lv.foe] || "leaf",
-      color: colors[Math.floor(Math.random() * colors.length)] || "brown",
-      stage: "grown",
+      genes: lv.foe_genes,
+      growth: lv.foe_growth,
+      type: typeOf({ genes: lv.foe_genes }),
       maxHp: Math.max(3, Math.round(lv.foe_hp * this.foeEase)),
     };
     this.foe.hp = this.foe.maxHp;
@@ -532,7 +529,7 @@ class PetBattle {
     const lunge = (t) => (t > 0 ? Math.sin((t / 0.35) * Math.PI) * 14 : 0);
     const shake = (t) => (t > 0 ? Math.round(Math.sin(t * 60) * 2) : 0);
     if (inBattle) {
-      this.drawPet(s, this.pet, 72 + lunge(this.anim.pet) + shake(this.anim.petShake), 86, false);
+      this.drawFighter(s, this.pet, 72 + lunge(this.anim.pet) + shake(this.anim.petShake), 86, false);
       if (this.focus && Math.random() < 0.3) s.burst(72, 70, 1, [C.orange, C.gold], { speed: 10, up: 15, gravity: -10, life: 0.5 });
       if (this.shield || this.charm) {
         const color = this.charm ? C.gold : "#8fc3d6";
@@ -543,7 +540,7 @@ class PetBattle {
     const flicker = this.anim.foeShake > 0 && Math.floor(this.anim.foeShake * 20) % 2;
     const hopping = it.dodge && this.state === "turn" ? -Math.abs(Math.round(Math.sin(s.t * 8) * 6)) : 0;
     if (this.state !== "tally" && !flicker) {
-      this.drawPet(s, this.foe, 180 - lunge(this.anim.foe) + shake(this.anim.foeShake), 76 + hopping, true);
+      this.drawFighter(s, this.foe, 180 - lunge(this.anim.foe) + shake(this.anim.foeShake), 76 + hopping, true);
     }
     if (this.state === "turn") {
       if (it.spiky) for (let i = 0; i < 7; i++) s.rect(160 + i * 6, 44 + (i % 2) * 2, 2, 4, C.cream);
@@ -552,14 +549,28 @@ class PetBattle {
     }
   }
 
-  // pet: {species, color, stage}; (cx, bottom) is where its feet go.
-  drawPet(s, pet, cx, bottom, faceLeft) {
-    const sprite = petSprite({ ...pet, slot: 2 }, { x: 0, y: 0, faceLeft });
-    const scale = pet.stage === "baby" ? 4 : 3;
-    const w = sprite.rows[0].length * scale;
-    const ox = Math.round(cx - w / 2);
-    const oy = bottom - sprite.rows.length * scale;
-    drawGrid((x, y, ww, hh, c) => s.rect(ox + x * scale, oy + y * scale, ww * scale, hh * scale, c), sprite, 0);
+  // pet: {genes, growth}; (cx, bottom) is where its feet go. Drawn once at a
+  // pixel per pet pixel, then scaled down to fit FIGHTER_BOX.
+  drawFighter(s, pet, cx, bottom, faceLeft) {
+    const key = faceLeft ? "left" : "right";
+    pet.art ||= {};
+    if (!pet.art[key]) {
+      const { w, h } = petSize(pet.genes, pet.growth);
+      const art = document.createElement("canvas");
+      art.width = w;
+      art.height = h + 2;
+      const ctx = art.getContext("2d");
+      drawPet((x, y, ww, hh, c) => {
+        ctx.fillStyle = c;
+        ctx.fillRect(x, y, ww, hh);
+      }, 0, h, pet.genes, pet.growth, { faceLeft });
+      pet.art[key] = { canvas: art, scale: Math.min(1, FIGHTER_BOX.w / w, FIGHTER_BOX.h / h) };
+    }
+    const { canvas, scale } = pet.art[key];
+    const w = Math.round(canvas.width * scale);
+    const h = Math.round(canvas.height * scale);
+    s.ctx.imageSmoothingEnabled = false;
+    s.ctx.drawImage(canvas, Math.round(cx - w / 2), Math.round(bottom - h + 2 * scale), w, h);
   }
 
   // --- keys -------------------------------------------------------------------
@@ -606,20 +617,14 @@ function typeTag(type) {
   return `<span class="type-tag type-${type}">${TYPES[type].name}</span>`;
 }
 
-// Up to 3 partners: the pets that come along, then starters for the types
-// still missing, so there's always one of each type when you have none.
-function makeTeam(owned) {
-  const team = owned.slice(0, 2).map((p) => ({
-    name: p.name || (CRITTERS[p.species] && CRITTERS[p.species].name) || "Pet",
-    species: p.species,
-    color: p.color,
-    stage: p.stage,
-    type: SPECIES_TYPE[p.species] || "leaf",
-  }));
-  for (const s of STARTERS) {
+// Up to 3 partners: the pets that come along, then starters (app/pet_care.py
+// BATTLE_STARTERS) for the types still missing, so there's always one of
+// each type when you have none.
+function makeTeam(owned, starters) {
+  const team = owned.slice(0, 2).map((p) => ({ name: p.name, species: p.species, genes: p.genes, growth: p.growth, type: typeOf(p) }));
+  for (const s of starters) {
     if (team.length >= 3) break;
-    const type = SPECIES_TYPE[s.species];
-    if (!team.some((p) => p.type === type)) team.push({ ...s, type });
+    if (!team.some((p) => p.type === typeOf(s))) team.push({ ...s, type: typeOf(s) });
   }
   return team;
 }

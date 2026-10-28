@@ -240,7 +240,7 @@ def test_win_tally_pays_coins_then_next_critter(page: Page, live_server):
     expect(page.locator(".tally-total b")).to_have_text("360")
     expect(page.locator(".game-card .teach-coins")).to_have_text("+54 coins!")
     page.keyboard.press(" ")
-    expect(page.locator(".game-card h2")).to_have_text("A wild hedgehog wants to play!")
+    expect(page.locator(".game-card h2")).to_have_text("A wild lizard wants to play!")
     assert errors == []
 
 
