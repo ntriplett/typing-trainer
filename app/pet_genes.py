@@ -15,6 +15,12 @@ starter colors), so a color found on any pet can be picked for any pet.
 Each species' families and realism weights (SPECIES_COLORS) only steer
 which third colors tend to roll for it; a rolled third color the learner
 hadn't unlocked yet unlocks it everywhere.
+
+The game can also pick the colors itself (roll() with primary or
+secondary None): the primary by realism, the secondary by second_color_weights
+(dragons: mostly the same or a neighboring family). Players never pick the
+third color. Dragons' third colors are treasure metals (the "metal" family),
+which are never picked or unlocked and stay out of the catalog.
 """
 
 from __future__ import annotations
@@ -105,8 +111,13 @@ COLORS: dict[str, PetColor] = {
         ),
         *_family("teal", ("Teal", "#3a9a9a"), ("Aqua", "#70d0d8"), ("Turquoise", "#40c0b0"), ("Lagoon", "#2a7a8a"), ("Jade", "#3aa070")),
         *_family("fancy", ("Coral", "#f08068"), ("Peach", "#f8c8a8"), ("Mauve", "#b88aa0"), ("Sunset", "#f07850"), ("Berry", "#9a2a6a")),
+        # --- treasure metals: only ever a dragon's third color (5) ---
+        *_family("metal", ("Gilt", "#f0c040"), ("Sterling", "#c8ccd8"), ("Bronze", "#b87a38"), ("Rose Gold", "#e8a088"), ("Platinum", "#ecebe4")),
     ]
 }
+METALS = [c.id for c in COLORS.values() if c.family == "metal"]
+# Species whose third color is always a treasure metal.
+TREASURE_THIRD = {"dragon"}
 
 NATURAL = 1.0
 RARE = 0.08
@@ -123,6 +134,9 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     "turtle": {"green": NATURAL, "brown": NATURAL, "tan": NATURAL, "gold": NATURAL, "gray": NATURAL, "black": NATURAL, "orange": RARE, "teal": RARE},
     "lizard": {"green": NATURAL, "brown": NATURAL, "tan": NATURAL, "orange": NATURAL, "gold": NATURAL, "gray": NATURAL, "teal": RARE, "blue": RARE},
     "snake": {"green": NATURAL, "brown": NATURAL, "orange": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "cream": NATURAL, "purple": RARE},
+    # mythical: storybook colors are the natural ones (never the metals,
+    # which are only third colors)
+    "dragon": {"green": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "purple": NATURAL, "blue": NATURAL, "teal": NATURAL, "white": RARE},
 }
 
 STARTER_COLORS: dict[str, tuple[str, str, str]] = {
@@ -136,12 +150,13 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "turtle": ("moss", "khaki", "chestnut"),
     "lizard": ("fern", "sand", "ginger"),
     "snake": ("moss", "rust", "buttercream"),
+    "dragon": ("fern", "crimson", "golden"),
 }
 
 # Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
 ELEMENTS = {
     "bunny": "leaf", "goat": "leaf", "sheep": "leaf", "snake": "leaf",
-    "fox": "ember", "cat": "ember", "lizard": "ember",
+    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember",
     "dog": "splash", "llama": "splash", "turtle": "splash",
 }
 
@@ -151,6 +166,7 @@ COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 # Species whose markings show a third color off well: the pattern is picked
 # first and sets the chance of a third color (the rest split highlight/mix).
 ACCENT_CHANCE = {
+    "dragon": {"storybook": 0.4, "ombre": 0.4, "ridgeback": 0.4, "scaled": 0.4, "tiger": 0.4, "jeweled": 0.4, "shadow": 0.4},
     "snake": {"banded": 0.5, "diamondback": 0.45, "saddles": 0.4, "striped": 0.4, "speckled": 0.35, "plain": 0.3},
 }
 PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points": 1.0}
@@ -177,6 +193,8 @@ SPECIES_PATTERNS = {
     "lizard": {"plain": 18, "banded": 18, "striped": 15, "spotted": 15, "chameleon": 10, "twotone": 12, "speckled": 12},
     # snakes: real snake markings laid along the body (paintSnake)
     "snake": {"diamondback": 25, "banded": 18, "saddles": 16, "striped": 15, "speckled": 12, "plain": 14},
+    # dragons: storybook looks built on real reptile markings (paintDragon)
+    "dragon": {"storybook": 25, "ombre": 15, "ridgeback": 15, "scaled": 15, "tiger": 12, "jeweled": 10, "shadow": 8},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -191,6 +209,7 @@ SPECIES_EYES = {
     "turtle": {"#c8861e": 3.0, "#2a1810": 3.0, "#b84a2a": 1.0, "#7ab84a": 1.0},
     "lizard": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 1.5},
     "snake": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 2.0},
+    "dragon": {"#e0a828": 4.0, "#e8d040": 2.0, "#c8702a": 2.0, "#5a9ae0": 1.0, "#b03a2a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
@@ -208,9 +227,10 @@ BREEDS = {
     "turtle": ("box", "tortoise", "baby", "snapper", "shy"),
     "lizard": ("iguana", "iguana_s", "monitor", "skink", "chameleon"),
     "snake": ("classic", "cobra", "wave", "diamondback", "strike", "slider", "rattler", "baby"),
+    "dragon": ("classic", "wyvern", "flying", "fire", "chubby"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -225,6 +245,7 @@ SHAPE_EXTRAS = {
     "turtle": {"dome": (-1.0, 1.0, 0.0), "neck": (-1.0, 1.0, 0.0)},
     "lizard": {"legs": (-1.0, 1.0, 0.0), "crest": (-1.0, 1.0, 0.0)},
     "snake": {"thick": (-1.0, 1.0, 0.0)},
+    "dragon": {"horns": (-1.0, 1.0, 0.0), "wings": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
@@ -236,6 +257,21 @@ MIN_THIRD_SHARE = 0.04  # less than this folds into the secondary
 # colors (0..1 color distance), and the floor so far colors stay possible.
 NEAR_SCALE = 0.18
 FAR_FLOOR = 0.04
+# When the game picks a dragon's second color: the same family most of the
+# time, a neighboring family often, and now and then one far away.
+SECOND_COLOR_ODDS = {"same": 0.6, "near": 0.3, "far": 0.1}
+NEAR_FAMILIES = {
+    "dragon": {
+        "red": {"gold", "purple", "black"},
+        "gold": {"red", "green", "white"},
+        "green": {"teal", "gold"},
+        "teal": {"green", "blue"},
+        "blue": {"teal", "purple", "white"},
+        "purple": {"blue", "red", "black"},
+        "black": {"purple", "blue", "red"},
+        "white": {"gold", "blue"},
+    },
+}
 
 
 def starting_unlocks() -> set[str]:
@@ -264,6 +300,27 @@ def color_distance(a: str, b: str) -> float:
     dr, dg, db = r1 - r2, g1 - g2, b1 - b2
     d = math.sqrt((2 + rmean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rmean) / 256) * db * db)
     return d / 765
+
+
+def primary_color_weights(species: str) -> dict[str, float]:
+    """The game picking a pet's main color: any of the species' colors, by realism."""
+    return {c: realism(species, c) for c in eligible_colors(species)}
+
+
+def second_color_weights(species: str, primary: str) -> dict[str, float]:
+    """The game picking the second color to go with `primary`. Species with
+    NEAR_FAMILIES split SECOND_COLOR_ODDS between the same family, the
+    neighbors, and the rest; others go by realism alone."""
+    colors = [c for c in eligible_colors(species) if c != primary]
+    near = NEAR_FAMILIES.get(species)
+    if not near:
+        return {c: realism(species, c) for c in colors}
+    family = COLORS[primary].family
+    tier = lambda c: "same" if COLORS[c].family == family else "near" if COLORS[c].family in near.get(family, ()) else "far"  # noqa: E731
+    totals: dict[str, float] = {}
+    for c in colors:
+        totals[tier(c)] = totals.get(tier(c), 0.0) + realism(species, c)
+    return {c: SECOND_COLOR_ODDS[tier(c)] * realism(species, c) / totals[tier(c)] for c in colors}
 
 
 def third_color_weights(species: str, unlocked: set[str], exclude: set[str]) -> dict[str, float]:
@@ -315,7 +372,10 @@ def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
         third = round(1 - primary - secondary, 3)
     third_color = None
     if third:
-        weights = third_color_weights(species, ctx["unlocked"], {ctx["primary"], ctx["secondary"]})
+        if species in TREASURE_THIRD:
+            weights = {c: 1.0 for c in METALS}
+        else:
+            weights = third_color_weights(species, ctx["unlocked"], {ctx["primary"], ctx["secondary"]})
         third_color = _pick(rng, weights)
     return {
         "style": style,
@@ -392,17 +452,27 @@ def new_seed(rng: random.Random | None = None) -> int:
     return (rng or random).randrange(1, 2**31)
 
 
-def roll(species: str, primary: str, secondary: str, seed: int, unlocked: set[str] | None = None) -> dict:
-    """A new pet's genes. `unlocked` is this learner's colors for the species
-    (shared by every species; starting_unlocks() if None); primary and
-    secondary must be among them."""
+def roll(species: str, primary: str | None, secondary: str | None, seed: int, unlocked: set[str] | None = None) -> dict:
+    """A new pet's genes. `unlocked` is this learner's colors (shared by every
+    species; starting_unlocks() if None). A picked primary or secondary must
+    be unlocked; None lets the game pick it (from any of the species' colors,
+    so it may unlock a new one). The secondary can only be picked along with
+    the primary."""
     if species not in SPECIES_COLORS:
         raise GeneError("There's no pet like that.")
     unlocked = set(unlocked) if unlocked is not None else starting_unlocks()
+    if primary is None and secondary is not None:
+        raise GeneError("Pick the main color first.")
+    picked = [c for c in (primary, secondary) if c is not None]
+    if any(c not in unlocked or COLORS[c].family == "metal" for c in picked):
+        raise GeneError("You haven't unlocked that color yet.")
+    rng = _rng(seed, "colors")
+    if primary is None:
+        primary = _pick(rng, primary_color_weights(species))
+    if secondary is None:
+        secondary = _pick(rng, second_color_weights(species, primary))
     if primary == secondary:
         raise GeneError("Pick two different colors.")
-    if primary not in unlocked or secondary not in unlocked:
-        raise GeneError("You haven't unlocked that color yet.")
     genes = {"version": GENES_VERSION, "species": species, "seed": seed}
     return fill_missing(genes, {"primary": primary, "secondary": secondary, "unlocked": unlocked})
 
@@ -430,7 +500,7 @@ def resolve(genes: dict) -> dict:
 
 def new_colors(genes: dict, unlocked: set[str]) -> list[str]:
     """Colors on this pet the learner hadn't unlocked yet (for any species)."""
-    return [c for c in genes["coat"]["colors"] if c and c not in unlocked]
+    return [c for c in genes["coat"]["colors"] if c and c not in unlocked and COLORS[c].family != "metal"]
 
 
 def color_catalog(unlocked: set[str]) -> list[dict]:
@@ -438,4 +508,5 @@ def color_catalog(unlocked: set[str]) -> list[dict]:
     return [
         {"id": c.id, "name": c.name, "hex": c.hex, "family": c.family, "unlocked": c.id in unlocked}
         for c in COLORS.values()
+        if c.family != "metal"
     ]

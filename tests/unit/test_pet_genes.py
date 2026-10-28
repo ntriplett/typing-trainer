@@ -8,8 +8,8 @@ import pytest
 from app import pet_genes as g
 
 
-def test_the_color_pool_is_90_with_about_45_per_species():
-    assert len(g.COLORS) == 90
+def test_the_color_pool_is_90_plus_5_metals_with_about_45_per_species():
+    assert len(g.COLORS) == 95  # 90 to pick from, 5 treasure metals
     for species, starters in g.STARTER_COLORS.items():
         eligible = g.eligible_colors(species)
         assert 40 <= len(eligible) <= 55, species
@@ -39,7 +39,7 @@ def test_colors_must_be_unlocked_and_different():
     with pytest.raises(g.GeneError, match="different"):
         g.roll("cat", "orange", "orange", 1)
     with pytest.raises(g.GeneError):
-        g.roll("dragon", "orange", "ash", 1)
+        g.roll("nosuchpet", "orange", "ash", 1)
     assert g.roll("cat", "orange", "lilac", 1, unlocked={"orange", "lilac"})
 
 
@@ -267,3 +267,43 @@ def test_snakes_often_roll_a_third_color_banded_half_the_time():
     assert 0.42 < share < 0.58
     overall = sum(1 for c in snakes if c["colors"][2]) / len(snakes)
     assert overall > 0.3
+
+
+def test_dragons_roll_breeds_and_mixes():
+    dragons = [g.roll("dragon", "fern", "crimson", seed) for seed in range(2000)]
+    assert {x["shape"]["breed"] for x in dragons} == set(g.BREEDS["dragon"])
+    assert all(set(x["shape"]["mix"]) <= {"fire", "horns", "wings", "head"} for x in dragons)
+    assert any(x["shape"]["mix"] for x in dragons)
+
+
+def test_the_game_picks_a_dragons_colors_mostly_close_together():
+    import collections
+
+    tiers = collections.Counter()
+    for seed in range(4000):
+        a, b, _ = g.roll("dragon", None, None, seed)["coat"]["colors"]
+        fa, fb = g.COLORS[a].family, g.COLORS[b].family
+        tiers["same" if fa == fb else "near" if fb in g.NEAR_FAMILIES["dragon"][fa] else "far"] += 1
+    assert 0.55 < tiers["same"] / 4000 < 0.65
+    assert 0.25 < tiers["near"] / 4000 < 0.35
+    assert 0.07 < tiers["far"] / 4000 < 0.13
+    # a picked main color keeps the rule for the second
+    pals = [g.roll("dragon", "crimson", None, seed, {"crimson"})["coat"]["colors"] for seed in range(500)]
+    assert all(c[0] == "crimson" and c[1] != "crimson" for c in pals)
+    assert sum(g.COLORS[c[1]].family == "red" for c in pals) > 250
+
+
+def test_dragons_third_color_is_a_treasure_metal_never_picked_or_unlocked():
+    import collections
+
+    dragons = [g.roll("dragon", None, None, seed) for seed in range(3000)]
+    thirds = [d["coat"]["colors"][2] for d in dragons if d["coat"]["colors"][2]]
+    assert 0.35 < len(thirds) / 3000 < 0.45
+    assert set(thirds) == set(g.METALS)
+    assert all(not set(g.new_colors(d, set())) & set(g.METALS) for d in dragons)
+    with pytest.raises(g.GeneError):
+        g.roll("dragon", "gilt", None, 1, {"gilt"})
+    with pytest.raises(g.GeneError):
+        g.roll("dragon", None, "crimson", 1)
+    pats = collections.Counter(d["coat"]["pattern"] for d in dragons)
+    assert set(pats) == {"storybook", "ombre", "ridgeback", "scaled", "tiger", "jeweled", "shadow"}

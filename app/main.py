@@ -328,11 +328,13 @@ def pet_lab_species() -> dict:
 
 
 @app.get("/api/pet-lab/roll")
-def pet_lab_roll(species: str, primary: str, secondary: str, seed: int | None = None, count: int = 1) -> dict:
+def pet_lab_roll(species: str, primary: str = "", secondary: str = "", seed: int | None = None, count: int = 1) -> dict:
     """`count` pets from consecutive seeds (a random start if no seed). The
     third color rolls as if a new learner's colors plus the two picks were
-    unlocked."""
-    unlocked = pet_genes.starting_unlocks() | {primary, secondary}
+    unlocked. A blank color lets the game pick it."""
+    primary = primary or None
+    secondary = (secondary or None) if primary else None
+    unlocked = pet_genes.starting_unlocks() | {c for c in (primary, secondary) if c}
     start = seed if seed is not None else pet_genes.new_seed()
     try:
         rolled = [

@@ -65,19 +65,34 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill"]);
+const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill", "fin"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
-const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim"]);
+const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "belly", "egg", "eggspot", "eggspot2"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff"]);
+const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
 // Parts drawn behind the body: darker, like they're in shadow.
-const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof"]);
+const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof", "farwing", "farbone", "farhorn", "farclaw"]);
 const PET_FIXED = {
   hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
   hole: "#24170e", rattle: "#d8c08a", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
+  farhorn: "#c8aa7a", claw: "#f2e6c8", farclaw: "#f2e6c8", egg: "#f4ecd8", eggback: "#d8ccb0",
+};
+// Parts colored from the coat: a dragon's pale belly and wing membranes.
+const DERIVED = {
+  belly: (hex) => blend(hex[0], "#f6e2a8", 0.55),
+  wing: (hex) => blend(hex[0], "#f4d8b0", 0.5),
+  farwing: (hex) => blend(hex[0], "#f4d8b0", 0.5),
+  wingbone: (hex) => blend(hex[0], SHADOW_TINT, 0.4),
+  farbone: (hex) => blend(hex[0], SHADOW_TINT, 0.4),
+  dspine: (hex) => blend(hex[0], "#f6e2a8", 0.45),
+  spade: (hex) => blend(hex[0], "#f6e2a8", 0.45),
+  eggspot: (hex) => hex[0],
+  eggspot2: (hex) => hex[1] || hex[0],
+  flame: () => "#f07830",
+  flamecore: () => "#fbe070",
 };
 const PET_OUTLINE = "#1a0f08";
 const LIGHT_TINT = "#fff4d8";
@@ -144,7 +159,7 @@ function liftDark(hex) {
 
 // --- building the shape -------------------------------------------------------------
 
-const GRID_W = 72;
+const GRID_W = 96; // wide enough for a grown dragon
 const GRID_H = 60;
 const GROUND = 56;
 
@@ -562,6 +577,7 @@ function paintCoat(out, grid, genes, built, hex) {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
     sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
     turtle: [TURTLE_PATTERNS, paintTurtle], lizard: [LIZARD_PATTERNS, paintLizard], snake: [SNAKE_PATTERNS, paintSnake],
+    dragon: [DRAGON_PATTERNS, paintDragon],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1922,8 +1938,8 @@ function petFrame(genes, growth, frame) {
     for (let x = 0; x < GRID_W; x++) {
       const cell = grid[y][x];
       if (!cell) continue;
-      if (!FUR.has(cell.l) && !(built.coatDone && PAINTED_MARKS.has(cell.l))) {
-        out[y][x] = cell.l === "face" || cell.l === "skin" || cell.l === "farskin" ? skinColor : PET_FIXED[cell.l] || hex[0];
+      if (!FUR.has(cell.l) && !(built.coatDone && (PAINTED_MARKS.has(cell.l) || (built.painted && built.painted.has(cell.l))))) {
+        out[y][x] = cell.l === "face" || cell.l === "skin" || cell.l === "farskin" ? skinColor : DERIVED[cell.l] ? DERIVED[cell.l](hex) : PET_FIXED[cell.l] || hex[0];
       }
       out[y][x] = applyBand(out[y][x], band(cell, at(x, y + 1)));
     }
@@ -2072,6 +2088,116 @@ function petSize(genes, growth) {
   return { w, h };
 }
 
+// --- dragon coats: storybook looks built on real reptile markings --------------------
+// The first color is the body; the second goes where the pattern says:
+//   storybook  belly, wing skin, spines and spade
+//   ombre      the body fades from the first color at the head to the second at
+//              the tail tip, in dithered steps
+//   ridgeback  a stripe down the back and tail, and the spines
+//   scaled     little scale marks all over, like a monitor's beadwork
+//   tiger      bands across the back and tail
+//   jeweled    round gem spots along the sides, each with a shine (leopard gecko)
+//   shadow     dark wings, spines and horn tips (the darker of the two colors)
+// A third color is always a treasure metal: horns, spines, spade and claws, with a
+// shine where the light hits. The head and face stay the first color.
+
+const DRAGON_PATTERNS = new Set(["storybook", "ombre", "ridgeback", "scaled", "tiger", "jeweled", "shadow"]);
+const DRAGON_TUBE = new Set(["body", "neck", "tail", "belly"]);
+const DRAGON_SKIN = new Set(["body", "neck", "tail", "leg", "farleg", "limb", "fin"]);
+const DRAGON_PAINTED = new Set(["belly", "wing", "farwing", "wingbone", "farbone", "dspine", "spade", "horn", "farhorn", "claw", "farclaw"]);
+const CREAM = "#f6e2a8";
+
+function paintDragon(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  built.painted = DRAGON_PAINTED;
+  const c1 = hex[0];
+  const metal = hex[2];
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  // dragons' two colors are often close: nudge the second away from the
+  // first (lighter or darker, whichever it already leans) so marks still show
+  let c2 = hex[1] || hex[0];
+  const gap = luminance(c2) - luminance(c1);
+  if (Math.abs(gap) < 0.12) c2 = blend(c2, gap >= 0 && luminance(c1) < 0.75 ? "#fff4d8" : SHADOW_TINT, 0.3 - Math.abs(gap));
+  const dark = luminance(c1) < luminance(c2) ? c1 : c2;
+  const s = built.scale;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  // each column's top and bottom of the body tube, for depth from the back
+  const top = {};
+  const bot = {};
+  grid.forEach((row, y) =>
+    row.forEach((c, x) => {
+      if (!c || !DRAGON_TUBE.has(c.l)) return;
+      top[x] = Math.min(top[x] ?? y, y);
+      bot[x] = Math.max(bot[x] ?? y, y);
+    })
+  );
+  const depth = (x, y) => (top[x] === undefined ? 1 : (y - top[x]) / Math.max(1, bot[x] - top[x]));
+  // how far along from the head (0) to the tail tip (1)
+  const [hx, hy] = geo.head;
+  const tail = geo.tailEnd || [geo.cx - geo.rx * 2, GROUND];
+  const along = (x, y) => Math.max(0, Math.min(1, geo.front ? (y - hy) / Math.max(1, GROUND - hy) : (hx - x) / Math.max(1, hx - tail[0])));
+  const ombre = (x, y) => {
+    const v = along(x, y) * 4 + ((x + y) & 1 ? 0.25 : -0.25);
+    return blend(c1, c2, Math.max(0, Math.min(4, Math.floor(v))) / 4);
+  };
+  const pale = (c) => blend(c, CREAM, 0.5);
+  // horn tips: the top part of each horn
+  let hornTop = GRID_H;
+  let hornBot = 0;
+  grid.forEach((row, y) => row.forEach((c) => c && (c.l === "horn" || c.l === "farhorn") && ((hornTop = Math.min(hornTop, y)), (hornBot = Math.max(hornBot, y)))));
+  const shine = (c, cell) => (cell.ny < -0.25 ? blend(c, "#ffffff", 0.35) : c);
+
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const cell = grid[y][x];
+      if (!cell) continue;
+      const l = cell.l;
+      const local = pattern === "ombre" ? ombre(x, y) : c1;
+      const d = depth(x, y);
+      let color = null;
+      if (l === "head" || l === "snout") color = c1;
+      else if (DRAGON_SKIN.has(l)) {
+        color = local;
+        const side = l !== "leg" && l !== "farleg" && l !== "limb";
+        if (pattern === "ridgeback" && side && d < 0.38) color = c2;
+        if (pattern === "scaled") {
+          // tiny "u" scale marks in staggered rows
+          const row = Math.floor(y / 3);
+          const u = (x + (row % 2) * 2) % 4;
+          if ((y % 3 === 0 && (u === 0 || u === 2)) || (y % 3 === 1 && u === 1)) color = blend(c1, c2, 0.85);
+        }
+        if (pattern === "tiger" && side && d < 0.7) {
+          const P = Math.max(4, Math.round(4.5 * s));
+          const phase = x + Math.round((y - (top[x] ?? y)) * 0.6);
+          if (((phase % P) + P) % P < (P > 5 ? 2 : 1)) color = c2;
+        }
+        if (pattern === "jeweled" && side && d > 0.15 && d < 0.7) {
+          const gx = Math.floor(x / 5);
+          const gy = Math.floor(y / 4);
+          const sx = gx * 5 + 2 + (gy % 2) * 2;
+          const sy = gy * 4 + 2;
+          const r = Math.hypot(x - sx, y - sy);
+          if (tick(gx, gy) < 0.65 && r <= 1.2) color = r < 0.5 ? blend(c2, "#ffffff", 0.45) : c2;
+        }
+      } else if (l === "belly") color = pattern === "storybook" ? blend(c2, CREAM, 0.25) : pale(local);
+      else if (l === "wing" || l === "farwing") {
+        color = pattern === "storybook" ? blend(c2, CREAM, 0.3) : pattern === "shadow" ? blend(dark, SHADOW_TINT, 0.35) : pattern === "ombre" ? blend(c2, CREAM, 0.4) : blend(c1, CREAM, 0.45);
+      } else if (l === "wingbone" || l === "farbone") color = blend(pattern === "shadow" ? dark : c1, SHADOW_TINT, pattern === "shadow" ? 0.55 : 0.4);
+      else if (l === "dspine" || l === "spade") {
+        color = pattern === "storybook" || pattern === "ridgeback" ? c2 : pattern === "shadow" ? blend(dark, SHADOW_TINT, 0.3) : pale(local);
+        if (l === "spade" && pattern === "ombre") color = pale(c2);
+        if (metal) color = shine(metal, cell);
+      } else if (l === "horn" || l === "farhorn") {
+        color = PET_FIXED.horn;
+        if (pattern === "shadow" && y < hornTop + (hornBot - hornTop) * 0.45) color = blend(dark, SHADOW_TINT, 0.3);
+        if (metal) color = shine(metal, cell);
+      } else if (l === "claw" || l === "farclaw") color = metal || PET_FIXED.claw;
+      if (color) out[y][x] = color;
+    }
+  }
+}
+
 // --- designs ---------------------------------------------------------------------
 // A species with an entry in PET_DESIGNS is drawn by buildVariant: a head
 // that faces front, three-quarter, or side; a pose (walk, sit, stalk,
@@ -2083,6 +2209,13 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: five dragon breeds, each hatching from
+  // a spotted egg; a mix borrows another breed's fire, horns, wings or head
+  dragon: {
+    get breeds() {
+      return DRAGON_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: eight snake breeds; a mix borrows
   // another breed's viper head, rattle or hood
   snake: {
@@ -2417,6 +2550,23 @@ const SNAKE_BREEDS = {
   baby: SNAKE({ name: "Baby slither", pose: "slide", body: { w: 2.2 }, split: 1 }),
 };
 
+// Dragon trial designs start from a classic western dragon walking.
+function DRAGON(over) {
+  return {
+    dragon: true, facing: "side", pose: "walk", softOutline: true, horns: 4, spines: 1, neck: 4, snout: 2.3,
+    body: { rx: 9, ry: 4.2 }, leg: { len: 5, w: 2.4 }, head: { rx: 3.6, ry: 3.2 }, tail: { len: 16 }, wings: { type: "up", span: 14 },
+    ...over,
+  };
+}
+
+const DRAGON_BREEDS = {
+  classic: DRAGON({ name: "Classic: walking, wings up, horns and spines", head: { rx: 4.2, ry: 3.6 } }),
+  wyvern: DRAGON({ name: "Wyvern: up on two legs, long neck, big wings", pose: "wyvern", neck: 7, leg: { len: 7, w: 2.6 }, body: { rx: 8, ry: 4.4 }, wings: { type: "up", span: 13 } }),
+  flying: DRAGON({ name: "Flying: wings spread and flapping, legs tucked", pose: "fly", wings: { type: "spread", span: 12 }, tail: { len: 15 } }),
+  fire: DRAGON({ name: "Fire breather: head up, a puff of flame", fire: true, headUp: 1.5, head: { rx: 4.2, ry: 3.6 }, wings: { type: "half", span: 13 } }),
+  chubby: DRAGON({ name: "Chubby: round belly, big head, stubby legs, tiny wings", body: { rx: 8, ry: 5.8 }, leg: { len: 3.5, w: 2.8 }, head: { rx: 4.8, ry: 4.2 }, neck: 2.5, horns: 3, snout: 1.8, tail: { len: 11 }, wings: { type: "up", span: 8 } }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2429,11 +2579,13 @@ const PET_VARIANTS = {
   turtle: Object.values(TURTLE_BREEDS),
   lizard: Object.values(LIZARD_BREEDS),
   snake: Object.values(SNAKE_BREEDS),
+  dragon: Object.values(DRAGON_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
   if (V.shell) return buildTurtle(genes, stage, frame, V);
   if (V.snake) return buildSnake(genes, stage, frame, V);
+  if (V.dragon) return buildDragon(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
@@ -3791,6 +3943,346 @@ function buildSnake(genes, stage, frame, V) {
 }
 
 // Eye shapes, rows top to bottom: K lash/outline, W glint, I iris, P pupil.
+// --- dragons ------------------------------------------------------------------------
+// A storybook dragon: a chunky body with a pale plated belly, bat wings
+// (bones fanning from the wrist, the membrane scalloped between the finger
+// tips), swept-back horns, a row of spines down the back, and a long tail
+// ending in a spade. Side-on it walks, breathes fire, stands like a wyvern,
+// or flies. Every breed starts as a spotted egg, then
+// hatches (peeking out of the broken shell), then grows a lot: small, normal,
+// and finally bigger than any other pet.
+
+// Dragon sizes by growth stage (baby is the egg, small the hatchling).
+const DRAGON_GROWTH = {
+  mid: { body: 0.62, head: 0.82, leg: 0.65 },
+  big: { body: 0.86, head: 0.94, leg: 0.88 },
+  grown: { body: 1.4, head: 1.22, leg: 1.32 },
+  hatch: { body: 1, head: 1, leg: 1 },
+};
+// The hatchling peeking out of its shell, whatever its breed.
+const DRAGON_HATCHLING = {
+  facing: "front", pose: "sit", egg: true, horns: 2.8, body: { rx: 7, ry: 4 }, head: { rx: 5.6, ry: 4.8 }, tail: { len: 8 }, wings: { type: "half", span: 6.5 }, eye: "duo",
+};
+
+// The egg: tall and spotted in the dragon's colors, rocking now and then.
+function buildDragonEgg(genes, frame) {
+  const grid = makeGrid();
+  const cx = 46;
+  const rx = 6;
+  const ry = 7.6;
+  const cy = GROUND - ry;
+  const rock = frame % 4 === 1 ? 1 : frame % 4 === 3 ? -1 : 0;
+  for (let y = Math.floor(cy - ry); y < GROUND; y++) {
+    // narrower at the top; the top half leans as it rocks
+    const ny = (y + 0.5 - cy) / ry;
+    const w = rx * Math.sqrt(Math.max(0, 1 - ny * ny)) * (ny < 0 ? 1 + ny * 0.18 : 1);
+    const dx = ny < -0.2 ? rock : 0;
+    for (let x = Math.floor(cx - w - 1); x <= Math.ceil(cx + w + 1); x++) {
+      const nx = (x + 0.5 - cx - dx) / Math.max(1, w);
+      if (Math.abs(nx) <= 1) put(grid, x, y, { l: "egg", nx, ny });
+    }
+  }
+  // spots: big ones in the first color, small ones in the second
+  const spots = [[-2.5, -4.5, 1.6], [2.2, -1.8, 1.9], [-3, 2.2, 1.4], [1.5, 4.2, 1.2], [3.6, -5.5, 0.9], [-0.5, 0.2, 0.8]];
+  for (const [sx, sy, r] of spots) {
+    for (let y = Math.floor(cy + sy - r - 1); y <= Math.ceil(cy + sy + r + 1); y++) {
+      for (let x = Math.floor(cx + sx - r - 1); x <= Math.ceil(cx + sx + r + 1); x++) {
+        const c = grid[y] && grid[y][x];
+        const dx = y + 0.5 - cy < -0.2 * ry ? rock : 0;
+        if (c && Math.hypot(x + 0.5 - cx - sx - dx, y + 0.5 - cy - sy) <= r) c.l = r < 1.3 ? "eggspot2" : "eggspot";
+      }
+    }
+  }
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: { eyes: [], pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [] },
+    center: [cx, cy], scale: 1, softOutline: true, softNeck: true,
+    geo: { cx, cy, rx, ry, legTop: GROUND, tail: [cx, cy, 0], head: [cx, cy - ry, 1, 1], faceBox: null, muzzle: null },
+  };
+}
+
+const DRAGON_WINGS = {
+  // the wrist, then the finger tips from the front of the wing to the back,
+  // as offsets from the shoulder in spans (x back, y up)
+  up: { wrist: [0.15, 0.95], tips: [[0.55, 0.9], [0.9, 0.55], [0.85, 0.12]] },
+  half: { wrist: [0.35, 0.7], tips: [[0.8, 0.6], [1.0, 0.3], [0.85, 0.02]] },
+  spread: { wrist: [0.3, 1.0], tips: [[0.85, 1.05], [1.25, 0.65], [1.15, 0.15]] },
+  down: { wrist: [0.55, 0.25], tips: [[1.1, 0.05], [1.05, -0.35], [0.7, -0.5]] },
+  folded: { wrist: [0.4, 0.4], tips: [[0.95, 0.25], [1.0, 0.0], [0.75, -0.12]] },
+};
+
+function buildDragon(genes, stage, frame, V) {
+  if (stage.id === "baby") return buildDragonEgg(genes, frame);
+  if (stage.id === "small") return buildDragon(genes, { id: "hatch" }, frame, { ...V, ...DRAGON_HATCHLING });
+  const G = DRAGON_GROWTH[stage.id];
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const s = G.body;
+  const hs = G.head;
+  const ls = G.leg;
+  const step = frame % 2;
+  const flap = frame % 2;
+  const front = V.facing === "front";
+  const rx = half(V.body.rx * s + (shape.length || 0) / 2);
+  const ry = half(V.body.ry * s);
+  const legH = Math.max(2, V.leg.len * ls * (1 + (shape.legs || 0) * 0.3));
+  const lw = Math.max(1, V.leg.w * s * 0.5);
+  const cx = V.pose === "wyvern" ? 41 : 46;
+  const hrx = V.head.rx * hs;
+  const hry = V.head.ry * hs;
+  const hornL = (V.horns || 0) * hs * (1 + (shape.horns || 0) * 0.3);
+  const span = V.wings ? V.wings.span * s * (1 + (shape.wings || 0) * 0.25) : 0;
+  const lift = V.pose === "fly" ? Math.min(16, 16 * s) + flap : 0;
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const eye = V.eye || "duo";
+
+  // a tapering tube through points, radius by point
+  const tube = (pts, widths, label) => {
+    pts.slice(1).forEach((p, i) => {
+      const steps = Math.max(2, Math.ceil(Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]) * 1.5));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const r = Math.max(0.55, widths[i] + (widths[i + 1] - widths[i]) * t);
+        fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, label);
+      }
+    });
+  };
+  // the spade on the tail tip, pointing on the way the tail goes
+  const spade = (a, b, size) => {
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const ux = (b[0] - a[0]) / d;
+    const uy = (b[1] - a[1]) / d;
+    const px = -uy;
+    const py = ux;
+    const r = Math.max(1.4, size);
+    const base = [b[0] - ux * r * 0.3, b[1] - uy * r * 0.3];
+    fillTri(grid, [[base[0] + px * r, base[1] + py * r], [base[0] - px * r, base[1] - py * r], [b[0] + ux * r * 1.6, b[1] + uy * r * 1.6]], "spade");
+    fillTri(grid, [[base[0] + px * r, base[1] + py * r], [base[0] - px * r, base[1] - py * r], [b[0] - ux * r * 0.6, b[1] - uy * r * 0.6]], "spade");
+  };
+  // a bat wing from the shoulder; dir -1 sweeps back to the left (side views)
+  const wing = (sx, sy, dir, mode, size, far) => {
+    const W = DRAGON_WINGS[mode];
+    const up = 0;
+    const at = ([u, v], k = 1) => [sx + dir * u * size, sy - (v + up * k) * size];
+    const wr = at(W.wrist, 0.5);
+    const tips = W.tips.map((t, i) => at(t, 1 - i * 0.3));
+    const mem = far ? "farwing" : "wing";
+    const bone = far ? "farbone" : "wingbone";
+    const shoulder = [sx, sy];
+    const back = [sx + dir * size * 0.3, sy + size * 0.05];
+    // the outline: shoulder, wrist, then the finger tips with the edge
+    // between each two bowing in toward the wrist, then back to the body;
+    // filled as a fan from the wrist so the scallops stay open
+    const edge = [...tips, back];
+    for (let i = 0; i < edge.length - 1; i++) {
+      const m = [(edge[i][0] + edge[i + 1][0]) / 2, (edge[i][1] + edge[i + 1][1]) / 2];
+      const bow = [m[0] + (wr[0] - m[0]) * 0.3, m[1] + (wr[1] - m[1]) * 0.3];
+      fillTri(grid, [wr, edge[i], bow], mem);
+      fillTri(grid, [wr, bow, edge[i + 1]], mem);
+    }
+    fillTri(grid, [wr, back, shoulder], mem);
+    fillStroke(grid, [shoulder, wr], Math.max(0.6, 0.75 * s), bone);
+    for (const t of tips) line(grid, wr, t, bone);
+    put(grid, Math.round(wr[0] - dir * 0.5), Math.round(wr[1] - 1), { l: "claw", nx: 0, ny: -1 }); // the thumb claw
+  };
+  // a row of spines along the top edge of these labels, from x0 to x1
+  const spines = (x0, x1, h, labels) => {
+    if (!V.spines) return;
+    const n = Math.max(3, Math.round(Math.abs(x1 - x0) / 2.6));
+    for (let k = 0; k < n; k++) {
+      const x = Math.round(x0 + ((x1 - x0) * k) / (n - 1));
+      let top = -1;
+      for (let y = 0; y < GRID_H; y++) if (grid[y][x] && labels.includes(grid[y][x].l)) { top = y; break; }
+      if (top < 0) continue;
+      const hh = Math.max(1, h * (1 - Math.abs(k / (n - 1) - 0.35)));
+      fillTri(grid, [[x - 0.9, top + 1], [x + 1.1, top + 1], [x - 0.6, top + 0.5 - hh]], "dspine");
+    }
+  };
+  const horns = (bx, by, dir, far) => {
+    if (!hornL) return;
+    const pts = [[bx, by], [bx + dir * hornL * 0.3, by - hornL * 0.7], [bx + dir * hornL * 0.9, by - hornL * 0.95]];
+    const label = far ? "farhorn" : "horn";
+    fillStroke(grid, [pts[0], pts[1]], Math.max(0.55, 0.7 * hs), label);
+    fillStroke(grid, [pts[1], pts[2]], 0.45, label);
+  };
+  // a clawed foot: three toes on the ground, a light claw at the front
+  const foot = (x, dir, label, liftY = 0) => {
+    fillRect(grid, x - (dir > 0 ? 0 : 2), GROUND - 1 - liftY, 3, 1, label);
+    put(grid, Math.round(x + dir * 2 - (dir > 0 ? 0 : 0)), GROUND - 1 - liftY, { l: label === "farleg" ? "farclaw" : "claw", nx: 0, ny: 0 });
+  };
+
+  let hx;
+  let hy;
+  let tailEnd = null;
+  if (front) {
+    // sitting up, facing us: an egg of a body, the belly plates down the
+    // front, haunches and feet at the bottom, little arms, the wings behind
+    const by = GROUND - ry * 1.55;
+    const brx = rx * 0.62;
+    const bry = ry * 1.55;
+    if (V.egg) {
+      // the back half of the broken shell, behind the hatchling
+      fillEllipse(grid, cx, GROUND - 6 * s, 8.5 * s, 7.5 * s, "eggback");
+    }
+    if (span) for (const dir of [-1, 1]) wing(cx + dir * brx * 0.45, by - bry * 0.45, dir, V.wings.type, span, false);
+    // the tail: out to the side along the ground, curling forward to a spade
+    const L = V.tail.len * s;
+    const tp = [[cx - brx * 0.5, GROUND - 2.5], [cx - brx - L * 0.35, GROUND - 1.8], [cx - brx - L * 0.6, GROUND - 3.5 - step * 0.5], [cx - brx - L * 0.55, GROUND - 6 - step * 0.5]];
+    if (!V.egg) {
+      tube(tp, [ry * 0.55, ry * 0.4, ry * 0.25, 0.6], "tail");
+      spade(tp[2], tp[3], 1.5 * s);
+      tailEnd = tp[3];
+    }
+    fillEllipse(grid, cx, by, brx, bry, "body");
+    for (const dir of [-1, 1]) fillEllipse(grid, cx + dir * brx * 0.7, GROUND - ry * 0.75, Math.max(2, brx * 0.42), ry * 0.8, "body"); // haunches
+    // the belly: a light oval down the front
+    fillEllipse(grid, cx, by + bry * 0.12, brx * 0.55, bry * 0.78, "belly");
+    if (!V.egg) for (const dir of [-1, 1]) fillEllipse(grid, cx + dir * brx * 0.75, GROUND - 1, Math.max(1.6, 2 * s), 1.2, "leg"); // feet
+    if (!V.egg) for (const dir of [-1, 1]) foot(cx + dir * (brx * 0.75 + 1), dir, "leg");
+    // arms, held in front of the chest
+    for (const dir of [-1, 1]) {
+      const px = cx + dir * brx * 0.5;
+      const py = by - bry * 0.05;
+      fillEllipse(grid, px, py, Math.max(1.2, 1.5 * s), Math.max(1.2, 1.4 * s), "leg");
+      put(grid, Math.round(px - 0.5), Math.round(py + 1.4 * s), { l: "claw", nx: 0, ny: 0 });
+    }
+    if (V.egg) {
+      // the front half of the shell, with a zigzag broken rim
+      const er = 8.5 * s;
+      const top = GROUND - 6 * s;
+      for (let x = Math.floor(cx - er); x <= Math.ceil(cx + er); x++) {
+        const zig = (Math.abs(x) % 3) - 1;
+        for (let y = Math.round(top + zig); y < GROUND; y++) {
+          const nx = (x + 0.5 - cx) / er;
+          const ny = (y + 0.5 - (GROUND - 6 * s)) / (7.5 * s);
+          const spot = [[-4, 3, 1.6], [3.5, 2, 1.8], [0.5, 5, 1.2]].find(([sx, sy, r]) => Math.hypot(x + 0.5 - cx - sx, y + 0.5 - top - sy) <= r);
+          if (nx * nx + ny * ny <= 1) put(grid, x, y, { l: !spot ? "egg" : spot[2] < 1.3 ? "eggspot2" : "eggspot", nx, ny });
+        }
+      }
+    }
+    hx = cx;
+    hy = by - bry * 0.95 - hry * 0.45;
+    // horns sweep up and out behind the head
+    for (const dir of [-1, 1]) horns(hx + dir * hrx * 0.45, hy - hry * 0.65, dir * 0.7, false);
+    // little fin ears at the sides
+    for (const dir of [-1, 1]) fillTri(grid, [[hx + dir * hrx * 0.8, hy - hry * 0.45], [hx + dir * hrx * 0.95, hy + hry * 0.05], [hx + dir * (hrx + 2.4 * hs), hy - hry * 0.55]], "fin");
+    fillEllipse(grid, hx, hy, hrx, hry, "head");
+    // a wide muzzle in the lower face
+    const my = hy + hry * 0.42;
+    fillEllipse(grid, hx, my, hrx * 0.62, Math.max(1.8, hry * 0.42), "snout");
+    const c = Math.round(hx);
+    const ey = Math.round(hy - hry * 0.3) - 1;
+    const g = Math.max(1, Math.round(hrx * 0.28));
+    face.eyes.push({ x: c - g - 2, y: ey, size: eye, iris }, { x: c + g, y: ey, size: eye, iris });
+    const ny = Math.round(my - 0.5);
+    face.noseDark.push([c - 2, ny], [c + 1, ny]);
+    face.smile.push([c - 2, ny + 2], [c - 1, ny + 2], [c, ny + 2], [c + 1, ny + 2]);
+    face.glints.push([c + 1, ny + 3, "#fbf6ec"]); // a little fang
+  } else {
+    // side view, facing right
+    const stand = V.pose === "wyvern";
+    const by = GROUND - legH - ry * 0.6 - lift;
+    const hipX = cx - rx * 0.5;
+    const shoulderX = cx + rx * 0.5;
+    const walkLeg = (x, lifted, label, hind) => {
+      if (V.pose === "fly") {
+        // tucked up under the body
+        fillStroke(grid, [[x, by + ry * 0.4], [x - 1.5 * s, by + ry + 1.5 * s]], lw, label);
+        return;
+      }
+      if (hind) fillEllipse(grid, x, by + ry * 0.15, Math.max(2, ry * 0.7), Math.max(2, ry * 0.75), label); // the thigh
+      const knee = [x + (hind ? 1.2 : 0.4) * s, GROUND - legH * 0.5 - lifted];
+      fillStroke(grid, [[x, by + ry * 0.5], knee, [x - (hind ? 0.4 : 0), GROUND - 1.5 - lifted]], lw, label);
+      foot(Math.round(x - (hind ? 0.4 : 0)), 1, label, lifted);
+    };
+    // far side first
+    if (!stand) {
+      walkLeg(hipX + 2, step ? 0 : 1, "farleg", true);
+      walkLeg(shoulderX + 2, step ? 1 : 0, "farleg", false);
+    }
+    if (stand) walkLeg(hipX + 2.5, step ? 0 : 1, "farleg", true);
+    // the neck: up and forward from the chest
+    const nl = (V.neck || 4) * s;
+    hx = cx + rx * 0.95 + nl * 0.55 + hrx * 0.3;
+    hy = by - ry * (stand ? 1.2 : 0.55) - nl - (V.headUp || 0) * s;
+    if (span) wing(cx + rx * 0.25 + 1.5, by - ry * 0.7 - 0.5, -1, V.pose === "fly" ? (flap ? "half" : "up") : V.wings.type, span * 0.9, true);
+    // the tail: sweeping back, down to the ground and up at the spade
+    const L = V.tail.len * s * (1 + (shape.tail || 0) * 0.25);
+    const tx = cx - rx + 1;
+    const ty = by + ry * 0.05;
+    let tp;
+    if (V.pose === "fly") tp = [[tx, ty], [tx - L * 0.35, ty + ry * 0.5], [tx - L * 0.7, ty + ry * 0.2 + step], [tx - L, ty - ry * 0.5 + step]];
+    else tp = [[tx, ty], [tx - L * 0.35, ty + ry * 0.7], [tx - L * 0.7, GROUND - 2], [tx - L * 0.95, GROUND - 4.5 - step]];
+    tube(tp, [ry * 0.7, ry * 0.45, ry * 0.28, 0.55], "tail");
+    spade(tp[2], tp[3], 1.6 * s);
+    tailEnd = tp[3];
+    // the body
+    if (stand) {
+      // upright: chest high and forward, hips low
+      fillEllipse(grid, cx + rx * 0.3, by - ry * 0.7, rx * 0.55, ry * 1.15, "body");
+      fillEllipse(grid, cx - rx * 0.3, by + ry * 0.1, rx * 0.6, ry * 0.95, "body");
+    } else {
+      fillEllipse(grid, cx, by, rx, ry, "body");
+      fillEllipse(grid, cx + rx * 0.4, by - ry * 0.1, rx * 0.55, ry * 1.08, "body"); // a deep chest
+    }
+    // the belly plates along the underside
+    relabel(grid, ["body"], "belly", (x, y) => y > by + ry * (stand ? 0.05 : 0.35) && x > cx - rx * 0.75);
+    const neckBase = [cx + rx * 0.75, by - ry * 0.25];
+    tube([neckBase, [hx - hrx * 0.9, hy + nl * 0.45], [hx - hrx * 0.4, hy + hry * 0.2]], [ry * 0.72, ry * 0.5, Math.max(1.2, hry * 0.7)], "neck");
+    // the head: a rounded skull and a long muzzle, horns swept back
+    horns(hx - hrx * 0.1, hy - hry * 0.7, -1, true);
+    fillEllipse(grid, hx, hy, hrx, hry, "head");
+    const sl = (V.snout || 3) * hs;
+    fillEllipse(grid, hx + hrx * 0.55 + sl * 0.5, hy + hry * 0.3, sl * 0.75 + 0.6, Math.max(1.5, hry * 0.6), "snout");
+    horns(hx - hrx * 0.45, hy - hry * 0.6, -1, false);
+    // spines down the neck, back and tail
+    spines(Math.round(tx - L * 0.2), Math.round(cx + rx * 0.9), 1.8 * s * (V.spines || 1), ["body", "tail", "neck"]);
+    // near legs
+    walkLeg(hipX, step ? 1 : 0, "leg", true);
+    if (!stand) walkLeg(shoulderX, step ? 0 : 1, "leg", false);
+    if (span) wing(cx + rx * 0.3, by - ry * 0.9, -1, V.pose === "fly" && flap ? "down" : V.wings.type, span, false);
+    if (stand) fillStroke(grid, [[cx + rx * 0.55, by - ry * 0.1], [cx + rx * 0.85, by + ry * 0.45]], Math.max(0.7, lw * 0.8), "limb"); // a little arm
+    // the face
+    const ex = Math.round(hx + hrx * 0.05);
+    const ey = Math.round(hy - hry * 0.45);
+    face.eyes.push({ x: ex, y: ey, size: eye, iris });
+    const tipX = Math.round(hx + hrx * 0.55 + sl * 1.25 + 0.6) - 1;
+    const my = Math.round(hy + hry * 0.55);
+    face.noseDark.push([tipX - 1, Math.round(hy + hry * 0.05)]);
+    for (let x = ex + 2; x <= tipX - 1; x++) face.smile.push([x, my]);
+    face.glints.push([tipX - 2, my + 1, "#fbf6ec"]); // a little fang
+    if (V.fire) {
+      // a puff of fire out ahead of the snout, flickering
+      const fy = hy + hry * 0.35;
+      const f = frame % 2;
+      // a cone of fire widening as it goes, licks curling up off the top,
+      // a yellow heart inside
+      [[1.5, 1.1], [3.5, 2], [6, 2.9 + f * 0.3], [8.3 + f * 0.5, 2.3]].forEach(([d, r]) => fillEllipse(grid, tipX + 1 + d * hs, fy - d * 0.15, r * hs, r * hs, "flame"));
+      for (const [d, h] of [[4.5, 3.2 - f], [7, 3.8 + f], [9.6, 2.6]]) fillTri(grid, [[tipX + (d - 1.2) * hs, fy - d * 0.15 - 1], [tipX + (d + 1.2) * hs, fy - d * 0.15 - 1], [tipX + (d - 0.6 + f * 0.6) * hs, fy - d * 0.15 - (2 + h) * hs]], "flame");
+      [[2, 0.7], [4, 1.2], [6.2, 1.6]].forEach(([d, r]) => fillEllipse(grid, tipX + 1 + d * hs, fy - d * 0.15 + 0.3, r * hs, r * hs, "flamecore"));
+    }
+  }
+
+  relight(grid, "body");
+  relight(grid, "head");
+  relight(grid, "snout");
+  relight(grid, "belly");
+  const geo = {
+    cx, cy: GROUND - 8, rx, ry, legTop: GROUND - legH, tail: [cx - rx, GROUND - 8, V.tail.len * s], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, tailEnd, front,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, GROUND - 8 - lift], scale: s,
+    softOutline: true, softNeck: true, geo,
+  };
+}
+
+// A one-pixel line between two points (wing bones).
+function line(grid, a, b, label) {
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))));
+  for (let k = 0; k <= n; k++) put(grid, Math.floor(a[0] + ((b[0] - a[0]) * k) / n), Math.floor(a[1] + ((b[1] - a[1]) * k) / n), { l: label, nx: 0, ny: -0.5 });
+}
+
 const EYE_SHAPES = {
   s: ["WK", "IK"],
   m: ["KK", "IW", "IP", "KP"],
