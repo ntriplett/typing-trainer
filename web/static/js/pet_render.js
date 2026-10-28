@@ -560,7 +560,7 @@ function paintCoat(out, grid, genes, built, hex) {
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
-    sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat],
+    sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -958,6 +958,37 @@ function paintFox(out, grid, genes, built, hex) {
 // pick when it suits (darker for black faces, lighter for pale ones) or a
 // shade of the wool. Jacob and badger coats go by light and dark.
 
+// Wool texture for fleecy coats: rows of little curls, each a touch darker
+// on its lower right and lighter on its upper left, over the cells with the
+// given labels. `strength` scales it (1 for sheep). Returns the curl lookup
+// (-1 shadow, 1 highlight, 0 neither) for parts painted later.
+function woolCurls(out, grid, s, minY, labels, strength) {
+  const cs = Math.max(3, Math.round(4 * s + 0.5));
+  const rowH = cs * 0.8;
+  const curl = (x, y) => {
+    const row = Math.floor((y - minY) / rowH);
+    const off = (row % 2) * cs * 0.5;
+    const col = Math.floor((x - off) / cs);
+    const dx = (x + 0.5 - (col * cs + off + cs / 2)) / (cs / 2);
+    const dy = (y + 0.5 - (minY + row * rowH + rowH / 2)) / (rowH / 2);
+    const d = Math.hypot(dx, dy);
+    if (d > 0.8 && dx + dy > 0.2) return -1;
+    if (d < 0.5 && dx + dy < -0.3) return 1;
+    return 0;
+  };
+  const set = new Set(labels);
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !set.has(c.l) || !out[y][x]) continue;
+      const k = curl(x, y);
+      if (k < 0) out[y][x] = blend(out[y][x], SHADOW_TINT, 0.17 * strength);
+      else if (k > 0) out[y][x] = blend(out[y][x], LIGHT_TINT, 0.22 * strength);
+    }
+  }
+  return curl;
+}
+
 const SHEEP_PATTERNS = new Set(["whiteface", "blackface", "self", "speckled", "jacob", "badger", "valais"]);
 
 function paintSheep(out, grid, genes, built, hex) {
@@ -1022,30 +1053,7 @@ function paintSheep(out, grid, genes, built, hex) {
     }
   }
 
-  // the wool's texture: rows of little curls, each a touch darker on its
-  // lower right and lighter on its upper left
-  const cs = Math.max(3, Math.round(4 * s + 0.5));
-  const rowH = cs * 0.8;
-  const curl = (x, y) => {
-    const row = Math.floor((y - minY) / rowH);
-    const off = (row % 2) * cs * 0.5;
-    const col = Math.floor((x - off) / cs);
-    const dx = (x + 0.5 - (col * cs + off + cs / 2)) / (cs / 2);
-    const dy = (y + 0.5 - (minY + row * rowH + rowH / 2)) / (rowH / 2);
-    const d = Math.hypot(dx, dy);
-    if (d > 0.8 && dx + dy > 0.2) return -1;
-    if (d < 0.5 && dx + dy < -0.3) return 1;
-    return 0;
-  };
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      const c = grid[y][x];
-      if (!c || !(c.l === "body" || c.l === "fluff" || c.l === "tuft" || c.l === "tail") || !out[y][x]) continue;
-      const k = curl(x, y);
-      if (k < 0) out[y][x] = blend(out[y][x], SHADOW_TINT, 0.17);
-      else if (k > 0) out[y][x] = blend(out[y][x], LIGHT_TINT, 0.22);
-    }
-  }
+  const curl = woolCurls(out, grid, s, minY, ["body", "fluff", "tuft", "tail"], 1);
 
   // 2. the head: the bare face, and the tuft (wool)
   const eyes = face.eyes;
@@ -1413,6 +1421,130 @@ function paintGoat(out, grid, genes, built, hex) {
   }
 }
 
+// --- llama coats: real llama and alpaca coats ----------------------------------------
+// Three passes (body, neck and legs; head and topknot; ears), then wool curls
+// over the fleece (stronger on woolly alpacas). The face stays clean.
+
+const LLAMA_PATTERNS = new Set(["solid", "paint", "guanaco", "twotone", "appaloosa", "tuxedo", "roan", "saddle"]);
+const LLAMA_BODY = new Set(["body", "fluff", "neck", "leg", "farleg", "tail"]);
+const LLAMA_HEAD = new Set(["head", "snout", "tuft"]);
+const LLAMA_EARS = new Set(["ear", "farear"]);
+
+function paintLlama(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const face = built.face;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const main = c0;
+  const light = luminance(c1) > luminance(c0) + 0.1 ? c1 : blend(c0, "#fbf6ec", 0.72);
+  const dark = luminance(c1) < luminance(c0) - 0.1 ? c1 : blend(c0, PET_OUTLINE, 0.5);
+  const noise = valueNoise(genes.seed);
+  const noise2 = valueNoise(genes.seed ^ 0x5bd1e995);
+  const s = built.scale;
+  // an even scatter (a simple hash of the pixel), with no lines in it
+  const tick = (x, y) => {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + genes.seed) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+
+  let minX = GRID_W;
+  let maxX = -1;
+  let minY = GRID_H;
+  let maxY = -1;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || c.l !== "body") continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  const bh = Math.max(1, maxY - minY);
+  const legTop = geo.legTop;
+  // the neck's front edge, per row (for a tuxedo's bib)
+  const neckFront = {};
+  grid.forEach((row, y) => row.forEach((c, x) => c && c.l === "neck" && (neckFront[y] = Math.max(neckFront[y] ?? -1, x))));
+
+  // 1. body, neck, legs, tail
+  let topY = GRID_H;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !LLAMA_BODY.has(c.l)) continue;
+      topY = Math.min(topY, y);
+      const fy = (y - minY) / bh;
+      const u = (x - geo.cx) / s;
+      const v = (y - geo.cy) / s;
+      const leg = c.l === "leg" || c.l === "farleg";
+      const lowLeg = leg && y >= legTop + (GROUND - legTop) * 0.45;
+      const barrel = c.l === "body" || c.l === "fluff";
+      let color = main;
+      switch (pattern) {
+        case "paint":
+          if (noise(u * 0.13 + 30, v * 0.13) > 0.56) color = light;
+          break;
+        case "guanaco":
+          if ((barrel && fy > 0.7) || lowLeg) color = light;
+          break;
+        case "twotone":
+          if (barrel) color = light;
+          break;
+        case "appaloosa":
+          color = light;
+          if (!leg && noise2(u * 0.55 + 4, v * 0.55) > 0.72) color = main;
+          break;
+        case "tuxedo":
+          if (lowLeg || (c.l === "neck" && x >= (neckFront[y] ?? 0) - 1) || (barrel && fy > 0.25 && x > geo.cx + geo.rx * 0.55)) color = light;
+          break;
+        case "roan":
+          if (tick(x, y) < 0.3) color = blend(main, light, 0.7);
+          break;
+        case "saddle":
+          color = barrel && fy < 0.45 ? main : light;
+          break;
+        default:
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 2. head and topknot: a clean face
+  const [hx] = geo.head;
+  const eyes = face.eyes;
+  const eyeBottom = eyes.length ? Math.max(...eyes.map((e) => e.y + 1)) : 0;
+  const front = eyes.length > 1;
+  const headBase = { appaloosa: light, saddle: light, guanaco: dark }[pattern] || main;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !LLAMA_HEAD.has(c.l)) continue;
+      let color = c.l === "tuft" ? blend(headBase, light, 0.25) : headBase;
+      if (pattern === "guanaco" && c.l === "snout" && y > eyeBottom + 1) color = light; // light lips
+      if (pattern === "tuxedo" && (front ? Math.abs(x - hx) <= 0.6 && c.l !== "tuft" : c.l === "snout")) color = light; // a blaze
+      if (pattern === "roan" && c.l !== "snout" && tick(x, y) < 0.3) color = blend(main, light, 0.7);
+      out[y][x] = color;
+    }
+  }
+
+  // 3. the ears
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !LLAMA_EARS.has(c.l)) continue;
+      out[y][x] = pattern === "paint" || pattern === "appaloosa" ? main : headBase;
+    }
+  }
+
+  // wool ripples over the fleece: light on llamas, stronger on woolly alpacas
+  const fleecy = built.geo.woolly ? 1 : 0.6;
+  woolCurls(out, grid, s, topY, ["body", "fluff", "neck", "tail", "tuft"], fleecy);
+}
+
 // A face drawn front-on has two eyes.
 function V_FRONT(face) {
   return face.eyes.length > 1;
@@ -1632,6 +1764,13 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: seven llama breeds on 1b's build; a
+  // mix borrows another breed's ears, head or topknot
+  llama: {
+    get breeds() {
+      return LLAMA_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: six goat breeds; a mix borrows
   // another breed's ears, horns or beard
   goat: {
@@ -1862,6 +2001,31 @@ const CAT_BREEDS = {
   sleeping: catBreed({ name: "Sleeping curl: curled up, eyes closed", pose: "loaf", eye: "closed", body: { rx: 9, ry: 4 }, tail: { type: "wrap", len: 14, w: 2.2 } }),
 };
 
+// The llama's build (1b, chosen in the pet lab, 2026-10-27): a thick neck
+// growing out of the chest and leaning forward, a long barrel body whose back
+// slopes gently down to the tail, a long muzzle, and clean spike ears.
+const LLAMA_BASE = {
+  name: "Llama", facing: "side", pose: "walk", slope: 0.16, snout: "llama", snoutLen: 3.4,
+  softOutline: true, softNeck: true, hooves: true, eye: "duo",
+  neck: { len: 12, w: 3.4, lean: 1.0, thick: true },
+  body: { rx: 11.4, ry: 5.1 }, leg: { len: 8, w: 2, min: 4 }, head: { rx: 4, ry: 3.4 },
+  ears: { type: "banana", size: 6.5, w: 1, thick: 0.9, plain: true }, tail: { type: "pom", len: 3, w: 2.4 },
+};
+
+function llamaBreed(over) {
+  return { ...LLAMA_BASE, ...over, ears: { ...LLAMA_BASE.ears, ...(over.ears || {}) } };
+}
+
+const LLAMA_BREEDS = {
+  llama: llamaBreed({ name: "Llama (1b)" }),
+  front: llamaBreed({ name: "Llama, face to us", facing: "front", mouth: "llama", head: { rx: 4.2, ry: 4.6 } }),
+  alpaca: llamaBreed({ name: "Alpaca: woolly, topknot, shorter neck and ears, side view", woolly: 1, tuft: 1.2, snoutLen: 2.6, neck: { len: 8, w: 4, lean: 0.95, thick: true }, body: { rx: 10, ry: 5 }, leg: { len: 6.5, w: 2, min: 4 }, ears: { size: 4.6 } }),
+  cria: llamaBreed({ name: "Cria: baby llama, big head, long legs, side view", neck: { len: 9, w: 3.2, lean: 0.95, thick: true }, body: { rx: 9, ry: 4.4 }, leg: { len: 9, w: 2, min: 5 }, head: { rx: 4.5, ry: 3.9 }, ears: { size: 6 } }),
+  guanaco: llamaBreed({ name: "Guanaco: wild, sleek and lean, side view", slope: 0.2, neck: { len: 12, w: 3, lean: 1.02, thick: true }, body: { rx: 11.4, ry: 4.4 }, leg: { len: 8.5, w: 2, min: 4 }, head: { rx: 3.8, ry: 3.2 }, tail: { type: "flag", len: 4, w: 2 } }),
+  kushed: llamaBreed({ name: "Kushed: lying down, neck up, side view", pose: "loaf", neck: { len: 10, w: 3.6, thick: true }, body: { rx: 11, ry: 4.6 } }),
+  suri: llamaBreed({ name: "Suri alpaca: long drapey fleece, side view", woolly: 1.3, tuft: 1.4, snoutLen: 2.6, neck: { len: 8, w: 4.2, lean: 0.95, thick: true }, body: { rx: 10.4, ry: 5.2 }, leg: { len: 6, w: 2, min: 4 }, ears: { size: 4.6 } }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -1870,6 +2034,7 @@ const PET_VARIANTS = {
   sheep: Object.values(PET_DESIGNS.sheep.breeds),
   cat: Object.values(CAT_BREEDS),
   goat: Object.values(PET_DESIGNS.goat.breeds),
+  llama: Object.values(LLAMA_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -1938,14 +2103,16 @@ function buildVariant(genes, stage, frame, V) {
       tailEnd = pts[pts.length - 1];
       relight(grid, "tail");
     }
+    if (V.tail.type === "pom") fillEllipse(grid, tx - 0.5, ty - 1 - wag * 0.4, Math.max(1.4, tw * 1.3), Math.max(1.6, tw * 1.5), "tail");
     if (V.tail.type === "stub") fillEllipse(grid, tx - 0.5, ty - 0.5 - wag * 0.4, Math.max(1.3, tw * 1.2), Math.max(1.3, tw * 1.1), "tail");
   };
 
   // a body: a deeper chest, a tucked waist, the hips, and a belly from `weight`
+  const slope = (V.slope || 0) * ry;
   const body = (bx, by) => {
     fillEllipse(grid, bx, by - ry * 0.12, rx * 0.92, ry * 0.9, "body");
-    fillEllipse(grid, bx + rx * 0.38, by, rx * 0.6, ry * 1.05, "body");
-    fillEllipse(grid, bx - rx * 0.42, by - ry * 0.08, rx * 0.55, ry * 0.95, "body");
+    fillEllipse(grid, bx + rx * 0.38, by - slope, rx * 0.6, ry * 1.05, "body");
+    fillEllipse(grid, bx - rx * 0.42, by - ry * 0.08 + slope, rx * 0.55, ry * 0.95, "body");
     if (weight > 0) fillEllipse(grid, bx, by + ry * 0.35, rx * 0.62, ry * (0.35 + weight * 0.4), "body");
   };
 
@@ -1995,12 +2162,23 @@ function buildVariant(genes, stage, frame, V) {
     const ly = GROUND - ry * 1.05;
     fillEllipse(grid, cx, ly, rx, ry * 1.1, "body");
     const L = tailLen;
-    const wrap = [[cx - rx * 0.9, GROUND - 2], [cx - rx * 0.4, GROUND - 1.2], [cx - rx * 0.4 + L * 0.5, GROUND - 1.2 - wag * 0.5]];
-    fillStroke(grid, wrap, tw, "tail");
-    tailEnd = wrap[wrap.length - 1];
+    if (V.tail.type === "pom") {
+      fillEllipse(grid, cx - rx * 0.95, ly - ry * 0.7 - wag * 0.4, Math.max(1.4, tw * 1.3), Math.max(1.4, tw * 1.3), "tail");
+    } else {
+      const wrap = [[cx - rx * 0.9, GROUND - 2], [cx - rx * 0.4, GROUND - 1.2], [cx - rx * 0.4 + L * 0.5, GROUND - 1.2 - wag * 0.5]];
+      fillStroke(grid, wrap, tw, "tail");
+      tailEnd = wrap[wrap.length - 1];
+    }
     for (const dx of [0.55, 0.85]) fillEllipse(grid, cx + rx * dx, GROUND - 1, Math.max(1.2, 1.6 * s), 1.1, "leg");
     hx = cx + rx * 0.55;
     hy = ly - ry * 0.9 - hry * 0.35;
+    if (V.neck) {
+      const nl = V.neck.len * s * (1 + (shape.neck || 0) * 0.25);
+      const nw = Math.max(2.5, V.neck.w * Math.max(s, 0.7));
+      hx = cx + rx * 0.7;
+      hy = ly - ry * 0.9 - nl;
+      fillStroke(grid, [[cx + rx * 0.55, ly - ry * 0.3], [hx - 0.5, hy + hry * 0.4]], V.neck.thick ? nw * 0.85 : nw / 2, "neck");
+    }
   } else if (sit) {
     // sitting: a round haunch, an upright chest, straight front legs, the tail wrapped round
     const rh = Math.max(3, ry * 1.25);
@@ -2063,12 +2241,22 @@ function buildVariant(genes, stage, frame, V) {
     hy = stalk ? cy - ry * 0.4 : V.woolly ? cy - ry * 0.55 - hry * 0.25 : cy - ry * (V.headMin ? 1 : 0.75) - hry * (V.headMin ? 0.7 : 0.45);
     if (V.neck) {
       // a goat holds its head up on a short neck
-      const nl = V.neck.len * s;
+      const nl = V.neck.len * s * (1 + (shape.neck || 0) * 0.25);
       const nw = Math.max(2.5, V.neck.w * Math.max(s, 0.7));
-      hx = cx + rx * 0.92;
+      hx = cx + rx * (V.neck.lean || 0.92);
       hy = cy - ry * 0.75 - nl;
-      // angled forward: from the top of the chest up to under the head
-      fillStroke(grid, [[cx + rx * 0.62, cy - ry * 0.2], [hx - 0.5, hy + hry * 0.4]], nw / 2, "neck");
+      if (V.neck.thick) {
+        // a llama's neck: wide where it leaves the chest, tapering up into the
+        // head, its front one line from chest to chin
+        const base = [[cx + rx * 0.3, cy - ry * 0.85], [cx + rx * 1.02, cy + ry * 0.15]];
+        const top = [[hx - hrx * 0.75, hy - hry * 0.1], [hx + hrx * 0.15, hy + hry * 0.85]];
+        fillTri(grid, [base[0], base[1], top[1]], "neck");
+        fillTri(grid, [base[0], top[1], top[0]], "neck");
+        relight(grid, "neck");
+      } else {
+        // angled forward: from the top of the chest up to under the head
+        fillStroke(grid, [[cx + rx * 0.62, cy - ry * 0.2], [hx - 0.5, hy + hry * 0.4]], nw / 2, "neck");
+      }
     }
   }
 
@@ -2108,6 +2296,12 @@ function buildVariant(genes, stage, frame, V) {
       // dogs: floppy ears hang down the sides of the head; button ears fold over at the top
       const base = hx + side * hrx * 0.55;
       if (V.ears.type === "floppy") fillEllipse(grid, hx + side * hrx * 0.95, hy + hry * 0.15, Math.max(1.3, es * 0.26), es * 0.52, "flop");
+      if (V.ears.type === "banana") {
+        const top = hy - hry * 0.55;
+        // up, with just the tips curling in -- they never meet over the head
+        if (V.ears.plain) fillStroke(grid, [[base + side * 0.5, top + 1], [base + side * es * 0.18, top - es]], Math.max(0.8, (V.ears.thick || 0.8) * hs), "ear");
+        else fillStroke(grid, [[base + side * 0.5, top + 1], [base + side * es * 0.22, top - es * 0.55], [base + side * es * 0.1, top - es]], Math.max(0.7, ew * 0.2), "ear");
+      }
       if (V.ears.type === "out") fillEllipse(grid, hx + side * (hrx + es * 0.3), hy - hry * 0.3, es * 0.5, Math.max(1, es * 0.22), "flop");
       if (V.ears.type === "lop") fillEllipse(grid, hx + side * hrx * 0.95, hy + hry * 0.25, Math.max(1.4, es * 0.2), es * 0.55, "flop");
       if (V.ears.type === "button") fillTri(grid, [[base - ew, hy - hry * 0.78], [base + ew, hy - hry * 0.62], [base + side * ew * 0.7, hy - hry * 0.3]], "flop");
@@ -2180,6 +2374,22 @@ function buildVariant(genes, stage, frame, V) {
       ny = chin - 2;
       face.smile.push([c - 1, ny], [c + 1, ny], [c, ny + 1]);
       ey = Math.round(hy - hry * 0.2) - eh + 1;
+      let g = gap;
+      const fits = (x0) => [...Array(w + 2).keys()].every((i) => isFace(x0 - 1 + i, ey) && isFace(x0 - 1 + i, ey + eh - 1));
+      while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
+      face.eyes.push({ x: c - g - w, y: ey, size: eyeSize, iris });
+      face.eyes.push({ x: c + g + 1, y: ey, size: eyeSize, iris: odd || iris });
+    } else if (V.mouth === "llama") {
+      //   k . k      nostrils
+      //   . . .
+      //   . k .      a little mouth
+      const isFace = (x, y) => grid[y] && grid[y][x] && (grid[y][x].l === "head" || grid[y][x].l === "snout");
+      fillEllipse(grid, hx, hy + hry * 0.5, Math.max(2.2, hrx * 0.6), Math.max(1.8, hry * 0.48), "snout");
+      let chin = Math.round(hy);
+      while (isFace(c, chin + 1)) chin++;
+      ny = chin - 3;
+      face.smile.push([c - 1, ny], [c + 1, ny], [c, ny + 2]);
+      ey = Math.round(hy - hry * (V.tuft ? 0.05 : 0.3)) - eh + 1; // below a topknot, never under its edge
       let g = gap;
       const fits = (x0) => [...Array(w + 2).keys()].every((i) => isFace(x0 - 1 + i, ey) && isFace(x0 - 1 + i, ey + eh - 1));
       while (g > 1 && !(fits(c - g - w) && fits(c + g + 1))) g--;
@@ -2262,13 +2472,14 @@ function buildVariant(genes, stage, frame, V) {
   } else {
     // side view: one eye, a snout pointing ahead
     const floppy = V.ears.type === "floppy" || V.ears.type === "lop" || V.ears.type === "half" || V.ears.type === "out";
+    const banana = V.ears.type === "banana";
     const longEars = V.ears.type === "long" || V.ears.type === "half";
     const earTop = hy - hry * 0.6;
     if (longEars) {
       // two long ears swept back a little, the far one behind and darker
       fillStroke(grid, [[hx - hrx * 0.45, earTop + 1], [hx - hrx * 0.75, earTop - es * 0.5], [hx - hrx * 0.95, earTop - es]], Math.max(0.9, ew * 0.21), "farear");
     }
-    if (!floppy && !longEars) fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.3], [hx - hrx * 0.05, hy - hry * 0.85], [hx - hrx * 0.75, hy - hry * 0.75 - es * 0.9]], "farear");
+    if (!floppy && !longEars && !banana) fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.3], [hx - hrx * 0.05, hy - hry * 0.85], [hx - hrx * 0.75, hy - hry * 0.75 - es * 0.9]], "farear");
     if (V.heart) {
       fillEllipse(grid, hx, hy - hry * 0.15, hrx, hry * 0.78, "head");
       fillTri(grid, [[hx - hrx * 0.92, hy - hry * 0.1], [hx + hrx * 0.98, hy - hry * 0.1], [hx + hrx * 0.3, hy + hry * 0.95]], "head");
@@ -2278,7 +2489,9 @@ function buildVariant(genes, stage, frame, V) {
     const sr = Math.max(1.3, (V.snoutR || 1.8) * hs);
     const sy = hy + hry * 0.3;
     const sl = (V.snoutLen || 0) * hs * snoutSize;
-    if (V.snout === "goat") {
+    if (V.snout === "llama") {
+      fillEllipse(grid, hx + hrx * 0.85, sy + 0.3, Math.max(2, (V.snoutLen || 2.5) * hs * snoutSize), Math.max(1.5, 1.8 * hs), "snout");
+    } else if (V.snout === "goat") {
       // a long face tapering to the muzzle; a Roman nose bulges along the top
       fillEllipse(grid, hx + hrx * 0.9, sy, Math.max(2.4, 3.1 * hs * snoutSize), Math.max(1.4, 1.7 * hs), "snout");
       if (V.roman) fillEllipse(grid, hx + hrx * 0.75, sy - 1.2 * hs, Math.max(1.8, 2.4 * hs), Math.max(1.2, 1.3 * hs), "snout");
@@ -2291,10 +2504,23 @@ function buildVariant(genes, stage, frame, V) {
       const r = Math.max(1.5, 1.9 * hs * V.tuft);
       for (const dx of [-0.6, -0.1]) fillEllipse(grid, hx + dx * hrx, hy - hry * 0.85, r, r, "tuft");
     }
-    if (V.ears.type === "out") fillEllipse(grid, hx - hrx * 0.75, hy - hry * 0.2, es * 0.55, Math.max(1, es * 0.24), "flop");
+    if (banana) {
+      // two banana ears, the far one behind and darker, tips curving forward
+      const top = hy - hry * 0.6;
+      const thick = V.ears.thick || 0;
+      const r = thick ? Math.max(0.9, thick * hs) : Math.max(0.7, ew * 0.2);
+      const ear = (bx, label) =>
+        V.ears.plain
+          ? fillStroke(grid, [[bx, top + 1], [bx + es * 0.12, top - es]], r, label) // a clean spike, leaning a little forward
+          : fillStroke(grid, [[bx, top + 1], [bx - es * (thick ? 0.05 : 0.15), top - es * 0.5], [bx + es * (thick ? 0.08 : 0.12), top - es]], r, label);
+      ear(hx - hrx * (thick ? 0.75 : 0.8), "farear"); // spaced apart so the two read as two
+      ear(hx + hrx * (thick ? 0.3 : -0.05), "ear");
+    } else if (V.ears.type === "out") fillEllipse(grid, hx - hrx * 0.75, hy - hry * 0.2, es * 0.55, Math.max(1, es * 0.24), "flop");
     else if (V.ears.type === "lop" || V.ears.type === "half") fillEllipse(grid, hx - hrx * 0.35, hy + es * 0.18, Math.max(1.4, es * 0.22), es * 0.55, "flop");
     else if (floppy) fillEllipse(grid, hx - hrx * 0.3, hy + es * 0.08, Math.max(1.4, es * 0.32), es * 0.6, "flop");
-    else if (longEars) fillStroke(grid, [[hx - hrx * 0.1, earTop + 1], [hx - hrx * 0.3, earTop - es * 0.55], [hx - hrx * 0.45, earTop - es]], Math.max(0.9, ew * 0.21), "ear");
+    else if (banana) {
+      // drawn above
+    } else if (longEars) fillStroke(grid, [[hx - hrx * 0.1, earTop + 1], [hx - hrx * 0.3, earTop - es * 0.55], [hx - hrx * 0.45, earTop - es]], Math.max(0.9, ew * 0.21), "ear");
     else fillTri(grid, [[hx - hrx * 0.45, hy - hry * 0.8], [hx + hrx * 0.45, hy - hry * 0.75], [hx - hrx * 0.05, hy - hry * 0.75 - es]], "ear");
     const ey = Math.round(hy - hry * 0.35);
     const ex = Math.round(hx + hrx * 0.1);
@@ -2313,6 +2539,11 @@ function buildVariant(genes, stage, frame, V) {
       const ny = Math.round(sy - 1);
       face.pink.push([nx - 1, ny], [nx, ny]);
       face.smile.push([nx - 1, ny + 2]);
+    } else if (V.snout === "llama") {
+      // a nostril near the tip and the split lip under it
+      const tipX = Math.round(hx + hrx * 0.85 + Math.max(2, (V.snoutLen || 2.5) * hs * snoutSize)) - 1;
+      const ny = Math.round(sy - 0.5);
+      face.smile.push([tipX - 1, ny], [tipX, ny + 2], [tipX - 1, ny + 2], [tipX - 2, ny + 1]);
     } else if (V.snout === "goat") {
       // a nostril at the tip, a short mouth line, a beard under the chin
       const tipX = Math.round(hx + hrx * 0.9 + Math.max(2.4, 3.1 * hs * snoutSize)) - 1;
@@ -2416,10 +2647,10 @@ function buildVariant(genes, stage, frame, V) {
   const geo = {
     cx, cy, rx, ry, legTop: sit ? GROUND - legLen - ry * 0.6 : crouch || upright ? GROUND - ry * 0.9 : cy,
     tail: [cx - rx + 1, cy - ry * 0.4, tailLen], head: [hx, hy, hrx, hry],
-    faceBox, muzzle: noseTop === null ? null : { top: noseTop, c: Math.round(hx) },
+    faceBox, muzzle: noseTop === null ? null : { top: noseTop, c: Math.round(hx) }, woolly: !!V.woolly,
   };
   return {
-    grid, R: { ears: { type: "variant" } }, innerEars: !V.ears.fold, headX: hx, face, center: [cx, cy], scale: s,
+    grid, R: { ears: { type: "variant" } }, innerEars: !V.ears.fold && !V.ears.plain, headX: hx, face, center: [cx, cy], scale: s,
     softOutline: V.softOutline, softNeck: V.softNeck, geo, earStripe: V.ears.type === "long",
   };
 }

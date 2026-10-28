@@ -157,6 +157,8 @@ SPECIES_PATTERNS = {
     "sheep": {"whiteface": 25, "blackface": 25, "self": 15, "speckled": 12, "jacob": 10, "badger": 8, "valais": 5},
     # goats: real goat markings (paintGoat)
     "goat": {"solid": 20, "swiss": 15, "chamoisee": 15, "coublanc": 12, "sundgau": 10, "blacktan": 10, "spotted": 10, "boer": 8},
+    # llamas and alpacas: real coats (paintLlama)
+    "llama": {"solid": 25, "paint": 18, "guanaco": 15, "twotone": 12, "appaloosa": 10, "tuxedo": 8, "roan": 7, "saddle": 5},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -167,6 +169,7 @@ SPECIES_EYES = {
     "fox": {"#c8861e": 4.0, "#e0a828": 3.0, "#5c3a1a": 2.0, "#8a5a2a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
     "goat": {"#d8a830": 4.0, "#c8861e": 3.0, "#8aa8c8": 1.5, "#5c3a1a": 1.5},
+    "llama": {"#2a1810": 5.0, "#4a2a1a": 3.0, "#6a9ad0": 0.6},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
@@ -180,9 +183,10 @@ BREEDS = {
     "fox": ("red", "sitting", "kit", "curled"),
     "sheep": ("fluffy", "merino", "ram", "ramfront", "longwool"),
     "goat": ("horned", "nubian", "pygmy", "ibex", "saanen", "dwarf"),
+    "llama": ("llama", "front", "alpaca", "cria", "guanaco", "kushed", "suri"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -193,6 +197,7 @@ SHAPE_EXTRAS = {
     "fox": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
     "goat": {"horns": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
+    "llama": {"neck": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0), "wool": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
