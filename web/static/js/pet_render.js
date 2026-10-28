@@ -74,11 +74,11 @@ const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear"
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
 // Parts drawn behind the body: darker, like they're in shadow.
-const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof", "farwing", "farbone", "farhorn", "farclaw"]);
+const FAR = new Set(["farleg", "farear", "farskin", "farsock", "farhoof", "farwing", "farbone", "farhorn", "farclaw", "farfeather"]);
 const PET_FIXED = {
   hoof: "#5a4030", farhoof: "#5a4030", horn: "#c8aa7a", innerear: "#f4a8b8", nose: "#2a1a14", pinknose: "#f08aa0",
   hole: "#24170e", rattle: "#d8c08a", tip: "#fbf6ec", eartip: "#3a2a24", sock: "#3a2a24", farsock: "#3a2a24", cotton: "#fbf8f2", tongue: "#f07890",
-  farhorn: "#c8aa7a", claw: "#f2e6c8", farclaw: "#f2e6c8", egg: "#f4ecd8", eggback: "#d8ccb0",
+  farhorn: "#c8aa7a", claw: "#f2e6c8", farclaw: "#f2e6c8", uhorn: "#f6e6b8", uhornline: "#d8b878", egg: "#f4ecd8", eggback: "#d8ccb0",
 };
 // Parts colored from the coat: a dragon's pale belly and wing membranes.
 const DERIVED = {
@@ -91,6 +91,11 @@ const DERIVED = {
   spade: (hex) => blend(hex[0], "#f6e2a8", 0.45),
   eggspot: (hex) => hex[0],
   eggspot2: (hex) => hex[1] || hex[0],
+  umane: (hex) => hex[1] || hex[0],
+  utail: (hex) => hex[1] || hex[0],
+  feather: (hex) => blend(hex[0], "#ffffff", 0.25),
+  feather2: (hex) => blend(hex[0], SHADOW_TINT, 0.12),
+  farfeather: (hex) => blend(hex[0], "#ffffff", 0.15),
   flame: () => "#f07830",
   flamecore: () => "#fbe070",
 };
@@ -577,7 +582,7 @@ function paintCoat(out, grid, genes, built, hex) {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
     sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
     turtle: [TURTLE_PATTERNS, paintTurtle], lizard: [LIZARD_PATTERNS, paintLizard], snake: [SNAKE_PATTERNS, paintSnake],
-    dragon: [DRAGON_PATTERNS, paintDragon],
+    dragon: [DRAGON_PATTERNS, paintDragon], unicorn: [UNICORN_PATTERNS, paintUnicorn],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -2198,6 +2203,108 @@ function paintDragon(out, grid, genes, built, hex) {
   }
 }
 
+// --- unicorn coats: real horse markings, and a little magic --------------------------
+// The body is the first color and the mane and tail the second, except:
+//   solid      just that
+//   blaze      a white stripe down the front of the face and white socks
+//   dapple     light dapples over the body, legs darkening toward the hooves
+//   pinto      big patches of the second color
+//   appaloosa  a light blanket over the hindquarters, with dark leopard spots
+//   rainbow    the mane and tail in bands of color, starting from the second
+//   starry     tiny stars scattered over the body
+// On a light coat the "white" marks take a pale tint of the second color. A
+// third color is a treasure metal: the horn and the hooves.
+
+const UNICORN_PATTERNS = new Set(["solid", "blaze", "dapple", "pinto", "appaloosa", "rainbow", "starry"]);
+const UNICORN_COAT = new Set(["body", "neck", "leg", "farleg", "ear", "farear"]);
+const UNICORN_PAINTED = new Set(["umane", "utail", "uhorn", "uhornline", "hoof", "farhoof", "feather", "feather2", "farfeather"]);
+
+// A color with its hue turned by `deg` (rainbow manes).
+function hueTurn(hex, deg) {
+  const [r, g, b] = hexRgb(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  let h = d === 0 ? 0 : max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (((h * 60 + deg) % 360) + 360) % 360;
+  const sat2 = Math.max(sat, 0.45); // even a grey mane gets real colors
+  const c = (1 - Math.abs(2 * l - 1)) * sat2;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return rgbHex([r1 + m, g1 + m, b1 + m].map((v) => Math.round(Math.max(0, Math.min(1, v)) * 255)));
+}
+
+function paintUnicorn(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  built.painted = UNICORN_PAINTED;
+  const c1 = hex[0];
+  const c2 = hex[1] || hex[0];
+  const metal = hex[2];
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  const noise = valueNoise(genes.seed);
+  const white = luminance(c1) > 0.7 ? blend(c2, "#ffffff", 0.5) : "#f8f4ec";
+  const sockTop = GROUND - Math.max(2, geo.legH * 0.38);
+  // the front of the face, row by row (for a blaze)
+  const front = {};
+  grid.forEach((row, y) => row.forEach((c, x) => c && (c.l === "head" || c.l === "snout") && (front[y] = Math.max(front[y] ?? -1, x))));
+  const rainbow = [0, 45, 100, 160, 220, 290].map((d) => hueTurn(c2, d));
+
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const cell = grid[y][x];
+      if (!cell) continue;
+      const l = cell.l;
+      let color = null;
+      if (l === "head" || l === "snout") {
+        color = c1;
+        if (pattern === "blaze" && x >= front[y] - 1 && y > geo.head[1] - geo.head[3] * 0.9) color = white;
+      } else if (UNICORN_COAT.has(l)) {
+        color = c1;
+        const isLeg = l === "leg" || l === "farleg";
+        const u = (x - geo.cx) / geo.rx;
+        if (pattern === "blaze" && isLeg && y >= sockTop) color = white;
+        if (pattern === "dapple" && !isLeg) {
+          const gx = Math.floor(x / 4);
+          const gy = Math.floor(y / 3);
+          const r = Math.hypot(x - (gx * 4 + 1.5 + (gy % 2) * 2), y - (gy * 3 + 1));
+          if (r < 1.1 && tick(gx, gy) < 0.8) color = blend(c1, "#ffffff", 0.32);
+        }
+        if (pattern === "dapple" && isLeg && y >= sockTop) color = blend(c1, SHADOW_TINT, 0.22);
+        if (pattern === "pinto" && noise(x * 0.16 + 50, y * 0.2 + 50) > 0.58) color = c2;
+        if (pattern === "appaloosa" && !isLeg && u < -0.05 && y < geo.cy + geo.ry * 0.6) {
+          // the blanket is white on a dark coat, pale on a light one; its
+          // spots are whichever color is darker
+          color = luminance(c1) > 0.6 ? "#fbf8f2" : white;
+          if (tick(x >> 1, y >> 1) < 0.2) color = luminance(c1) > luminance(c2) ? c2 : c1;
+        }
+        if (pattern === "starry") {
+          // little four-point stars on a loose grid, and a few single sparkles
+          const gx = Math.floor(x / 6);
+          const gy = Math.floor(y / 5);
+          const sx = gx * 6 + 2 + Math.floor(tick(gx, gy + 99) * 3);
+          const sy = gy * 5 + 2;
+          const star = tick(gx, gy) < 0.45 && ((x === sx && Math.abs(y - sy) <= 1) || (y === sy && Math.abs(x - sx) <= 1));
+          if (star) color = x === sx && y === sy ? "#fffbe8" : blend(c2, "#ffffff", 0.4);
+          else if (tick(x, y) < 0.015) color = blend(c2, "#ffffff", 0.6);
+        }
+      } else if (l === "umane" || l === "utail") {
+        color = c2;
+        if (pattern === "rainbow") color = rainbow[Math.floor((((x + y) % 12) + 12) % 12 / 2)];
+      } else if (l === "uhorn") color = metal ? (cell.ny < -0.2 ? blend(metal, "#ffffff", 0.35) : metal) : PET_FIXED.uhorn;
+      else if (l === "uhornline") color = metal ? blend(metal, SHADOW_TINT, 0.3) : PET_FIXED.uhornline;
+      else if (l === "hoof" || l === "farhoof") color = metal || PET_FIXED.hoof;
+      else if (l === "feather" || l === "farfeather") color = blend(c1, "#ffffff", l === "feather" ? 0.25 : 0.15);
+      else if (l === "feather2") color = pattern === "rainbow" ? blend(c2, "#ffffff", 0.3) : blend(c1, SHADOW_TINT, 0.12);
+      if (color) out[y][x] = color;
+    }
+  }
+}
+
 // --- designs ---------------------------------------------------------------------
 // A species with an entry in PET_DESIGNS is drawn by buildVariant: a head
 // that faces front, three-quarter, or side; a pose (walk, sit, stalk,
@@ -2209,6 +2316,13 @@ function paintDragon(out, grid, genes, built, hex) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: seven unicorn breeds, foal to grown;
+  // a mix borrows another breed's wings, horn or neck
+  unicorn: {
+    get breeds() {
+      return UNICORN_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: five dragon breeds, each hatching from
   // a spotted egg; a mix borrows another breed's fire, horns, wings or head
   dragon: {
@@ -2567,6 +2681,25 @@ const DRAGON_BREEDS = {
   chubby: DRAGON({ name: "Chubby: round belly, big head, stubby legs, tiny wings", body: { rx: 8, ry: 5.8 }, leg: { len: 3.5, w: 2.8 }, head: { rx: 4.8, ry: 4.2 }, neck: 2.5, horns: 3, snout: 1.8, tail: { len: 11 }, wings: { type: "up", span: 8 } }),
 };
 
+// Unicorn trial designs start from a horse standing side-on.
+function UNICORN(over) {
+  return {
+    unicorn: true, facing: "side", pose: "stand", softOutline: true, horn: 6, neck: 6, snout: 4.4,
+    body: { rx: 10, ry: 4.4 }, leg: { len: 9, w: 2 }, head: { rx: 3, ry: 2.8 },
+    ...over,
+  };
+}
+
+const UNICORN_BREEDS = {
+  classic: UNICORN({ name: "Classic: standing side-on, flowing mane and tail" }),
+  prance: UNICORN({ name: "Prancing: a front hoof raised, head high", pose: "prance", neck: 7 }),
+  rear: UNICORN({ name: "Rearing up on its hind legs", pose: "rear", neck: 5 }),
+  gallop: UNICORN({ name: "Galloping: legs stretched out, mane and tail streaming", pose: "gallop" }),
+  pony: UNICORN({ name: "Pony: round and fluffy, short legs, big head", body: { rx: 8, ry: 4.8 }, leg: { len: 5.5, w: 2.4 }, head: { rx: 3.6, ry: 3.3 }, neck: 4, snout: 3, horn: 4.5 }),
+  lying: UNICORN({ name: "Lying down, legs tucked, head up", pose: "lie", neck: 5 }),
+  alicorn: UNICORN({ name: "Alicorn: feathered wings", wings: 13 }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2580,12 +2713,14 @@ const PET_VARIANTS = {
   lizard: Object.values(LIZARD_BREEDS),
   snake: Object.values(SNAKE_BREEDS),
   dragon: Object.values(DRAGON_BREEDS),
+  unicorn: Object.values(UNICORN_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
   if (V.shell) return buildTurtle(genes, stage, frame, V);
   if (V.snake) return buildSnake(genes, stage, frame, V);
   if (V.dragon) return buildDragon(genes, stage, frame, V);
+  if (V.unicorn) return buildUnicorn(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
@@ -4275,6 +4410,247 @@ function buildDragon(genes, stage, frame, V) {
     grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, GROUND - 8 - lift], scale: s,
     softOutline: true, softNeck: true, geo,
   };
+}
+
+// --- unicorns ------------------------------------------------------------------------
+// A horse built for a storybook: a deep chest and round rump on long legs with
+// dark hooves, an arched neck under a flowing mane, a long face drooping to a
+// soft muzzle, small ears, a forelock, and a spiral horn on the forehead. The
+// mane and tail wear the second color. Poses: standing, prancing (a front leg
+// raised), rearing, galloping, lying down; an alicorn adds feathered wings.
+
+// Unicorn sizes by growth stage: a foal is small with long legs, a big head
+// and a nub of a horn; a grown unicorn is bigger than other pets.
+const UNICORN_GROWTH = {
+  baby: { body: 0.45, head: 0.78, leg: 0.72, horn: 0.25 },
+  small: { body: 0.6, head: 0.84, leg: 0.8, horn: 0.45 },
+  mid: { body: 0.76, head: 0.9, leg: 0.87, horn: 0.65 },
+  big: { body: 0.94, head: 0.98, leg: 0.96, horn: 0.85 },
+  grown: { body: 1.18, head: 1.1, leg: 1.15, horn: 1.1 },
+};
+
+function buildUnicorn(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const G = UNICORN_GROWTH[stage.id];
+  const s = G.body;
+  const hs = G.head;
+  const ls = G.leg;
+  const step = frame % 2;
+  const rx = half(V.body.rx * s + (shape.length || 0) / 2);
+  const ry = half(V.body.ry * s);
+  const legH = Math.max(3, V.leg.len * ls * (1 + (shape.legs || 0) * 0.25));
+  const lw = Math.max(0.8, V.leg.w * s * 0.5);
+  const cx = 46;
+  const hrx = V.head.rx * hs;
+  const hry = V.head.ry * hs;
+  const hornL = Math.max(1.5, (V.horn || 6) * G.horn * (1 + (shape.horns || 0) * 0.3));
+  const pose = V.pose || "stand";
+  const lying = pose === "lie";
+  const rear = pose === "rear";
+  const gallop = pose === "gallop";
+  const lift = gallop ? 2 * s : 0;
+  const by = lying ? GROUND - ry * 1.05 : rear ? GROUND - legH * 0.85 - ry * 0.4 : GROUND - legH - ry * 0.55 - lift;
+  const chest = [cx + rx * 0.3, by - rx * 0.85]; // rearing: where the chest rises to
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#5a3a8a";
+  const eye = V.eye || "duo";
+
+  const tube = (pts, widths, label) => {
+    pts.slice(1).forEach((p, i) => {
+      const steps = Math.max(2, Math.ceil(Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]) * 1.5));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const r = Math.max(0.55, widths[i] + (widths[i + 1] - widths[i]) * t);
+        fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, label);
+      }
+    });
+  };
+  // a leg through its joints, the bottom rows a hoof
+  const leg = (pts, label) => {
+    tube(pts, pts.map((_, i) => (i === 0 ? lw * 1.25 : lw)), label);
+    const [fx, fy] = pts[pts.length - 1];
+    const hoof = label === "farleg" ? "farhoof" : "hoof";
+    fillRect(grid, fx - lw, fy - 0.5, lw * 2 + 0.6, 1.6, hoof);
+  };
+  // standing legs: straight down from the body, a little bend at the knee
+  const standLeg = (x, lifted, label, hind) => {
+    const top = by + ry * 0.4;
+    if (hind) fillEllipse(grid, x + 0.5, by + ry * 0.05, Math.max(2, rx * 0.32), ry * 0.85, label === "farleg" ? "farleg" : "body");
+    const knee = [x + (hind ? -0.6 : 0.3) * s, top + (GROUND - top) * 0.5 - lifted];
+    leg([[x, top], knee, [x + (hind ? 0.3 : 0) - lifted * 0.4, GROUND - 1 - lifted]], label);
+  };
+  // a front leg raised: the knee up and forward, the hoof tucked back under
+  const raised = (x, label, up = 1) => {
+    const top = by + ry * 0.35;
+    // the forearm reaches forward past the chest, the cannon hangs down
+    const knee = [x + rx * 0.5 + 2 * s * up, top + 0.5];
+    leg([[x, top], knee, [knee[0] + 0.5 * s, knee[1] + legH * 0.45]], label);
+  };
+
+  let hx;
+  let hy;
+  // the wings sit behind on the far side, in front on the near side
+  const featherWing = (sx, sy, size, near) => {
+    const flap = frame % 2;
+    const label = near ? "feather" : "farfeather";
+    // the arm: up and back to the wrist (the wing's top corner)
+    const wrist = [sx - size * 0.3, sy - size * (0.95 - flap * 0.12)];
+    // the feathers: long ones fanning down and back from along the arm,
+    // longest at the wrist, rounded tips, every other one a shade darker
+    const n = 6;
+    for (let k = n - 1; k >= 0; k--) {
+      const t = k / (n - 1); // 0 at the shoulder .. 1 at the wrist
+      const root = [sx + (wrist[0] - sx) * t, sy + (wrist[1] - sy) * t];
+      const a = Math.PI * (0.62 + t * 0.38); // down-back at the shoulder, straight back at the wrist
+      const len = size * (0.45 + t * 0.55);
+      const tip = [root[0] + Math.cos(a) * len, root[1] + Math.sin(a) * len * -1 * (t > 0.5 ? 0.15 : -0.3) + (t > 0.5 ? 0 : len * 0.2)];
+      tube([root, tip], [Math.max(1, 1.25 * s), Math.max(0.8, 1.05 * s)], near && k % 2 ? "feather2" : label);
+    }
+    fillStroke(grid, [[sx, sy], wrist], Math.max(1, 1.4 * s), label); // the arm, over the feather roots
+  };
+
+  {
+    // side-on, facing right
+    const backX = cx - rx * 0.55;
+    const frontX = cx + rx * 0.5;
+    // far legs
+    if (lying) {
+      fillEllipse(grid, frontX + 1.5, GROUND - 1.2, 2.6 * s, 1.2, "farleg");
+    } else if (rear) {
+      leg([[backX + 2, by + ry * 0.4], [backX + 3.5 * s, by + ry + legH * 0.25], [backX + 1, GROUND - 1]], "farleg");
+      const t = [chest[0] + 1.5, chest[1] + ry * 0.6];
+      leg([t, [t[0] + 3 * s, t[1] + 1 * s + step], [t[0] + 2.4 * s, t[1] + legH * 0.5 + step]], "farleg");
+    } else if (gallop) {
+      leg([[backX + 2, by + ry * 0.4], [backX - 1 * s, by + ry + legH * 0.4], [backX - 3.5 * s - step, GROUND - 2 - lift]], "farleg");
+      leg([[frontX + 2, by + ry * 0.4], [frontX + 4 * s, by + ry + legH * 0.3], [frontX + 6 * s + step, by + ry + legH * 0.55]], "farleg");
+    } else {
+      standLeg(backX + 2, step ? 0 : 1, "farleg", false);
+      standLeg(frontX + 2, step ? 1 : 0, "farleg", false);
+    }
+    // where the head goes: up on an arched neck
+    const nl = (V.neck || 6) * s;
+    hx = cx + rx * 0.85 + nl * 0.45;
+    hy = by - ry * 0.7 - nl;
+    if (rear) {
+      hx = chest[0] + nl * 0.45 + hrx * 0.4;
+      hy = chest[1] - ry * 0.6 - nl;
+    }
+    if (gallop) {
+      hx += nl * 0.25;
+      hy += nl * 0.25;
+    }
+    const shoulder = rear ? [chest[0] - rx * 0.15, chest[1] - ry * 0.5] : [cx + rx * 0.2, by - ry * 0.85];
+    if (V.wings) featherWing(shoulder[0] + 2, shoulder[1] + 0.5, V.wings * s * 0.9, false);
+    // the tail: a fall of hair from the top of the rump, rippling
+    const tx = cx - rx * 1.0;
+    const ty = by - ry * 0.55 + (rear ? ry * 0.6 : 0);
+    const w = step * 0.6;
+    const flow = gallop ? [[tx, ty], [tx - 4 * s, ty - 0.5], [tx - 8 * s, ty + 1 + w], [tx - 12 * s, ty + 0.5]] : lying ? [[tx, ty], [tx - 3 * s, ty + 1.5], [tx - 4.5 * s, GROUND - 2], [tx - 1 * s, GROUND - 1]] : [[tx, ty], [tx - 3 * s, ty + 1], [tx - 4 * s + w, ty + legH * 0.5], [tx - 3 * s, GROUND - 2 - legH * 0.15]];
+    tube(flow, [1.4 * s, 2.1 * s, 2 * s, 1.2 * s], "utail");
+    // the body: barrel, chest and rump (rearing: tipped up at the front)
+    if (rear) {
+      const rump = [cx - rx * 0.5, by];
+      for (let k = 0; k <= 6; k++) {
+        const t = k / 6;
+        fillEllipse(grid, rump[0] + (chest[0] - rump[0]) * t, rump[1] + (chest[1] - rump[1]) * t, ry * 1.02, ry * 1.02, "body");
+      }
+      fillEllipse(grid, rump[0], rump[1], rx * 0.45, ry * 1.05, "body");
+    } else {
+      fillEllipse(grid, cx, by + ry * 0.05, rx * 0.92, ry * 0.88, "body");
+      fillEllipse(grid, cx - rx * 0.55, by - ry * 0.1, rx * 0.5, ry * 1.02, "body");
+      fillEllipse(grid, cx + rx * 0.5, by, rx * 0.5, ry * 1.05, "body");
+    }
+    // the neck: wide at the chest, arching up to the head
+    const base = rear ? [chest[0] + ry * 0.3, chest[1] - ry * 0.3] : [cx + rx * 0.62, by - ry * 0.45];
+    const mid = [base[0] + (hx - base[0]) * 0.35, hy + (base[1] - hy) * 0.35 - 0.5];
+    tube([base, mid, [hx - hrx * 0.4, hy + hry * 0.1]], [ry * 0.85, ry * 0.6, hry * 0.7], "neck");
+    // near legs
+    if (lying) {
+      fillEllipse(grid, backX + 1, GROUND - 1.2, 3 * s, 1.2, "leg"); // folded under
+      leg([[frontX + 1, by + ry * 0.2], [frontX + 4 * s, GROUND - 1.5], [frontX + 7 * s, GROUND - 1]], "leg");
+    } else if (rear) {
+      leg([[backX, by + ry * 0.4], [backX + 3 * s, by + ry + legH * 0.25], [backX - 0.5, GROUND - 1]], "leg");
+      const t = [chest[0], chest[1] + ry * 0.7];
+      leg([t, [t[0] + 3.4 * s, t[1] - 0.5 * s - step], [t[0] + 3 * s, t[1] + legH * 0.45 - step]], "leg");
+    } else if (gallop) {
+      leg([[backX, by + ry * 0.4], [backX - 2 * s, by + ry + legH * 0.4], [backX - 5 * s + step, GROUND - 1.5 - lift]], "leg");
+      leg([[frontX, by + ry * 0.4], [frontX + 3 * s, by + ry + legH * 0.4], [frontX + 7 * s - step, by + ry + legH * 0.4]], "leg");
+    } else if (pose === "prance") {
+      standLeg(backX, 0, "leg", true);
+      raised(frontX, "leg", 1);
+    } else {
+      standLeg(backX, step ? 1 : 0, "leg", true);
+      standLeg(frontX, step ? 0 : 1, "leg", false);
+    }
+    // the head: a skull, a long face sloping down, a soft muzzle
+    fillTri(grid, [[hx - hrx * 0.7, hy - hry * 0.9], [hx - hrx * 0.2, hy - hry * 0.95], [hx - hrx * 0.55, hy - hry * 0.95 - 3 * hs]], "farear");
+    fillEllipse(grid, hx, hy, hrx, hry, "head");
+    const sl = (V.snout || 4) * hs;
+    const mx = hx + hrx * 0.4 + sl * 0.6;
+    const myy = hy + hry * 0.3 + sl * 0.3;
+    const mr = Math.max(1.6, hry * 0.66);
+    tube([[hx + hrx * 0.2, hy + hry * 0.05], [mx, myy]], [hry * 0.8, mr], "snout");
+    fillEllipse(grid, mx + 0.3, myy, mr * 1.1, mr, "snout"); // a blunt, rounded muzzle
+    fillTri(grid, [[hx - hrx * 0.45, hy - hry * 0.85], [hx + hrx * 0.05, hy - hry * 0.95], [hx - hrx * 0.3, hy - hry * 0.95 - 3.2 * hs]], "ear");
+    // the mane: a crest along the top of the neck, locks falling back over it
+    const m0 = [hx - hrx * 0.55, hy - hry * 0.75];
+    const m1 = [mid[0] - 1, mid[1] - ry * 0.55];
+    const m2 = [base[0] - ry * 0.5, base[1] - ry * 0.55];
+    tube([m0, m1, m2], [1.3 * hs, 1.6 * s, 1.4 * s], "umane");
+    for (let k = 0; k < 4; k++) {
+      const t = (k + 0.5) / 4;
+      const px = m0[0] + (m2[0] - m0[0]) * t;
+      const py = m0[1] + (m2[1] - m0[1]) * t + Math.sin(t * Math.PI) * (m1[1] - (m0[1] + m2[1]) / 2);
+      const sway = gallop ? -2.5 * s : 0;
+      tube([[px, py], [px - 1.5 * s + sway, py + 2.5 * s], [px - 1.2 * s + sway + (step && k % 2 ? 0.6 : 0), py + 4.2 * s]], [1.2 * s, 1 * s, 0.6], "umane");
+    }
+    // the forelock, falling over the forehead
+    tube([[hx - hrx * 0.1, hy - hry * 0.95], [hx + hrx * 0.45, hy - hry * 0.5], [hx + hrx * 0.5, hy - hry * 0.05]], [1.1 * hs, 1 * hs, 0.6], "umane");
+    if (V.wings) featherWing(shoulder[0], shoulder[1], V.wings * s, true);
+    // the horn: from the forehead, leaning forward
+    const hb = [hx + hrx * 0.3, hy - hry * 0.8];
+    hornAt(grid, hb, [hb[0] + hornL * 0.4, hb[1] - hornL * 0.92], hs);
+    // the face
+    face.eyes.push({ x: Math.round(hx - hrx * 0.05), y: Math.round(hy - hry * 0.3), size: eye, iris });
+    // a nostril on the front of the muzzle, a short mouth line low on it
+    face.noseDark.push([Math.round(mx + mr * 0.45), Math.round(myy - mr * 0.3)]);
+    const mouthY = Math.round(myy + mr) - 1;
+    face.smile.push([Math.round(mx + mr * 0.7), mouthY], [Math.round(mx + mr * 0.7) - 1, mouthY]);
+  }
+
+  relight(grid, "body");
+  relight(grid, "head");
+  relight(grid, "neck");
+  relight(grid, "snout");
+  const geo = {
+    cx, cy: by, rx, ry, legTop: by + ry * 0.4, legH, tail: [cx - rx, by - ry * 0.5, 10 * s], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, by], scale: s,
+    softOutline: true, softNeck: true, geo,
+  };
+}
+
+// A unicorn's horn: a tapering cone from base to tip with a spiral groove
+// winding round it.
+function hornAt(grid, a, b, hs) {
+  const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * 2);
+  const r0 = Math.max(0.9, 1.2 * hs);
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    fillEllipse(grid, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, Math.max(0.5, r0 * (1 - t * 0.85)), Math.max(0.5, r0 * (1 - t * 0.85)), "uhorn");
+  }
+  // the groove: short slanted marks every couple of pixels up the horn
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  for (let d = 1.5; d < len - 1; d += 2) {
+    const t = d / len;
+    const x = Math.round(a[0] + (b[0] - a[0]) * t);
+    const y = Math.round(a[1] + (b[1] - a[1]) * t);
+    const c = grid[y] && grid[y][x];
+    if (c && c.l === "uhorn") c.l = "uhornline";
+  }
 }
 
 // A one-pixel line between two points (wing bones).

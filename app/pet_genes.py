@@ -18,8 +18,9 @@ hadn't unlocked yet unlocks it everywhere.
 
 The game can also pick the colors itself (roll() with primary or
 secondary None): the primary by realism, the secondary by second_color_weights
-(dragons: mostly the same or a neighboring family). Players never pick the
-third color. Dragons' third colors are treasure metals (the "metal" family),
+(dragons and unicorns: mostly the same or a neighboring family; a white
+unicorn gets an accent from any family). Players never pick the third color.
+Dragons' and unicorns' third colors are treasure metals (the "metal" family),
 which are never picked or unlocked and stay out of the catalog.
 """
 
@@ -117,7 +118,7 @@ COLORS: dict[str, PetColor] = {
 }
 METALS = [c.id for c in COLORS.values() if c.family == "metal"]
 # Species whose third color is always a treasure metal.
-TREASURE_THIRD = {"dragon"}
+TREASURE_THIRD = {"dragon", "unicorn"}
 
 NATURAL = 1.0
 RARE = 0.08
@@ -137,6 +138,7 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     # mythical: storybook colors are the natural ones (never the metals,
     # which are only third colors)
     "dragon": {"green": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "purple": NATURAL, "blue": NATURAL, "teal": NATURAL, "white": RARE},
+    "unicorn": {"white": NATURAL, "cream": NATURAL, "pink": NATURAL, "purple": NATURAL, "blue": NATURAL, "gray": NATURAL, "teal": NATURAL, "gold": NATURAL, "black": RARE},
 }
 
 STARTER_COLORS: dict[str, tuple[str, str, str]] = {
@@ -151,12 +153,13 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "lizard": ("fern", "sand", "ginger"),
     "snake": ("moss", "rust", "buttercream"),
     "dragon": ("fern", "crimson", "golden"),
+    "unicorn": ("snow", "lavender", "sky"),
 }
 
 # Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
 ELEMENTS = {
     "bunny": "leaf", "goat": "leaf", "sheep": "leaf", "snake": "leaf",
-    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember",
+    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember", "unicorn": "splash",
     "dog": "splash", "llama": "splash", "turtle": "splash",
 }
 
@@ -166,6 +169,7 @@ COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 # Species whose markings show a third color off well: the pattern is picked
 # first and sets the chance of a third color (the rest split highlight/mix).
 ACCENT_CHANCE = {
+    "unicorn": {"solid": 0.4, "blaze": 0.4, "dapple": 0.4, "pinto": 0.4, "appaloosa": 0.4, "rainbow": 0.4, "starry": 0.4},
     "dragon": {"storybook": 0.4, "ombre": 0.4, "ridgeback": 0.4, "scaled": 0.4, "tiger": 0.4, "jeweled": 0.4, "shadow": 0.4},
     "snake": {"banded": 0.5, "diamondback": 0.45, "saddles": 0.4, "striped": 0.4, "speckled": 0.35, "plain": 0.3},
 }
@@ -195,6 +199,8 @@ SPECIES_PATTERNS = {
     "snake": {"diamondback": 25, "banded": 18, "saddles": 16, "striped": 15, "speckled": 12, "plain": 14},
     # dragons: storybook looks built on real reptile markings (paintDragon)
     "dragon": {"storybook": 25, "ombre": 15, "ridgeback": 15, "scaled": 15, "tiger": 12, "jeweled": 10, "shadow": 8},
+    # unicorns: real horse markings plus a little magic (paintUnicorn)
+    "unicorn": {"solid": 22, "blaze": 16, "dapple": 14, "pinto": 12, "appaloosa": 12, "rainbow": 12, "starry": 12},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -209,6 +215,7 @@ SPECIES_EYES = {
     "turtle": {"#c8861e": 3.0, "#2a1810": 3.0, "#b84a2a": 1.0, "#7ab84a": 1.0},
     "lizard": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 1.5},
     "snake": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 2.0},
+    "unicorn": {"#5a3a8a": 3.0, "#3a6ab8": 3.0, "#2a1810": 3.0, "#c8608a": 1.0},
     "dragon": {"#e0a828": 4.0, "#e8d040": 2.0, "#c8702a": 2.0, "#5a9ae0": 1.0, "#b03a2a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
 }
@@ -228,9 +235,10 @@ BREEDS = {
     "lizard": ("iguana", "iguana_s", "monitor", "skink", "chameleon"),
     "snake": ("classic", "cobra", "wave", "diamondback", "strike", "slider", "rattler", "baby"),
     "dragon": ("classic", "wyvern", "flying", "fire", "chubby"),
+    "unicorn": ("classic", "prance", "rear", "gallop", "pony", "lying", "alicorn"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head"), "unicorn": ("wings", "horn", "neck")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -246,6 +254,7 @@ SHAPE_EXTRAS = {
     "lizard": {"legs": (-1.0, 1.0, 0.0), "crest": (-1.0, 1.0, 0.0)},
     "snake": {"thick": (-1.0, 1.0, 0.0)},
     "dragon": {"horns": (-1.0, 1.0, 0.0), "wings": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
+    "unicorn": {"horns": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "sheep": {"wool": (-1.0, 1.0, 0.2), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
@@ -271,7 +280,22 @@ NEAR_FAMILIES = {
         "black": {"purple", "blue", "red"},
         "white": {"gold", "blue"},
     },
+    "unicorn": {
+        "white": {"cream", "gray", "blue"},
+        "cream": {"white", "gold", "pink"},
+        "gold": {"cream", "pink"},
+        "pink": {"purple", "cream", "white"},
+        "purple": {"pink", "blue"},
+        "blue": {"purple", "teal", "gray"},
+        "teal": {"blue", "white"},
+        "gray": {"white", "black", "blue"},
+        "black": {"gray", "purple", "blue"},
+    },
 }
+# Species that are often white with an accent: this share of game-picked main
+# colors is white, and a white one's second color is an accent from any other
+# family (each family as likely as the next).
+WHITE_ACCENT = {"unicorn": 0.5}
 
 
 def starting_unlocks() -> set[str]:
@@ -303,8 +327,16 @@ def color_distance(a: str, b: str) -> float:
 
 
 def primary_color_weights(species: str) -> dict[str, float]:
-    """The game picking a pet's main color: any of the species' colors, by realism."""
-    return {c: realism(species, c) for c in eligible_colors(species)}
+    """The game picking a pet's main color: any of the species' colors, by
+    realism (WHITE_ACCENT species: white that share of the time)."""
+    weights = {c: realism(species, c) for c in eligible_colors(species)}
+    white = WHITE_ACCENT.get(species)
+    if white is None:
+        return weights
+    whites = {c for c in weights if COLORS[c].family == "white"}
+    w_total = sum(weights[c] for c in whites)
+    o_total = sum(w for c, w in weights.items() if c not in whites)
+    return {c: (white * w / w_total if c in whites else (1 - white) * w / o_total) for c, w in weights.items()}
 
 
 def second_color_weights(species: str, primary: str) -> dict[str, float]:
@@ -312,10 +344,17 @@ def second_color_weights(species: str, primary: str) -> dict[str, float]:
     NEAR_FAMILIES split SECOND_COLOR_ODDS between the same family, the
     neighbors, and the rest; others go by realism alone."""
     colors = [c for c in eligible_colors(species) if c != primary]
+    family = COLORS[primary].family
+    if species in WHITE_ACCENT and family == "white":
+        # an accent: every other family equally likely
+        sizes: dict[str, float] = {}
+        for c in colors:
+            if COLORS[c].family != "white":
+                sizes[COLORS[c].family] = sizes.get(COLORS[c].family, 0.0) + realism(species, c)
+        return {c: realism(species, c) / sizes[COLORS[c].family] for c in colors if COLORS[c].family != "white"}
     near = NEAR_FAMILIES.get(species)
     if not near:
         return {c: realism(species, c) for c in colors}
-    family = COLORS[primary].family
     tier = lambda c: "same" if COLORS[c].family == family else "near" if COLORS[c].family in near.get(family, ()) else "far"  # noqa: E731
     totals: dict[str, float] = {}
     for c in colors:

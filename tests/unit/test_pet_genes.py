@@ -307,3 +307,26 @@ def test_dragons_third_color_is_a_treasure_metal_never_picked_or_unlocked():
         g.roll("dragon", None, "crimson", 1)
     pats = collections.Counter(d["coat"]["pattern"] for d in dragons)
     assert set(pats) == {"storybook", "ombre", "ridgeback", "scaled", "tiger", "jeweled", "shadow"}
+
+
+def test_unicorns_are_often_white_with_an_accent_else_close_colors():
+    import collections
+
+    tiers = collections.Counter()
+    unicorns = [g.roll("unicorn", None, None, seed) for seed in range(4000)]
+    for u in unicorns:
+        a, b, _ = u["coat"]["colors"]
+        fa, fb = g.COLORS[a].family, g.COLORS[b].family
+        if fa == "white":
+            assert fb != "white"
+            tiers["white"] += 1
+        else:
+            tiers["same" if fa == fb else "near" if fb in g.NEAR_FAMILIES["unicorn"][fa] else "far"] += 1
+    assert 0.45 < tiers["white"] / 4000 < 0.55
+    assert tiers["same"] > tiers["near"] > tiers["far"]
+    assert {u["shape"]["breed"] for u in unicorns} == set(g.BREEDS["unicorn"])
+    assert all(set(u["shape"]["mix"]) <= {"wings", "horn", "neck"} for u in unicorns)
+    thirds = [u["coat"]["colors"][2] for u in unicorns if u["coat"]["colors"][2]]
+    assert set(thirds) == set(g.METALS) and 0.35 < len(thirds) / 4000 < 0.45
+    pats = collections.Counter(u["coat"]["pattern"] for u in unicorns)
+    assert set(pats) == {"solid", "blaze", "dapple", "pinto", "appaloosa", "rainbow", "starry"}

@@ -10,7 +10,7 @@ const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
 // Species being worked on right now (the rest are hidden for the moment).
-const LAB_SPECIES = ["dragon"];
+const LAB_SPECIES = ["unicorn"];
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
