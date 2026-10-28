@@ -9,10 +9,12 @@ stable value for it without changing anything they already rolled
 (fill_missing). The third color depends on the colors unlocked at
 adoption time, so genes are stored, not re-derived.
 
-Colors: COLORS is the shared pool (90); each species can wear the
-families listed in SPECIES_COLORS (about 45 colors), each family with a
-realism weight. Three per species are unlocked from the start; a rolled
-third color the learner hasn't had for that species unlocks it.
+Colors: COLORS is the shared pool (90). Unlocked colors are one set per
+learner, shared by every species (starting_unlocks(): every species'
+starter colors), so a color found on any pet can be picked for any pet.
+Each species' families and realism weights (SPECIES_COLORS) only steer
+which third colors tend to roll for it; a rolled third color the learner
+hadn't unlocked yet unlocks it everywhere.
 """
 
 from __future__ import annotations
@@ -144,20 +146,26 @@ PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points"
 # a husky-style mask now and then, spots for dalmatians, stripes (brindle) rare.
 SPECIES_PATTERNS = {
     "dog": {"belly": 3.0, "points": 2.5, "patches": 2.0, "mask": 1.5, "spots": 1.0, "stripes": 0.4},
+    # bunnies wear real rabbit patterns (painted in web/static/js/pet_render.js paintBunny)
+    "bunny": {"self": 30, "agouti": 20, "broken": 20, "dutch": 12, "himalayan": 10, "tan": 5, "english": 3},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
 SPECIES_EYES = {
     "cat": {"#7ab84a": 4.0, "#e0a828": 4.0, "#c8702a": 2.0, "#e8d040": 2.0, "#5a9ae0": 1.0},
     "dog": {"#3a2416": 5.0, "#5c3a1a": 4.0, "#8a5a2a": 2.0, "#c8861e": 1.0, "#6aa0d8": 0.4},
+    "bunny": {"#2a1810": 6.0, "#4a2a1a": 3.0, "#5a7aa8": 0.6, "#b03040": 0.3},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
 
 # Species drawn as a set of breeds: each pet rolls one, and sometimes is a
 # mix that borrows one part (its tail or its ears) from another breed.
-BREEDS = {"dog": ("classic", "hound", "shiba", "dachshund", "husky")}
+BREEDS = {
+    "dog": ("classic", "hound", "shiba", "dachshund", "husky"),
+    "bunny": ("classic", "front", "dwarf", "sidelop", "holland", "halflop", "wild", "dwarfside"),
+}
 MIX_CHANCE = 0.25
-MIX_PARTS = ("tail", "ears")
+MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",)}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -175,6 +183,11 @@ MIN_THIRD_SHARE = 0.04  # less than this folds into the secondary
 # colors (0..1 color distance), and the floor so far colors stay possible.
 NEAR_SCALE = 0.18
 FAR_FLOOR = 0.04
+
+
+def starting_unlocks() -> set[str]:
+    """A new learner's colors: every species' starters, shared by all species."""
+    return {c for starters in STARTER_COLORS.values() for c in starters}
 
 
 def eligible_colors(species: str) -> list[str]:
@@ -272,7 +285,7 @@ def _roll_shape(seed: int, species: str, ctx: dict) -> dict:
         shape["mix"] = {}
         if rng.random() < MIX_CHANCE:
             donor = rng.choice([b for b in breeds if b != shape["breed"]])
-            shape["mix"] = {rng.choice(MIX_PARTS): donor}
+            shape["mix"] = {rng.choice(MIX_PARTS[species]): donor}
     return shape
 
 
@@ -323,10 +336,11 @@ def new_seed(rng: random.Random | None = None) -> int:
 
 def roll(species: str, primary: str, secondary: str, seed: int, unlocked: set[str] | None = None) -> dict:
     """A new pet's genes. `unlocked` is this learner's colors for the species
-    (the starters if None); primary and secondary must be among them."""
+    (shared by every species; starting_unlocks() if None); primary and
+    secondary must be among them."""
     if species not in SPECIES_COLORS:
         raise GeneError("There's no pet like that.")
-    unlocked = set(unlocked) if unlocked is not None else set(STARTER_COLORS[species])
+    unlocked = set(unlocked) if unlocked is not None else starting_unlocks()
     if primary == secondary:
         raise GeneError("Pick two different colors.")
     if primary not in unlocked or secondary not in unlocked:
@@ -357,13 +371,13 @@ def resolve(genes: dict) -> dict:
 
 
 def new_colors(genes: dict, unlocked: set[str]) -> list[str]:
-    """Colors on this pet the learner hadn't unlocked for its species."""
+    """Colors on this pet the learner hadn't unlocked yet (for any species)."""
     return [c for c in genes["coat"]["colors"] if c and c not in unlocked]
 
 
-def color_catalog(species: str, unlocked: set[str]) -> list[dict]:
-    """Every color the species can wear, unlocked ones flagged."""
+def color_catalog(unlocked: set[str]) -> list[dict]:
+    """Every color, unlocked ones flagged (the same list for every species)."""
     return [
-        {"id": c, "name": COLORS[c].name, "hex": COLORS[c].hex, "family": COLORS[c].family, "unlocked": c in unlocked}
-        for c in eligible_colors(species)
+        {"id": c.id, "name": c.name, "hex": c.hex, "family": c.family, "unlocked": c.id in unlocked}
+        for c in COLORS.values()
     ]

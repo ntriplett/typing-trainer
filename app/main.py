@@ -320,7 +320,7 @@ def pet_lab_page() -> FileResponse:
 def pet_lab_species() -> dict:
     return {
         species: {
-            "colors": pet_genes.color_catalog(species, set(pet_genes.STARTER_COLORS[species])),
+            "colors": pet_genes.color_catalog(pet_genes.starting_unlocks()),
             "starters": list(pet_genes.STARTER_COLORS[species]),
         }
         for species in pet_genes.SPECIES_COLORS
@@ -330,8 +330,9 @@ def pet_lab_species() -> dict:
 @app.get("/api/pet-lab/roll")
 def pet_lab_roll(species: str, primary: str, secondary: str, seed: int | None = None, count: int = 1) -> dict:
     """`count` pets from consecutive seeds (a random start if no seed). The
-    third color rolls as if the starters plus the two picks were unlocked."""
-    unlocked = set(pet_genes.STARTER_COLORS.get(species, ())) | {primary, secondary}
+    third color rolls as if a new learner's colors plus the two picks were
+    unlocked."""
+    unlocked = pet_genes.starting_unlocks() | {primary, secondary}
     start = seed if seed is not None else pet_genes.new_seed()
     try:
         rolled = [

@@ -139,7 +139,7 @@ def test_dogs_roll_a_breed_and_sometimes_a_mix():
     assert 0.15 < len(mixes) / len(dogs) < 0.35
     for d in dogs:
         for part, donor in d["mix"].items():
-            assert part in g.MIX_PARTS and donor != d["breed"]
+            assert part in g.MIX_PARTS["dog"] and donor != d["breed"]
     assert "breed" not in g.roll("cat", "orange", "ash", 1)["shape"]
 
 
@@ -151,3 +151,26 @@ def test_dogs_have_their_own_pattern_odds():
     assert dogs["mask"] > 0
     cats = collections.Counter(g.roll("cat", "orange", "ash", seed)["coat"]["pattern"] for seed in range(500))
     assert "mask" not in cats
+
+
+def test_bunnies_roll_a_breed_and_only_swap_ears():
+    bunnies = [g.roll("bunny", "snow", "chestnut", seed)["shape"] for seed in range(1000)]
+    assert {b["breed"] for b in bunnies} == set(g.BREEDS["bunny"])
+    assert all(set(b["mix"]) <= {"ears"} for b in bunnies)
+
+
+def test_bunnies_wear_rabbit_patterns():
+    import collections
+
+    pats = collections.Counter(g.roll("bunny", "snow", "chestnut", seed)["coat"]["pattern"] for seed in range(3000))
+    assert set(pats) == {"self", "agouti", "broken", "dutch", "himalayan", "tan", "english"}
+    assert pats["self"] > pats["english"] * 5
+
+
+def test_unlocked_colors_are_shared_by_every_species():
+    start = g.starting_unlocks()
+    assert set(g.STARTER_COLORS["cat"]) | set(g.STARTER_COLORS["bunny"]) <= start
+    # a dog's starter color can be picked for a cat
+    assert g.roll("cat", "golden", "snow", 1)["coat"]["colors"][:2] == ["golden", "snow"]
+    catalog = g.color_catalog(start)
+    assert len(catalog) == 90 and sum(c["unlocked"] for c in catalog) == len(start)
