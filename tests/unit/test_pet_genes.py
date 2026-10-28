@@ -174,3 +174,14 @@ def test_unlocked_colors_are_shared_by_every_species():
     assert g.roll("cat", "golden", "snow", 1)["coat"]["colors"][:2] == ["golden", "snow"]
     catalog = g.color_catalog(start)
     assert len(catalog) == 90 and sum(c["unlocked"] for c in catalog) == len(start)
+
+
+def test_foxes_roll_breeds_and_fox_coats():
+    import collections
+
+    foxes = [g.roll("fox", "flame", "snow", seed) for seed in range(2000)]
+    assert {f["shape"]["breed"] for f in foxes} == set(g.BREEDS["fox"])
+    assert all(set(f["shape"]["mix"]) <= {"ears", "head"} for f in foxes)
+    pats = collections.Counter(f["coat"]["pattern"] for f in foxes)
+    assert set(pats) == {"red", "cross", "silver", "arctic", "marble"}
+    assert pats["red"] > pats["marble"]

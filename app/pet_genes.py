@@ -148,6 +148,8 @@ SPECIES_PATTERNS = {
     "dog": {"belly": 3.0, "points": 2.5, "patches": 2.0, "mask": 1.5, "spots": 1.0, "stripes": 0.4},
     # bunnies wear real rabbit patterns (painted in web/static/js/pet_render.js paintBunny)
     "bunny": {"self": 30, "agouti": 20, "broken": 20, "dutch": 12, "himalayan": 10, "tan": 5, "english": 3},
+    # foxes wear real fox coats (paintFox)
+    "fox": {"red": 40, "cross": 15, "silver": 15, "arctic": 15, "marble": 15},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
@@ -155,6 +157,7 @@ SPECIES_EYES = {
     "cat": {"#7ab84a": 4.0, "#e0a828": 4.0, "#c8702a": 2.0, "#e8d040": 2.0, "#5a9ae0": 1.0},
     "dog": {"#3a2416": 5.0, "#5c3a1a": 4.0, "#8a5a2a": 2.0, "#c8861e": 1.0, "#6aa0d8": 0.4},
     "bunny": {"#2a1810": 6.0, "#4a2a1a": 3.0, "#5a7aa8": 0.6, "#b03040": 0.3},
+    "fox": {"#c8861e": 4.0, "#e0a828": 3.0, "#5c3a1a": 2.0, "#8a5a2a": 1.0},
 }
 ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
 
@@ -163,9 +166,10 @@ ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
 BREEDS = {
     "dog": ("classic", "hound", "shiba", "dachshund", "husky"),
     "bunny": ("classic", "front", "dwarf", "sidelop", "holland", "halflop", "wild", "dwarfside"),
+    "fox": ("red", "sitting", "kit", "curled"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",)}
+MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -173,6 +177,7 @@ SHAPE_EXTRAS = {
     "cat": {"weight": (-1.0, 1.0, -0.5)},
     "dog": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "bunny": {"weight": (-1.0, 1.0, 0.2)},
+    "fox": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
 
