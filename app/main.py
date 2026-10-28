@@ -171,6 +171,16 @@ def pet_care_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pet_care.html")
 
 
+@app.get("/pets/trail")
+def pet_trail_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pet_trail.html")
+
+
+@app.get("/pets/trail/{spot}")
+def pet_habitat_page(spot: int) -> FileResponse:
+    return FileResponse(WEB_DIR / "pet_habitat.html")
+
+
 @app.get("/bedroom")
 def bedroom_page() -> FileResponse:
     return FileResponse(WEB_DIR / "bedroom.html")

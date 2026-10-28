@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Trailhead</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/pet_trail.css" />
+</head>
+<body data-particles>
+  <main class="pet-trail">
+    <p class="back-link"><a href="/pets">← Pets</a></p>
+    <h1>Trailhead</h1>
+    <section class="panel trail-panel">
+      <div class="trail-scene" id="trail-scene">
+        <canvas id="trail-canvas" width="960" height="540" aria-hidden="true"></canvas>
+        <a id="trail-window" class="trail-window"><canvas id="trail-mini" width="480" height="270"></canvas></a>
+        <span id="trail-sign" class="trail-sign"></span>
+      </div>
+      <div class="trail-controls">
+        <button id="trail-down" class="button-go">▼ Down the trail</button>
+        <span id="trail-stop" class="trail-stop"></span>
+        <button id="trail-up" class="button-go">Up the trail ▲</button>
+        <button id="trail-map-open" class="button-gold">🗺️ Map</button>
+      </div>
+    </section>
+    <p id="trail-message" class="trail-message" role="status"></p>
+    <dialog id="trail-map" class="trail-map panel" aria-label="Trail map">
+      <button class="map-close link-button" aria-label="Close">✕</button>
+      <h2 class="panel-title">Trail Map</h2>
+      <div class="map-scene"><canvas id="map-canvas" width="640" height="720" aria-hidden="true"></canvas><nav id="map-spots"></nav></div>
+    </dialog>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pets.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script src="/static/js/habitats.js"></script>
+  <script src="/static/js/pet_motion.js"></script>
+  <script src="/static/js/pet_trail.js"></script>
+</body>
+</html>

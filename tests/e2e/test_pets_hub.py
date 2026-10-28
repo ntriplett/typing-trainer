@@ -29,3 +29,12 @@ def test_the_shop_door_shows_the_free_pet(page: Page, live_server):
     expect(page.locator("#pets-sub")).to_have_text("A free pet is waiting!")
     page.goto(f"{live_server}/pets")
     expect(page.locator("[data-building='shop'] .hub-news")).to_contain_text("free pet")
+
+
+def test_the_care_center_and_trailhead_doors_open(page: Page, live_server):
+    page.goto(f"{live_server}/pets")
+    page.locator("[data-building='care']").click()
+    expect(page.locator("h1")).to_have_text("Pet Care Center")
+    page.goto(f"{live_server}/pets")
+    page.locator("[data-building='trailhead']").click()
+    expect(page.locator("h1")).to_have_text("Trailhead")

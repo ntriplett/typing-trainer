@@ -1,7 +1,7 @@
 // The Pets hub (PLAN.md 11h): a field where your pets wander (fish wait for
 // the Aquarium), with buildings to visit: the Pet Shop, the Pet Care
-// Center, the Aquarium, and the Trailhead out to your habitats. Only the
-// shop is open so far. A new player's field fills up with visitors.
+// Center, the Aquarium, and the Trailhead out to your habitats. All but the
+// Aquarium are open. A new player's field fills up with visitors.
 //
 // The scene is drawn on a 160x90 grid at 6x; each building has a real
 // link (or "coming soon" button) laid over it, so the keyboard works too.
@@ -14,20 +14,18 @@ const FIELD_TOP = 70; // where pets' feet can be (below the signs)
 const FIELD_BOTTOM = 88;
 const PET_SCALE = 0.5; // pets are drawn at twice the scene's pixel density
 const TICK_MS = 120;
-const FRAME_EVERY = 3; // ticks per animation frame
 
 const BUILDINGS = [
   { id: "shop", name: "Pet Shop", href: "/pets/shop", x: 5, y: 18, w: 36, h: 32, draw: drawShop },
   { id: "care", name: "Pet Care Center", href: "/pets/care", x: 45, y: 18, w: 34, h: 32, draw: drawCare },
   { id: "aquarium", name: "Aquarium", soon: true, x: 83, y: 18, w: 36, h: 32, draw: drawAquarium },
-  { id: "trailhead", name: "Trailhead", soon: true, x: 124, y: 18, w: 32, h: 32, draw: drawTrailhead },
+  { id: "trailhead", name: "Trailhead", href: "/pets/trail", x: 124, y: 18, w: 32, h: 32, draw: drawTrailhead },
 ];
 const SIGN_H = 8; // the sign plank under each building
 
 let hub = null; // /api/pets/hub
-let walkers = [];
+let world = null; // pet_motion.js
 let background = null;
-let ticks = 0;
 
 // --- the scene ---------------------------------------------------------------------
 
@@ -143,43 +141,15 @@ function drawBackground() {
   return canvas;
 }
 
-// --- pets in the field ------------------------------------------------------------
+// --- pets in the field (pet_motion.js moves them) -----------------------------------
 
-const isEgg = (p) => p.growth === 0 && (p.species === "dragon" || p.species === "phoenix");
-
-function makeWalkers(data) {
-  const pets = [
-    ...data.field.map((p) => ({ ...p, owned: true })),
-    ...data.visitors.map((p) => ({ ...p, owned: false })),
-  ];
-  return pets.map((p, i) => {
-    const energy = (p.genes.personality || {}).energy ?? 0.5;
-    const width = petSize(p.genes, p.growth).w * PET_SCALE;
-    return {
-      p,
-      width,
-      x: 6 + ((i * 41) % Math.max(1, SCENE_W - 12 - width)),
-      y: FIELD_TOP + ((i * 13) % (FIELD_BOTTOM - FIELD_TOP)),
-      dir: i % 2 ? -1 : 1,
-      speed: isEgg(p) ? 0 : 0.1 + energy * 0.3,
-      rest: 0,
-    };
-  });
+function makeWorld(data) {
+  const pets = [...data.field, ...data.visitors]; // visitors have no name tag
+  return PetMotion.create(pets, { left: 2, right: SCENE_W - 2, top: FIELD_TOP, bottom: FIELD_BOTTOM, props: [] }, PET_SCALE);
 }
 
 function step() {
-  for (const w of walkers) {
-    if (!w.speed) continue;
-    if (w.rest > 0) {
-      w.rest -= 1;
-      continue;
-    }
-    w.x += w.dir * w.speed;
-    if (w.x < 2 || w.x > SCENE_W - w.width - 2) w.dir *= -1;
-    else if (Math.random() < 0.006) w.dir *= -1;
-    if (Math.random() < 0.01) w.rest = 10 + Math.floor(Math.random() * 30 * (1 + ((w.p.genes.personality || {}).sleepy || 0)));
-  }
-  ticks += 1;
+  PetMotion.step(world);
   draw();
 }
 
@@ -188,26 +158,7 @@ function draw() {
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(background, 0, 0);
-  const px = painter(ctx);
-  const frame = Math.floor(ticks / FRAME_EVERY);
-  for (const w of [...walkers].sort((a, b) => a.y - b.y)) {
-    const moving = w.speed && !w.rest;
-    drawPet(px, w.x, w.y, w.p.genes, w.p.growth, { frame: moving ? frame : 0, faceLeft: w.dir < 0, scale: PET_SCALE });
-    if (w.p.owned) nameTag(ctx, w);
-  }
-}
-
-function nameTag(ctx, w) {
-  const h = petSize(w.p.genes, w.p.growth).h * PET_SCALE;
-  const cx = (w.x + w.width / 2) * SCENE_PX;
-  const top = (w.y - h - 1) * SCENE_PX;
-  ctx.font = "22px 'Jersey 10', sans-serif";
-  ctx.textAlign = "center";
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = "#3b2417";
-  ctx.strokeText(w.p.name, cx, top);
-  ctx.fillStyle = "#fbf1dc";
-  ctx.fillText(w.p.name, cx, top);
+  PetMotion.draw(world, painter(ctx), { ctx, unit: SCENE_PX, tags: true });
 }
 
 // --- buildings: links over the scene ------------------------------------------------
@@ -257,7 +208,7 @@ async function load() {
   hub = await r.json();
   Header.update(hub);
   background = drawBackground();
-  walkers = makeWalkers(hub);
+  world = makeWorld(hub);
   renderBuildings();
   renderPets();
   draw();
