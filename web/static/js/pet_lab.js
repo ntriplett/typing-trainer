@@ -10,7 +10,7 @@ const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
 // The species picked first when the lab opens (every species is listed).
-const LAB_FIRST = "phoenix";
+const LAB_FIRST = "fish";
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
@@ -82,7 +82,7 @@ function label(pet) {
   const names = pet.color_names.filter(Boolean);
   const pct = pet.coat.shares.filter(Boolean).map((s) => `${Math.round(s * 100)}%`);
   const breed = pet.shape.breed ? `${pet.shape.breed}${Object.entries(pet.shape.mix || {}).map(([p, d]) => ` + ${d} ${p}`).join("")}<br>` : "";
-  return `${breed}${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.face.sparkle ? " ✨" : ""}`;
+  return `${breed}${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.coat.fins ? `, ${pet.coat.fins} fins` : ""}${pet.face.sparkle ? " ✨" : ""}`;
 }
 
 function renderLitter() {
@@ -119,6 +119,9 @@ function select(pet) {
   $("closeup").hidden = false;
   $("close-seed").textContent = pet.seed;
   $("opt-pattern").value = selected.coat.pattern;
+  // a fin pattern of its own (fish)
+  $("finpat-knob").hidden = !selected.coat.fins;
+  if (selected.coat.fins) $("opt-finpat").value = selected.coat.fins;
   $("opt-splotch").value = selected.coat.splotch;
   $("opt-length").value = selected.shape.length;
   $("opt-height").value = selected.shape.height;
@@ -128,7 +131,7 @@ function select(pet) {
   $("opt-tail").value = selected.shape.tail;
   $("opt-sparkle").checked = selected.face.sparkle;
   // species-only looks show their sliders when this pet has them
-  for (const key of ["weight", "snout", "legs", "wool", "horns", "neck", "dome", "crest", "thick", "wings"]) {
+  for (const key of ["weight", "snout", "legs", "wool", "horns", "neck", "dome", "crest", "thick", "wings", "fins", "tailh", "size"]) {
     $(`${key}-knob`).hidden = !(key in selected.shape);
     $(`opt-${key}`).value = selected.shape[key] || 0;
   }
@@ -146,11 +149,25 @@ function showStats() {
     `face: ${JSON.stringify(face)}`,
     `personality: ${JSON.stringify(personality)}`,
     `battle: ${JSON.stringify(battle)}`,
+    ...(selected.behavior ? [`behavior: ${JSON.stringify(selected.behavior)}`] : []),
   ].join("\n");
 }
 
 // One row per design, each with all five stages side by side, walking.
+// Species built from parts (fish) show a row per part, every option drawn on
+// the selected pet, instead of a row per design across the growth stages.
+function parts() {
+  return $("opt-species").value === "fish" ? FISH_PARTS : null;
+}
+
 function buildRows() {
+  if (parts()) {
+    $("variant-rows").innerHTML = Object.entries(parts())
+      .map(([part, options]) => `<div class="variant-row"><h3>${part}: ${Object.keys(options).join(", ")}</h3>
+      <canvas class="stages-art" data-part="${part}" width="960" height="230"></canvas></div>`)
+      .join("");
+    return;
+  }
   const designs = [[0, "Current"], ...variants().map((v, i) => [i + 1, `${i + 1}. ${v.name}`])];
   $("variant-rows").innerHTML = designs
     .map(([v, name]) => `<div class="variant-row"><h3>${name}</h3>
@@ -158,8 +175,39 @@ function buildRows() {
     .join("");
 }
 
+// The selected pet on its own, big, under the sliders: as the knobs set it,
+// at the growth slider's stage. The scale is fixed per species (fitted to its
+// biggest size), so the size knobs visibly grow and shrink it.
+function drawSolo() {
+  const canvas = $("solo");
+  const pet = plain(selected);
+  const px = canvasPx(canvas);
+  const roomy = { ...pet, shape: { ...pet.shape, size: 1, length: 3, height: 3, fins: 1, tail: 1, tailh: 1 } };
+  const scale = fitScale([petSize(roomy, 10)], canvas.width - 20, canvas.height - 20, 10);
+  const { w } = petSize(pet, growth());
+  drawPet(px, Math.round((canvas.width - w * scale) / 2), canvas.height - 10, pet, growth(), { frame, scale });
+}
+
+// One row per part: the selected pet wearing each option of that part.
+function drawParts() {
+  document.querySelectorAll("#variant-rows canvas").forEach((canvas) => {
+    const part = canvas.dataset.part;
+    const keys = Object.keys(parts()[part]);
+    const pets = keys.map((k) => plain({ ...selected, variant: 0, shape: { ...selected.shape, [part]: k } }));
+    const px = canvasPx(canvas);
+    const slot = canvas.width / keys.length;
+    const scale = fitScale(pets.map((p) => petSize(p, 10)), slot - 4, canvas.height - 10, 4);
+    pets.forEach((pet, i) => {
+      const { w } = petSize(pet, 10);
+      drawPet(px, Math.round(i * slot + (slot - w * scale) / 2), canvas.height - 6, pet, 10, { frame, scale });
+    });
+  });
+}
+
 function drawStages() {
   if (!selected) return;
+  drawSolo();
+  if (parts()) return drawParts();
   document.querySelectorAll("#variant-rows canvas").forEach((canvas) => {
     const v = Number(canvas.dataset.variant);
     const pet = plain(v ? { ...selected, variant: v } : selected);
@@ -184,6 +232,7 @@ function knob(id, apply) {
 }
 
 knob("opt-pattern", (el) => (selected.coat.pattern = el.value));
+knob("opt-finpat", (el) => (selected.coat.fins = el.value));
 knob("opt-splotch", (el) => (selected.coat.splotch = Number(el.value)));
 knob("opt-length", (el) => (selected.shape.length = Number(el.value)));
 knob("opt-height", (el) => (selected.shape.height = Number(el.value)));
@@ -203,6 +252,9 @@ knob("opt-dome", (el) => (selected.shape.dome = Number(el.value)));
 knob("opt-crest", (el) => (selected.shape.crest = Number(el.value)));
 knob("opt-thick", (el) => (selected.shape.thick = Number(el.value)));
 knob("opt-wings", (el) => (selected.shape.wings = Number(el.value)));
+knob("opt-fins", (el) => (selected.shape.fins = Number(el.value)));
+knob("opt-tailh", (el) => (selected.shape.tailh = Number(el.value)));
+knob("opt-size", (el) => (selected.shape.size = Number(el.value)));
 
 $("opt-species").addEventListener("change", () => {
   fillColors();

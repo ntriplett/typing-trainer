@@ -9,13 +9,13 @@ from app import pet_genes as g
 
 
 def test_the_color_pool_is_90_plus_flames_and_metals_with_about_45_per_species():
-    assert len(g.COLORS) == 90 + 24 + 5  # shared, phoenix flames, treasure metals
+    assert len(g.COLORS) == 90 + 24 + 8 + 5  # shared, phoenix flames, fish neons, treasure metals
     for species, starters in g.STARTER_COLORS.items():
         eligible = g.eligible_colors(species)
         assert set(starters) <= set(eligible)
         if species in g.SPECIAL_PALETTE:
             assert all(g.COLORS[c].family.startswith("fire") for c in eligible)
-        else:
+        elif species != "fish":  # fish wear the whole pool
             assert 40 <= len(eligible) <= 55, species
 
 
@@ -176,7 +176,7 @@ def test_unlocked_colors_are_shared_by_every_species():
     # a dog's starter color can be picked for a cat
     assert g.roll("cat", "golden", "snow", 1)["coat"]["colors"][:2] == ["golden", "snow"]
     catalog = g.color_catalog(start)
-    flames = {c for c in start if g.COLORS[c].family.startswith("fire")}
+    flames = {c for c in start if g.COLORS[c].family.startswith(("fire", "neon"))}
     assert len(catalog) == 90 and sum(c["unlocked"] for c in catalog) == len(start - flames)
 
 
@@ -358,3 +358,47 @@ def test_phoenixes_burn_bright_flames_with_a_lighter_glow():
     with pytest.raises(g.GeneError):
         g.roll("phoenix", "golden", None, 1)
     assert len(g.color_catalog(g.starting_unlocks(), "phoenix")) == 24
+
+
+def test_fish_roll_every_part_on_its_own():
+    fish = [g.roll("fish", None, None, seed) for seed in range(800)]
+    for part, options in g.PARTS["fish"].items():
+        assert {f["shape"][part] for f in fish} == set(options), part
+    # the parts mix freely: plenty of different body + head pairs
+    assert len({(f["shape"]["body"], f["shape"]["head"]) for f in fish}) > 50
+
+
+def test_fish_wear_the_shared_pool_plus_rare_neons_and_a_fin_pattern():
+    import collections
+
+    fish = [g.roll("fish", None, None, seed) for seed in range(4000)]
+    fams = collections.Counter(g.COLORS[c].family for f in fish for c in f["coat"]["colors"][:2])
+    assert len(fams) >= 14
+    assert 0 < fams["neon"] < 0.08 * 8000
+    bodies = collections.Counter(f["coat"]["pattern"] for f in fish)
+    fins = collections.Counter(f["coat"]["fins"] for f in fish)
+    assert set(bodies) == set(g.SPECIES_PATTERNS["fish"]) and bodies["solid"] > bodies["scaled"]
+    assert set(fins) == set(g.FIN_PATTERNS["fish"]) and fins["clear"] > fins["rayed"]
+    # neons are only for fish
+    with pytest.raises(g.GeneError):
+        g.roll("cat", "neon_blue", None, 1, {"neon_blue"})
+    assert g.roll("fish", "neon_blue", "snow", 1, {"neon_blue", "snow"})
+    assert len(g.color_catalog(set(), "fish")) == 90 + 8
+    assert len(g.color_catalog(set(), "cat")) == 90
+
+
+def test_fish_prefer_a_height_by_their_mouth_and_small_ones_school():
+    fish = [g.roll("fish", None, None, seed) for seed in range(3000)]
+    assert all(0 <= f["behavior"]["height"] <= 1 and 0 <= f["behavior"]["schooling"] <= 1 for f in fish)
+    mean = lambda xs: sum(xs) / len(xs)  # noqa: E731
+    up = mean([f["behavior"]["height"] for f in fish if f["shape"]["head"] in ("upturned", "beak")])
+    down = mean([f["behavior"]["height"] for f in fish if f["shape"]["head"] in ("sucker", "whiskers")])
+    assert up > 0.65 and down < 0.35
+    small = mean([f["behavior"]["schooling"] for f in fish if f["shape"]["size"] < -0.3])
+    big = mean([f["behavior"]["schooling"] for f in fish if f["shape"]["size"] > 0.3])
+    assert small > big + 0.1
+    # stable, and only fish have it
+    assert g.roll("fish", None, None, 7)["behavior"] == g.roll("fish", None, None, 7)["behavior"]
+    assert "behavior" not in g.roll("cat", "orange", "ash", 7)
+    old = {k: v for k, v in fish[0].items() if k != "behavior"}
+    assert g.fill_missing(old)["behavior"] == fish[0]["behavior"]  # fills in for older fish

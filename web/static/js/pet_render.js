@@ -67,9 +67,9 @@ const PET_RECIPES = {
 // or, for "face" and "skin", a shade of the coat).
 const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill", "fin"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
-const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
+const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "fbody", "fhead", "lip", "pectoral", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2"]);
+const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2", "gill", "fhead"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
@@ -95,6 +95,19 @@ const DERIVED = {
   utail: (hex) => hex[1] || hex[0],
   feather: (hex) => blend(hex[0], "#ffffff", 0.25),
   pfeather: (hex) => hex[0],
+  fhead: (hex) => hex[0],
+  gill: (hex) => blend(hex[0], SHADOW_TINT, 0.22),
+  lip: (hex) => blend(hex[0], "#f8a8a0", 0.7),
+  mouthline: (hex) => blend(hex[0], SHADOW_TINT, 0.5),
+  barbel: (hex) => blend(hex[0], "#f0e0c0", 0.4),
+  caudal: (hex) => blend(hex[1] || hex[0], "#ffffff", 0.3),
+  dorsal: (hex) => blend(hex[1] || hex[0], "#ffffff", 0.3),
+  anal: (hex) => blend(hex[1] || hex[0], "#ffffff", 0.3),
+  pelvic: (hex) => blend(hex[1] || hex[0], "#ffffff", 0.3),
+  pectoral: (hex) => blend(hex[1] || hex[0], "#ffffff", 0.45),
+  cray: (hex) => blend(hex[1] || hex[0], SHADOW_TINT, 0.12),
+  dray: (hex) => blend(hex[1] || hex[0], SHADOW_TINT, 0.12),
+  aray: (hex) => blend(hex[1] || hex[0], SHADOW_TINT, 0.12),
   pfeather2: (hex) => blend(hex[0], SHADOW_TINT, 0.15),
   farpfeather: (hex) => hex[0],
   breast: (hex) => blend(hex[0], "#f8e0a0", 0.35),
@@ -587,6 +600,7 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
 
 function paintCoat(out, grid, genes, built, hex) {
   if (built.fire) return paintFire(out, grid, genes, built, hex);
+  if (built.fish) return paintFish(out, grid, genes, built, hex);
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
@@ -662,6 +676,7 @@ function paintCoat(out, grid, genes, built, hex) {
 // with any part a mix borrowed from another breed.
 function speciesDesign(genes) {
   const design = PET_DESIGNS[genes.species];
+  if (design && design.fromGenes) return design.fromGenes(genes);
   if (!design || !design.breeds) return design;
   const shape = genes.shape || {};
   const breeds = design.breeds;
@@ -2332,6 +2347,136 @@ function addLicks(grid, frame, s, lean) {
   });
 }
 
+// --- fish coats: a body pattern and a fin pattern -----------------------------------
+// The body is the first color, its pattern in the second (and a third when one
+// was rolled); the belly a touch paler; around the eye stays clean.
+//   solid     one color
+//   twotone   dark above, the second color below, a wavy line between
+//   gradient  the first color at the head fading to the second at the tail
+//   stripe    a bright band along the side from eye to tail (neon tetra; a
+//             third color below it toward the tail)
+//   bars      bands across the body (tiger barb, angelfish, clown loach)
+//   spots     little round spots (cory, leopard danio)
+//   marbled   big soft blotches (marble angel; a third color in the middle)
+//   scaled    a net of scale lines (reticulated)
+// All of a fish's fins wear one pattern, laid out from where each fin meets the
+// body (its base) to its tip:
+//   clear     pale and see-through-looking, a tint of the body
+//   solid     the second color
+//   edged     clear with a rim of the third color (or the second)
+//   tipped    clear at the base, the second color at the tips
+//   gradient  the body color at the base to the second color at the tips
+//   striped   bands of the second color running across the fins
+//   spotted   dots of the second color
+//   rayed     pale, the rays picked out in the second color
+
+const FISH_PATTERNS = new Set(["solid", "twotone", "gradient", "stripe", "bars", "spots", "marbled", "scaled"]);
+const FISH_SKIN = new Set(["fbody", "fhead", "gill"]);
+const FISH_FIN = { caudal: "caudal", cray: "caudal", dorsal: "dorsal", dray: "dorsal", anal: "anal", aray: "anal", pelvic: "pelvic", pectoral: "pectoral" };
+const FISH_PAINTED = new Set([...FISH_SKIN, ...Object.keys(FISH_FIN)]);
+
+function paintFish(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  built.painted = FISH_PAINTED;
+  const c1 = hex[0];
+  const c2 = hex[1] || blend(hex[0], "#ffffff", 0.4);
+  const c3 = hex[2];
+  const body = genes.coat.pattern;
+  const finPat = genes.coat.fins || "clear";
+  const { x0, L, eye, pec } = built.fish;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  const noise = valueNoise(genes.seed);
+  const at = (x, y) => (grid[y] && grid[y][x]) || null;
+  const isSkin = (x, y) => at(x, y) && FISH_SKIN.has(at(x, y).l);
+  // each column's top and bottom of the body
+  const top = {};
+  const bot = {};
+  grid.forEach((row, y) => row.forEach((c, x) => c && FISH_SKIN.has(c.l) && ((top[x] = Math.min(top[x] ?? y, y)), (bot[x] = Math.max(bot[x] ?? y, y)))));
+
+  const skin = (x, y) => {
+    const t = Math.max(0, Math.min(1, (x + 0.5 - x0) / L)); // tail 0 .. nose 1
+    const v = (y - top[x]) / Math.max(1, bot[x] - top[x]); // back 0 .. belly 1
+    let c = c1;
+    if (body === "twotone" && v > 0.55 + Math.sin(x * 0.8) * 0.06) c = c2;
+    else if (body === "gradient") c = blend(c2, c1, Math.max(0, Math.min(4, Math.floor(t * 4 + ((x + y) & 1 ? 0.25 : -0.25)))) / 4);
+    else if (body === "stripe") {
+      if (v >= 0.32 && v <= 0.5 && t < 0.86) c = c2;
+      else if (c3 && v > 0.5 && v <= 0.75 && t < 0.55) c = c3;
+    } else if (body === "bars") {
+      const P = Math.max(4, Math.round(L / 5));
+      if (((x - Math.round(x0)) % P + P) % P < Math.max(1.5, P * 0.35)) c = c2;
+    } else if (body === "spots") {
+      // one spot per little cell, at a random spot in it, so they scatter
+      const gx = Math.floor(x / 4);
+      const gy = Math.floor(y / 3);
+      if (x === gx * 4 + Math.floor(tick(gx, gy + 50) * 4) && y === gy * 3 + Math.floor(tick(gx + 50, gy) * 3) && tick(gx, gy) < 0.8) c = c2;
+    } else if (body === "marbled") {
+      const n = noise(x * 0.22 + 7, y * 0.3 + 7);
+      if (n > 0.55) c = c3 && n > 0.78 ? c3 : c2;
+    } else if (body === "scaled") {
+      if ((((x + y) % 4) + 4) % 4 === 0 || (((x - y) % 4) + 4) % 4 === 0) c = blend(c1, c2, 0.6);
+    }
+    if (Math.hypot(x - eye[0], y - eye[1]) < 2.6) c = c1; // the face stays clean round the eye
+    if (v > 0.72) c = blend(c, "#ffffff", 0.16); // a paler belly
+    return c;
+  };
+
+  // fins: how far each fin pixel is from the body (steps through the fin)
+  const dist = new Map();
+  let edge = [];
+  grid.forEach((row, y) => row.forEach((c, x) => c && FISH_SKIN.has(c.l) && edge.push([x, y])));
+  for (let d = 1; edge.length; d++) {
+    const next = [];
+    for (const [x, y] of edge) {
+      for (const [i, j] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+        const c = at(i, j);
+        if (c && FISH_FIN[c.l] && FISH_FIN[c.l] !== "pectoral" && !dist.has(j * GRID_W + i)) {
+          dist.set(j * GRID_W + i, d);
+          next.push([i, j]);
+        }
+      }
+    }
+    edge = next;
+  }
+  const far = {};
+  grid.forEach((row, y) =>
+    row.forEach((c, x) => {
+      if (!c || !FISH_FIN[c.l]) return;
+      const f = FISH_FIN[c.l];
+      const d = f === "pectoral" ? Math.hypot(x - pec[0], y - pec[1]) : dist.get(y * GRID_W + x) || 1;
+      far[f] = Math.max(far[f] || 1, d);
+    })
+  );
+  const membrane = blend(c1, "#ffffff", 0.5);
+  const fin = (x, y, c) => {
+    const f = FISH_FIN[c.l];
+    const d = f === "pectoral" ? Math.hypot(x - pec[0], y - pec[1]) : dist.get(y * GRID_W + x) || 1;
+    const u = d / far[f]; // base 0 .. tip 1
+    const ray = c.l.endsWith("ray");
+    const rim = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].some(([i, j]) => !at(i, j));
+    let col = membrane;
+    if (finPat === "solid") col = c2;
+    else if (finPat === "edged") col = rim ? c3 || c2 : membrane;
+    else if (finPat === "tipped") col = u > 0.6 ? c2 : membrane;
+    else if (finPat === "gradient") col = blend(c1, c2, Math.min(1, Math.floor(u * 3 + ((x + y) & 1 ? 0.3 : 0)) / 3));
+    else if (finPat === "striped") col = Math.round(d) % 3 === 0 ? c2 : membrane;
+    else if (finPat === "spotted") col = (x + 2 * y) % 4 === 0 && tick(x, y) < 0.6 ? c2 : membrane;
+    else if (finPat === "rayed") col = ray ? c2 : blend(c1, "#ffffff", 0.65);
+    if (ray && finPat !== "rayed") col = blend(col, SHADOW_TINT, 0.15);
+    return col;
+  };
+
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      if (c.l === "gill") out[y][x] = blend(skin(x, y), SHADOW_TINT, 0.22);
+      else if (FISH_SKIN.has(c.l)) out[y][x] = skin(x, y);
+      else if (FISH_FIN[c.l]) out[y][x] = fin(x, y, c);
+    }
+  }
+}
+
 // --- unicorn coats: real horse markings, and a little magic --------------------------
 // The body is the first color and the mane and tail the second, except:
 //   solid      just that
@@ -2445,6 +2590,10 @@ function paintUnicorn(out, grid, genes, built, hex) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // fish are built from parts the pet rolled (shape.body, shape.head, ...)
+  fish: {
+    fromGenes: () => ({ fish: true }),
+  },
   // chosen in the pet lab, 2026-10-27: four phoenix breeds, ember egg to
   // grown; a mix borrows another breed's flame tail, tail or crest
   phoenix: {
@@ -2867,6 +3016,12 @@ const PET_VARIANTS = {
   dragon: Object.values(DRAGON_BREEDS),
   unicorn: Object.values(UNICORN_BREEDS),
   phoenix: Object.values(PHOENIX_BREEDS),
+  // fish: the eight bodies, each with stand-in fins
+  // (a getter: FISH_BODIES is defined further down); the rest of the fish
+  // comes from its own rolled parts
+  get fish() {
+    return Object.entries(FISH_BODIES).map(([body, b]) => ({ fish: true, body, name: b.name }));
+  },
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -2875,6 +3030,7 @@ function buildVariant(genes, stage, frame, V) {
   if (V.dragon) return buildDragon(genes, stage, frame, V);
   if (V.unicorn) return buildUnicorn(genes, stage, frame, V);
   if (V.phoenix) return buildPhoenix(genes, stage, frame, V);
+  if (V.fish) return buildFish(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
@@ -5039,6 +5195,292 @@ function buildPhoenix(genes, stage, frame, V) {
   };
 }
 
+// --- fish ---------------------------------------------------------------------------
+// Tropical freshwater fish, built from parts so every fish can differ: a body
+// (its outline as top and bottom heights from tail to nose), a head, and
+// fins -- dorsal (top), caudal (tail), anal (bottom), pectoral (front side) and
+// pelvic. Side-on, facing right, swimming at its feeding level: bottom
+// feeders just off the floor, top feeders high. Fish don't grow: every fish is
+// a grown fish.
+
+// Body outlines: half-heights above (top) and below (bot) the center line at
+// FISH_T along the body, tail end (0) to nose (1); `len` is the length.
+const FISH_T = [0, 0.12, 0.3, 0.5, 0.7, 0.85, 0.95, 1];
+const FISH_BODIES = {
+  tetra: { name: "Tetra: slim spindle, mid-water", zone: "mid", len: 22, top: [1.3, 1.6, 3.2, 4.2, 4.0, 3.2, 2.0, 0.6], bot: [1.3, 1.5, 3.0, 3.8, 3.6, 2.8, 1.6, 0.4] },
+  discus: { name: "Discus: a round disc, mid-water", zone: "mid", len: 18, top: [1.5, 2.5, 6.5, 8.5, 8.5, 7.0, 4.5, 1.2], bot: [1.5, 2.5, 6.5, 8.5, 8.0, 6.5, 4.0, 1.0] },
+  angel: { name: "Angelfish: a tall diamond, mid-water", zone: "mid", len: 16, top: [1.4, 2.6, 6.0, 8.8, 7.0, 4.6, 2.6, 0.8], bot: [1.4, 2.6, 6.0, 8.8, 6.6, 4.2, 2.0, 0.6] },
+  gourami: { name: "Gourami/barb: a deep oval, mid-water", zone: "mid", len: 20, top: [1.6, 2.5, 5.0, 6.0, 5.6, 4.4, 2.8, 0.8], bot: [1.6, 2.4, 4.6, 5.6, 5.2, 4.0, 2.4, 0.6] },
+  cory: { name: "Corydoras: arched back, flat belly, bottom feeder", zone: "bottom", len: 18, top: [1.4, 2.0, 4.5, 6.0, 6.2, 5.5, 4.0, 2.0], bot: [1.2, 1.4, 2.2, 2.6, 2.6, 2.4, 2.0, 1.4] },
+  loach: { name: "Loach: long and slender, bottom feeder", zone: "bottom", len: 30, top: [1.0, 1.4, 2.2, 2.6, 2.6, 2.4, 2.0, 1.2], bot: [1.0, 1.3, 2.0, 2.4, 2.4, 2.2, 1.8, 1.0] },
+  hatchet: { name: "Hatchetfish: straight back, deep keel belly, top feeder", zone: "top", len: 16, top: [1.2, 1.4, 1.8, 2.0, 2.0, 1.8, 1.4, 0.8], bot: [1.2, 2.0, 5.0, 8.0, 8.5, 6.5, 3.5, 1.0] },
+  killi: { name: "Killifish/guppy: flat back, upturned mouth, top feeder", zone: "top", len: 22, top: [1.2, 1.5, 2.4, 2.8, 2.8, 2.6, 2.2, 1.4], bot: [1.2, 1.8, 3.4, 4.0, 3.6, 2.8, 1.8, 0.6] },
+};
+
+// Heads: how the front of the fish ends. `mouth` is where the mouth sits
+// (up for surface feeders, down for bottom feeders).
+const FISH_HEADS = {
+  terminal: { name: "Plain: mouth straight ahead", mouth: "mid" },
+  upturned: { name: "Upturned: jutting chin, mouth on top (surface feeder)", mouth: "up" },
+  sucker: { name: "Sucker mouth: round lips underneath (pleco)", mouth: "down" },
+  whiskers: { name: "Whiskers: barbels hanging from the mouth (cory, catfish)", mouth: "down" },
+  snout: { name: "Long snout: a pointed nose", mouth: "mid" },
+  hump: { name: "Hump: a bump on the forehead (cichlid)", mouth: "mid" },
+  beak: { name: "Beak: a long needle of a lower jaw (halfbeak)", mouth: "up" },
+  kisser: { name: "Kisser: big puckered lips (kissing gourami)", mouth: "mid" },
+};
+
+// Fins. Each is an outline of [u, v] points: dorsal and anal fins sit on a
+// stretch of the body's edge (`at`: from-to along the body, tail end 0 to nose
+// 1) with u along that base (0 at its back end, 1 at its front; below 0 trails
+// back past it) and v outward from the edge in units of the fin's height `h`.
+// The caudal (tail) has u back from the tail end in tail lengths and v up/down
+// in tail heights. The pectoral has u back from just behind the gill and v
+// down, in units of its size. `rays`: draw fin rays. Points with u past `flow`
+// sway as the fish swims.
+const FISH_CAUDAL = {
+  forked: { name: "Forked (tetra)", pts: [[0, -0.3], [1, -1], [0.5, 0], [1, 1], [0, 0.3]], rays: true },
+  round: { name: "Round fan (gourami)", pts: [[0, -0.3], [0.4, -0.85], [0.8, -0.75], [1, -0.3], [1.05, 0], [1, 0.3], [0.8, 0.75], [0.4, 0.85], [0, 0.3]], rays: true },
+  lyre: { name: "Lyre: long curved points top and bottom", pts: [[0, -0.3], [0.6, -0.8], [1.45, -1.3], [0.9, -0.6], [0.55, 0], [0.9, 0.6], [1.45, 1.3], [0.6, 0.8], [0, 0.3]], rays: true, flow: 1 },
+  veil: { name: "Veil: long and drooping (betta, fancy guppy)", pts: [[0, -0.35], [0.5, -0.75], [1.1, -0.45], [1.6, 0.4], [1.5, 1.35], [0.9, 1.1], [0.4, 0.5], [0, 0.35]], rays: true, flow: 0.8 },
+  sword: { name: "Sword: a long point off the bottom (swordtail)", pts: [[0, -0.35], [0.5, -0.9], [0.95, -0.85], [0.9, -0.1], [0.85, 0.3], [2, 0.62], [1.9, 0.95], [0.5, 0.85], [0, 0.35]], rays: false, flow: 1.4 },
+  delta: { name: "Delta: a wide triangle (guppy)", pts: [[0, -0.25], [1.2, -1.1], [1.25, 0], [1.2, 1.1], [0, 0.25]], rays: true, flow: 1 },
+  spade: { name: "Spade: one rounded point", pts: [[0, -0.3], [0.6, -0.7], [1.3, 0], [0.6, 0.7], [0, 0.3]], rays: true },
+  square: { name: "Square: a straight back edge (platy, cory)", pts: [[0, -0.35], [0.15, -0.85], [0.85, -0.9], [0.85, 0.9], [0.15, 0.85], [0, 0.35]], rays: true },
+};
+const FISH_DORSAL = {
+  small: { name: "Small triangle", at: [0.42, 0.62], h: 4, pts: [[0, -1], [-0.15, 1], [1, -1]], rays: false },
+  sail: { name: "Sail: tall and long (sailfin molly)", at: [0.2, 0.75], h: 7, pts: [[0, -1], [-0.05, 0.9], [0.3, 1], [0.7, 0.85], [1, -1]], rays: true },
+  spiny: { name: "Spiny: a row of spines (cichlid)", at: [0.35, 0.72], h: 5, pts: [[0, -1], [0, 0.55], [0.12, 0.3], [0.25, 1], [0.4, 0.45], [0.55, 0.95], [0.7, 0.4], [0.85, 0.8], [1, -1]], rays: false },
+  flowing: { name: "Flowing: trailing back over the tail (betta)", at: [0.3, 0.62], h: 5, pts: [[1, -1], [0.85, 0.7], [0.4, 1], [-0.5, 0.9], [-1.1, 0.25], [-0.6, 0.05], [0, -1]], rays: true, flow: -0.2 },
+  round: { name: "Round fan", at: [0.4, 0.66], h: 4.5, pts: [[0, -1], [-0.05, 0.5], [0.15, 0.95], [0.5, 1.1], [0.85, 0.9], [1, 0.3], [1, -1]], rays: true },
+  ridge: { name: "Low ridge: long and low (loach, knifefish)", at: [0.1, 0.8], h: 2.2, pts: [[0, -1], [0, 0.6], [0.2, 1], [0.8, 1], [1, 0.3], [1, -1]], rays: false },
+  angel: { name: "Angel: a tall swept-back crescent", at: [0.4, 0.66], h: 9, pts: [[1, -1], [0.5, 0.6], [-0.3, 1], [-0.95, 1.05], [-0.45, 0.5], [0, -1]], rays: true, flow: -0.4 },
+  twin: { name: "Twin: a fin and a little fatty fin behind (catfish)", at: [0.55, 0.7], h: 4, pts: [[0, -1], [-0.1, 1], [1, -1]], rays: false, adipose: [0.14, 0.24] },
+};
+const FISH_ANAL = {
+  small: { name: "Small triangle", at: [0.18, 0.36], h: 3.5, pts: [[0, -1], [-0.1, 1], [1, -1]], rays: false },
+  long: { name: "Long and low along the belly (tetra, knifefish)", at: [0.1, 0.5], h: 2.6, pts: [[0, -1], [0, 0.9], [0.5, 1], [1, 0.2], [1, -1]], rays: true },
+  flowing: { name: "Flowing: trailing back (betta)", at: [0.15, 0.5], h: 4.5, pts: [[1, -1], [0.8, 0.7], [0.3, 1], [-0.5, 0.9], [-0.9, 0.4], [-0.3, 0.2], [0, -1]], rays: true, flow: -0.2 },
+  angel: { name: "Angel streamer: tall, swept back", at: [0.3, 0.55], h: 8, pts: [[1, -1], [0.4, 0.55], [-0.5, 1], [-1.1, 1.05], [-0.4, 0.4], [0, -1]], rays: true, flow: -0.2 },
+  round: { name: "Round", at: [0.2, 0.4], h: 3.5, pts: [[0, -1], [0, 0.5], [0.25, 1], [0.6, 1], [0.95, 0.5], [1, -1]], rays: true },
+  spike: { name: "Spike: thin and pointed (livebearer)", at: [0.32, 0.42], h: 4, pts: [[0, -1], [-0.6, 1], [1, -1]], rays: false },
+  fringe: { name: "Fringe: long with a scalloped edge", at: [0.12, 0.45], h: 3.5, pts: [[0, -1], [0, 1], [0.15, 0.6], [0.3, 1], [0.45, 0.6], [0.6, 1], [0.75, 0.6], [0.9, 0.9], [1, -1]], rays: false },
+  nub: { name: "Nub: barely there", at: [0.2, 0.3], h: 1.6, pts: [[0, -1], [0.2, 1], [0.8, 1], [1, -1]], rays: false },
+};
+const FISH_PECTORAL = {
+  small: { name: "Small teardrop", pts: [[0, -0.3], [1.1, 0.2], [0.9, 0.6], [0, 0.3]] },
+  wing: { name: "Wing: long, swept back (hatchetfish)", pts: [[0, -0.4], [2.3, -0.05], [2.2, 0.45], [0, 0.4]] },
+  fan: { name: "Round fan", pts: [[0, -0.3], [0.7, -0.6], [1.2, -0.2], [1.2, 0.4], [0.7, 0.8], [0, 0.3]] },
+  feelers: { name: "Feelers: long threads (gourami)", pts: [[0, -0.25], [0.7, 0.1], [0, 0.3]], threads: true },
+  spine: { name: "Spine: a stiff spike (cory)", pts: [[0, -0.2], [1.7, 0.5], [0, 0.2]] },
+  flowing: { name: "Flowing: big and soft (betta)", pts: [[0, -0.3], [1.2, 0.3], [1.8, 1.3], [1.2, 1.45], [0.4, 0.7], [0, 0.3]], flow: 1 },
+  nub: { name: "Nub: tiny", pts: [[0, -0.25], [0.5, 0.1], [0, 0.3]] },
+  butterfly: { name: "Butterfly: broad and spread (hillstream loach)", pts: [[0, -0.4], [0.4, -0.95], [1.2, -0.65], [1.4, 0.4], [0.8, 1.05], [0, 0.4]] },
+};
+
+// A filled polygon (fins).
+function fillPoly(grid, pts, label) {
+  const ys = pts.map((p) => p[1]);
+  for (let y = Math.floor(Math.min(...ys)); y <= Math.ceil(Math.max(...ys)); y++) {
+    const yc = y + 0.5;
+    const xs = [];
+    pts.forEach((a, i) => {
+      const b = pts[(i + 1) % pts.length];
+      if ((a[1] <= yc) !== (b[1] <= yc)) xs.push(a[0] + ((yc - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+    });
+    xs.sort((m, n) => m - n);
+    for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.round(xs[k]); x < Math.round(xs[k + 1]); x++) put(grid, x, y, { l: label, nx: 0, ny: -0.3 });
+  }
+}
+
+// Every part a fish is built from and its options, for rolling and the lab.
+const FISH_PARTS = {
+  get body() {
+    return FISH_BODIES;
+  },
+  get head() {
+    return FISH_HEADS;
+  },
+  get caudal() {
+    return FISH_CAUDAL;
+  },
+  get dorsal() {
+    return FISH_DORSAL;
+  },
+  get anal() {
+    return FISH_ANAL;
+  },
+  get pectoral() {
+    return FISH_PECTORAL;
+  },
+};
+
+// a body outline's half-height at t, eased smoothly between the samples
+function fishHalf(arr, t) {
+  const i = Math.max(0, Math.min(FISH_T.length - 2, FISH_T.findIndex((v, k) => t <= FISH_T[k + 1])));
+  const u = (t - FISH_T[i]) / (FISH_T[i + 1] - FISH_T[i]);
+  const e = (1 - Math.cos(Math.PI * Math.max(0, Math.min(1, u)))) / 2;
+  return arr[i] + (arr[i + 1] - arr[i]) * e;
+}
+
+function buildFish(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const B = FISH_BODIES[V.body || shape.body] || FISH_BODIES.tetra;
+  const headKey = V.head || shape.head;
+  const H = FISH_HEADS[headKey] || FISH_HEADS.terminal;
+  const swish = frame % 2;
+  const size = 1 + (shape.size || 0) * 0.25; // the whole fish, bigger or smaller
+  const sx = 1.3 * size * (1 + (shape.length || 0) * 0.08); // stretch along the length
+  const sy = 1.3 * size * (1 + (shape.height || 0) * 0.08); // and up and down
+  const L = B.len * sx;
+  const maxBot = Math.max(...B.bot) * sy;
+  const maxTop = Math.max(...B.top) * sy;
+  const finRoom = 6; // room for the fins above and below
+  const cy = B.zone === "bottom" ? GROUND - 2 - maxBot - (V.finsBelow ? 3 : 1) : B.zone === "top" ? GROUND - 30 - maxBot : GROUND - 16 - maxBot;
+  const x0 = 46 - L / 2; // the tail end; the nose at x0 + L
+  const top = (x) => fishHalf(B.top, (x - x0) / L) * sy;
+  const bot = (x) => fishHalf(B.bot, (x - x0) / L) * sy;
+  const edgeTop = (t) => [x0 + L * t, cy - fishHalf(B.top, t) * sy];
+  const edgeBot = (t) => [x0 + L * t, cy + fishHalf(B.bot, t) * sy];
+
+  // fins behind the body first: the tail, the dorsal, the anal, the pelvic
+  const fs = size * (1 + (shape.fins || 0) * 0.3); // the fins knob: all fins bigger or smaller
+  const sway = swish ? 1 : -1;
+  const bodyH = (maxTop + maxBot) / 2;
+  const rays = (base, outer, label) => outer.forEach((p) => line(grid, base, p, label));
+  // the tail: back from the tail end
+  const C = FISH_CAUDAL[V.caudal || shape.caudal] || FISH_CAUDAL.forked;
+  // the tail knob sets its length, tailh its height: each half again or half as much
+  const tl = 7 * fs * (1 + (shape.tail || 0) * 0.5);
+  const th = Math.max(3.5, bodyH * 0.75) * Math.sqrt(fs) * (1 + (shape.tailh || 0) * 0.5);
+  const tailPts = C.pts.map(([u, v]) => [x0 + 1 - u * tl, cy + v * th + (u > (C.flow || 0.6) ? sway * 0.8 : 0)]);
+  fillPoly(grid, tailPts, "caudal");
+  if (C.rays) rays([x0 + 0.5, cy], tailPts.filter((_, i) => C.pts[i][0] > 0.5), "cray");
+  // a fin on the back or belly: its base laid along the body's edge
+  const edgeFin = (F, side, label) => {
+    const [a, b] = F.at;
+    const h = F.h * fs * (side < 0 ? 1 : 0.9);
+    const at = (u, v) => {
+      const t = a + (b - a) * u;
+      const x = x0 + L * Math.max(0, Math.min(1, t)) + (t < 0 ? t * L : 0);
+      const edge = side < 0 ? cy - fishHalf(B.top, Math.max(0, Math.min(1, t))) * sy : cy + fishHalf(B.bot, Math.max(0, Math.min(1, t))) * sy;
+      // v below 0 tucks the base a pixel or so into the body, whatever the
+      // fin's height (a tall fin on a thin body mustn't poke out the far side)
+      return [x, edge + side * (v < 0 ? v * 1.2 : v * h) + (F.flow !== undefined && u < F.flow ? sway * 0.6 : 0)];
+    };
+    const pts = F.pts.map(([u, v]) => at(u, v));
+    fillPoly(grid, pts, label);
+    if (F.rays) rays(at(0.5, -0.5), pts.filter((_, i) => F.pts[i][1] > 0.6), label === "dorsal" ? "dray" : "aray");
+    if (F.adipose) {
+      // a small rounded fatty fin near the tail
+      const [m, n] = F.adipose;
+      fillPoly(grid, [[x0 + L * m, cy - fishHalf(B.top, m) * sy + 1], [x0 + L * m, cy - fishHalf(B.top, m) * sy - 1.4 * fs], [x0 + L * n, cy - fishHalf(B.top, n) * sy - 1.6 * fs], [x0 + L * n, cy - fishHalf(B.top, n) * sy + 1]], label);
+    }
+  };
+  edgeFin(FISH_DORSAL[V.dorsal || shape.dorsal] || FISH_DORSAL.small, -1, "dorsal");
+  edgeFin(FISH_ANAL[V.anal || shape.anal] || FISH_ANAL.small, 1, "anal");
+  const pv = edgeBot(0.55);
+  fillTri(grid, [[pv[0] - 1, pv[1] - 1], [pv[0] + 1.5, pv[1] - 1], [pv[0] - 2.5, pv[1] + 2.5]], "pelvic");
+
+  // the body, and the head (the front of it, from the gill line forward)
+  const gillT = V.gill || 0.76;
+  for (let x = Math.floor(x0); x <= Math.ceil(x0 + L); x++) {
+    const xc = x + 0.5;
+    if (xc < x0 || xc > x0 + L) continue;
+    const t = (xc - x0) / L;
+    const up = top(xc);
+    const dn = bot(xc);
+    for (let y = Math.floor(cy - up); y <= Math.ceil(cy + dn); y++) {
+      const yc = y + 0.5;
+      if (yc < cy - up || yc > cy + dn) continue;
+      const ny = yc < cy ? (yc - cy) / Math.max(1, up) : (yc - cy) / Math.max(1, dn);
+      put(grid, x, y, { l: t > gillT ? "fhead" : "fbody", nx: (t - 0.6) * 1.4, ny });
+    }
+  }
+  // the head's own shape at the nose
+  const nx = x0 + L; // the tip of the nose
+  const nt = top(nx - 1.5);
+  const nb = bot(nx - 1.5);
+  let mouth = [Math.round(nx) - 1, H.mouth === "up" ? Math.round(cy - nt + 1) : H.mouth === "down" ? Math.round(cy + nb - 1) : Math.round(cy + 0.5)];
+  if (headKey === "upturned") {
+    // the lower jaw juts forward and up past the nose, the mouth a slanted
+    // line along its top
+    fillTri(grid, [[nx - 4, cy + nb * 0.6], [nx - 3, cy - nt * 0.1], [nx + 2.6, cy - nt - 0.6]], "fhead");
+    fillTri(grid, [[nx - 4, cy + nb * 0.6], [nx + 2.6, cy - nt - 0.6], [nx + 0.5, cy + nb * 0.2]], "fhead");
+    line(grid, [nx + 1.6, cy - nt], [nx - 1.5, cy - nt * 0.3], "mouthline");
+    mouth = [Math.round(nx + 1.6), Math.round(cy - nt)];
+  } else if (headKey === "sucker") {
+    // a round snout bending down to a wide sucker disc of lips underneath
+    fillEllipse(grid, nx - 1, cy + nb * 0.4, 2.8, Math.max(2.4, nb * 0.85), "fhead");
+    fillEllipse(grid, nx - 2, cy + nb + 1.2, 3.2, 1.7, "lip");
+    mouth = [Math.round(nx - 2), Math.round(cy + nb + 1.5)];
+  } else if (headKey === "whiskers") {
+    // two barbels hanging forward and down from under the mouth
+    for (const k of [0, 1]) line(grid, [nx - 1.5 - k * 1.5, cy + nb - 0.5], [nx + 1 - k * 1.8, cy + nb + 3 + swish * 0.5 - k * 0.5], "barbel");
+  } else if (headKey === "snout") {
+    // a long tapering nose
+    taper(grid, [[nx - 2, cy - 0.3], [nx + 4, cy + 0.2]], [Math.max(1, Math.min(nt, nb) * 0.7), 0.55], "fhead");
+    mouth = [Math.round(nx + 3), Math.round(cy + 0.5)];
+  } else if (headKey === "hump") {
+    // a big bulging forehead rising above the eye
+    const hx2 = nx - L * 0.14;
+    fillEllipse(grid, hx2, cy - top(hx2) + 0.2, Math.max(3, L * 0.12), Math.max(2.6, top(hx2) * 0.6), "fhead");
+  } else if (headKey === "beak") {
+    // the lower jaw: a long thin needle out ahead
+    taper(grid, [[nx - 2, cy + nb * 0.3], [nx + 6, cy + nb * 0.3]], [0.9, 0.5], "fhead");
+    mouth = [Math.round(nx), Math.round(cy)];
+  } else if (headKey === "kisser") {
+    // big puckered lips sticking out, a dark line between them
+    fillEllipse(grid, nx + 1, cy - 0.2, 2.2, Math.max(2, Math.min(nt, nb) * 0.75), "lip");
+    mouth = [Math.round(nx + 2.4), Math.round(cy)];
+  }
+
+  // the near pectoral fin, just behind the gill, lying over the body
+  const P = FISH_PECTORAL[V.pectoral || shape.pectoral] || FISH_PECTORAL.small;
+  // low on the side, angled down and back so it reaches past the belly
+  const pc = [x0 + L * (gillT - 0.03), cy + bot(x0 + L * gillT) * 0.35];
+  const ps = 4.2 * fs * Math.max(0.85, Math.min(1.3, bodyH / 4.5));
+  const ang = 0.45;
+  const pecAt = (u, v) => [pc[0] - u * ps * Math.cos(ang) + v * ps * Math.sin(ang), pc[1] + u * ps * Math.sin(ang) + v * ps * Math.cos(ang)];
+  const pecPts = P.pts.map(([u, v]) => {
+    const [x, y] = pecAt(u, v);
+    return [x, y + (P.flow !== undefined && u >= P.flow ? sway * 0.6 : 0)];
+  });
+  fillPoly(grid, pecPts, "pectoral");
+  if (P.threads) {
+    // long threads trailing down and back
+    for (const k of [0, 1]) line(grid, pecAt(0.3, 0.1 + k * 0.2), [pc[0] - 2.2 * ps - k * 1.5, pc[1] + 2.2 * ps + sway * 0.6 + k], "pectoral");
+  }
+
+  // the face: an eye up front, the mouth at the nose, a gill line
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const eyeX = x0 + L * 0.9;
+  const big = top(eyeX) + bot(eyeX) >= 6;
+  face.eyes.push({ x: Math.round(eyeX) - (big ? 2 : 1), y: Math.round(cy - top(eyeX) * 0.45) - (big ? 1 : 0), size: big ? "fish" : "duo", iris });
+  face.smile.push(mouth, [mouth[0] - 1, mouth[1]]);
+  // the gill cover's edge: a curve bowing back toward the tail
+  const gx = x0 + L * gillT;
+  const gt = top(gx) * 0.7;
+  const gb = bot(gx) * 0.7;
+  for (let y = Math.round(cy - gt); y <= Math.round(cy + gb); y++) {
+    const u = (y - cy) / Math.max(1, y < cy ? gt : gb);
+    put(grid, Math.round(gx - (1 - u * u) * 1.6), y, { l: "gill", nx: 0, ny: 0 });
+  }
+
+  relight(grid, "fbody");
+  const geo = { cx: 46, cy, rx: L / 2, ry: (maxTop + maxBot) / 2, legTop: GROUND, tail: [x0, cy, tl], head: [x0 + L * 0.9, cy, 3, 3], faceBox: null, muzzle: null };
+  const eye = face.eyes[0];
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: x0 + L, face, center: [46, cy], scale: 1,
+    softOutline: true, softNeck: true, geo, noShadow: true,
+    // for paintFish: where the body runs, the eye, the pectoral's root
+    fish: { x0, L, eye: [eye.x + 1, eye.y + 1], pec: pc },
+  };
+}
+
 // A one-pixel line between two points (wing bones).
 function line(grid, a, b, label) {
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))));
@@ -5060,6 +5502,7 @@ const EYE_SHAPES = {
   dark: ["PP", "PP"], // plain dark dot
   almond: [".II", "IPI", "II."], // slanted cat eye
   duo: ["IP", "IP"], // color on the left, dark on the right
+  fish: [".I.", "IPI", ".I."], // a round fish eye: a ring of color, a dark pupil
   closed: ["..", "KK"], // asleep: just a lash line
   goat: ["III", "PPP"], // a goat's sideways bar pupil
 };
