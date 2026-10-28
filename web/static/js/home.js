@@ -74,8 +74,9 @@ function renderLocks(me) {
     if (!u[room]) $(`${room}-sub`).textContent = `Learn the ${room === "pets" ? "home" : "top"} row!`;
     else if (openSub) $(`${room}-sub`).textContent = openSub;
   };
-  const pet = (me.avatar.pets || [])[0];
-  lock("pets", "Pet Room", "Pet Room", u.free_pet ? "A free pet is waiting!" : pet ? `${pet.name} misses you` : "Feed and play", "pets");
+  // Pets is open from the start (the Pet Shop's Fish department is)
+  $("pets-name").textContent = "Pets";
+  $("pets-sub").textContent = u.pet_coupon ? "A free pet is waiting!" : "Shop, care, and play";
   lock("bedroom", "Bedroom", "Bedroom", "Decorate it", "bedroom");
 }
 

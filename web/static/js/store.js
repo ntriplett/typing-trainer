@@ -201,7 +201,7 @@ function renderAdoption() {
     <p class="hint">${
       state.unlocks.free_pet
         ? "<b>Your first pet is free!</b> A gift for learning the home row. Pick any one you like."
-        : 'Pets start as babies. Feed them once a day in the <a href="/pets">pet room</a> to help them grow up!'
+        : 'Pets start as babies. Feed them once a day in the <a href="/pets/room">pet room</a> to help them grow up!'
     }</p>
     <div class="item-grid"></div>`;
   const grid = section.querySelector(".item-grid");
@@ -273,7 +273,7 @@ async function adopt(kind, color) {
   Header.update(data);
   await load();
   messageEl.classList.add("ok");
-  messageEl.innerHTML = `Welcome home, little ${kind.name.toLowerCase()}! Give it a name in the <a href="/pets">pet room</a>.`;
+  messageEl.innerHTML = `Welcome home, little ${kind.name.toLowerCase()}! Give it a name in the <a href="/pets/room">pet room</a>.`;
 }
 
 function pickVariant(key, variants) {

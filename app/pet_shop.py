@@ -470,3 +470,38 @@ def order_preview(conn, learner_id: int, species: str, primary: str, secondary: 
         return g.resolve(g.order_roll(species, primary, secondary, unlocked, g.new_seed()))
     except g.GeneError as exc:
         raise ShopError(str(exc)) from None
+
+
+# --- the Pets hub: who's out in the field --------------------------------------------
+
+# Land pets out in the field; a new player's field is filled up with visitors.
+FIELD_PETS = 4
+VISITOR_DEPTS = ("household", "farm")
+
+
+def hub_visitors(learner_id: int, today: date, count: int) -> list[dict]:
+    """Animals passing through the field: rolled fresh each day (the same
+    all day), in starter colors, never saved."""
+    rng = random.Random(f"visitors:{learner_id}:{today.isoformat()}")
+    species = [sp for d in VISITOR_DEPTS for sp in DEPARTMENTS[d].species]
+    out = []
+    for _ in range(count):
+        sp = rng.choice(species)
+        out.append({"species": sp, "growth": rng.randint(3, 10), "genes": g.resolve(g.shop_roll(sp, set(), g.new_seed(rng)))})
+    return out
+
+
+def hub_state(conn, learner_id: int, today: date) -> dict:
+    """The Pets hub: your pets (fish stay out of the field), visitors to
+    fill it up, and news for the Pet Shop's door (a coupon, an order)."""
+    pets = [
+        {"id": p["id"], "name": p["name"], "species": p["species"], "growth": p["growth"], "genes": g.resolve(p["genes"])}
+        for p in db.list_v3_pets(conn, learner_id)
+    ]
+    land = [p for p in pets if p["species"] != "fish"]
+    return {
+        "pets": pets,
+        "visitors": hub_visitors(learner_id, today, max(0, FIELD_PETS - len(land))),
+        "coupon": has_coupon(conn, learner_id),
+        "order": _order_view(conn, learner_id, today),
+    }

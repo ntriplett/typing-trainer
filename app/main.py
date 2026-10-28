@@ -151,7 +151,13 @@ def designer_page() -> FileResponse:
 
 
 @app.get("/pets")
-def pets_page() -> FileResponse:
+def pets_hub_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "pets_hub.html")
+
+
+@app.get("/pets/room")
+def pet_room_page() -> FileResponse:
+    """The old pet room (pets before v3), until the Pet Care Center replaces it."""
     return FileResponse(WEB_DIR / "pets.html")
 
 
@@ -984,6 +990,11 @@ def _shop_call(action, *args):
 
 def _department(conn, learner_id: int, dept: str) -> dict:
     return {**_me(conn, learner_id), **_shop_call(pet_shop.department_state, conn, learner_id, dept, _today())}
+
+
+@app.get("/api/pets/hub")
+def pets_hub(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), **pet_shop.hub_state(conn, learner_id, _today())}
 
 
 @app.get("/api/pets/shop")

@@ -147,3 +147,41 @@ def test_shops_belong_to_one_player(clock):
     client.post("/api/profiles", json={"name": "Other"})
     theirs = [s["genes"]["seed"] for s in client.get("/api/pets/shop/fish").json()["slots"]]
     assert not set(mine) & set(theirs)
+
+
+# --- the Pets hub ------------------------------------------------------------------
+
+
+def test_a_new_players_field_fills_with_the_same_visitors_all_day(clock):
+    hub = client.get("/api/pets/hub").json()
+    assert hub["pets"] == [] and len(hub["visitors"]) == 4
+    assert all(v["species"] in ("dog", "cat", "bunny", "goat", "sheep", "llama", "fox") for v in hub["visitors"])
+    assert all(v["genes"]["hex"][0].startswith("#") for v in hub["visitors"])
+    again = client.get("/api/pets/hub").json()["visitors"]
+    assert [v["genes"]["seed"] for v in again] == [v["genes"]["seed"] for v in hub["visitors"]]
+    clock["days"] = 1
+    tomorrow = client.get("/api/pets/hub").json()["visitors"]
+    assert [v["genes"]["seed"] for v in tomorrow] != [v["genes"]["seed"] for v in hub["visitors"]]
+
+
+def test_your_land_pets_take_the_visitors_places_but_fish_dont(clock):
+    teach(*HOME_PAIRS)
+    give_coins(50000)
+    client.post("/api/pets/shop/fish/0/buy", json={})
+    hub = client.get("/api/pets/hub").json()
+    assert len(hub["pets"]) == 1 and len(hub["visitors"]) == 4  # fish wait for the Aquarium
+    client.post("/api/pets/shop/household/0/buy", json={})
+    hub = client.get("/api/pets/hub").json()
+    assert len(hub["pets"]) == 2 and len(hub["visitors"]) == 3
+    assert hub["pets"][1]["name"] in ("Dog", "Cat", "Bunny") and hub["pets"][1]["growth"] == 0
+
+
+def test_the_hub_tells_the_shop_door_about_coupons_and_orders(clock):
+    assert not client.get("/api/pets/hub").json()["coupon"]
+    teach(*HOME_PAIRS)
+    hub = client.get("/api/pets/hub").json()
+    assert hub["coupon"] and hub["unlocks"]["pet_coupon"] and hub["order"] is None
+    give_coins(1000)
+    client.post("/api/pets/shop/orders", json={"species": "cat", "primary": "black"})
+    clock["days"] = 1
+    assert client.get("/api/pets/hub").json()["order"]["status"] == "ready"

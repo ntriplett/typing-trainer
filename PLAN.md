@@ -441,7 +441,9 @@ Pets v3 (`app/pet_genes.py` rolls, `web/static/js/pet_render.js` draws) replaces
 The old pet system (`app/pets.py`, `owned_pet`, avatar/battle sprites) stays untouched until the
 Pet Care Center round, which switches the avatar to v3 and wipes the old pets.
 
-**Pets hub** (`/pets`; home tile "Pets"): a field with pets wandering and four clickable buildings:
+**Pets hub** (`/pets`, built 2026-10-28; home tile "Pets"; the old pet room moved to `/pets/room`
+until the Pet Care Center replaces it): a field with your land pets wandering (topped up to 4 with
+visitors rolled fresh each day; fish wait for the Aquarium) and four clickable buildings:
 Pet Shop, **Pet Care Center** (inventory: visit and manage pets), **Aquarium**, **Trailhead**
 (explore the habitats you buy). Open from the start, since the Fish department is.
 

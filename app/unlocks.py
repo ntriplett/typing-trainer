@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from app import db, lessons
+from app import db, lessons, pet_shop
 from app.catalog import CATALOG
 
 HOME_ROW = "asdfghjkl;"
@@ -47,6 +47,7 @@ def status(conn: sqlite3.Connection, learner_id: int) -> dict:
         "free_pet": pets and not has_pets and db.get_setting(conn, learner_id, SETTING_FREE_PET) is None,
         "missing": missing,
         "hints": {room: hint for room, (_, hint) in NEEDS.items()},
+        "pet_coupon": pet_shop.has_coupon(conn, learner_id),
     }
 
 
