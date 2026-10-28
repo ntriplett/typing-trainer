@@ -1,6 +1,8 @@
 // The Pet Shop (PLAN.md 11h): department signs across the top, then that
 // department's pets as cards. Click a pet for a close-up: as a baby and
 // all grown up, its colors, what's rare about it, and Buy / Save for me.
+// Special Orders swaps the stock for an order form (species, colors, a
+// sample pet) and, once they arrive, the ordered pets.
 // Rules live in app/pet_shop.py; pets are drawn by pet_render.js.
 
 const $ = (id) => document.getElementById(id);
@@ -29,8 +31,14 @@ let detailIndex = null; // the slot in the close-up
 let confirming = false; // the Buy button asks "Are you sure?" first
 let frame = 0;
 let cardScale = 3;
+let pick = null; // the order form: {species, primary, secondary}
+let preview = null; // a sample pet for the order form
+let confirmOrder = false;
 
+const PLURAL = { bunny: "bunnies", fish: "fish", fox: "foxes", sheep: "sheep", phoenix: "phoenixes" };
 const speciesName = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const plural = (s) => PLURAL[s] || `${s}s`;
+const slotAt = (index) => dept && dept.slots.find((s) => s.index === index);
 const coins = (n) => `<span class="coins-inline"><span class="coin-icon"></span>${n.toLocaleString()}</span>`;
 
 // --- drawing -----------------------------------------------------------------------
@@ -63,9 +71,11 @@ function fitScale(pets, growth, w, h, most) {
 function tick() {
   frame += 1;
   for (const canvas of document.querySelectorAll("canvas[data-index]")) {
-    const slot = dept && dept.slots[Number(canvas.dataset.index)];
+    const slot = slotAt(Number(canvas.dataset.index));
     if (slot && !slot.sold) paint(canvas, slot.genes, Number(canvas.dataset.growth), Number(canvas.dataset.scale));
   }
+  const sample = $("order-preview");
+  if (sample && preview) paint(sample, preview, BABY, Number(sample.dataset.scale));
 }
 
 function petCanvas(slot, growth, w, h, scale) {
@@ -108,7 +118,6 @@ async function openDept(id) {
   deptId = id;
   history.replaceState(null, "", `?dept=${id}`);
   renderDepts();
-  if (id === "orders") return renderOrdersSoon();
   try {
     setDept(await call(`/api/pets/shop/${id}`));
   } catch (err) {
@@ -176,15 +185,9 @@ function renderBanners() {
 
 // --- the shop floor ------------------------------------------------------------------
 
-function renderOrdersSoon() {
-  dept = null;
-  $("dept-title").textContent = "Special Orders";
-  $("dept-hint").textContent = "Design your own pet! This counter opens very soon.";
-  $("shop-grid").replaceChildren();
-}
-
 function renderFloor() {
   const d = dept.department;
+  if (d.id === "orders") return renderOrders();
   $("dept-title").textContent = d.name;
   $("dept-hint").textContent = dept.coupon
     ? "Use your coupon on any pet here, or buy with coins. Click a pet to meet it!"
@@ -242,6 +245,121 @@ function badges(slot) {
   return out.length ? `<p class="card-badges">${out.join("")}</p>` : "";
 }
 
+// --- special orders ------------------------------------------------------------------
+
+function renderOrders() {
+  $("dept-title").textContent = "Special Orders";
+  $("dept-hint").textContent = "Design your own pet! Pick what kind and its colors, and we'll find some for you.";
+  const grid = $("shop-grid");
+  grid.className = "shop-grid orders-floor";
+  const parts = [];
+  const o = dept.order;
+  if (o) {
+    const colors = [o.primary, o.secondary].filter(Boolean).map((c) => c.name).join(" and ");
+    const note = document.createElement("div");
+    note.className = "order-status";
+    note.innerHTML =
+      o.status === "waiting"
+        ? `📦 <b>Your order is on its way!</b> 4 ${plural(o.species)} in ${colors} arrive tomorrow.`
+        : `📦 <b>Your special order is here!</b> They go home ${o.days_left === 1 ? "after today" : `in ${o.days_left} days`}.`;
+    parts.push(note);
+  }
+  const cards = document.createElement("div");
+  const orderDept = o && dept.choices.find((c) => c.species === o.species);
+  cards.className = `shop-grid order-pets dept-${orderDept ? orderDept.dept : ""}`;
+  cards.replaceChildren(...dept.slots.map(card));
+  if (dept.slots.length) parts.push(cards);
+  parts.push(orderForm());
+  grid.replaceChildren(...parts);
+  if (!preview) loadPreview();
+}
+
+function orderForm() {
+  const choices = dept.choices;
+  if (!pick || !choices.some((c) => c.species === pick.species)) {
+    pick = { species: choices[0].species, primary: choices[0].primaries[0].id, secondary: null };
+  }
+  const choice = choices.find((c) => c.species === pick.species);
+  if (!choice.primaries.some((c) => c.id === pick.primary)) pick.primary = choice.primaries[0].id;
+  if (pick.secondary === pick.primary) pick.secondary = null;
+
+  const form = document.createElement("section");
+  form.className = "order-form";
+  const pets = choices
+    .map((c) => `<button class="order-species${c.species === pick.species ? " current" : ""}" data-species="${c.species}">${speciesName(c.species)}<small>${coins(c.fee)}</small></button>`)
+    .join("");
+  const swatches = (colors, picked, kind) =>
+    colors
+      .map((c) => `<button class="color-pick${c.id === picked ? " current" : ""}" data-${kind}="${c.id}" title="${c.name}" aria-label="${c.name}"><span class="swatch" style="background:${c.hex}"></span>${c.name}</button>`)
+      .join("");
+  const seconds = choice.colors.filter((c) => c.id !== pick.primary);
+  const name = plural(pick.species);
+  const replacing = dept.order ? `<p class="order-warning">Sending a new order sends your last order's ${plural(dept.order.species)} home.</p>` : "";
+  const short = dept.coins < choice.fee;
+  form.innerHTML = `
+    <h3>Order a special pet!</h3>
+    <p class="order-step">1. What kind of pet?</p><div class="order-row">${pets}</div>
+    <p class="order-step">2. Its main color</p><div class="order-row">${swatches(choice.primaries, pick.primary, "primary")}</div>
+    ${
+      dept.pick_secondary
+        ? `<p class="order-step">3. Its second color</p><div class="order-row">
+             <button class="color-pick${pick.secondary ? "" : " current"}" data-secondary="">Shop's choice</button>${swatches(seconds, pick.secondary, "secondary")}</div>`
+        : `<p class="hint">Learn your capital letters to pick a second color too!</p>`
+    }
+    <div class="order-sample dept-${choice.dept}">
+      <figure><canvas id="order-preview" width="220" height="160" data-scale="4"></canvas><figcaption>Something like this</figcaption></figure>
+      <button class="link-button" id="order-another">Show me another</button>
+    </div>
+    <p class="order-explain">Sending the order costs <b>${coins(choice.fee)} coins</b>. Tomorrow, <b>4 ${name}</b> in your colors will be waiting here.
+      You can buy the ones you love. If you don't, they go home after 3 days.</p>
+    ${replacing}
+    <div class="detail-actions"><button id="order-send" class="button-gold big-button"${short ? " disabled" : ""}>${
+      short ? `Need ${(choice.fee - dept.coins).toLocaleString()} more coins` : confirmOrder ? "Yes, send it!" : `Send my order`
+    }</button></div>`;
+
+  const repick = (changes) => {
+    Object.assign(pick, changes);
+    confirmOrder = false;
+    preview = null;
+    renderOrders();
+  };
+  for (const b of form.querySelectorAll("[data-species]")) b.onclick = () => repick({ species: b.dataset.species, secondary: null });
+  for (const b of form.querySelectorAll("[data-primary]")) b.onclick = () => repick({ primary: b.dataset.primary });
+  for (const b of form.querySelectorAll("[data-secondary]")) b.onclick = () => repick({ secondary: b.dataset.secondary || null });
+  form.querySelector("#order-another").onclick = () => loadPreview();
+  form.querySelector("#order-send").onclick = sendOrder;
+  return form;
+}
+
+async function loadPreview() {
+  const q = new URLSearchParams({ species: pick.species, primary: pick.primary });
+  if (pick.secondary) q.set("secondary", pick.secondary);
+  // not call(): the sample isn't a player update for the header
+  const r = await fetch(`/api/pets/shop/orders/preview?${q}`);
+  const data = await r.json();
+  if (!r.ok) return say(data.detail || "Couldn't show a sample pet.");
+  preview = data.pet;
+  const canvas = $("order-preview");
+  if (!canvas) return;
+  canvas.dataset.scale = fitScale([preview], BABY, canvas.width, canvas.height, 7);
+  paint(canvas, preview, BABY, Number(canvas.dataset.scale));
+}
+
+async function sendOrder() {
+  if (!confirmOrder) {
+    confirmOrder = true;
+    return renderOrders();
+  }
+  confirmOrder = false;
+  try {
+    setDept(await call("/api/pets/shop/orders", "POST", pick));
+    say("");
+  } catch (err) {
+    say(err.message);
+    renderOrders();
+  }
+}
+
 // --- the close-up --------------------------------------------------------------------
 
 function showDetail(index) {
@@ -258,9 +376,9 @@ function closeDetail() {
 }
 
 function renderDetail() {
-  const slot = dept.slots[detailIndex];
+  const slot = slotAt(detailIndex);
   const body = $("detail-body");
-  if (slot.sold) return;
+  if (!slot || slot.sold) return;
   const name = speciesName(slot.species);
   const colors = slot.genes.color_names
     .map((n, i) => (n ? { name: n, hex: slot.genes.hex[i], id: slot.genes.coat.colors[i] } : null))
@@ -310,6 +428,7 @@ function actions(slot) {
     short
   );
   const saved = front.saved;
+  if (slot.dept === "orders") return out; // they already wait just for you
   if (slot.saved) button("Let it go", "", unsave);
   else if (saved) button("Save for me", "", null, true).title = "You're already saving a pet. Buy it or let it go first.";
   else button("Save for me", "", () => save(slot));

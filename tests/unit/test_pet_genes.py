@@ -484,3 +484,25 @@ def test_rare_looks_are_priced_up_and_common_ones_are_not():
     plain = [p for p in pets if not g.rare_features(p)]
     assert plain and all(g.rarity(p) == 1.0 for p in plain)
     assert 1.3 < sorted(g.rarity(p) for p in pets)[-len(pets) // 20] < 4  # the top 5% stand out, not absurdly
+
+
+def test_special_orders_get_the_asked_for_colors():
+    for seed in range(200):
+        pet = g.order_roll("dog", "golden", None, set(), seed)
+        assert pet["coat"]["colors"][0] == "golden"
+        assert pet["coat"]["colors"][1] in g.available_colors("dog", set())
+    assert g.order_roll("cat", "black", "orange", set(), 3)["coat"]["colors"][:2] == ["black", "orange"]
+    assert g.order_roll("cat", "lilac", None, {"lilac"}, 3)["coat"]["colors"][0] == "lilac"
+
+
+def test_special_orders_only_use_unlocked_colors():
+    with pytest.raises(g.GeneError, match="unlocked"):
+        g.order_roll("cat", "lilac", None, set(), 1)
+    with pytest.raises(g.GeneError, match="unlocked"):
+        g.order_roll("cat", "orange", "lilac", set(), 1)
+    with pytest.raises(g.GeneError, match="different"):
+        g.order_roll("cat", "orange", "orange", set(), 1)
+    assert "white_gold" not in g.order_primaries("phoenix", {"white_gold"})  # a glow, never the main color
+    for seed in range(100):  # game-picked species too
+        pet = g.order_roll("phoenix", "blaze", None, set(), seed)
+        assert pet["coat"]["colors"][1] in g.available_colors("phoenix", set())

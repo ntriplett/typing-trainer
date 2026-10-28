@@ -752,6 +752,31 @@ def shop_roll(species: str, unlocked: set[str], seed: int) -> dict:
     return _genes(species, primary, secondary, seed, available)
 
 
+def order_primaries(species: str, unlocked: set[str]) -> list[str]:
+    """The main colors a special order can ask for (a flame's pale glow never is one)."""
+    return [c for c in available_colors(species, unlocked) if c not in GLOW_ONLY]
+
+
+def order_roll(species: str, primary: str, secondary: str | None, unlocked: set[str], seed: int) -> dict:
+    """A special-order pet: the asked-for main color (and second color, once
+    the player may pick it); an unpicked second color comes from the
+    available ones, by the species' usual second-color odds."""
+    if species not in SPECIES_COLORS:
+        raise GeneError("There's no pet like that.")
+    available = available_colors(species, unlocked)
+    if primary not in order_primaries(species, unlocked):
+        raise GeneError("You haven't unlocked that color yet.")
+    if secondary is not None and secondary not in available:
+        raise GeneError("You haven't unlocked that color yet.")
+    if secondary == primary:
+        raise GeneError("Pick two different colors.")
+    if secondary is None:
+        rng = _rng(seed, "order")
+        weights = {c: w for c, w in second_color_weights(species, primary).items() if c in available and w > 0}
+        secondary = _pick(rng, weights) if weights else rng.choice([c for c in available if c != primary])
+    return _genes(species, primary, secondary, seed, set(available))
+
+
 def new_to_player(genes: dict, unlocked: set[str]) -> list[str]:
     """Colors on this pet the player couldn't have picked for its species yet."""
     return new_colors(genes, unlocked | set(STARTER_COLORS[genes["species"]]))

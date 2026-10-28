@@ -962,6 +962,12 @@ class SavePetIn(BaseModel):
     index: int
 
 
+class OrderIn(BaseModel):
+    species: str
+    primary: str
+    secondary: str | None = None
+
+
 def _today():
     """The shop restocks at local midnight."""
     return now().astimezone().date()
@@ -983,6 +989,20 @@ def _department(conn, learner_id: int, dept: str) -> dict:
 @app.get("/api/pets/shop")
 def pet_shop_front(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return {**_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today())}
+
+
+@app.get("/api/pets/shop/orders/preview")
+def preview_order(
+    species: str, primary: str, secondary: str | None = None,
+    conn=Depends(get_db), learner_id: int = Depends(current_learner),
+) -> dict:
+    return {"pet": _shop_call(pet_shop.order_preview, conn, learner_id, species, primary, secondary)}
+
+
+@app.post("/api/pets/shop/orders")
+def place_order(body: OrderIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _shop_call(pet_shop.place_order, conn, learner_id, body.species, body.primary, body.secondary, _today())
+    return _department(conn, learner_id, "orders")
 
 
 @app.get("/api/pets/shop/{dept}")

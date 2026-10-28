@@ -20,6 +20,8 @@ from datetime import date, timedelta
 
 from app import db, lessons
 from app import pet_genes as g
+from app.activities.teach_curriculum import CAPS_GROUPS, CAPS_ID
+from app.brain import lesson_ref
 
 HOME_ROW = "asdfghjkl;"
 TOP_ROW = "qwertyuiop"
@@ -184,6 +186,42 @@ def view(slot: Slot, today: date, unlocked: set[str]) -> dict:
     }
 
 
+# --- special orders: pick a species and its colors, pets arrive tomorrow -------------
+
+ORDER_PETS = 4
+ORDER_DAYS = 3  # how long the pets wait once they arrive
+ORDER_FEE_SHARE = 0.5  # of the species' base price, paid when ordering
+
+
+def order_fee(species: str) -> int:
+    return nice_price(BASE_PRICE[species] * ORDER_FEE_SHARE)
+
+
+def order_slots(
+    species: str, primary: str, secondary: str | None, today: date, unlocked: set[str], rng: random.Random
+) -> list[Slot]:
+    """The pets an order brings: they arrive tomorrow and wait ORDER_DAYS."""
+    ready = today + timedelta(days=1)
+    out = []
+    for i in range(ORDER_PETS):
+        seed = g.new_seed(rng)
+        out.append(
+            Slot(
+                dept="orders", index=i, seed=seed, species=species,
+                genes=g.order_roll(species, primary, secondary, unlocked, seed),
+                price_roll=roll_price_factor(rng), stocked_on=ready, leaves_on=ready + timedelta(days=ORDER_DAYS),
+            )
+        )
+    return out
+
+
+def order_status(ready_on: date, leaves_on: date, today: date) -> str | None:
+    """"waiting" (arriving tomorrow), "ready" (here now), or None (no order, or they went home)."""
+    if today < ready_on:
+        return "waiting"
+    return "ready" if today < leaves_on else None
+
+
 # --- one learner's shop, stored in app/db.py ---------------------------------------
 
 # Learning the home row gives one coupon: any Household pet for free.
@@ -238,6 +276,9 @@ def has_coupon(conn, learner_id: int) -> bool:
 def stock(conn, learner_id: int, dept_id: str, today: date, rng: random.Random | None = None) -> list[Slot]:
     """Today's stock for an open department, restocked and stored."""
     _open_dept(conn, learner_id, dept_id)
+    if dept_id == "orders":  # never restocked: only an order's pets, while they wait
+        rows = [_from_row(r) for r in db.list_shop_slots(conn, learner_id, dept_id)]
+        return [s for s in rows if s.stocked_on <= today < s.leaves_on]
     if dept_id not in STOCKED:
         raise ShopError("Nothing here yet!")
     old = [_from_row(r) for r in db.list_shop_slots(conn, learner_id, dept_id)]
@@ -270,19 +311,26 @@ def department_state(conn, learner_id: int, dept_id: str, today: date, rng: rand
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
     taught = lessons.taught_keys(conn, learner_id)
     saved = _saved(conn, learner_id)
-    return {
+    out = {
         "department": _dept_info(DEPARTMENTS[dept_id], taught),
         "slots": [view(s, today, unlocked) for s in slots],
         "saved": view(saved, today, unlocked) if saved else None,
         "coupon": dept_id == COUPON_DEPT and has_coupon(conn, learner_id),
     }
+    if dept_id == "orders":
+        out |= {
+            "order": _order_view(conn, learner_id, today),
+            "choices": order_choices(conn, learner_id),
+            "pick_secondary": capitals_done(conn, learner_id),
+        }
+    return out
 
 
 def _slot(conn, learner_id: int, dept_id: str, index: int, today: date) -> Slot:
-    slots = stock(conn, learner_id, dept_id, today)
-    if not 0 <= index < len(slots):
+    slot = next((s for s in stock(conn, learner_id, dept_id, today) if s.index == index), None)
+    if slot is None:
         raise ShopError("There's no pet in that spot.")
-    return slots[index]
+    return slot
 
 
 def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon: bool = False) -> dict:
@@ -290,6 +338,8 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
     Care Center and all its colors unlock. Returns the new pet."""
     slot = _slot(conn, learner_id, dept_id, index, today)
     sold = sell(slot, today)  # raises if it's gone already, before anything is paid
+    if dept_id == "orders":  # an order's other pets keep waiting; this spot stays "Adopted!"
+        sold = replace(sold, leaves_on=slot.leaves_on)
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
     if use_coupon:
         if dept_id != COUPON_DEPT:
@@ -306,12 +356,15 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
     db.put_shop_slot(conn, learner_id, _to_row(sold))
     new = g.new_to_player(slot.genes, unlocked)
     db.unlock_pet_colors(conn, learner_id, [c for c in slot.genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
-    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, slot.species.capitalize(), "shop")
+    source = "order" if dept_id == "orders" else "shop"
+    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, slot.species.capitalize(), source)
     pet = db.get_v3_pet(conn, learner_id, pet_id)
     return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": [g.COLORS[c].name for c in new]}
 
 
 def save_pet(conn, learner_id: int, dept_id: str, index: int, today: date) -> None:
+    if dept_id == "orders":
+        raise ShopError("Special order pets are already waiting just for you!")
     slot = _slot(conn, learner_id, dept_id, index, today)
     db.put_shop_slot(conn, learner_id, _to_row(save(slot, _saved(conn, learner_id))))
 
@@ -323,3 +376,97 @@ def unsave_pet(conn, learner_id: int, today: date) -> str:
         raise ShopError("You aren't saving a pet.")
     db.put_shop_slot(conn, learner_id, _to_row(unsave(saved, today)))
     return saved.dept
+
+
+# --- one learner's special order -------------------------------------------------------
+
+
+def capitals_done(conn, learner_id: int) -> bool:
+    """Picking an order's second color opens once capital letters are learned."""
+    taught = db.list_taught(conn, learner_id)
+    return all(lesson_ref(CAPS_ID, letters) in taught for letters in CAPS_GROUPS)
+
+
+def _color(color_id: str) -> dict:
+    c = g.COLORS[color_id]
+    return {"id": c.id, "name": c.name, "hex": c.hex}
+
+
+def order_choices(conn, learner_id: int) -> list[dict]:
+    """Every species an order can ask for (its department is open), with its
+    fee and the colors it can be ordered in."""
+    taught = lessons.taught_keys(conn, learner_id)
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    return [
+        {
+            "species": sp, "dept": d.id, "fee": order_fee(sp),
+            "primaries": [_color(c) for c in g.order_primaries(sp, unlocked)],
+            "colors": [_color(c) for c in g.available_colors(sp, unlocked)],
+        }
+        for d in DEPARTMENTS.values()
+        if d.id in STOCKED and is_open(d, taught)
+        for sp in d.species
+    ]
+
+
+def _order_view(conn, learner_id: int, today: date) -> dict | None:
+    order = db.get_special_order(conn, learner_id)
+    if order is None:
+        return None
+    ready_on, leaves_on = date.fromisoformat(order["ready_on"]), date.fromisoformat(order["leaves_on"])
+    status = order_status(ready_on, leaves_on, today)
+    if status is None:
+        return None
+    return {
+        "species": order["species"],
+        "primary": _color(order["primary_color"]),
+        "secondary": _color(order["secondary_color"]) if order["secondary_color"] else None,
+        "status": status,
+        "days_left": (leaves_on - today).days if status == "ready" else None,
+    }
+
+
+def _check_order(conn, learner_id: int, species: str, secondary: str | None) -> None:
+    if species not in {c["species"] for c in order_choices(conn, learner_id)}:
+        raise ShopError("You can't order that pet yet.")
+    if secondary is not None and not capitals_done(conn, learner_id):
+        raise ShopError("Learn your capital letters to pick a second color too!")
+
+
+def place_order(
+    conn, learner_id: int, species: str, primary: str, secondary: str | None, today: date,
+    rng: random.Random | None = None,
+) -> None:
+    """Pay the fee and send the order: its pets arrive tomorrow. Any pets
+    still waiting from the last order go home."""
+    _open_dept(conn, learner_id, "orders")
+    _check_order(conn, learner_id, species, secondary)
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    try:
+        slots = order_slots(species, primary, secondary, today, unlocked, rng or random.Random())
+    except g.GeneError as exc:
+        raise ShopError(str(exc)) from None
+    fee = order_fee(species)
+    balance = db.get_coin_balance(conn, learner_id)
+    if balance < fee:
+        raise ShopError(f"You need {fee - balance:,} more coins to send this order.")
+    db.add_coins(conn, learner_id, -fee, "purchase", ref=f"order:{species}:{today.isoformat()}")
+    db.clear_shop_slots(conn, learner_id, "orders")
+    for slot in slots:
+        db.put_shop_slot(conn, learner_id, _to_row(slot))
+    db.put_special_order(conn, learner_id, {
+        "species": species, "primary_color": primary, "secondary_color": secondary, "fee": fee,
+        "ordered_on": today.isoformat(), "ready_on": slots[0].stocked_on.isoformat(),
+        "leaves_on": slots[0].leaves_on.isoformat(),
+    })
+
+
+def order_preview(conn, learner_id: int, species: str, primary: str, secondary: str | None) -> dict:
+    """One pet like the order would bring (nothing saved), for the order form."""
+    _open_dept(conn, learner_id, "orders")
+    _check_order(conn, learner_id, species, secondary)
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    try:
+        return g.resolve(g.order_roll(species, primary, secondary, unlocked, g.new_seed()))
+    except g.GeneError as exc:
+        raise ShopError(str(exc)) from None

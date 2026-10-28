@@ -502,7 +502,8 @@ shop slots). Genes are stored, not re-rolled: the third color depends on unlocks
 
 **API**: `GET /api/pets/shop` (departments, open/coming soon, the saved pet), `GET
 /api/pets/shop/{dept}`, `POST /api/pets/shop/{dept}/{slot}/buy`, `PUT|DELETE /api/pets/shop/save`,
-`GET|POST /api/pets/orders`.
+`POST /api/pets/shop/orders` (species, primary, secondary), `GET /api/pets/shop/orders/preview`
+(one sample pet for the order form). Order pets can't be saved (they already wait just for you).
 
 **Build order**: (1) available colors, `shop_roll`, rare-feature registry; (2) `app/pet_shop.py`
 stock/restock/save over a fake calendar; (3) tables, buying, API; (4) shop UI; (5) Special Orders

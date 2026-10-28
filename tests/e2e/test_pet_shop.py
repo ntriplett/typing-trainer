@@ -62,3 +62,20 @@ def test_the_home_row_coupon_buys_a_household_pet(page: Page, live_server):
     page.get_by_role("button", name="Yay!").click()
     expect(page.locator("#shop-coupon")).to_be_hidden()
     expect(page.locator(".shop-card").nth(1)).to_contain_text("Adopted!")
+
+
+def test_sending_a_special_order(page: Page, live_server, tmp_path):
+    place_on_home_row(page, live_server)
+    _give_coins(tmp_path, 1000)
+    page.goto(f"{live_server}/pets/shop?dept=orders")
+    expect(page.locator(".order-form")).to_contain_text("Order a special pet!")
+    page.locator("[data-species='cat']").click()
+    page.locator("[data-primary='black']").click()
+    expect(page.locator(".order-explain")).to_contain_text("4 cats")
+    expect(page.locator("#order-preview")).to_be_visible()
+    page.get_by_role("button", name="Send my order").click()
+    page.get_by_role("button", name="Yes, send it!").click()
+    expect(page.locator(".order-status")).to_contain_text("4 cats in Black arrive tomorrow")
+    expect(page.locator("#coin-count")).to_have_text("600")
+    expect(page.locator(".order-warning")).to_contain_text("cats home")
+    expect(page.locator("#shop-message")).to_be_empty()

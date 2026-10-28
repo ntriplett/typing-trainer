@@ -177,6 +177,19 @@ CREATE TABLE IF NOT EXISTS shop_slot (
     PRIMARY KEY (learner_id, dept, idx)
 );
 
+-- A learner's one special order (app/pet_shop.py): its pets are shop_slot
+-- rows in the "orders" department, arriving on ready_on.
+CREATE TABLE IF NOT EXISTS special_order (
+    learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
+    species TEXT NOT NULL,
+    primary_color TEXT NOT NULL,
+    secondary_color TEXT,
+    fee INTEGER NOT NULL,
+    ordered_on TEXT NOT NULL,
+    ready_on TEXT NOT NULL,
+    leaves_on TEXT NOT NULL
+);
+
 -- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
 -- placed furniture, keyed by room name.
 CREATE TABLE IF NOT EXISTS room_surface (
@@ -1189,4 +1202,24 @@ def put_shop_slot(conn: sqlite3.Connection, learner_id: int, slot: dict) -> None
             learner_id, slot["dept"], slot["idx"], slot["seed"], slot["species"], json.dumps(slot["genes"]),
             slot["price_roll"], slot["stocked_on"], slot["leaves_on"], int(slot["saved"]), int(slot["sold"]),
         ),
+    )
+
+
+def clear_shop_slots(conn: sqlite3.Connection, learner_id: int, dept: str) -> None:
+    conn.execute("DELETE FROM shop_slot WHERE learner_id = ? AND dept = ?", (learner_id, dept))
+
+
+_ORDER_COLUMNS = "species, primary_color, secondary_color, fee, ordered_on, ready_on, leaves_on"
+
+
+def get_special_order(conn: sqlite3.Connection, learner_id: int) -> dict | None:
+    row = conn.execute(f"SELECT {_ORDER_COLUMNS} FROM special_order WHERE learner_id = ?", (learner_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def put_special_order(conn: sqlite3.Connection, learner_id: int, order: dict) -> None:
+    """Replace the learner's order (keys as get_special_order returns them)."""
+    conn.execute(
+        f"INSERT OR REPLACE INTO special_order (learner_id, {_ORDER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (learner_id, *(order[k] for k in _ORDER_COLUMNS.split(", "))),
     )

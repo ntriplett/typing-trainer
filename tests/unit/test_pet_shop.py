@@ -147,3 +147,26 @@ def test_the_view_has_what_the_shop_page_draws():
     v = shop.view(slot, DAY0, set())
     assert v["species"] == slot.species and v["genes"]["hex"][0].startswith("#")
     assert v["price"] > 0 and isinstance(v["rare"], dict) and not v["saved"]
+
+
+# --- special orders ---------------------------------------------------------------
+
+
+def test_the_order_fee_is_half_the_species_base():
+    assert [shop.order_fee(s) for s in ("fish", "cat", "goat", "snake", "dragon")] == [50, 400, 1000, 1500, 5000]
+
+
+def test_an_order_brings_4_pets_in_the_asked_colors_tomorrow_for_3_days():
+    slots = shop.order_slots("cat", "black", None, DAY0, set(), random.Random(1))
+    assert len(slots) == shop.ORDER_PETS == 4
+    assert {s.dept for s in slots} == {"orders"} and [s.index for s in slots] == [0, 1, 2, 3]
+    assert all(s.genes["coat"]["colors"][0] == "black" and s.species == "cat" for s in slots)
+    assert {(s.stocked_on, s.leaves_on) for s in slots} == {(days(1), days(4))}
+    assert len({s.seed for s in slots}) == 4  # four different pets
+
+
+def test_an_orders_status_by_day():
+    ready, leaves = days(1), days(4)
+    assert [shop.order_status(ready, leaves, days(n)) for n in range(6)] == [
+        "waiting", "ready", "ready", "ready", None, None,
+    ]
