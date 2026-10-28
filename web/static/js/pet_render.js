@@ -559,7 +559,8 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
 function paintCoat(out, grid, genes, built, hex) {
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
-    bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox], sheep: [SHEEP_PATTERNS, paintSheep],
+    cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
+    sheep: [SHEEP_PATTERNS, paintSheep],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1099,6 +1100,172 @@ function paintSheep(out, grid, genes, built, hex) {
   }
 }
 
+// --- cat coats: real cat patterns ---------------------------------------------------
+// Three passes (body, head, ears). The face stays clean: at most a small
+// white chin, a thin blaze, or a colorpoint's mask -- never a block over
+// the muzzle. The first pick is the coat; white parts take the second pick
+// if it's lighter (else a cream of the coat), stripes the second if darker
+// (else a deep shade of the coat).
+
+const CAT_PATTERNS = new Set(["tabby", "solid", "tuxedo", "bicolor", "calico", "tortie", "colorpoint", "van"]);
+const CAT_BODY = new Set(["body", "fluff", "chest", "leg", "farleg", "tail"]);
+const CAT_HEAD = new Set(["head", "snout", "cap", "tuft"]);
+const CAT_EARS = new Set(["ear", "farear", "fold"]);
+
+function paintCat(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const face = built.face;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const main = c0;
+  const white = luminance(c1) > luminance(c0) + 0.1 ? c1 : blend(c0, "#fbf6ec", 0.72);
+  const stripe = luminance(c1) < luminance(c0) - 0.1 ? c1 : blend(c0, PET_OUTLINE, 0.42);
+  const second = c1 !== c0 ? c1 : stripe; // calico and tortie's other color
+  const accent = hex[2];
+  const noise = valueNoise(genes.seed);
+  const noise2 = valueNoise(genes.seed ^ 0x5bd1e995);
+  const s = built.scale;
+  const splotch = genes.coat.splotch || 0.8;
+
+  let minX = GRID_W;
+  let maxX = -1;
+  let minY = GRID_H;
+  let maxY = -1;
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || c.l !== "body") continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  const bw = Math.max(1, maxX - minX);
+  const bh = Math.max(1, maxY - minY);
+  const [tx, ty, tl] = geo.tail;
+
+  // 1. the body, legs and tail
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !CAT_BODY.has(c.l)) continue;
+      const fx = (x - minX) / bw; // 0 rump .. 1 chest
+      const fy = (y - minY) / bh; // 0 back .. 1 belly
+      const u = (x - geo.cx) / s;
+      const v = (y - geo.cy) / s;
+      const leg = c.l === "leg" || c.l === "farleg";
+      const tail = c.l === "tail";
+      const paw = leg && y >= GROUND - 2;
+      const d = Math.hypot(x - tx, y - ty) / Math.max(1, tl);
+      let color = main;
+      switch (pattern) {
+        case "tabby": {
+          const k = 2.2 + (1 - splotch) * 2.5;
+          const band = leg ? Math.sin(((y - geo.legTop) / 2.2) * Math.PI) : tail ? Math.sin(d * Math.PI * 5) : Math.sin((u * k * 0.25 + v * 0.08 + noise(u * 0.2, v * 0.2) * 0.5) * Math.PI);
+          if (band > 0.45) color = stripe;
+          break;
+        }
+        case "tuxedo":
+          if (paw || (!leg && !tail && ((fx > 0.6 && fy > 0.3) || fy > 0.78))) color = white;
+          break;
+        case "bicolor":
+          if (paw || (!tail && !leg && fy > 0.6) || (!tail && noise(u * 0.18 + 20, v * 0.18) > 0.72)) color = white;
+          break;
+        case "calico": {
+          color = white;
+          if (noise(u * 0.17 + 7, v * 0.17) > 0.55) color = main;
+          else if (noise2(u * 0.17 + 3, v * 0.17 + 9) > 0.58) color = accent || second;
+          if (paw) color = white;
+          break;
+        }
+        case "tortie":
+          if (noise2(u * 0.45 + 11, v * 0.45) > 0.5) color = second;
+          break;
+        case "colorpoint":
+          color = blend(white, main, Math.max(0, Math.min(0.3, (0.5 - fy) * 0.5))); // a touch darker along the back
+          if (leg && y >= geo.legTop + (GROUND - geo.legTop) * 0.35) color = main;
+          if (tail) color = d > 0.25 ? main : blend(white, main, 0.5);
+          break;
+        case "van":
+          color = tail ? main : white;
+          break;
+        default: // solid
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 2. the head: a clean face
+  const [hx, hy, hrx, hry] = geo.head;
+  const eyes = face.eyes;
+  const eyeTop = eyes.length ? Math.min(...eyes.map((e) => e.y)) : hy - 2;
+  const eyeBottom = eyes.length ? Math.max(...eyes.map((e) => e.y + (EYE_SHAPES[e.size] || ["", ""]).length - 1)) : hy;
+  const mouthRows = [...face.smile, ...face.pink, ...face.noseDark].map(([, y]) => y);
+  const mouthBottom = mouthRows.length ? Math.max(...mouthRows) : (face.nose ? face.nose.y : eyeBottom + 2);
+  const noseTop = mouthRows.length ? Math.min(...mouthRows) : (face.nose ? face.nose.y : eyeBottom + 1);
+  const front = Math.round(hx);
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !CAT_HEAD.has(c.l)) continue;
+      const dx = Math.abs(x - front);
+      const chin = y > mouthBottom && dx <= hrx * 0.5;
+      const forehead = y < eyeTop - 1;
+      const u = (x - geo.cx) / s;
+      const v = (y - geo.cy) / s;
+      let color = main;
+      switch (pattern) {
+        case "tabby":
+          // the "M": short stripes on the forehead, a row of fur clear of the eyes
+          if (forehead && y < eyeTop - 1 && (dx === 0 || Math.abs(dx - 2) < 0.6) && y >= eyeTop - 4) color = stripe;
+          if (chin) color = white;
+          break;
+        case "tuxedo":
+          if (chin) color = white;
+          break;
+        case "bicolor":
+          if (chin || (dx <= 0.6 && y >= eyeTop - 2 && y < noseTop)) color = white; // a thin blaze
+          break;
+        case "calico":
+          if (forehead) color = noise(u * 0.17 + 7, v * 0.17) > 0.55 ? main : noise2(u * 0.17 + 3, v * 0.17 + 9) > 0.58 ? accent || second : white;
+          else if (chin) color = white;
+          break;
+        case "tortie":
+          if (forehead && noise2(u * 0.45 + 11, v * 0.45) > 0.5) color = second;
+          break;
+        case "colorpoint": {
+          // a dark mask around the eyes, nose and mouth; the rest light
+          const mask = ((x - hx) / (hrx * 0.7)) ** 2 + ((y - (eyeTop + mouthBottom) / 2) / (hry * 0.62)) ** 2 <= 1;
+          color = mask ? main : white;
+          break;
+        }
+        case "van":
+          color = forehead && dx > 1 ? main : white; // a colored cap split by a white blaze
+          break;
+        default:
+          break;
+      }
+      out[y][x] = color;
+    }
+  }
+
+  // 3. the ears
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c || !CAT_EARS.has(c.l)) continue;
+      const u = (x - geo.cx) / s;
+      const v = (y - geo.cy) / s;
+      let color = main;
+      if (pattern === "calico") color = noise(u * 0.17 + 7, v * 0.17) > 0.5 ? main : accent || second;
+      out[y][x] = color;
+    }
+  }
+}
+
 const petCache = new Map();
 
 // The finished pixels: {w, h, pix: rows of hex or null}. Cached per pet,
@@ -1470,13 +1637,35 @@ const PET_DESIGNS = {
     },
     },
   },
-  // chosen in the pet lab, 2026-10-27: front-facing face with a 7x4 nose and
-  // mouth, duo eyes, soft outline, cute proportions
+  // chosen in the pet lab, 2026-10-27 (the second round of cats): seven
+  // breeds built on CAT_BASE; a mix borrows another breed's ears, head or cheeks
   cat: {
-    name: "Cat", facing: "front", pose: "walk", mouth: "w", eyesLow: true, softOutline: true, softNeck: true,
-    body: { rx: 8.4, ry: 3.9 }, leg: { len: 5.5, w: 1, min: 3 }, head: { rx: 6.3, ry: 5.4 },
-    ears: { size: 5, w: 0.85 }, tail: { type: "question", len: 13, w: 2.4 }, eye: "duo",
+    get breeds() {
+      return CAT_BREEDS;
+    },
   },
+};
+
+// The cat's shared face and build (the first round's pick); each breed
+// changes only what it needs.
+const CAT_BASE = {
+  name: "Cat", facing: "front", pose: "walk", mouth: "w", eyesLow: true, softOutline: true, softNeck: true,
+  body: { rx: 8.4, ry: 3.9 }, leg: { len: 5.5, w: 1, min: 3 }, head: { rx: 6.3, ry: 5.4 },
+  ears: { size: 5, w: 0.85 }, tail: { type: "question", len: 13, w: 2.4 }, eye: "duo",
+};
+
+function catBreed(over) {
+  return { ...CAT_BASE, leg: { len: 6, w: 1, min: 3 }, ...over, ears: { ...CAT_BASE.ears, ...(over.ears || {}) } };
+}
+
+const CAT_BREEDS = {
+  shorthair: catBreed({ name: "Shorthair, side view", facing: "side", pose: "walk", snout: "round", body: { rx: 9, ry: 3.9 }, head: { rx: 4.8, ry: 4.4 }, ears: { size: 5.5, w: 0.9 }, tail: { type: "question", len: 12, w: 1.8 } }),
+  sitting: catBreed({ name: "Sitting, face to us, tail wrapped round", pose: "sit", body: { rx: 8.2, ry: 3.8 }, leg: { len: 7, w: 1, min: 4 }, tail: { type: "wrap", len: 14, w: 3 } }),
+  loaf: catBreed({ name: "Loaf: tucked in, paws peeking out", pose: "loaf", body: { rx: 8.8, ry: 4.2 }, tail: { type: "wrap", len: 12, w: 2 } }),
+  kitten: catBreed({ name: "Kitten: big head, short legs", body: { rx: 7.6, ry: 3.6 }, leg: { len: 4.5, w: 1, min: 3 }, head: { rx: 6.6, ry: 5.6 }, tail: { type: "question", len: 10, w: 2 } }),
+  mainecoon: catBreed({ name: "Maine Coon: big, ear tufts, chest ruff, plume tail", body: { rx: 10, ry: 4.4 }, leg: { len: 6.5, w: 1, min: 3 }, head: { rx: 6.2, ry: 5.2 }, cheeks: 1.12, ruff: true, fluffy: true, ears: { size: 5.6, w: 0.95, tufts: true }, tail: { type: "plume", len: 13, w: 3.4 } }),
+  persian: catBreed({ name: "Persian: flat round face, small ears, fluffy, short legs", body: { rx: 9, ry: 4.4 }, leg: { len: 4.5, w: 1, min: 3 }, head: { rx: 6.6, ry: 5.3 }, cheeks: 1.18, fluffy: true, ears: { size: 3.6, w: 1.1 }, tail: { type: "plume", len: 10, w: 3.4 } }),
+  sleeping: catBreed({ name: "Sleeping curl: curled up, eyes closed", pose: "loaf", eye: "closed", body: { rx: 9, ry: 4 }, tail: { type: "wrap", len: 14, w: 2.2 } }),
 };
 
 const PET_VARIANTS = {
@@ -1485,6 +1674,7 @@ const PET_VARIANTS = {
   bunny: Object.values(PET_DESIGNS.bunny.breeds),
   fox: Object.values(PET_DESIGNS.fox.breeds),
   sheep: Object.values(PET_DESIGNS.sheep.breeds),
+  cat: Object.values(CAT_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
@@ -1629,7 +1819,7 @@ function buildVariant(genes, stage, frame, V) {
     fillRect(grid, chx - 1 + legW - 1, GROUND - 1, 2, 1, "leg");
     fillEllipse(grid, hcx + rh * 0.55, GROUND - 1, Math.max(1.6, 2.4 * s), 1.2, "leg");
     const L = tailLen;
-    const wrap = [[hcx - rh * 0.7, GROUND - 2.5], [hcx - rh * 0.9, GROUND - 1.2], [hcx + rh * 0.2, GROUND - 1], [hcx + rh * 0.2 + L * 0.35, GROUND - 1.5 - wag]];
+    const wrap = [[hcx - rh * 0.7, GROUND - 3], [hcx - rh * 0.9, GROUND - 1.8], [hcx + rh * 0.2, GROUND - 1.6], [hcx + rh * 0.2 + L * 0.35, GROUND - 2.2 - wag]];
     fillStroke(grid, wrap, tw, "tail");
     if (V.tailTip) fillEllipse(grid, hcx - rh * 0.3, GROUND - tw, rh * 0.9, tw * 1.1, "tail"); // a fox's brush is fat
     tailEnd = wrap[wrap.length - 1];
@@ -1657,6 +1847,16 @@ function buildVariant(genes, stage, frame, V) {
       }
     } else {
       body(cx, cy);
+      if (V.fluffy) {
+        // long hair: soft bumps along the back, chest and rump (no inner lines)
+        // small and set just inside the edge, so the back ripples instead of humping
+        const r = Math.max(1.1, 1.3 * Math.max(s, 0.6));
+        const n = Math.max(10, Math.round(rx / 0.8));
+        for (let i = 0; i <= n; i++) {
+          const a = Math.PI * (-0.15 + (1.3 * i) / n);
+          fillEllipse(grid, cx - Math.cos(a) * (rx * 0.92 - r * 0.35), cy - ry * 0.1 - Math.sin(a) * (ry * 0.95 - r * 0.35), r, r, "fluff");
+        }
+      }
     }
     if (V.ruff) {
       fillEllipse(grid, cx + rx * 0.62, cy - ry * 0.1, Math.max(2, rx * 0.3), ry * 1.05, "chest");
@@ -1996,6 +2196,7 @@ const EYE_SHAPES = {
   dark: ["PP", "PP"], // plain dark dot
   almond: [".II", "IPI", "II."], // slanted cat eye
   duo: ["IP", "IP"], // color on the left, dark on the right
+  closed: ["..", "KK"], // asleep: just a lash line
 };
 
 // Draws a variant's face: eyes (with blinks), nose, mouth, ear tufts.

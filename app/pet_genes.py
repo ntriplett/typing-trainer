@@ -142,9 +142,12 @@ ELEMENTS = {
 # rarely a third accent color.
 COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
 PATTERNS = {"patches": 3.0, "spots": 2.0, "belly": 2.0, "stripes": 1.5, "points": 1.0}
+# Cats wear real cat coats (paintCat in web/static/js/pet_render.js).
+CAT_PATTERNS = {"tabby": 25, "solid": 15, "tuxedo": 12, "bicolor": 12, "calico": 10, "tortie": 10, "colorpoint": 8, "van": 8}
 # Species with their own pattern odds. Dogs: mostly belly and points coats,
 # a husky-style mask now and then, spots for dalmatians, stripes (brindle) rare.
 SPECIES_PATTERNS = {
+    "cat": CAT_PATTERNS,
     "dog": {"belly": 3.0, "points": 2.5, "patches": 2.0, "mask": 1.5, "spots": 1.0, "stripes": 0.4},
     # bunnies wear real rabbit patterns (painted in web/static/js/pet_render.js paintBunny)
     "bunny": {"self": 30, "agouti": 20, "broken": 20, "dutch": 12, "himalayan": 10, "tan": 5, "english": 3},
@@ -168,18 +171,19 @@ ODD_EYES_CHANCE = {"cat": 0.03, "dog": 0.01}  # one eye a different color
 # Species drawn as a set of breeds: each pet rolls one, and sometimes is a
 # mix that borrows one part (its tail or its ears) from another breed.
 BREEDS = {
+    "cat": ("shorthair", "sitting", "loaf", "kitten", "mainecoon", "persian", "sleeping"),
     "dog": ("classic", "hound", "shiba", "dachshund", "husky"),
     "bunny": ("classic", "front", "dwarf", "sidelop", "holland", "halflop", "wild", "dwarfside"),
     "fox": ("red", "sitting", "kit", "curled"),
     "sheep": ("fluffy", "merino", "ram", "ramfront", "longwool"),
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft")}
+MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
 SHAPE_EXTRAS = {
-    "cat": {"weight": (-1.0, 1.0, -0.5)},
+    "cat": {"weight": (-1.0, 1.0, -0.5), "legs": (-1.0, 1.0, 0.0)},
     "dog": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},
     "bunny": {"weight": (-1.0, 1.0, 0.2)},
     "fox": {"snout": (-1.0, 1.0, 0.0), "legs": (-1.0, 1.0, 0.0)},

@@ -140,7 +140,7 @@ def test_dogs_roll_a_breed_and_sometimes_a_mix():
     for d in dogs:
         for part, donor in d["mix"].items():
             assert part in g.MIX_PARTS["dog"] and donor != d["breed"]
-    assert "breed" not in g.roll("cat", "orange", "ash", 1)["shape"]
+    assert "breed" not in g.roll("llama", "ivory", "cocoa", 1)["shape"]
 
 
 def test_dogs_have_their_own_pattern_odds():
@@ -196,3 +196,14 @@ def test_sheep_roll_breeds_mixes_and_sheep_coats():
     pats = collections.Counter(x["coat"]["pattern"] for x in sheep)
     assert set(pats) == {"whiteface", "blackface", "self", "speckled", "jacob", "badger", "valais"}
     assert "wool" in sheep[0]["shape"]
+
+
+def test_cats_roll_breeds_and_cat_coats():
+    import collections
+
+    cats = [g.roll("cat", "orange", "snow", seed) for seed in range(2000)]
+    assert {c["shape"]["breed"] for c in cats} == set(g.BREEDS["cat"])
+    assert all(set(c["shape"]["mix"]) <= {"ears", "head", "cheeks"} for c in cats)
+    pats = collections.Counter(c["coat"]["pattern"] for c in cats)
+    assert set(pats) == set(g.CAT_PATTERNS)
+    assert pats["tabby"] > pats["van"]
