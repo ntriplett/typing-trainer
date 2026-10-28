@@ -6,8 +6,10 @@ midnight (slots come and go on their own days, so the shop changes a
 little each day). One pet in the whole shop can be saved ("Save for me"):
 it never leaves. A bought pet's slot stays empty until tomorrow.
 
-These are the pure rules: `today` is passed in, and slots are plain
-values the caller stores (app/db.py) -- so tests can run a fake calendar.
+The pure rules come first: `today` is passed in and slots are plain
+values, so tests can run a fake calendar. Below them, one learner's shop
+stored in app/db.py: departments opening as rows are learned, buying
+(coins, or the pet coupon learning the home row gives), Save for me.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import random
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
+from app import db, lessons
 from app import pet_genes as g
 
 HOME_ROW = "asdfghjkl;"
@@ -40,7 +43,7 @@ DEPARTMENTS: dict[str, Department] = {
     for d in [
         Department("fish", "Fish", ("fish",), 16, 100, ""),
         Department("household", "Household Pets", ("dog", "cat", "bunny"), 16, 800, HOME_ROW),
-        Department("farm", "Farm Pets", ("goat", "sheep", "llama"), 12, 2000, TOP_ROW),
+        Department("farm", "Farm Pets", ("goat", "sheep", "llama", "fox"), 12, 2000, TOP_ROW),
         Department("reptiles", "Reptiles & Amphibians", ("turtle", "lizard", "snake"), 8, 3000, BOTTOM_ROW),
         Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 10000, NUMBERS),
         Department("orders", "Special Orders", (), 4, 0, HOME_ROW),
@@ -179,3 +182,143 @@ def view(slot: Slot, today: date, unlocked: set[str]) -> dict:
         "saved": slot.saved,
         "last_day": last_day(slot, today),
     }
+
+
+# --- one learner's shop, stored in app/db.py ---------------------------------------
+
+# Learning the home row gives one coupon: any Household pet for free.
+COUPON_DEPT = "household"
+SETTING_COUPON_USED = "pet_coupon_used"
+
+
+class Closed(PermissionError):
+    """A department that hasn't opened yet (kid-readable)."""
+
+
+def _to_row(slot: Slot) -> dict:
+    return {
+        "dept": slot.dept, "idx": slot.index, "seed": slot.seed, "species": slot.species, "genes": slot.genes,
+        "price_roll": slot.price_roll, "stocked_on": slot.stocked_on.isoformat(),
+        "leaves_on": slot.leaves_on.isoformat(), "saved": slot.saved, "sold": slot.sold,
+    }
+
+
+def _from_row(row: dict) -> Slot:
+    return Slot(
+        dept=row["dept"], index=row["idx"], seed=row["seed"], species=row["species"], genes=row["genes"],
+        price_roll=row["price_roll"], stocked_on=date.fromisoformat(row["stocked_on"]),
+        leaves_on=date.fromisoformat(row["leaves_on"]), saved=row["saved"], sold=row["sold"],
+    )
+
+
+def _dept_info(dept: Department, taught: set[str]) -> dict:
+    return {
+        "id": dept.id, "name": dept.name, "species": list(dept.species), "slots": dept.slots,
+        "open": is_open(dept, taught), "soon": dept.soon, "missing": missing_keys(dept, taught),
+    }
+
+
+def _open_dept(conn, learner_id: int, dept_id: str) -> Department:
+    dept = DEPARTMENTS.get(dept_id)
+    if dept is None:
+        raise ShopError("There's no department like that.")
+    missing = missing_keys(dept, lessons.taught_keys(conn, learner_id))
+    if dept.soon:
+        raise Closed(f"{dept.name} is coming soon!")
+    if missing:
+        raise Closed(f"{dept.name} opens when you learn {' '.join(missing.upper())}.")
+    return dept
+
+
+def has_coupon(conn, learner_id: int) -> bool:
+    taught = lessons.taught_keys(conn, learner_id)
+    return is_open(DEPARTMENTS[COUPON_DEPT], taught) and db.get_setting(conn, learner_id, SETTING_COUPON_USED) is None
+
+
+def stock(conn, learner_id: int, dept_id: str, today: date, rng: random.Random | None = None) -> list[Slot]:
+    """Today's stock for an open department, restocked and stored."""
+    _open_dept(conn, learner_id, dept_id)
+    if dept_id not in STOCKED:
+        raise ShopError("Nothing here yet!")
+    old = [_from_row(r) for r in db.list_shop_slots(conn, learner_id, dept_id)]
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    new = refresh(dept_id, old, today, unlocked, rng or random.Random())
+    for slot in new:
+        if slot not in old:
+            db.put_shop_slot(conn, learner_id, _to_row(slot))
+    return new
+
+
+def _saved(conn, learner_id: int) -> Slot | None:
+    return next((_from_row(r) for r in db.list_shop_slots(conn, learner_id) if r["saved"]), None)
+
+
+def shop_state(conn, learner_id: int, today: date) -> dict:
+    """The shop's front: every department, the saved pet, the coupon."""
+    taught = lessons.taught_keys(conn, learner_id)
+    saved = _saved(conn, learner_id)
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    return {
+        "departments": [_dept_info(d, taught) for d in DEPARTMENTS.values()],
+        "saved": view(saved, today, unlocked) if saved else None,
+        "coupon": has_coupon(conn, learner_id),
+    }
+
+
+def department_state(conn, learner_id: int, dept_id: str, today: date, rng: random.Random | None = None) -> dict:
+    slots = stock(conn, learner_id, dept_id, today, rng)
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    taught = lessons.taught_keys(conn, learner_id)
+    saved = _saved(conn, learner_id)
+    return {
+        "department": _dept_info(DEPARTMENTS[dept_id], taught),
+        "slots": [view(s, today, unlocked) for s in slots],
+        "saved": view(saved, today, unlocked) if saved else None,
+        "coupon": dept_id == COUPON_DEPT and has_coupon(conn, learner_id),
+    }
+
+
+def _slot(conn, learner_id: int, dept_id: str, index: int, today: date) -> Slot:
+    slots = stock(conn, learner_id, dept_id, today)
+    if not 0 <= index < len(slots):
+        raise ShopError("There's no pet in that spot.")
+    return slots[index]
+
+
+def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon: bool = False) -> dict:
+    """Buy the pet in a slot (with coins or the coupon): it goes to the Pet
+    Care Center and all its colors unlock. Returns the new pet."""
+    slot = _slot(conn, learner_id, dept_id, index, today)
+    sold = sell(slot, today)  # raises if it's gone already, before anything is paid
+    unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    if use_coupon:
+        if dept_id != COUPON_DEPT:
+            raise ShopError("Your pet coupon is for Household Pets.")
+        if not has_coupon(conn, learner_id):
+            raise ShopError("You don't have a pet coupon.")
+        db.set_setting(conn, learner_id, SETTING_COUPON_USED, today.isoformat())
+    else:
+        cost = price(slot.genes, unlocked, slot.price_roll)
+        balance = db.get_coin_balance(conn, learner_id)
+        if balance < cost:
+            raise ShopError(f"You need {cost - balance:,} more coins for this {slot.species}.")
+        db.add_coins(conn, learner_id, -cost, "purchase", ref=f"pet:{dept_id}:{slot.seed}")
+    db.put_shop_slot(conn, learner_id, _to_row(sold))
+    new = g.new_to_player(slot.genes, unlocked)
+    db.unlock_pet_colors(conn, learner_id, [c for c in slot.genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
+    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, slot.species.capitalize(), "shop")
+    return {**db.get_v3_pet(conn, learner_id, pet_id), "new_colors": [g.COLORS[c].name for c in new]}
+
+
+def save_pet(conn, learner_id: int, dept_id: str, index: int, today: date) -> None:
+    slot = _slot(conn, learner_id, dept_id, index, today)
+    db.put_shop_slot(conn, learner_id, _to_row(save(slot, _saved(conn, learner_id))))
+
+
+def unsave_pet(conn, learner_id: int, today: date) -> str:
+    """Let the saved pet go; returns its department."""
+    saved = _saved(conn, learner_id)
+    if saved is None:
+        raise ShopError("You aren't saving a pet.")
+    db.put_shop_slot(conn, learner_id, _to_row(unsave(saved, today)))
+    return saved.dept

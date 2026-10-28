@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_genes, pets, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_genes, pet_shop, pets, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -943,6 +943,66 @@ def pet_along(
     pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
 ) -> dict:
     return _pet_action(pets.set_along, conn, learner_id, pet_id, body.slot)
+
+
+# --- pet shop API (pets v3, PLAN.md 11h) --------------------------------------------
+
+
+class BuyPetIn(BaseModel):
+    coupon: bool = False
+
+
+class SavePetIn(BaseModel):
+    dept: str
+    index: int
+
+
+def _today():
+    """The shop restocks at local midnight."""
+    return now().astimezone().date()
+
+
+def _shop_call(action, *args):
+    try:
+        return action(*args)
+    except pet_shop.Closed as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from None
+    except pet_shop.ShopError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def _department(conn, learner_id: int, dept: str) -> dict:
+    return {**_me(conn, learner_id), **_shop_call(pet_shop.department_state, conn, learner_id, dept, _today())}
+
+
+@app.get("/api/pets/shop")
+def pet_shop_front(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today())}
+
+
+@app.get("/api/pets/shop/{dept}")
+def pet_shop_department(dept: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _department(conn, learner_id, dept)
+
+
+@app.post("/api/pets/shop/{dept}/{index}/buy")
+def buy_shop_pet(
+    dept: str, index: int, body: BuyPetIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    bought = _shop_call(pet_shop.buy, conn, learner_id, dept, index, _today(), body.coupon)
+    return {**_department(conn, learner_id, dept), "bought": bought}
+
+
+@app.put("/api/pets/shop/save")
+def save_shop_pet(body: SavePetIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _shop_call(pet_shop.save_pet, conn, learner_id, body.dept, body.index, _today())
+    return _department(conn, learner_id, body.dept)
+
+
+@app.delete("/api/pets/shop/save")
+def unsave_shop_pet(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    dept = _shop_call(pet_shop.unsave_pet, conn, learner_id, _today())
+    return _department(conn, learner_id, dept)
 
 
 # --- room API -------------------------------------------------------------------------

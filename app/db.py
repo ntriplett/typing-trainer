@@ -135,6 +135,48 @@ CREATE TABLE IF NOT EXISTS owned_pet (
 );
 CREATE INDEX IF NOT EXISTS idx_owned_pet_learner ON owned_pet(learner_id);
 
+-- Pets v3 (PLAN.md 11h): genes are app/pet_genes.py's JSON, stored rather
+-- than re-rolled. home is NULL while the pet waits in the Pet Care Center.
+CREATE TABLE IF NOT EXISTS pet (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    seed INTEGER NOT NULL,
+    species TEXT NOT NULL,
+    genes TEXT NOT NULL,
+    name TEXT NOT NULL,
+    growth INTEGER NOT NULL DEFAULT 0,
+    last_fed TEXT,
+    source TEXT NOT NULL,
+    home TEXT,
+    adopted_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pet_learner ON pet(learner_id);
+
+-- Pet colors a learner has unlocked (for every species they suit).
+CREATE TABLE IF NOT EXISTS pet_color_unlock (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    color TEXT NOT NULL,
+    unlocked_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, color)
+);
+
+-- The Pet Shop's stock, one row per learner, department and slot
+-- (app/pet_shop.py Slot). Dates are local calendar days.
+CREATE TABLE IF NOT EXISTS shop_slot (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    dept TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    seed INTEGER NOT NULL,
+    species TEXT NOT NULL,
+    genes TEXT NOT NULL,
+    price_roll REAL NOT NULL,
+    stocked_on TEXT NOT NULL,
+    leaves_on TEXT NOT NULL,
+    saved INTEGER NOT NULL DEFAULT 0,
+    sold INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learner_id, dept, idx)
+);
+
 -- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
 -- placed furniture, keyed by room name.
 CREATE TABLE IF NOT EXISTS room_surface (
@@ -1080,3 +1122,71 @@ def move_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int, x:
 def remove_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int) -> bool:
     cur = conn.execute("DELETE FROM room_item WHERE learner_id = ? AND id = ?", (learner_id, placed_id))
     return cur.rowcount == 1
+
+
+# --- pets v3 and the pet shop (PLAN.md 11h) ---------------------------------------
+
+_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, adopted_at"
+
+
+def _v3_pet(row: sqlite3.Row) -> dict:
+    return {**dict(row), "genes": json.loads(row["genes"])}
+
+
+def add_v3_pet(conn: sqlite3.Connection, learner_id: int, genes: dict, name: str, source: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO pet (learner_id, seed, species, genes, name, source, adopted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (learner_id, genes["seed"], genes["species"], json.dumps(genes), name, source, _now_iso()),
+    )
+    return cur.lastrowid
+
+
+def list_v3_pets(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute(f"SELECT {_V3_PET_COLUMNS} FROM pet WHERE learner_id = ? ORDER BY id", (learner_id,))
+    return [_v3_pet(r) for r in rows]
+
+
+def get_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int) -> dict | None:
+    row = conn.execute(
+        f"SELECT {_V3_PET_COLUMNS} FROM pet WHERE learner_id = ? AND id = ?", (learner_id, pet_id)
+    ).fetchone()
+    return _v3_pet(row) if row else None
+
+
+def list_pet_color_unlocks(conn: sqlite3.Connection, learner_id: int) -> set[str]:
+    rows = conn.execute("SELECT color FROM pet_color_unlock WHERE learner_id = ?", (learner_id,))
+    return {r["color"] for r in rows}
+
+
+def unlock_pet_colors(conn: sqlite3.Connection, learner_id: int, colors: list[str]) -> None:
+    conn.executemany(
+        "INSERT OR IGNORE INTO pet_color_unlock (learner_id, color, unlocked_at) VALUES (?, ?, ?)",
+        [(learner_id, c, _now_iso()) for c in colors],
+    )
+
+
+_SHOP_COLUMNS = "dept, idx, seed, species, genes, price_roll, stocked_on, leaves_on, saved, sold"
+
+
+def _shop_row(row: sqlite3.Row) -> dict:
+    return {**dict(row), "genes": json.loads(row["genes"]), "saved": bool(row["saved"]), "sold": bool(row["sold"])}
+
+
+def list_shop_slots(conn: sqlite3.Connection, learner_id: int, dept: str | None = None) -> list[dict]:
+    """One department's slots, or every department's (dept=None)."""
+    where, args = ("AND dept = ?", (dept,)) if dept else ("", ())
+    rows = conn.execute(
+        f"SELECT {_SHOP_COLUMNS} FROM shop_slot WHERE learner_id = ? {where} ORDER BY dept, idx", (learner_id, *args)
+    )
+    return [_shop_row(r) for r in rows]
+
+
+def put_shop_slot(conn: sqlite3.Connection, learner_id: int, slot: dict) -> None:
+    """Insert or replace one slot (keys as list_shop_slots returns them)."""
+    conn.execute(
+        f"INSERT OR REPLACE INTO shop_slot (learner_id, {_SHOP_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            learner_id, slot["dept"], slot["idx"], slot["seed"], slot["species"], json.dumps(slot["genes"]),
+            slot["price_roll"], slot["stocked_on"], slot["leaves_on"], int(slot["saved"]), int(slot["sold"]),
+        ),
+    )
