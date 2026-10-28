@@ -65,7 +65,7 @@ const PET_RECIPES = {
 
 // Labels painted with the coat. The rest have their own colors (PET_FIXED
 // or, for "face" and "skin", a shade of the coat).
-const FUR = new Set(["farleg", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim"]);
+const FUR = new Set(["farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
 const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim"]);
 // Parts in front of the body that grow out of it (no line where they meet).
@@ -561,7 +561,7 @@ function paintCoat(out, grid, genes, built, hex) {
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
     sheep: [SHEEP_PATTERNS, paintSheep], goat: [GOAT_PATTERNS, paintGoat], llama: [LLAMA_PATTERNS, paintLlama],
-    turtle: [TURTLE_PATTERNS, paintTurtle],
+    turtle: [TURTLE_PATTERNS, paintTurtle], lizard: [LIZARD_PATTERNS, paintLizard],
   }[genes.species];
   if (own && own[0].has(genes.coat.pattern)) return own[1](out, grid, genes, built, hex);
   const geo = built.geo;
@@ -1647,6 +1647,106 @@ function paintTurtle(out, grid, genes, built, hex) {
   }
 }
 
+// --- lizard coats -----------------------------------------------------------------
+// Passes: body and tail, then head and legs, then the crest and dewlap. The
+// first pick is the coat and the second the markings; the crest spines and a
+// dewlap take the third color if there is one, else a bright second.
+//   plain     the coat, a lighter belly (side views)
+//   banded    dark rings round the tail, faint bands on the body (iguana)
+//   striped   light stripes along the body, a bright tail (skink)
+//   spotted   rows of light spots with dark middles (monitor)
+//   chameleon broad bands of the two colors across the body
+//   twotone   head, neck and shoulders in the second color
+//   speckled  fine light and dark speckles
+
+const LIZARD_PATTERNS = new Set(["plain", "banded", "striped", "spotted", "chameleon", "twotone", "speckled"]);
+
+function paintLizard(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  const pattern = genes.coat.pattern;
+  const geo = built.geo;
+  const top = !!geo.fromAbove;
+  const [c0, c1] = [hex[0], hex[1] || hex[0]];
+  const main = c0;
+  const mark = c1 !== c0 ? c1 : blend(c0, "#f0e0a0", 0.55);
+  const light = blend(main, "#f0e8c8", 0.5);
+  const dark = blend(main, PET_OUTLINE, 0.45);
+  const bright = hex[2] || blend(mark, "#ffffff", 0.15);
+  const noise = valueNoise(genes.seed);
+  const tick = (x, y) => {
+    let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + genes.seed) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const [tx, ty, tl] = geo.tail;
+  const s = built.scale;
+  const { cx, cy, rx, ry } = geo;
+
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (!c) continue;
+      const l = c.l;
+      if (l !== "body" && l !== "tail" && l !== "neck" && l !== "head" && l !== "limb" && l !== "leg" && l !== "farleg") continue;
+      const d = Math.hypot(x + 0.5 - tx, y + 0.5 - ty) / Math.max(1, tl); // along the tail
+      const across = (y + 0.5 - cy) / Math.max(1, ry); // -1 .. 1 across the body
+      const along = (x + 0.5 - cx) / Math.max(1, rx); // -1 rump .. 1 shoulders
+      let color = main;
+      if (l === "tail") {
+        if (pattern === "banded" || pattern === "chameleon") color = Math.sin(d * Math.PI * 9) > 0.35 ? dark : main;
+        else if (pattern === "striped") color = mark; // a bright tail
+        else if (pattern === "spotted" && noise(x * 0.5, y * 0.5) > 0.66) color = light;
+        else if (pattern === "speckled" && tick(x, y) < 0.25) color = tick(y, x) < 0.5 ? light : dark;
+      } else if (l === "body" || l === "neck") {
+        switch (pattern) {
+          case "plain":
+            if (!top && across > 0.55) color = light; // a lighter belly
+            break;
+          case "banded":
+            if (Math.sin(along * Math.PI * 3) > 0.7) color = blend(main, PET_OUTLINE, 0.2);
+            break;
+          case "striped": {
+            // light stripes along the body: above, either side of the spine; from the side, two rows
+            const stripes = top ? [-0.45, 0.45] : [-0.35, 0.25];
+            if (stripes.some((st) => Math.abs(across - st) < 0.14)) color = light;
+            break;
+          }
+          case "spotted": {
+            const sx = Math.round((x - cx) / (3 * s));
+            const sy = Math.round((y - cy) / (2.4 * s));
+            const dd = Math.hypot(x - (cx + sx * 3 * s), y - (cy + sy * 2.4 * s));
+            if ((sx + sy) % 2 === 0 && dd < 1.2 * s) color = dd < 0.5 ? dark : light;
+            break;
+          }
+          case "chameleon":
+            if (Math.floor((along + 1) * 2.5) % 2) color = mark;
+            break;
+          case "twotone":
+            if (l === "neck" || along > 0.2) color = blend(mark, main, Math.max(0, Math.min(1, (0.6 - along) * 1.5)));
+            break;
+          case "speckled":
+            if (tick(x, y) < 0.25) color = tick(y, x) < 0.5 ? light : dark;
+            break;
+          default:
+            break;
+        }
+      } else if (l === "head") {
+        color = pattern === "twotone" ? mark : main;
+      } else {
+        color = blend(main, PET_OUTLINE, l === "farleg" ? 0.12 : 0.05); // legs a touch darker
+      }
+      out[y][x] = color;
+    }
+  }
+  // the crest and dewlap: a pop of color
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const c = grid[y][x];
+      if (c && (c.l === "spine" || c.l === "dewlap" || c.l === "frill")) out[y][x] = bright;
+    }
+  }
+}
+
 // A face drawn front-on has two eyes.
 function V_FRONT(face) {
   return face.eyes.length > 1;
@@ -1826,7 +1926,7 @@ function petPixels(genes, growth, frame = 0) {
     })
   );
   const pix = out.slice(minY, GROUND + 1).map((row) => row.slice(minX, maxX + 1));
-  const result = { w: maxX - minX + 1, h: GROUND + 1 - minY, pix };
+  const result = { w: maxX - minX + 1, h: GROUND + 1 - minY, pix, noShadow: !!built.noShadow };
   if (petCache.size > 2000) petCache.clear();
   petCache.set(key, result);
   return result;
@@ -1835,9 +1935,9 @@ function petPixels(genes, growth, frame = 0) {
 // Draws a pet with its feet at (x, bottom) and its left edge at x, `scale`
 // px units per pet pixel, with a soft shadow on the ground. faceLeft mirrors it.
 function drawPet(px, x, bottom, genes, growth, { frame = 0, faceLeft = false, scale = 1, shadow = true } = {}) {
-  const { w, h, pix } = petPixels(genes, growth, frame);
+  const { w, h, pix, noShadow } = petPixels(genes, growth, frame);
   const top = bottom - h * scale;
-  if (shadow) {
+  if (shadow && !noShadow) {
     const sw = Math.round(w * 0.8);
     const sx = x + Math.round((w - sw) / 2) * scale;
     px(sx + scale, bottom - scale, (sw - 2) * scale, scale, "rgba(40, 24, 16, 0.28)");
@@ -1866,6 +1966,14 @@ function petSize(genes, growth) {
 // the pet lab (genes.variant picks one, 1-based).
 
 const PET_DESIGNS = {
+  // chosen in the pet lab, 2026-10-27: five lizard breeds (iguanas and the
+  // skink seen from above, the monitor and chameleon from the side); a mix
+  // borrows another breed's crest, dewlap or head
+  lizard: {
+    get breeds() {
+      return LIZARD_BREEDS;
+    },
+  },
   // chosen in the pet lab, 2026-10-27: five turtle breeds; a mix borrows
   // another breed's head, ridges or tail
   turtle: {
@@ -2152,6 +2260,23 @@ const TURTLE_BREEDS = {
   shy: TURTLE({ name: "Shy: hiding in its shell, eyes peeking", tucked: true, leg: { len: 1.8, w: 3.2 } }),
 };
 
+// Lizard trial designs start from a green iguana's build.
+function LIZARD(over) {
+  return {
+    lizard: true, facing: "side", softOutline: true,
+    body: { rx: 9, ry: 3.2 }, leg: { len: 3.6, w: 2.2 }, head: { rx: 3.2, ry: 2.6 }, tail: { type: "long", len: 17 },
+    ...over,
+  };
+}
+
+const LIZARD_BREEDS = {
+  iguana: LIZARD({ name: "Iguana: thick shoulders tapering back, question-mark tail curling under", view: "top", taper: true, crest: 2.2, dewlap: true, body: { rx: 9, ry: 3.4 }, tail: { type: "question", len: 18 } }),
+  iguana_s: LIZARD({ name: "Iguana, tapering body, S-curved tail", view: "top", taper: true, crest: 2.2, dewlap: true, body: { rx: 9, ry: 3.4 } }),
+  monitor: LIZARD({ name: "Monitor: long neck and body, forked tongue (side view)", stance: "stand", tongue: true, neck: 3.4, body: { rx: 10, ry: 3 }, tail: { type: "long", len: 20 }, head: { rx: 3, ry: 2.2 }, snout: 3 }),
+  skink: LIZARD({ name: "Skink: long and smooth, tiny legs (from above)", view: "top", body: { rx: 10, ry: 2.4 }, leg: { len: 2.4, w: 1.6 }, tail: { type: "long", len: 15 }, head: { rx: 2.8, ry: 2.2 }, snout: 1.6 }),
+  chameleon: LIZARD({ name: "Chameleon: helmet, spiral tail (side view)", stance: "stand", chameleon: true, casque: true, crest: 0.6, body: { rx: 6.4, ry: 3.2 }, leg: { len: 4.2, w: 1.6 }, tail: { type: "curl", len: 11 }, head: { rx: 3, ry: 2.8 }, snout: 1.4, headUp: 1.5 }),
+};
+
 const PET_VARIANTS = {
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -2162,10 +2287,13 @@ const PET_VARIANTS = {
   goat: Object.values(PET_DESIGNS.goat.breeds),
   llama: Object.values(LLAMA_BREEDS),
   turtle: Object.values(TURTLE_BREEDS),
+  lizard: Object.values(LIZARD_BREEDS),
 };
 
 function buildVariant(genes, stage, frame, V) {
   if (V.shell) return buildTurtle(genes, stage, frame, V);
+  if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
+  if (V.lizard) return buildLizard(genes, stage, frame, V);
   const shape = genes.shape || {};
   const grid = makeGrid();
   const s = stage.body;
@@ -2899,6 +3027,324 @@ function buildTurtle(genes, stage, frame, V) {
   return {
     grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, base - ry * 0.5], scale: s,
     softOutline: true, softNeck: false, geo,
+  };
+}
+
+// --- lizards ----------------------------------------------------------------------
+// A long, low body on four sprawled, bent legs with splayed toes; a long
+// tapering tail (or a fat gecko tail, or a chameleon's curl); a wedge of a
+// head with a jaw line, on a short neck. Extras make the breeds: a crest of
+// spines, a dewlap, a spiky beard, a neck frill, a chameleon's helmet, head
+// horns, a forked tongue.
+
+function buildLizard(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const s = 0.6 + stage.body * 0.4; // lizards stay readable as babies too
+  const hs = 0.72 + stage.head * 0.28;
+  const step = frame % 2;
+  const wag = frame % 2;
+  const rx = half(V.body.rx * s + (shape.length || 0) / 2);
+  const ry = half(V.body.ry * s + (shape.height || 0) / 5);
+  const legH = Math.max(3, V.leg.len * 1.4 * (0.7 + stage.leg * 0.3) * (1 + (shape.legs || 0) * 0.3));
+  const cx = 34;
+  const sprawl = V.stance !== "stand";
+  // sprawled: the belly just off the ground, so the short legs show beneath
+  const by = sprawl ? GROUND - ry - 2.2 - (V.chestUp || 0) * 0.4 : GROUND - legH - ry * 0.55;
+  const lw = sprawl ? Math.max(1.05, V.leg.w * s * 0.55) : Math.max(0.8, (V.leg.w * s) / 2);
+  const hipX = cx - rx * 0.6;
+  const shoulderX = cx + rx * 0.55;
+
+  // sprawled: a rounded shoulder (or hip) on the body's side, and a short,
+  // thick leg angling out from under the body to a foot with splayed toes
+  const sprawlLeg = (x, dir, lift, label) => {
+    const l = label === "leg" ? "limb" : label; // near legs get a line where they cross the body
+    const bottom = by + ry * 0.85;
+    const foot = [x + dir * 3 * s + lift * dir * 0.7, GROUND - 1.1];
+    fillStroke(grid, [[x, bottom - 0.5], [x + dir * 1.6 * s, bottom + 0.6 - lift * 0.4], foot], lw, l);
+    if (l === "limb") fillEllipse(grid, x + dir * 0.6, by + ry * 0.35, Math.max(1.6, 2 * s), Math.max(1.4, 1.6 * s), l);
+    fillRect(grid, dir > 0 ? foot[0] - 0.5 : foot[0] - 2.5, GROUND - 1, 3, 1, l); // splayed toes
+  };
+  // standing (a monitor): the leg bends out at the elbow and ends in a splayed foot
+  const leg = (x, dir, lift, label) => {
+    if (sprawl) return sprawlLeg(x, dir, lift, label);
+    const knee = [x + dir * 2.4 * s, GROUND - legH * 0.6 - lift];
+    fillStroke(grid, [[x, by + ry * 0.3], knee, [x + dir * 0.8, GROUND - 1.2 - lift * 0.5]], lw, label);
+    fillRect(grid, x + dir * 0.4 - 1, GROUND - 1 - lift * 0.5, 3, 1, label); // the toes
+  };
+  leg(hipX + 2, -1, step ? 0 : 1, "farleg");
+  leg(shoulderX + 2, 1, step ? 1 : 0, "farleg");
+
+  // the tail
+  const L = V.tail.len * s * (1 + (shape.tail || 0) * 0.25);
+  const tx = cx - rx + 1;
+  const ty = by + ry * 0.1;
+  let tailEnd;
+  if (V.tail.type === "chunky") {
+    fillEllipse(grid, tx - L * 0.45, ty + 0.5, L * 0.55, Math.max(1.6, ry * 0.75), "tail"); // a gecko's fat tail
+    tailEnd = [tx - L, ty];
+  } else if (V.tail.type === "under") {
+    // drawn after the body (below) so it lies in front of it
+    tailEnd = null;
+  } else if (V.tail.type === "curl") {
+    // a chameleon's tail: back and down, then a spiral curling under
+    const cxT = tx - L * 0.5;
+    const cyT = ty + L * 0.22;
+    const pts = [[tx, ty], [tx - L * 0.25, ty + 0.4]];
+    for (let k = 0; k <= 14; k++) {
+      const a = -Math.PI / 2 - (k / 14) * Math.PI * 1.6; // from the top, round to the left and under
+      const r = L * 0.24 * (1 - k * 0.045);
+      pts.push([cxT + Math.cos(a) * r, cyT + Math.sin(a) * r]);
+    }
+    pts.slice(1).forEach((p, i) => fillStroke(grid, [pts[i], p], Math.max(0.6, ry * 0.42 * (1 - i * 0.045)), "tail"));
+    tailEnd = pts[pts.length - 1];
+  } else {
+    // long and tapering, sweeping down to the ground and up at the tip
+    const pts = [[tx, ty], [tx - L * 0.35, ty + ry * 0.6], [tx - L * 0.7, GROUND - 1.8], [tx - L, GROUND - 2.4 - wag]];
+    const widths = [ry * 0.75, ry * 0.5, ry * 0.3, 0.55];
+    pts.slice(1).forEach((p, i) => {
+      for (let k = 0; k <= 6; k++) {
+        const t = k / 6;
+        const r = Math.max(0.55, widths[i] + (widths[i + 1] - widths[i]) * t);
+        fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, "tail");
+      }
+    });
+    tailEnd = pts[pts.length - 1];
+  }
+
+  // the neck frill sits behind the head
+  const hrx = V.head.rx * hs;
+  const hry = V.head.ry * hs;
+  const hx = cx + rx + (V.neck || 1.6) * s + hrx * 0.4;
+  const hy = by - ry * (sprawl ? 0.15 : 0.4) - (V.headUp || 0) * s;
+  if (V.frill) {
+    // a fan standing up around the neck, wider than the head, with a scalloped edge
+    const fr = hry * 2.6;
+    fillEllipse(grid, hx - hrx * 0.5, hy - 0.5, fr * 0.62, fr, "frill");
+    for (let k = 0; k < 7; k++) {
+      const a = -Math.PI * 0.85 + (k / 6) * Math.PI * 1.7;
+      fillEllipse(grid, hx - hrx * 0.5 + Math.cos(a) * fr * 0.55, hy - 0.5 + Math.sin(a) * fr * 0.92, 1.2, 1.2, "frill");
+    }
+  }
+
+  // the body
+  fillEllipse(grid, cx, by, rx, ry, "body");
+  if (V.chameleon) fillEllipse(grid, cx - rx * 0.05, by - ry * 0.45, rx * 0.85, ry * 1.15, "body"); // a chameleon: tall and flattened
+  // the neck and head: a wedge with a jaw line
+  fillStroke(grid, [[cx + rx - 1, by - ry * 0.2], [hx - hrx * 0.4, hy + hry * 0.2]], Math.max(1.2, ry * 0.65), "neck");
+  fillEllipse(grid, hx, hy, hrx, hry, "head");
+  const sl = (V.snout || 2.2) * hs;
+  fillTri(grid, [[hx, hy - hry * 0.75], [hx, hy + hry * 0.8], [hx + hrx + sl, hy + hry * 0.25]], "head");
+  if (V.casque) fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.4], [hx + hrx * 0.4, hy - hry * 0.9], [hx - hrx * 1.1, hy - hry * 2.1]], "head");
+
+  if (V.tail.type === "under") {
+    // a tail that curls down behind and comes forward along the ground,
+    // in front of the body (an outline keeps the two apart)
+    const pts = [[tx + 1, ty], [tx - L * 0.4, ty + ry * 0.1], [tx - L * 0.52, GROUND - 1.6], [tx - L * 0.2, GROUND - 0.8], [cx - rx * 0.2 + wag, GROUND - 1]];
+    const widths = [ry * 0.75, ry * 0.55, ry * 0.42, ry * 0.32, 0.55];
+    pts.slice(1).forEach((p, i) => {
+      for (let k = 0; k <= 6; k++) {
+        const t = k / 6;
+        const r = Math.max(0.55, widths[i] + (widths[i + 1] - widths[i]) * t);
+        fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, "tail");
+      }
+    });
+    tailEnd = pts[pts.length - 1];
+  }
+
+  // near legs
+  leg(hipX, -1, step ? 1 : 0, "leg");
+  leg(shoulderX, 1, step ? 0 : 1, "leg");
+
+  // extras
+  const crest = (V.crest || 0) * s * (1 + (shape.crest || 0) * 0.35);
+  if (crest) {
+    // a row of spines from behind the head down the back and onto the tail
+    const n = Math.max(5, Math.round(rx / 1.3));
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1);
+      const x = cx + rx * 0.85 - t * rx * 2;
+      const top = by - ry * Math.sqrt(Math.max(0, 1 - ((x - cx) / rx) ** 2)) + 0.3;
+      const h = crest * (1 - Math.abs(t - 0.3) * 0.8);
+      fillTri(grid, [[x - 0.9, top + 0.5], [x + 0.9, top + 0.5], [x - 0.3, top - Math.max(0.8, h)]], "spine");
+    }
+  }
+  if (V.dewlap) fillEllipse(grid, hx - hrx * 0.1, hy + hry + 1.4 * hs, Math.max(1.4, hrx * 0.55), Math.max(1.2, 1.8 * hs), "dewlap");
+  if (V.beard) {
+    for (const dx of [-0.6, 0, 0.6]) {
+      const bx = hx + dx * hrx;
+      fillTri(grid, [[bx - 1, hy + hry * 0.6], [bx + 1, hy + hry * 0.6], [bx - 0.8, hy + hry + 2.2 * hs]], "spine");
+    }
+  }
+  if (V.horns) {
+    for (const dx of [-0.8, -0.3, 0.2]) {
+      const bx = hx + dx * hrx;
+      fillTri(grid, [[bx - 0.8, hy - hry * 0.6], [bx + 0.8, hy - hry * 0.6], [bx - 1.2, hy - hry - 1.8 * hs]], "spine");
+    }
+  }
+  relight(grid, "body");
+  relight(grid, "head");
+
+  // the face
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const eyeSize = V.eye || "duo";
+  const tipX = Math.round(hx + hrx + sl) - 1;
+  if (V.facing === "front") {
+    const c = Math.round(hx);
+    const ey = Math.round(hy - hry * 0.55);
+    face.eyes.push({ x: c - 4, y: ey, size: eyeSize, iris }, { x: c + 2, y: ey, size: eyeSize, iris });
+    const my = Math.round(hy + hry * 0.45);
+    for (let k = -2; k <= 2; k++) face.smile.push([c + k, my + (Math.abs(k) === 2 ? 0 : 1)]);
+  } else {
+    face.eyes.push({ x: Math.round(hx - hrx * 0.1), y: Math.round(hy - hry * 0.55), size: eyeSize, iris });
+    const my = Math.round(hy + hry * 0.4);
+    for (let x = Math.round(hx); x <= tipX; x++) face.smile.push([x, my]); // the jaw line
+    face.noseDark.push([tipX - 1, Math.round(hy - hry * 0.05)]);
+    if (V.tongue) face.tongue.push([tipX + 1, my], [tipX + 2, my - 1], [tipX + 2, my + 1]);
+  }
+
+  const geo = {
+    cx, cy: by, rx, ry, legTop: by + ry * 0.2, tail: [tx, ty, L], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, tailEnd,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, by], scale: s,
+    softOutline: true, softNeck: true, geo, noShadow: true,
+  };
+}
+
+// --- lizards seen from above (about 45 degrees) ------------------------------------
+// The back is a long oval with a bright spine (where the crest runs); the
+// near legs splay down toward us and the far legs up behind, each bending out
+// at the elbow to splayed toes; the tail curves across the ground in an S (or
+// curls into a spiral); the head shows its top, with both eyes on its sides.
+
+function buildLizardTop(genes, stage, frame, V) {
+  const shape = genes.shape || {};
+  const grid = makeGrid();
+  const s = 0.6 + stage.body * 0.4;
+  const hs = 0.72 + stage.head * 0.28;
+  const step = frame % 2;
+  const wag = frame % 2;
+  const rx = half(V.body.rx * s + (shape.length || 0) / 2);
+  const ry = half(V.body.ry * s + (shape.height || 0) / 5); // half the body's width, as seen from above
+  const legLen = V.leg.len * (0.8 + stage.leg * 0.2) * (1 + (shape.legs || 0) * 0.3);
+  const lw = Math.max(1, V.leg.w * s * 0.5);
+  const cx = 34;
+  const under = V.tail.type === "question";
+  const cy = GROUND - Math.max(ry + legLen + 1.5, under ? ry * 3.2 + 1.5 : 0); // the middle of the back
+  const hipX = cx - rx * 0.55;
+  const shoulderX = cx + rx * 0.5;
+
+  // a leg: out from the body's edge, a bend at the elbow, then splayed toes
+  const leg = (x, side, dir, lift, label) => {
+    const y0 = cy + side * ry * 0.75;
+    const elbow = [x + dir * 1.6 * s, y0 + side * legLen * 0.55 - lift * side * 0.4];
+    const foot = [x + dir * 2.8 * s + dir * lift * 0.6, y0 + side * legLen];
+    fillStroke(grid, [[x, y0], elbow, foot], lw, label);
+    for (const t of [-1, 0, 1]) fillRect(grid, foot[0] + dir * 1 + t * 0.2, foot[1] + t, 1.4, 1, label); // toes fanning out
+  };
+  // far legs splay up, behind the body
+  leg(hipX + 1, -1, -1, step ? 1 : 0, "farleg");
+  leg(shoulderX + 1, -1, 1, step ? 0 : 1, "farleg");
+  // a tail that curls under lies over the near feet, so draw those legs first
+  // (else a stepping foot cuts the tail in two)
+  if (under) {
+    leg(hipX, 1, -1, step ? 0 : 1, "limb");
+    leg(shoulderX, 1, 1, step ? 1 : 0, "limb");
+  }
+
+  // the tail: an S across the ground, or a spiral
+  const L = V.tail.len * s * (1 + (shape.tail || 0) * 0.25);
+  const tx = cx - rx + 1.5;
+  const ty = cy;
+  let pts;
+  if (under) {
+    // a big sideways question mark: back from the rump, round and down under
+    // the body, then forward along the bottom, pointing at the head
+    pts = [[tx, ty], [tx - L * 0.2, ty + ry * 0.25], [tx - L * 0.3, ty + ry * 1.3], [tx - L * 0.18, ty + ry * 2.3], [tx + L * 0.12, ty + ry * 2.7], [tx + L * 0.38, ty + ry * 2.75 - wag * 0.4]];
+  } else if (V.tail.type === "curl") {
+    const ccx = tx - L * 0.42;
+    const ccy = ty + ry * 0.2;
+    pts = [[tx, ty], [tx - L * 0.2, ty + ry * 0.6]];
+    for (let k = 0; k <= 16; k++) {
+      const a = Math.PI * 0.5 + (k / 16) * Math.PI * 1.8; // round to the left and up, curling inward
+      const r = L * 0.26 * (1 - k * 0.045);
+      pts.push([ccx + Math.cos(a) * r * 1.2, ccy + Math.sin(a) * r * 0.75]);
+    }
+  } else {
+    const sway = wag * 0.6;
+    pts = [[tx, ty], [tx - L * 0.28, ty + ry * 1.1], [tx - L * 0.58, ty + ry * 0.3 + sway], [tx - L * 0.82, ty - ry * 0.7], [tx - L, ty - ry * 0.2 - sway]];
+  }
+  const thick = V.tail.type === "chunky" ? 1.25 : V.taper ? 0.8 : 1;
+  pts.slice(1).forEach((p, i) => {
+    const r0 = Math.max(0.55, ry * 0.7 * thick * (1 - i / (pts.length - 1)));
+    const r1 = Math.max(0.55, ry * 0.7 * thick * (1 - (i + 1) / (pts.length - 1)));
+    for (let k = 0; k <= 5; k++) {
+      const t = k / 5;
+      const r = r0 + (r1 - r0) * t;
+      fillEllipse(grid, pts[i][0] + (p[0] - pts[i][0]) * t, pts[i][1] + (p[1] - pts[i][1]) * t, r, r, "tail");
+    }
+  });
+
+  // the back (an iguana's is thickest at the shoulders, narrowing to the tail)
+  if (V.taper) {
+    fillEllipse(grid, cx + rx * 0.25, cy, rx * 0.75, ry * 1.15, "body");
+    fillEllipse(grid, cx - rx * 0.45, cy, rx * 0.6, ry * 0.68, "body");
+  } else {
+    fillEllipse(grid, cx, cy, rx, ry, "body");
+  }
+  // the neck and head, seen from above: a wedge pointing ahead
+  const hrx = V.head.rx * hs;
+  const hry = V.head.ry * hs;
+  const hx = cx + rx + (V.neck || 1.2) * s + hrx * 0.45;
+  const hy = cy - (V.headUp || 0) * s;
+  fillStroke(grid, [[cx + rx - 1.5, cy], [hx - hrx * 0.5, hy]], Math.max(1.2, ry * (V.taper ? 0.95 : 0.65)), "neck");
+  if (V.frill) fillEllipse(grid, hx - hrx * 0.6, hy, hrx * 0.7, hry * 2.2, "frill");
+  fillEllipse(grid, hx, hy, hrx, hry, "head");
+  const sl = (V.snout || 2) * hs;
+  fillTri(grid, [[hx, hy - hry * 0.85], [hx, hy + hry * 0.85], [hx + hrx + sl, hy]], "head");
+  if (V.casque) fillTri(grid, [[hx - hrx * 0.9, hy - hry * 0.5], [hx + hrx * 0.3, hy - hry * 0.7], [hx - hrx * 1.2, hy - hry * 1.9]], "head");
+  if (V.dewlap) fillEllipse(grid, hx - hrx * 0.1, hy + hry + 1.2 * hs, Math.max(1.3, hrx * 0.5), Math.max(1.1, 1.5 * hs), "dewlap");
+
+  // near legs splay down, in front
+  if (!under) {
+    leg(hipX, 1, -1, step ? 0 : 1, "limb");
+    leg(shoulderX, 1, 1, step ? 1 : 0, "limb");
+  }
+
+  // a crest of spines along the spine
+  const crest = (V.crest || 0) * s * (1 + (shape.crest || 0) * 0.35);
+  if (crest) {
+    const n = Math.max(5, Math.round(rx / 1.2));
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1);
+      const x = cx + rx * 0.9 - t * rx * 2.1;
+      const h = Math.max(0.8, crest * (1 - Math.abs(t - 0.3) * 0.9));
+      fillTri(grid, [[x - 0.8, cy - ry * 0.15], [x + 0.8, cy - ry * 0.15], [x - 0.4, cy - ry * 0.15 - h]], "spine");
+    }
+  }
+  relight(grid, "body");
+  relight(grid, "head");
+
+  // the face: both eyes on the head's sides, nostrils at the tip, a mouth line
+  const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
+  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const eyeSize = V.eye || "duo";
+  const ex = Math.round(hx - hrx * 0.05);
+  face.eyes.push({ x: ex, y: Math.round(hy - hry * 0.85), size: eyeSize, iris }, { x: ex, y: Math.round(hy + hry * 0.3), size: eyeSize, iris });
+  const tipX = Math.round(hx + hrx + sl) - 1;
+  face.noseDark.push([tipX - 1, Math.round(hy) - 1], [tipX - 1, Math.round(hy) + 1]);
+  if (V.tongue) face.tongue.push([tipX + 1, Math.round(hy)], [tipX + 2, Math.round(hy) - 1], [tipX + 2, Math.round(hy) + 1]);
+
+  const geo = {
+    cx, cy, rx, ry, legTop: cy + ry * 0.75, tail: [tx, ty, L], head: [hx, hy, hrx, hry],
+    faceBox: null, muzzle: null, fromAbove: true,
+  };
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: hx, face, center: [cx, cy], scale: s,
+    softOutline: true, softNeck: true, geo, noShadow: true,
   };
 }
 

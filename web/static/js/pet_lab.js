@@ -10,7 +10,7 @@ const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
 // Species being worked on right now (the rest are hidden for the moment).
-const LAB_SPECIES = ["turtle"];
+const LAB_SPECIES = ["lizard"];
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
@@ -117,7 +117,7 @@ function select(pet) {
   $("opt-tail").value = selected.shape.tail;
   $("opt-sparkle").checked = selected.face.sparkle;
   // species-only looks show their sliders when this pet has them
-  for (const key of ["weight", "snout", "legs", "wool", "horns", "neck", "dome"]) {
+  for (const key of ["weight", "snout", "legs", "wool", "horns", "neck", "dome", "crest"]) {
     $(`${key}-knob`).hidden = !(key in selected.shape);
     $(`opt-${key}`).value = selected.shape[key] || 0;
   }
@@ -188,6 +188,7 @@ knob("opt-wool", (el) => (selected.shape.wool = Number(el.value)));
 knob("opt-horns", (el) => (selected.shape.horns = Number(el.value)));
 knob("opt-neck", (el) => (selected.shape.neck = Number(el.value)));
 knob("opt-dome", (el) => (selected.shape.dome = Number(el.value)));
+knob("opt-crest", (el) => (selected.shape.crest = Number(el.value)));
 
 $("opt-species").addEventListener("change", () => {
   fillColors();

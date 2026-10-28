@@ -237,3 +237,13 @@ def test_turtles_roll_breeds_and_shell_patterns():
     assert all(set(x["shape"]["mix"]) <= {"head", "ridges", "tailLen"} for x in turtles)
     pats = collections.Counter(x["coat"]["pattern"] for x in turtles)
     assert set(pats) == {"plain", "flecks", "rings", "star", "mottled", "checker", "keel"}
+
+
+def test_lizards_roll_breeds_and_lizard_patterns():
+    import collections
+
+    lizards = [g.roll("lizard", "fern", "sand", seed) for seed in range(2000)]
+    assert {x["shape"]["breed"] for x in lizards} == set(g.BREEDS["lizard"])
+    assert all(set(x["shape"]["mix"]) <= {"crest", "dewlap", "head"} for x in lizards)
+    pats = collections.Counter(x["coat"]["pattern"] for x in lizards)
+    assert set(pats) == {"plain", "banded", "striped", "spotted", "chameleon", "twotone", "speckled"}
