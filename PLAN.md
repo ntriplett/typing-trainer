@@ -435,6 +435,79 @@ then a few capitals at a time. They get strung together into lessons once enough
 - `/game-lab` (letters, focus, difficulty) and `/game/<id>`; lab runs don't feed stats. Played for
   real from the arcade with tokens (section 6a).
 
+## 11h. Pets v3: the Pets hub and the Pet Shop (agreed 2026-10-28)
+
+Pets v3 (`app/pet_genes.py` rolls, `web/static/js/pet_render.js` draws) replaces the old pets.
+The old pet system (`app/pets.py`, `owned_pet`, avatar/battle sprites) stays untouched until the
+Pet Care Center round, which switches the avatar to v3 and wipes the old pets.
+
+**Pets hub** (`/pets`; home tile "Pets"): a field with pets wandering and four clickable buildings:
+Pet Shop, **Pet Care Center** (inventory: visit and manage pets), **Aquarium**, **Trailhead**
+(explore the habitats you buy). Open from the start, since the Fish department is.
+
+**Pet Shop departments** (each player has their own stock):
+
+| Department | Species | Slots | Opens |
+|---|---|---|---|
+| Fish | fish | 16 | start |
+| Household | dog, cat, bunny | 16 | home row |
+| Farm | goat, sheep, llama | 12 | top row |
+| Reptiles & Amphibians | turtle, lizard, snake | 8 | bottom row |
+| Mythical | dragon, unicorn, phoenix | 2 | number row |
+| Special Orders | any open species | 4 | home row |
+| Pet Supplies | - | - | coming soon |
+
+Closed departments show "coming soon" with the keys still to learn.
+
+- **Stock**: each slot holds one rolled pet for 2-5 days, then re-rolls at midnight (one slot at a
+  time, so the shop changes a little each day). A "Last day!" banner shows on pets leaving tomorrow.
+- **Save for me**: one pet in the whole shop can be saved; it never re-rolls. To save another, let
+  the first go or buy it.
+- **Buying** puts the pet in the inventory (placing it in a habitat comes later) and unlocks all its
+  colors for every species.
+- **Pet coupon**: learning the home row grants one coupon: any Household pet for free. (Replaces the
+  free-pet setting; players past the home row get one when the old pets are wiped.)
+
+**Colors** (species with their own color rules -- dragon, unicorn, phoenix, fish -- keep the game's
+own picks, `roll(None, None)`):
+- A species' *available* colors: its 3 starters plus the player's unlocked colors from its families.
+  (Unlocks start empty; buying a pet unlocks its colors for everyone it fits.)
+- *Traditional*: available colors that are starters or from a NATURAL family; the rest are *fancy*.
+- Main color: traditional when nothing fancy is available, else 50/50 traditional or fancy, so at
+  least half the pets keep a traditional color however many fancy ones are unlocked. Second color:
+  any available. Third: rolls as before (can be locked: a lucky find).
+- **Unusual (8%)**: one of the two picked colors is swapped for a locked one; a natural-family color
+  is 2x as likely as a rare-family one.
+
+**Price** = species base (fish 100, household 800, farm 2K, reptiles 3K, mythical 10K)
+x 1.5 if any color is new to the player x each rare feature x a random multiplier (Gaussian,
+mean 0.75, sd 0.25, re-drawn until it lands in 0.25-1.5). Tabled: fish and mythicals pick from
+their whole palette, so early on nearly all carry the 1.5x new-color price; revisit later.
+Rare features are a registry in `pet_genes.py` (RARE_FEATURES: name, odds table, outcome), so new
+looks (more sparkles...) add one entry. Each scores against its table's most common outcome:
+1.0x at the most common, 1.5x at 50x rarer or more, log scale between; even tables score 1.0.
+
+**Special Orders**: pick an open species and a main color from its available colors (the second
+color too once capital letters are finished). The order fee is half the species base, paid up front.
+Next day 4 matching pets arrive at their normal prices (buy any number); they leave after 3 days. A
+new order sends any waiting ones home (the button says so). Copy for a 7-year-old, e.g. "Sending the
+order costs 400 coins. Tomorrow, 4 cats in your colors will be waiting here. You can buy the ones you
+love. If you don't, they go home after 3 days."
+
+**Data**: `pet` (id, learner, seed, species, genes JSON, name, growth, last_fed, adopted_at, source
+shop/order/gift, home: null = inventory), `pet_color_unlock` (learner, color), `shop_slot` (learner,
+dept, slot, seed, species, genes JSON, price, stocked_on, leaves_on, saved), `special_order`
+(learner, species, primary, secondary, ordered_on, ready_on, expires_on; its pets are `orders`
+shop slots). Genes are stored, not re-rolled: the third color depends on unlocks at roll time.
+
+**API**: `GET /api/pets/shop` (departments, open/coming soon, the saved pet), `GET
+/api/pets/shop/{dept}`, `POST /api/pets/shop/{dept}/{slot}/buy`, `PUT|DELETE /api/pets/shop/save`,
+`GET|POST /api/pets/orders`.
+
+**Build order**: (1) available colors, `shop_roll`, rare-feature registry; (2) `app/pet_shop.py`
+stock/restock/save over a fake calendar; (3) tables, buying, API; (4) shop UI; (5) Special Orders
+(a small pet-lab picker); (6) the hub page. Then: Pet Care Center, habitats, Aquarium, supplies.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

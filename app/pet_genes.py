@@ -31,6 +31,7 @@ from __future__ import annotations
 import colorsys
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 
 GENES_VERSION = 1
@@ -645,6 +646,10 @@ def roll(species: str, primary: str | None, secondary: str | None, seed: int, un
         secondary = _pick(rng, second_color_weights(species, primary))
     if primary == secondary:
         raise GeneError("Pick two different colors.")
+    return _genes(species, primary, secondary, seed, unlocked)
+
+
+def _genes(species: str, primary: str, secondary: str, seed: int, unlocked: set[str]) -> dict:
     genes = {"version": GENES_VERSION, "species": species, "seed": seed}
     return fill_missing(genes, {"primary": primary, "secondary": secondary, "unlocked": unlocked})
 
@@ -685,3 +690,141 @@ def color_catalog(unlocked: set[str], species: str | None = None) -> list[dict]:
         for c in COLORS.values()
         if fits(species, c.id)
     ]
+
+
+# --- the pet shop (PLAN.md 11h): which colors its pets roll, and how rare they are ---
+
+# Species whose colors the game always picks by its own rules (shop or not).
+GAME_PICKED = {"dragon", "unicorn", "phoenix", "fish"}
+# Of the shop's pets, this share keep a traditional main color (when there's
+# anything fancy to pick instead).
+TRADITIONAL_SHARE = 0.5
+# Now and then a shop pet wears a color the player hasn't unlocked yet:
+# a natural one this many times as often as a rare one.
+UNUSUAL_CHANCE = 0.08
+UNUSUAL_NATURAL_ODDS = 2.0
+
+
+def available_colors(species: str, unlocked: set[str]) -> list[str]:
+    """A species' starters plus the player's unlocked colors from its families."""
+    starters = STARTER_COLORS[species]
+    return [c for c in eligible_colors(species) if c in starters or c in unlocked]
+
+
+def traditional(species: str, color_id: str) -> bool:
+    return color_id in STARTER_COLORS[species] or realism(species, color_id) >= NATURAL
+
+
+def shop_colors(species: str, unlocked: set[str], seed: int) -> tuple[str, str]:
+    """The main and second color of a shop pet (species not in GAME_PICKED).
+    The main color is traditional half the time, or always while nothing
+    fancy is unlocked; UNUSUAL_CHANCE of the time one of the two is swapped
+    for a color the player hasn't unlocked."""
+    rng = _rng(seed, "shop")
+    available = available_colors(species, unlocked)
+    trad = [c for c in available if traditional(species, c)]
+    fancy = [c for c in available if c not in trad]
+    primary = rng.choice(fancy if fancy and rng.random() >= TRADITIONAL_SHARE else trad)
+    secondary = rng.choice([c for c in available if c != primary])
+    if rng.random() < UNUSUAL_CHANCE:
+        locked = [c for c in eligible_colors(species) if c not in available]
+        natural = [c for c in locked if realism(species, c) >= NATURAL]
+        rare = [c for c in locked if c not in natural]
+        odds = UNUSUAL_NATURAL_ODDS / (UNUSUAL_NATURAL_ODDS + 1)
+        pool = natural if natural and (not rare or rng.random() < odds) else rare
+        if pool:
+            new = rng.choice(pool)
+            if rng.random() < 0.5:
+                primary = new
+            else:
+                secondary = new
+    return primary, secondary
+
+
+def shop_roll(species: str, unlocked: set[str], seed: int) -> dict:
+    """A pet for the shop, rolled from what this player has unlocked."""
+    if species not in SPECIES_COLORS:
+        raise GeneError("There's no pet like that.")
+    available = set(available_colors(species, unlocked))
+    if species in GAME_PICKED:
+        return roll(species, None, None, seed, available)
+    primary, secondary = shop_colors(species, unlocked, seed)
+    return _genes(species, primary, secondary, seed, available)
+
+
+def new_to_player(genes: dict, unlocked: set[str]) -> list[str]:
+    """Colors on this pet the player couldn't have picked for its species yet."""
+    return new_colors(genes, unlocked | set(STARTER_COLORS[genes["species"]]))
+
+
+# Rare features: each looks up a pet's outcome in the odds table it rolled
+# from. Adding a new look (another kind of sparkle...) is one entry here.
+
+
+@dataclass(frozen=True, slots=True)
+class RareFeature:
+    name: str
+    odds: Callable[[str], dict | None]  # species -> {outcome: weight}; None if it can't have it
+    outcome: Callable[[dict], object]  # genes -> what this pet rolled
+
+
+# 1.0x for a table's most common outcome, RARE_TOP for one RARE_RATIO times
+# rarer or more, on a log scale between.
+RARE_TOP = 1.5
+RARE_RATIO = 50
+
+
+def _yes_no(chance: float) -> dict | None:
+    return {True: chance, False: 1 - chance} if chance else None
+
+
+def _style_odds(species: str) -> dict:
+    """A coat's style odds; ACCENT_CHANCE species pick the pattern first."""
+    accent = ACCENT_CHANCE.get(species)
+    if not accent:
+        return COAT_STYLES
+    patterns = SPECIES_PATTERNS[species]
+    p = sum(w * accent[k] for k, w in patterns.items()) / sum(patterns.values())
+    rest = COAT_STYLES["highlight"] + COAT_STYLES["mix"]
+    return {"accent": p, "highlight": (1 - p) * COAT_STYLES["highlight"] / rest, "mix": (1 - p) * COAT_STYLES["mix"] / rest}
+
+
+RARE_FEATURES = (
+    RareFeature("coat", _style_odds, lambda g: g["coat"]["style"]),
+    RareFeature("pattern", lambda sp: SPECIES_PATTERNS.get(sp, PATTERNS), lambda g: g["coat"]["pattern"]),
+    RareFeature("fins", lambda sp: FIN_PATTERNS.get(sp), lambda g: g["coat"].get("fins")),
+    RareFeature("mix", lambda sp: _yes_no(MIX_CHANCE) if sp in BREEDS else None, lambda g: bool(g["shape"].get("mix"))),
+    RareFeature("eyes", lambda sp: SPECIES_EYES.get(sp, EYES), lambda g: g["face"]["eyes"]),
+    RareFeature("odd eyes", lambda sp: _yes_no(ODD_EYES_CHANCE.get(sp, 0)), lambda g: "odd_eye" in g["face"]),
+    RareFeature("sparkle", lambda sp: _yes_no(SPARKLE_CHANCE), lambda g: g["face"]["sparkle"]),
+    # only where the game picks the main color is there a table to compare to
+    RareFeature(
+        "main color", lambda sp: primary_color_weights(sp) if sp in GAME_PICKED else None, lambda g: g["coat"]["colors"][0]
+    ),
+)
+
+
+def rare_multiplier(odds: dict, outcome: object) -> float:
+    weights = {k: w for k, w in odds.items() if w > 0}
+    if outcome not in weights:
+        return 1.0
+    ratio = max(weights.values()) / weights[outcome]
+    return 1 + (RARE_TOP - 1) * min(1.0, math.log(ratio) / math.log(RARE_RATIO))
+
+
+def rare_features(genes: dict) -> dict[str, float]:
+    """Feature name -> price multiplier, for the features rarer than usual."""
+    out = {}
+    for feature in RARE_FEATURES:
+        odds = feature.odds(genes["species"])
+        if odds is None:
+            continue
+        mult = rare_multiplier(odds, feature.outcome(genes))
+        if mult > 1.0:
+            out[feature.name] = round(mult, 3)
+    return out
+
+
+def rarity(genes: dict) -> float:
+    """Every rare feature's multiplier, multiplied together."""
+    return math.prod(rare_features(genes).values())

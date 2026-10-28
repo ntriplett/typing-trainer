@@ -402,3 +402,85 @@ def test_fish_prefer_a_height_by_their_mouth_and_small_ones_school():
     assert "behavior" not in g.roll("cat", "orange", "ash", 7)
     old = {k: v for k, v in fish[0].items() if k != "behavior"}
     assert g.fill_missing(old)["behavior"] == fish[0]["behavior"]  # fills in for older fish
+
+
+# --- the pet shop's rolls (PLAN.md 11h) -------------------------------------------
+
+SHOP_SEEDS = range(3000)
+
+
+def _picked(genes):
+    return genes["coat"]["colors"][:2]
+
+
+def test_available_colors_are_the_starters_plus_unlocked_ones_that_suit_the_species():
+    assert g.available_colors("cat", set()) == [c for c in g.eligible_colors("cat") if c in g.STARTER_COLORS["cat"]]
+    assert "ginger" in g.available_colors("cat", {"ginger"})
+    assert "moss" not in g.available_colors("cat", {"moss"})  # green isn't a cat family
+
+
+def test_shop_rolls_are_deterministic():
+    assert g.shop_roll("dog", {"rose"}, 7) == g.shop_roll("dog", {"rose"}, 7)
+    with pytest.raises(g.GeneError):
+        g.shop_roll("nosuchpet", set(), 1)
+
+
+def test_a_new_player_sees_starter_colors_and_about_8_percent_unusual_ones():
+    starters = set(g.STARTER_COLORS["cat"])
+    pets = [g.shop_roll("cat", set(), s) for s in SHOP_SEEDS]
+    unusual = [p for p in pets if not set(_picked(p)) <= starters]
+    assert 0.06 <= len(unusual) / len(pets) <= 0.10
+    assert all(len(set(_picked(p)) - starters) == 1 for p in unusual)  # one swapped color at most
+    new = [next(c for c in _picked(p) if c not in starters) for p in unusual]
+    natural = sum(g.realism("cat", c) >= g.NATURAL for c in new)
+    assert 0.55 <= natural / len(new) <= 0.78  # natural 2x as likely as rare
+
+
+def test_at_least_half_keep_a_traditional_color_however_many_fancy_ones_are_unlocked():
+    fancy = {c for c in g.eligible_colors("bunny") if not g.traditional("bunny", c)}
+    pets = [g.shop_roll("bunny", fancy, s) for s in SHOP_SEEDS]
+    with_trad = sum(any(g.traditional("bunny", c) for c in _picked(p)) for p in pets)
+    fancy_main = sum(not g.traditional("bunny", _picked(p)[0]) for p in pets)
+    assert with_trad / len(pets) >= 0.5
+    assert 0.4 <= fancy_main / len(pets) <= 0.6  # fancy unlocks really do show up
+
+
+def test_species_with_their_own_color_rules_ignore_the_shop_rules():
+    for species in g.GAME_PICKED:
+        assert g.shop_roll(species, set(), 5)["coat"]["colors"][:2] == g.roll(species, None, None, 5)["coat"]["colors"][:2]
+
+
+def test_new_to_player_counts_starters_as_known():
+    pet = g.roll("cat", "orange", "lilac", 1, unlocked={"orange", "lilac"})
+    assert g.new_to_player(pet, set()) == ["lilac"] + [c for c in pet["coat"]["colors"][2:] if c and c not in g.STARTER_COLORS["cat"]]
+    assert "lilac" not in g.new_to_player(pet, {"lilac"})
+
+
+def test_rare_multiplier_runs_from_1_to_1_5_on_a_log_scale():
+    assert g.rare_multiplier({"a": 50, "b": 1}, "a") == 1.0
+    assert g.rare_multiplier({"a": 50, "b": 1}, "b") == pytest.approx(1.5)
+    assert g.rare_multiplier({"a": 5000, "b": 1}, "b") == pytest.approx(1.5)  # capped
+    assert 1.1 < g.rare_multiplier({True: 0.25, False: 0.75}, True) < 1.2  # a mix
+    assert g.rare_multiplier({"a": 1, "b": 1}, "b") == 1.0  # even tables never count
+    assert g.rare_multiplier({"a": 1, "b": 0}, "b") == 1.0  # impossible outcomes don't either
+
+
+def test_every_rare_feature_finds_each_pets_outcome_in_its_table():
+    """Guards new RARE_FEATURES entries: the odds table must match what the rollers roll."""
+    for species in g.SPECIES_COLORS:
+        for seed in range(150):
+            genes = g.shop_roll(species, set(), seed)
+            for feature in g.RARE_FEATURES:
+                odds = feature.odds(species)
+                if odds is not None:
+                    assert feature.outcome(genes) in odds, (species, feature.name)
+            assert 1.0 <= g.rarity(genes) <= g.RARE_TOP ** len(g.RARE_FEATURES)
+
+
+def test_rare_looks_are_priced_up_and_common_ones_are_not():
+    pets = [g.shop_roll("cat", set(), s) for s in SHOP_SEEDS]
+    sparkly = next(p for p in pets if p["face"]["sparkle"])
+    assert g.rare_features(sparkly)["sparkle"] == pytest.approx(1.5, abs=0.01)
+    plain = [p for p in pets if not g.rare_features(p)]
+    assert plain and all(g.rarity(p) == 1.0 for p in plain)
+    assert 1.3 < sorted(g.rarity(p) for p in pets)[-len(pets) // 20] < 4  # the top 5% stand out, not absurdly
