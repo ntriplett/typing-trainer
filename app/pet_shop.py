@@ -18,7 +18,7 @@ import random
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
-from app import db, lessons, pet_care
+from app import aquarium, db, lessons, pet_care
 from app import pet_genes as g
 from app.activities.teach_curriculum import CAPS_GROUPS, CAPS_ID
 from app.brain import lesson_ref
@@ -50,6 +50,7 @@ DEPARTMENTS: dict[str, Department] = {
         Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 10000, NUMBERS),
         Department("orders", "Special Orders", (), 4, 0, HOME_ROW),
         Department("habitats", "Habitats", (), 0, 0, ""),  # sold by app/pet_care.py
+        Department("aqua", "Aquarium Supplies", (), 0, 0, ""),  # sold by app/aquarium.py
         Department("supplies", "Pet Supplies", (), 0, 0, "", soon=True),
     ]
 }
@@ -294,7 +295,7 @@ def has_coupon(conn, learner_id: int) -> bool:
 def stock(conn, learner_id: int, dept_id: str, today: date, rng: random.Random | None = None) -> list[Slot]:
     """Today's stock for an open department, restocked and stored."""
     _open_dept(conn, learner_id, dept_id)
-    if dept_id == "habitats":
+    if dept_id in ("habitats", "aqua"):
         return []
     if dept_id == "orders":  # never restocked: only an order's pets, while they wait
         rows = [_from_row(r) for r in db.list_shop_slots(conn, learner_id, dept_id)]
@@ -343,6 +344,8 @@ def department_state(conn, learner_id: int, dept_id: str, today: date, rng: rand
             "choices": order_choices(conn, learner_id),
             "pick_secondary": capitals_done(conn, learner_id),
         }
+    if dept_id == "aqua":
+        out["aqua"] = aquarium.supplies_state(conn, learner_id)
     if dept_id == "habitats":
         out["habitats"] = pet_care.habitats_state(conn, learner_id, magical_habitats_open(conn, learner_id))
     return out

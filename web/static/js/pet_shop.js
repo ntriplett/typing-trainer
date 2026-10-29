@@ -29,12 +29,15 @@ const RARE_LABEL = {
   sparkle: "Sparkly eyes",
   "main color": "Rare color",
 };
+// The row of keys each locked department waits for (app/pet_shop.py needs).
+const DEPT_ROW = { household: "home row", orders: "home row", farm: "top row", reptiles: "bottom row", mythical: "numbers" };
 const TIER_NAME = { everyday: "Outdoors", cozy: "Cozy", magical: "Magical" };
-const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", habitats: "🌳", supplies: "🦴" };
+const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", habitats: "🌳", aqua: "🌊", supplies: "🦴" };
 
 let front = null; // /api/pets/shop
 let dept = null; // /api/pets/shop/{id}
-let deptId = null; // null: the entrance hall
+let deptId = null; // null: a hall (the entrance, or upstairs)
+let floor = 0; // 0 the entrance hall, 1 upstairs (Homes & Supplies)
 let page = 0; // which of a department's rooms
 let scene = null; // what's drawn: {bg, front, pets: [{slot, world}]}
 let detailIndex = null; // the slot in the close-up
@@ -122,6 +125,7 @@ async function loadFront() {
 async function openDept(id, toPage = 0) {
   say("");
   deptId = id;
+  floor = SHOP_UPSTAIRS.has(id) ? 1 : 0;
   page = toPage;
   history.replaceState(null, "", `?dept=${id}${page ? `&page=${page}` : ""}`);
   try {
@@ -142,37 +146,49 @@ function setDept(data) {
 
 // --- the entrance hall --------------------------------------------------------------
 
-function goEntrance() {
+function goEntrance(toFloor = floor) {
   say("");
   deptId = null;
   dept = null;
-  history.replaceState(null, "", location.pathname);
+  floor = toFloor;
+  history.replaceState(null, "", floor ? "?floor=up" : location.pathname);
   renderEntrance();
   renderBanners();
 }
 
 function renderEntrance() {
-  $("dept-title").textContent = "Welcome to the Pet Shop!";
-  $("dept-hint").textContent = "Click a department to look around. New pets arrive every night.";
+  $("dept-title").textContent = floor ? "Upstairs: Homes & Supplies" : "Welcome to the Pet Shop!";
+  $("dept-hint").textContent = floor
+    ? "Homes for your pets, and everything for your fish tanks."
+    : "Click a department to look around. New pets arrive every night. Homes and supplies are up the stairs!";
   $("shop-grid").replaceChildren();
   $("shop-scene").hidden = false;
   const open = Object.fromEntries(front.departments.map((d) => [d.id, d.open]));
   const bg = sceneCanvas();
-  drawShopEntrance(habitatPainter(bg.getContext("2d"), SCENE_PX), open);
+  (floor ? drawShopUpstairs : drawShopEntrance)(habitatPainter(bg.getContext("2d"), SCENE_PX), open);
   scene = { bg, front: null, pets: [] };
   drawScene();
+  const stairs = document.createElement("button");
+  stairs.className = "shop-spot";
+  stairs.dataset.stairs = floor ? "down" : "up";
+  place(stairs, SHOP_SPOTS[floor ? "down" : "stairs"]);
+  stairs.innerHTML = `<span class="spot-sign">${floor ? "⬇ <span class=\"spot-name\">Downstairs</span>" : "⬆ <span class=\"spot-name\">Homes & Supplies</span>"}</span>`;
+  stairs.setAttribute("aria-label", floor ? "Go downstairs" : "Go upstairs to Homes & Supplies");
+  stairs.onclick = () => goEntrance(floor ? 0 : 1);
   $("shop-spots").replaceChildren(
-    ...front.departments.map((d) => {
+    stairs,
+    ...front.departments.filter((d) => SHOP_UPSTAIRS.has(d.id) === Boolean(floor)).map((d) => {
       const spot = SHOP_SPOTS[d.id];
       const btn = document.createElement("button");
       btn.className = "shop-spot" + (d.open ? "" : " closed");
       btn.dataset.dept = d.id;
       place(btn, spot);
-      const lock = d.soon ? "Coming soon" : `🔒 Learn ${d.missing.toUpperCase().split("").join(" ")}`;
+      const keys = d.missing.toUpperCase().split("").join(" ");
+      const lock = d.soon ? "Coming soon" : `🔒 Learn the ${DEPT_ROW[d.id] || "keys"}`;
       btn.setAttribute("aria-label", d.open ? d.name : `${d.name}: ${lock}`);
       btn.innerHTML = `<span class="spot-sign">${DEPT_ICON[d.id] || "🐾"} <span class="spot-name">${d.name}</span>${d.open ? "" : `<small>${lock}</small>`}</span>`;
       btn.onclick = () =>
-        d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${lock.slice(9)}.`);
+        d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${keys}.`);
       return btn;
     })
   );
@@ -247,6 +263,7 @@ function renderFloor() {
   $("shop-grid").replaceChildren();
   $("shop-grid").className = "shop-grid";
   if (d.id === "habitats") return renderHabitats();
+  if (d.id === "aqua") return renderAquaSupplies();
   renderRoom();
   if (d.id === "orders") return renderOrders();
   $("dept-hint").textContent = dept.coupon
@@ -313,7 +330,7 @@ function renderRoom() {
 
 // The way back to the entrance, and arrows to a department's other rooms.
 function roomSigns(names) {
-  const signs = [sceneSign("⬅ Entrance", "sign-left", goEntrance)];
+  const signs = [sceneSign(floor ? "⬅ Upstairs" : "⬅ Entrance", "sign-left", () => goEntrance())];
   if (names.length === 2) {
     const other = 1 - page;
     signs.push(sceneSign(other ? `${names[other]} ▶` : `◀ ${names[other]}`, "sign-right", () => openRoomPage(other)));
@@ -471,6 +488,149 @@ async function buyHabitat(kind) {
     setDept(data);
     say("");
     $("dept-hint").innerHTML = `🎉 Your <b>${data.bought.name}</b> is ready! Find it on the <a href="/pets/trail">Trailhead</a>, and move pets in at the <a href="/pets/care">Pet Care Center</a>.`;
+  } catch (err) {
+    closeDetail();
+    say(err.message);
+  }
+}
+
+// --- Aquarium Supplies (app/aquarium.py; art in aquarium_items.js) ---------------------
+
+const AQUA_ROOMS = [
+  { name: "Tanks & Backdrops", kinds: ["tank", "background"] },
+  { name: "Sand & Gravel", kinds: ["substrate"] },
+  { name: "Plants", kinds: ["plant"] },
+  { name: "Rocks", kinds: ["rock"] },
+  { name: "Decorations", kinds: ["decor"] },
+];
+const AQUA_SEES = {
+  hide: "Shy fish hide in it.",
+  explore: "Curious fish love to explore it.",
+  through: "Fish can swim right through it.",
+  bubbles: "It makes bubbles fish play in.",
+};
+
+// The shop's items, with the tank itself as an item.
+function aquaItems() {
+  const a = dept.aqua;
+  const tank = { id: "tank", name: "75-Gallon Tank", kind: "tank", price: a.tank_price, owned: a.tanks, sees: [] };
+  return [tank, ...a.items];
+}
+
+function renderAquaSupplies() {
+  page = Math.min(page, AQUA_ROOMS.length - 1);
+  const room = AQUA_ROOMS[page];
+  const items = aquaItems().filter((i) => room.kinds.includes(i.kind));
+  $("dept-title").textContent = `Aquarium Supplies: ${room.name}`;
+  $("dept-hint").textContent = "Build your own tanks! Pieces you buy wait in your Aquarium until you place them. Click anything to look closer.";
+  $("shop-scene").hidden = false;
+  const bg = sceneCanvas();
+  const ctx = bg.getContext("2d");
+  drawAquaShopRoom(habitatPainter(ctx, SCENE_PX));
+  const displays = aquaDisplays();
+  items.forEach((item, i) => {
+    const f = displays[i];
+    drawAquaDisplay(habitatPainter(ctx, SCENE_PX), f);
+    drawAquaPreview(ctx, item, f.x * SCENE_PX, f.y * SCENE_PX, f.w * SCENE_PX, f.h * SCENE_PX);
+  });
+  scene = { bg, front: null, pets: [] };
+  drawScene();
+  $("shop-spots").replaceChildren(...items.map((item, i) => aquaButton(item, displays[i])), ...roomSigns(AQUA_ROOMS.map((r) => r.name)));
+}
+
+// An item in a little tank: a backdrop or substrate fills it; a tank is the
+// starter look; a piece stands on sand, zoomed to fit.
+function drawAquaPreview(ctx, item, X, Y, W, H, t = 40) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(X, Y, W, H);
+  ctx.clip();
+  const px = W / TANK_W;
+  const tank = (x, y, w, h, c) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(X + x * px, Y + y * px, w * px, h * px);
+  };
+  const looks = { background: [item.id, "sand"], substrate: ["bg_blue", item.id], tank: ["bg_blue", "sand"] };
+  const [bg, sub] = looks[item.kind] || ["bg_blue", "sand"];
+  drawAquaLook(tank, bg, sub);
+  if (AQUA_PIECES[item.id]) {
+    const s = Math.min((W * 0.8) / item.w, (H * 0.72) / item.h, 6);
+    const ox = X + (W - item.w * s) / 2;
+    const floor = Y + H - (SUBSTRATE_H / 2) * px;
+    const piece = (x, y, w, h, c) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(ox + x * s, floor + (y - item.h) * s, w * s, h * s);
+    };
+    drawAquaPiece(piece, item, 0, item.h, false, t);
+  }
+  ctx.restore();
+}
+
+function aquaButton(item, f) {
+  const btn = document.createElement("button");
+  btn.className = "shop-slot gallery-frame";
+  btn.dataset.item = item.id;
+  place(btn, { x: f.x - 2, y: f.y - 2, w: f.w + 4, h: f.h + 11 });
+  btn.setAttribute("aria-label", `${item.name}, ${item.price} coins`);
+  const yours = item.kind === "background" || item.kind === "substrate" ? (item.owned ? " ✓" : "") : item.owned ? ` ×${item.owned}` : "";
+  const price = item.price ? coins(item.price) : "Free";
+  btn.innerHTML = `<span class="slot-tag gallery-plaque">${item.name} · ${item.owned === true ? "Yours!" : price}${item.owned === true ? "" : yours}</span>`;
+  btn.onclick = () => showAquaItem(item.id);
+  return btn;
+}
+
+function aquaAbout(item) {
+  if (item.kind === "tank") return `A 75-gallon tank for up to 10 fish. It comes with Deep Blue water and Sand. You have ${item.owned} of ${dept.aqua.spots}.`;
+  if (item.kind === "background") return "A backdrop for your tanks. Buy it once and use it in every tank.";
+  if (item.kind === "substrate") return "The bottom of your tank. Buy it once and use it in every tank.";
+  const sees = item.sees.map((k) => AQUA_SEES[k]).join(" ");
+  return `Goes in your Aquarium. Place it in any tank, in front of or behind your fish. ${sees}${item.owned ? ` You have ${item.owned}.` : ""}`;
+}
+
+function showAquaItem(id) {
+  const item = aquaItems().find((i) => i.id === id);
+  const body = $("detail-body");
+  body.innerHTML = `
+    <h2 class="panel-title">${item.name}</h2>
+    <div class="aqua-preview"><canvas width="480" height="210"></canvas></div>
+    <p>${aquaAbout(item)}</p>
+    <div class="detail-actions"></div>`;
+  drawAquaPreview(body.querySelector("canvas").getContext("2d"), item, 0, 0, 480, 210);
+  const owned = item.owned === true;
+  const full = item.kind === "tank" && item.owned >= dept.aqua.spots;
+  const short = dept.coins < item.price;
+  const btn = document.createElement("button");
+  btn.className = "button-gold big-button";
+  btn.disabled = owned || full || short;
+  btn.textContent = owned
+    ? "Yours!"
+    : full
+      ? "Your Aquarium is full"
+      : short
+        ? `Need ${(item.price - dept.coins).toLocaleString()} more coins`
+        : `Buy for ${item.price.toLocaleString()} coins`;
+  btn.onclick = () => buyAqua(item);
+  body.querySelector(".detail-actions").appendChild(btn);
+  const dialog = $("pet-detail");
+  if (!dialog.open) dialog.showModal();
+}
+
+async function buyAqua(item) {
+  try {
+    const data = await call(item.kind === "tank" ? "/api/aquarium-shop/tank" : `/api/aquarium-shop/${item.id}`, "POST");
+    dept.aqua = { items: data.items, tank_price: data.tank_price, tanks: data.tanks, spots: data.spots };
+    dept.coins = data.coins;
+    renderAquaSupplies();
+    showAquaItem(item.id); // stays open: buy another, or close
+    const note = document.createElement("p");
+    note.className = "unlocked-colors";
+    note.innerHTML =
+      item.kind === "tank"
+        ? `🎉 ${data.bought.name} is ready in your <a href="/pets/aquarium">Aquarium</a>!`
+        : item.kind === "background" || item.kind === "substrate"
+          ? `🎉 Use it in any tank from your <a href="/pets/aquarium">Aquarium</a>.`
+          : `🎉 It's waiting in your <a href="/pets/aquarium">Aquarium</a>.`;
+    $("detail-body").appendChild(note);
   } catch (err) {
     closeDetail();
     say(err.message);
@@ -712,7 +872,7 @@ loadFront()
   .then(() => {
     const q = new URLSearchParams(location.search);
     const asked = front.departments.find((d) => d.open && d.id === q.get("dept"));
-    return asked ? openDept(asked.id, Number(q.get("page")) || 0) : goEntrance();
+    return asked ? openDept(asked.id, Number(q.get("page")) || 0) : goEntrance(q.get("floor") === "up" ? 1 : 0);
   })
   .then(() => {
     setInterval(tick, TICK_MS);

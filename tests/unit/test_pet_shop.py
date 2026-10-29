@@ -35,12 +35,12 @@ def test_departments_match_the_plan():
 def test_departments_open_as_rows_are_learned():
     taught = set()
     opened = lambda: {d.id for d in shop.DEPARTMENTS.values() if shop.is_open(d, taught)}  # noqa: E731
-    assert opened() == {"fish", "habitats"}
+    assert opened() == {"fish", "habitats", "aqua"}
     assert shop.missing_keys(shop.DEPARTMENTS["household"], set("asdf")) == "ghjkl;"
     taught |= set(shop.HOME_ROW)
-    assert opened() == {"fish", "habitats", "household", "orders"}
+    assert opened() == {"fish", "habitats", "aqua", "household", "orders"}
     taught |= set(shop.TOP_ROW) | set(shop.BOTTOM_ROW)
-    assert opened() == {"fish", "habitats", "household", "orders", "farm", "reptiles"}
+    assert opened() == {"fish", "habitats", "aqua", "household", "orders", "farm", "reptiles"}
     taught |= set(shop.NUMBERS)
     assert "mythical" in opened() and "supplies" not in opened()  # supplies: coming soon
 

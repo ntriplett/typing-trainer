@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -163,6 +163,16 @@ def pet_shop_page() -> FileResponse:
 @app.get("/pets/care")
 def pet_care_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pet_care.html")
+
+
+@app.get("/pets/aquarium")
+def aquarium_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "aquarium.html")
+
+
+@app.get("/pets/aquarium/{spot}")
+def tank_page(spot: int) -> FileResponse:
+    return FileResponse(WEB_DIR / "tank.html")
 
 
 @app.get("/pets/trail")
@@ -1052,6 +1062,122 @@ def care_home(pet_id: int, body: HomeIn, conn=Depends(get_db), learner_id: int =
 def care_along(pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     _care_call(pet_care.set_along, conn, learner_id, pet_id, body.slot)
     return _care(conn, learner_id)
+
+
+@app.put("/api/care/{pet_id}/tank")
+def care_tank(pet_id: int, body: HomeIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.set_fish_tank, conn, learner_id, pet_id, body.spot)
+    return _care(conn, learner_id)
+
+
+# --- Aquarium API (PLAN.md 11k) ------------------------------------------------------
+
+
+class TankNameIn(BaseModel):
+    name: str
+
+
+class TankLookIn(BaseModel):
+    background: str | None = None
+    substrate: str | None = None
+
+
+class TankPlaceIn(BaseModel):
+    piece: int
+    x: float | None = None
+    y: float | None = None
+
+
+class PieceIn(BaseModel):
+    x: float
+    y: float
+    layer: str | None = None
+    flip: bool | None = None
+
+
+def _aqua_call(action, *args):
+    try:
+        return action(*args)
+    except aquarium.AquaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+def _tank(conn, learner_id: int, spot: int) -> dict:
+    return {**_me(conn, learner_id), **_aqua_call(aquarium.tank_state, conn, learner_id, spot)}
+
+
+@app.get("/api/aquarium")
+def aquarium_hall(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), **aquarium.hall(conn, learner_id)}
+
+
+@app.get("/api/aquarium/{spot}")
+def aquarium_tank(spot: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        return _tank(conn, learner_id, spot)
+    except HTTPException as exc:
+        raise HTTPException(status_code=404, detail=exc.detail) from None
+
+
+@app.put("/api/aquarium/{spot}/name")
+def tank_rename(spot: int, body: TankNameIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.rename, conn, learner_id, spot, body.name)
+    return _tank(conn, learner_id, spot)
+
+
+@app.put("/api/aquarium/{spot}/look")
+def tank_look(spot: int, body: TankLookIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.set_look, conn, learner_id, spot, body.background, body.substrate)
+    return _tank(conn, learner_id, spot)
+
+
+@app.post("/api/aquarium/{spot}/pieces")
+def tank_place(spot: int, body: TankPlaceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.place, conn, learner_id, body.piece, spot, body.x, body.y)
+    return _tank(conn, learner_id, spot)
+
+
+@app.put("/api/aquarium/{spot}/pieces/{piece_id}")
+def tank_move(
+    spot: int, piece_id: int, body: PieceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
+) -> dict:
+    _aqua_call(aquarium.move, conn, learner_id, piece_id, body.x, body.y, body.layer, body.flip)
+    return _tank(conn, learner_id, spot)
+
+
+@app.delete("/api/aquarium/{spot}/pieces/{piece_id}")
+def tank_store(spot: int, piece_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.store, conn, learner_id, piece_id)
+    return _tank(conn, learner_id, spot)
+
+
+@app.put("/api/aquarium/{spot}/fish/{pet_id}")
+def tank_add_fish(spot: int, pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.set_fish_tank, conn, learner_id, pet_id, spot)
+    return _tank(conn, learner_id, spot)
+
+
+@app.delete("/api/aquarium/{spot}/fish/{pet_id}")
+def tank_remove_fish(spot: int, pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _aqua_call(aquarium.set_fish_tank, conn, learner_id, pet_id, None)
+    return _tank(conn, learner_id, spot)
+
+
+@app.get("/api/aquarium-shop")
+def aqua_supplies(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {**_me(conn, learner_id), **aquarium.supplies_state(conn, learner_id)}
+
+
+@app.post("/api/aquarium-shop/tank")
+def buy_tank(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _aqua_call(aquarium.buy_tank, conn, learner_id)
+    return {**_me(conn, learner_id), **aquarium.supplies_state(conn, learner_id), "bought": bought}
+
+
+@app.post("/api/aquarium-shop/{item_id}")
+def buy_aqua_item(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _aqua_call(aquarium.buy_item, conn, learner_id, item_id)
+    return {**_me(conn, learner_id), **aquarium.supplies_state(conn, learner_id), "bought": bought}
 
 
 @app.get("/api/trail")

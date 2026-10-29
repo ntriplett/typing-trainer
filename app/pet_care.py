@@ -8,7 +8,7 @@ import random
 from dataclasses import dataclass
 from datetime import date
 
-from app import db, garden
+from app import aquarium, db, garden
 from app import pet_genes as g
 
 MAX_GROWTH = 10
@@ -100,7 +100,7 @@ def view(pet: dict, today: date, fed_any_time: bool = False) -> dict:
     return {
         "id": pet["id"], "name": pet["name"], "species": pet["species"], "growth": pet["growth"],
         "genes": genes, "source": pet["source"], "adopted_at": pet["adopted_at"],
-        "spot": home_spot(pet["home"]), "along": pet["along"],
+        "spot": home_spot(pet["home"]), "tank": aquarium.tank_spot(pet["home"]), "along": pet["along"],
         "fed_today": not fed_any_time and pet["last_fed"] == today.isoformat(),
         "grown": pet["growth"] >= MAX_GROWTH,
         "rarity": round(g.rarity(pet["genes"]), 3),
@@ -266,6 +266,11 @@ def care_state(conn, learner_id: int, today: date) -> dict:
         "habitats": [
             {**h, "count": sum(1 for p in pets if p["spot"] == h["spot"]), "capacity": HABITAT_PETS}
             for h in db.list_habitats(conn, learner_id)
+        ],
+        "tanks": [
+            {"spot": t["spot"], "name": t["name"], "count": sum(1 for p in pets if p["tank"] == t["spot"]),
+             "capacity": aquarium.TANK_FISH}
+            for t in aquarium.tanks(conn, learner_id)
         ],
         "veggies": db.get_veggies(conn, learner_id),
         "veggie_names": {v.id: v.name for v in garden.VEGGIES.values()},

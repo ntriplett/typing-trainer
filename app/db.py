@@ -138,6 +138,39 @@ CREATE TABLE IF NOT EXISTS pet (
 );
 CREATE INDEX IF NOT EXISTS idx_pet_learner ON pet(learner_id);
 
+-- Aquarium tanks (PLAN.md 11k): spot 0..9 in the Aquarium hall; the
+-- background and substrate are item ids from app/aquarium.py.
+CREATE TABLE IF NOT EXISTS tank (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    spot INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    background TEXT NOT NULL,
+    substrate TEXT NOT NULL,
+    bought_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, spot)
+);
+
+-- Plants, rocks and decorations: one row per copy bought. tank is NULL
+-- while the piece waits in storage; x is its left edge, y its bottom.
+CREATE TABLE IF NOT EXISTS tank_piece (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    item_id TEXT NOT NULL,
+    tank INTEGER,
+    x REAL NOT NULL DEFAULT 0,
+    y REAL NOT NULL DEFAULT 0,
+    layer TEXT NOT NULL,
+    flip INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_tank_piece_learner ON tank_piece(learner_id);
+
+-- Backgrounds and substrates: bought once, used in any tank.
+CREATE TABLE IF NOT EXISTS aqua_owned (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    item_id TEXT NOT NULL,
+    PRIMARY KEY (learner_id, item_id)
+);
+
 -- Habitats on the Trailhead (PLAN.md 11i): spot 0..9 along the trail.
 CREATE TABLE IF NOT EXISTS habitat (
     learner_id INTEGER NOT NULL REFERENCES learner(id),
@@ -1147,6 +1180,62 @@ def add_habitat(conn: sqlite3.Connection, learner_id: int, spot: int, kind: str,
         "INSERT INTO habitat (learner_id, spot, kind, name, bought_at) VALUES (?, ?, ?, ?, ?)",
         (learner_id, spot, kind, name, _now_iso()),
     )
+
+
+# --- aquariums (PLAN.md 11k) ------------------------------------------------------------
+
+
+def list_tanks(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT spot, name, background, substrate, bought_at FROM tank WHERE learner_id = ? ORDER BY spot", (learner_id,)
+    )
+    return [dict(r) for r in rows]
+
+
+def add_tank(conn: sqlite3.Connection, learner_id: int, spot: int, name: str, background: str, substrate: str) -> None:
+    conn.execute(
+        "INSERT INTO tank (learner_id, spot, name, background, substrate, bought_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (learner_id, spot, name, background, substrate, _now_iso()),
+    )
+
+
+def update_tank(conn: sqlite3.Connection, learner_id: int, spot: int, **fields) -> None:
+    bad = set(fields) - {"name", "background", "substrate"}
+    if bad:
+        raise ValueError(f"can't update {bad}")
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE tank SET {sets} WHERE learner_id = ? AND spot = ?", (*fields.values(), learner_id, spot))
+
+
+_PIECE_COLUMNS = "id, item_id, tank, x, y, layer, flip"
+
+
+def list_tank_pieces(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute(f"SELECT {_PIECE_COLUMNS} FROM tank_piece WHERE learner_id = ? ORDER BY id", (learner_id,))
+    return [{**dict(r), "flip": bool(r["flip"])} for r in rows]
+
+
+def add_tank_piece(conn: sqlite3.Connection, learner_id: int, item_id: str, layer: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO tank_piece (learner_id, item_id, layer) VALUES (?, ?, ?)", (learner_id, item_id, layer)
+    )
+    return cur.lastrowid
+
+
+def update_tank_piece(conn: sqlite3.Connection, learner_id: int, piece_id: int, **fields) -> None:
+    bad = set(fields) - {"tank", "x", "y", "layer", "flip"}
+    if bad:
+        raise ValueError(f"can't update {bad}")
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE tank_piece SET {sets} WHERE learner_id = ? AND id = ?", (*fields.values(), learner_id, piece_id))
+
+
+def list_aqua_owned(conn: sqlite3.Connection, learner_id: int) -> set[str]:
+    return {r["item_id"] for r in conn.execute("SELECT item_id FROM aqua_owned WHERE learner_id = ?", (learner_id,))}
+
+
+def add_aqua_owned(conn: sqlite3.Connection, learner_id: int, item_id: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO aqua_owned (learner_id, item_id) VALUES (?, ?)", (learner_id, item_id))
 
 
 def list_pet_color_unlocks(conn: sqlite3.Connection, learner_id: int) -> set[str]:

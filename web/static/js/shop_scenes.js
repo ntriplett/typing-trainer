@@ -39,15 +39,21 @@ function shopLamp(r, x, glow) {
 // Where each department is in the hall (its clickable area; the sign hangs
 // at the bottom). Archways along the back wall, corners on the floor.
 const SHOP_SPOTS = {
-  fish: { x: 4, y: 12, w: 28, h: 34 },
-  household: { x: 35, y: 12, w: 28, h: 34 },
-  farm: { x: 66, y: 12, w: 28, h: 34 },
-  reptiles: { x: 97, y: 12, w: 28, h: 34 },
-  mythical: { x: 128, y: 12, w: 28, h: 34 },
+  fish: { x: 3, y: 12, w: 25, h: 34 },
+  household: { x: 29, y: 12, w: 25, h: 34 },
+  farm: { x: 55, y: 12, w: 25, h: 34 },
+  reptiles: { x: 81, y: 12, w: 25, h: 34 },
+  mythical: { x: 107, y: 12, w: 25, h: 34 },
   orders: { x: 6, y: 56, w: 46, h: 26 },
-  habitats: { x: 58, y: 58, w: 44, h: 24 },
-  supplies: { x: 108, y: 54, w: 46, h: 28 },
+  stairs: { x: 134, y: 6, w: 24, h: 80 }, // up to Homes & Supplies
+  // upstairs
+  habitats: { x: 10, y: 10, w: 40, h: 40 },
+  aqua: { x: 60, y: 10, w: 40, h: 40 },
+  supplies: { x: 110, y: 10, w: 40, h: 40 },
+  down: { x: 4, y: 58, w: 36, h: 28 }, // back down the stairs
 };
+// Which floor each department is on (the rest are downstairs).
+const SHOP_UPSTAIRS = new Set(["habitats", "aqua", "supplies"]);
 
 // What you glimpse through each department's archway.
 const SHOP_GLIMPSE = {
@@ -98,7 +104,7 @@ const SHOP_GLIMPSE = {
 
 function drawShopArch(r, spot, id, open) {
   const { x, y, w, h } = spot;
-  SHOP_GLIMPSE[id](r, { x: x + 3, y: y + 4, w: w - 6, h: h - 4 });
+  if (id) SHOP_GLIMPSE[id](r, { x: x + 3, y: y + 4, w: w - 6, h: h - 4 });
   r(x, y + 4, 3, h - 4, "#8b5a2b"); // the frame
   r(x + w - 3, y + 4, 3, h - 4, "#8b5a2b");
   r(x, y + 2, w, 3, "#8b5a2b");
@@ -126,29 +132,6 @@ function drawOrdersCorner(r, { x, y, w, h }) {
   r(x + 37, y - 2, 1, 9, "#b88a50");
 }
 
-function drawHabitatsCorner(r, { x, y, w, h }) {
-  r(x + 2, y + 6, w - 4, 8, "#7fa346"); // a little meadow diorama
-  r(x + 2, y + 2, w - 4, 4, "#a8d5e2");
-  for (let i = 4; i < w - 4; i += 6) r(x + i, y + 8, 1, 3, "#8b5a2b");
-  r(x + w - 14, y + 9, 6, 2, "#4a8ab0");
-  r(x + 8, y + 7, 1, 1, "#e86a8a");
-  r(x, y + 14, w, 3, "#a87a44"); // on a table
-  r(x + 3, y + 17, 2, h - 17, "#8b5a2b");
-  r(x + w - 5, y + 17, 2, h - 17, "#8b5a2b");
-}
-
-function drawSuppliesCorner(r, { x, y, w, h }, open) {
-  r(x, y, w, h - 4, "#8b5a2b"); // shelves
-  for (let k = y + 7; k < y + h - 4; k += 8) r(x, k, w, 2, "#5c3a1a");
-  const rand = shopRand(11);
-  for (let k = y + 1; k < y + h - 8; k += 8)
-    for (let i = x + 2; i < x + w - 4; i += 5) r(i, k + 2, 3, 4, ["#e86a8a", "#f0a040", "#9a7ae0", "#6d9440"][Math.floor(rand() * 4)]);
-  if (!open) {
-    r(x, y, w, h - 4, "rgba(40, 30, 20, 0.35)");
-    for (let i = 0; i < w; i++) r(x + i, y + h - 10 + Math.round(Math.sin((i / w) * Math.PI) * 3), 1, 1, "#b8432f");
-  }
-}
-
 // The hall: `open` is {departmentId: true} for the open ones.
 function drawShopEntrance(r, open) {
   r(0, 0, SHOP_W, 46, "#f3e2bf"); // wallpaper
@@ -164,8 +147,97 @@ function drawShopEntrance(r, open) {
   for (const x of [20, 80, 140]) shopLamp(r, x, "#f8e08a");
   for (const id of ["fish", "household", "farm", "reptiles", "mythical"]) drawShopArch(r, SHOP_SPOTS[id], id, open[id]);
   drawOrdersCorner(r, SHOP_SPOTS.orders);
-  drawHabitatsCorner(r, SHOP_SPOTS.habitats);
-  drawSuppliesCorner(r, SHOP_SPOTS.supplies, open.supplies);
+  drawSpiralStairs(r, SHOP_SPOTS.stairs);
+}
+
+// A cute spiral staircase winding up through the ceiling.
+function drawSpiralStairs(r, { x, y, w, h }) {
+  const cx = x + w / 2;
+  const base = y + h - 2;
+  r(x + 2, base - 1, w - 4, 3, "#8b5a2b"); // its round base
+  r(x + 4, base - 2, w - 8, 1, "#a87a44");
+  const reach = w / 2 - 1;
+  r(cx - 1.5, 0, 3, base, "#5c3a1a"); // the pole
+  r(cx - 1.5, 0, 1, base, "#7a5030");
+  for (let i = 0; i < 20; i++) {
+    const a = i * 0.9;
+    const sy = base - 4 - i * 4.2; // each step a little higher and around
+    const side = Math.cos(a);
+    const sw = 3 + Math.abs(side) * (reach - 3);
+    const sx = side > 0 ? cx : cx - sw;
+    if (sy < 0) break;
+    r(sx, sy, sw, 2, Math.sin(a) > 0 ? "#c89a60" : "#a87a44");
+    r(sx, sy + 2, sw, 0.8, "#6e4420");
+    const px = side > 0 ? sx + sw - 1 : sx; // a railing post at the step's end
+    r(px, sy - 6, 1, 6, "#e8b33e");
+  }
+  for (let k = 0; k < 90; k++) {
+    const a = k * 0.21; // the curly railing
+    const ry = base - 10 - k * 0.97;
+    if (ry < 0) break;
+    r(cx + Math.cos(a) * reach, ry, 1.2, 1.2, "#e8b33e");
+  }
+  r(x - 2, 0, w + 4, 4, "#5c3a1a"); // the hole in the ceiling
+  r(x, 0, w, 3, "#2a1a10");
+}
+
+// --- upstairs: Homes & Supplies -----------------------------------------------------
+
+const SHOP_UP_GLIMPSE = {
+  habitats(r, { x, y, w, h }) {
+    r(x, y, w, h, "#d8e4c0");
+    for (const [fx, fy] of [[3, 5], [w / 2 + 1, 5], [3, 18], [w / 2 + 1, 18]]) {
+      r(x + fx - 1, y + fy - 1, w / 2 - 4, 10, "#c8a030"); // framed pictures
+      r(x + fx, y + fy, w / 2 - 6, 4, "#a8d5e2");
+      r(x + fx, y + fy + 4, w / 2 - 6, 4, "#7fa346");
+    }
+    r(x, y + h - 6, w, 6, "#b8905a");
+  },
+  aqua(r, { x, y, w, h }) {
+    r(x, y, w, h, "#1e2e44"); // a dim room with glowing tanks
+    for (const [tx, ty] of [[3, 6], [w / 2 + 1, 6], [3, 20], [w / 2 + 1, 20]]) {
+      r(x + tx - 1, y + ty - 1, w / 2 - 4, 10, "#0e161e");
+      r(x + tx, y + ty, w / 2 - 6, 8, "#3a8ab8");
+      r(x + tx, y + ty + 6, w / 2 - 6, 2, "#d8c28a");
+      r(x + tx + 3, y + ty + 3, 3, 1.5, "#f0a040");
+      r(x + tx + 1, y + ty, 1, 6, "#4a9a4a");
+    }
+    r(x, y + h - 6, w, 6, "#2a3a52");
+  },
+  supplies(r, { x, y, w, h }) {
+    r(x, y, w, h, "#8b5a2b");
+    const rand = shopRand(11);
+    for (let k = y + 6; k < y + h - 6; k += 8) {
+      r(x, k + 5, w, 2, "#5c3a1a");
+      for (let i = x + 2; i < x + w - 4; i += 5) r(i, k, 3, 5, ["#e86a8a", "#f0a040", "#9a7ae0", "#6d9440"][Math.floor(rand() * 4)]);
+    }
+  },
+};
+
+function drawShopUpstairs(r, open) {
+  r(0, 0, SHOP_W, 52, "#e8dcc0"); // a lighter, airier hall
+  for (let x = 4; x < SHOP_W; x += 12) r(x, 0, 2, 52, "#e0d0b0");
+  r(0, 0, SHOP_W, 3, "#8b5a2b");
+  r(0, 46, SHOP_W, 6, "#a87a44");
+  shopPlanks(r, 52, 38, "#c89a60", "#b0844c");
+  r(0, 52, SHOP_W, 1, "#8b5a2b");
+  for (const x of [30, 80, 130]) shopLamp(r, x, "#f8e08a");
+  for (const id of ["habitats", "aqua", "supplies"]) {
+    const spot = SHOP_SPOTS[id];
+    const glimpse = { x: spot.x + 3, y: spot.y + 4, w: spot.w - 6, h: spot.h - 4 };
+    SHOP_UP_GLIMPSE[id](r, glimpse);
+    drawShopArch(r, spot, null, open[id], true);
+  }
+  // the top of the spiral stairs: a railing around the hole in the floor
+  const d = SHOP_SPOTS.down;
+  r(d.x + 2, d.y + 10, d.w - 4, d.h - 12, "#2a1a10");
+  for (let k = 0; k < 6; k++) r(d.x + 4 + k * 3, d.y + 12 + k * 2.4, d.w - 8 - k * 6, 2, k % 2 ? "#a87a44" : "#c89a60"); // steps going down
+  r(d.x, d.y + 4, d.w, 2, "#e8b33e");
+  for (let x = d.x; x <= d.x + d.w; x += 6) r(x, d.y + 4, 1, 8, "#e8b33e");
+  // a little plant by the window
+  r(150, 74, 8, 8, "#c8643a");
+  r(151, 66, 2, 8, "#4a8a4a");
+  r(154, 64, 2, 10, "#5aa05a");
 }
 
 // --- department rooms ---------------------------------------------------------------
@@ -407,4 +479,29 @@ function drawGalleryFrame(r, f, locked) {
     r(f.x - 3, f.y + f.h - 2, 2, 6, "#c8a030");
     r(f.x + f.w + 1, f.y + f.h - 2, 2, 6, "#c8a030");
   }
+}
+
+// --- Aquarium Supplies --------------------------------------------------------------
+
+// Display tanks, two rows of four (tank-shaped, 32x14), with a plaque below.
+function aquaDisplays() {
+  return shopRows([[4, 40], [4, 80]], 32, 14).map((f) => ({ ...f, y: f.floor - 14 - 7 }));
+}
+
+function drawAquaShopRoom(r) {
+  r(0, 0, SHOP_W, SHOP_H, "#1e2e44"); // a dim room lit by its tanks
+  for (let x = 0; x < SHOP_W; x += 10) r(x, 0, 1, SHOP_H, "#1a283c");
+  r(0, 0, SHOP_W, 3, "#3b2417");
+  for (const y of [40, 80]) {
+    r(0, y - 6, SHOP_W, 6, "#5c3a1a"); // display shelves
+    r(0, y - 6, SHOP_W, 1, "#8b5a2b");
+  }
+  r(0, 82, SHOP_W, 8, "#2a3a52");
+}
+
+function drawAquaDisplay(r, f) {
+  for (let k = 0; k < 4; k++) r(f.x - 3 - k, f.y - 3 - k, f.w + 6 + 2 * k, f.h + 6 + 2 * k, "rgba(120, 200, 240, 0.04)"); // its glow
+  r(f.x - 1.5, f.y - 1.5, f.w + 3, f.h + 3, "#0e161e");
+  r(f.x - 1.5, f.y - 1.5, f.w + 3, 1, "#3a4a5a");
+  r(f.x + f.w / 2 - 8, f.y + f.h + 2.5, 16, 3, "#3b2417"); // the plaque
 }
