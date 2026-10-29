@@ -24,6 +24,8 @@ TANK_W = 160
 TANK_H = 70
 SUBSTRATE_H = 8  # the substrate band at the bottom of the tank
 LAYERS = ("back", "middle", "front")  # behind the fish .. in front of them
+TURNS = (0, 90, 180, 270)  # how driftwood and rocks can be rotated
+TURNING_KINDS = ("wood", "rock")
 LOOK_KINDS = ("background", "substrate")  # bought once, used anywhere
 PIECE_KINDS = ("plant", "wood", "rock", "decor")  # bought per copy, placed in tanks
 
@@ -90,6 +92,9 @@ CATALOG: dict[str, AquaItem] = _items(
     AquaItem("manzanita", "Manzanita Branch", "wood", 60, 30, 58, "back", ("explore",)),
     AquaItem("wood_stump", "Hollow Stump", "wood", 80, 20, 36, "middle", ("hide", "explore")),
     AquaItem("driftwood", "Driftwood", "wood", 100, 50, 26, "middle", ("hide", "explore")),
+    AquaItem("grand_driftwood", "Grand Driftwood", "wood", 100, 76, 34, "middle", ("hide", "explore")),
+    AquaItem("root_arch", "Root Arch", "wood", 100, 60, 40, "middle", ("through", "hide")),
+    AquaItem("spider_tree", "Spiderwood Tree", "wood", 100, 46, 64, "back", ("hide", "explore")),
     # rocks
     AquaItem("pebble", "Pebble", "rock", 10, 5, 3, "front"),
     AquaItem("flat_stone", "Flat Stone", "rock", 20, 14, 5, "middle"),
@@ -199,6 +204,7 @@ def supplies_state(conn, learner_id: int) -> dict:
     return {
         "items": [
             {"id": i.id, "name": i.name, "kind": i.kind, "price": i.price, "w": i.w, "h": i.h, "sees": list(i.sees),
+             "turns": i.kind in TURNING_KINDS,
              "owned": i.id in owned if i.kind in LOOK_KINDS else copies.get(i.id, 0)}
             for i in CATALOG.values()
         ],
@@ -218,10 +224,16 @@ def _piece(conn, learner_id: int, piece_id: int) -> dict:
     return piece
 
 
-def _clamp(item: AquaItem, x: float, y: float) -> tuple[float, float]:
+def size(item: AquaItem, rot: int = 0) -> tuple[int, int]:
+    """A piece's width and height, turned."""
+    return (item.h, item.w) if rot in (90, 270) else (item.w, item.h)
+
+
+def _clamp(item: AquaItem, x: float, y: float, rot: int = 0) -> tuple[float, float]:
     """Keep a piece inside the glass: x its left edge, y its bottom."""
-    x = min(max(x, 0), TANK_W - item.w)
-    y = min(max(y, item.h), TANK_H)
+    w, h = size(item, rot)
+    x = min(max(x, 0), TANK_W - w)
+    y = min(max(y, h), TANK_H)
     return round(x, 1), round(y, 1)
 
 
@@ -237,11 +249,20 @@ def place(conn, learner_id: int, piece_id: int, spot: int, x: float | None = Non
     db.update_tank_piece(conn, learner_id, piece_id, tank=spot, x=x, y=y)
 
 
-def move(conn, learner_id: int, piece_id: int, x: float, y: float, layer: str | None = None, flip: bool | None = None) -> None:
+def move(
+    conn, learner_id: int, piece_id: int, x: float, y: float,
+    layer: str | None = None, flip: bool | None = None, rot: int | None = None,
+) -> None:
     piece = _piece(conn, learner_id, piece_id)
     if piece["tank"] is None:
         raise AquaError("Put it in a tank first.")
-    fields = dict(zip(("x", "y"), _clamp(_item(piece["item_id"]), x, y), strict=True))
+    item = _item(piece["item_id"])
+    fields = {}
+    if rot is not None:
+        if rot not in TURNS or (rot and item.kind not in TURNING_KINDS):
+            raise AquaError("Only driftwood and rocks can be turned.")
+        fields["rot"] = rot
+    fields |= dict(zip(("x", "y"), _clamp(item, x, y, fields.get("rot", piece["rot"])), strict=True))
     if layer is not None:
         if layer not in LAYERS:
             raise AquaError("Pieces go in the back, the middle, or the front.")
@@ -330,7 +351,10 @@ def _tank_view(tank: dict, pieces: list[dict], pets: list[dict]) -> dict:
 
 
 def _items_view() -> dict:
-    return {i.id: {"name": i.name, "kind": i.kind, "w": i.w, "h": i.h, "sees": list(i.sees)} for i in CATALOG.values()}
+    return {
+        i.id: {"name": i.name, "kind": i.kind, "w": i.w, "h": i.h, "sees": list(i.sees), "turns": i.kind in TURNING_KINDS}
+        for i in CATALOG.values()
+    }
 
 
 def hall(conn, learner_id: int) -> dict:

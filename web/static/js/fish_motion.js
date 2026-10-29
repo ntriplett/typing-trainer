@@ -33,7 +33,8 @@ const FishMotion = (() => {
     for (const p of pieces) {
       const item = items[p.item_id];
       if (!item) continue;
-      const box = { x: p.x, y: p.y - item.h, w: item.w, h: item.h, layer: p.layer };
+      const [w, h] = aquaSize(item, p.rot);
+      const box = { x: p.x, y: p.y - h, w, h, layer: p.layer };
       for (const k of item.sees || []) out[k].push(box);
     }
     return out;
@@ -227,7 +228,7 @@ function drawTankScene(ctx, unit, world, tank, t, cache = {}) {
   };
   const items = world.items;
   const pieces = (layer) => {
-    for (const p of tank.pieces) if (p.layer === layer && items[p.item_id]) drawAquaPiece(px, { id: p.item_id, ...items[p.item_id] }, p.x, p.y, p.flip, t + p.id * 7);
+    for (const p of tank.pieces) if (p.layer === layer && items[p.item_id]) drawAquaPiece(px, { id: p.item_id, ...items[p.item_id] }, p.x, p.y, p.flip, t + p.id * 7, p.rot);
   };
   const fish = [...world.fish].sort((a, b) => a.z - b.z);
   pieces("back");

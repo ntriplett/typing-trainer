@@ -387,12 +387,12 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
     return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": [g.COLORS[c].name for c in new]}
 
 
-# A school: buy another of a fish you have, at its shop price (its colors are yours already).
-COPY_PRICE_ROLL = 1.0
+# A school: another of a fish you have costs a fifth of its shop price (its colors are yours already).
+COPY_SHARE = 0.2
 
 
 def copy_price(conn, learner_id: int, genes: dict) -> int:
-    return price(genes, db.list_pet_color_unlocks(conn, learner_id), COPY_PRICE_ROLL)
+    return nice_price(price(genes, db.list_pet_color_unlocks(conn, learner_id), 1.0) * COPY_SHARE)
 
 
 def buy_fish_copy(conn, learner_id: int, pet_id: int) -> dict:

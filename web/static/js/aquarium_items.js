@@ -307,12 +307,25 @@ const AQUA_PIECES = {
   },
 };
 
-// A piece at x (left) with its bottom at yb, flipped if asked.
-function drawAquaPiece(r, item, x, yb, flip, t = 0) {
+// A piece's width and height once turned (rot: 0, 90, 180, 270 degrees).
+function aquaSize(item, rot = 0) {
+  return rot % 180 ? [item.h, item.w] : [item.w, item.h];
+}
+
+// A piece at x (left) with its bottom at yb: turned clockwise by rot, then
+// flipped if asked.
+function drawAquaPiece(r, item, x, yb, flip, t = 0, rot = 0) {
   const draw = AQUA_PIECES[item.id];
   if (!draw) return;
-  const top = yb - item.h;
-  const local = (lx, ly, lw, lh, c) => r(flip ? x + item.w - lx - lw : x + lx, top + ly, lw, lh, c);
+  const [bw, bh] = aquaSize(item, rot);
+  const top = yb - bh;
+  const local = (lx, ly, lw, lh, c) => {
+    let [X, Y, W, H] = [lx, ly, lw, lh];
+    if (rot === 90) [X, Y, W, H] = [item.h - ly - lh, lx, lh, lw];
+    else if (rot === 180) [X, Y] = [item.w - lx - lw, item.h - ly - lh];
+    else if (rot === 270) [X, Y, W, H] = [ly, item.w - lx - lw, lh, lw];
+    r(flip ? x + bw - X - W : x + X, top + Y, W, H, c);
+  };
   draw(local, item.w, item.h, t, top);
 }
 
@@ -544,5 +557,49 @@ Object.assign(AQUA_PIECES, {
     r(6, h - 8, w - 12, 8, "#100c0a"); // ...a dark cave under the slab
     aquaShape(r, 7, (y) => [y < 2 ? 2 : 0, y < 2 ? w - 2 : w], "#7a7468", "#8a8478", 21); // the slab
     r(2, 0, w - 4, 1, "#a8a296");
+  },
+});
+
+// --- the biggest driftwood ----------------------------------------------------------
+
+Object.assign(AQUA_PIECES, {
+  grand_driftwood(r, w, h) {
+    aquaBranch(r, 2, h - 5, w - 4, h - 9, 6, "#7a5a3a", "#5a3e24"); // a huge log
+    for (const [x0, x1, y1, thick] of [[10, 4, 4, 3.5], [20, 26, 0, 4], [34, 30, 8, 3], [46, 56, 2, 3.5], [58, 70, 10, 3], [64, w - 1, 20, 2.5]]) {
+      aquaBranch(r, x0, h - 6, x1, y1, thick, "#8a6a48", "#5a3e24");
+      aquaBranch(r, x1, y1 + 3, x1 + (x1 % 2 ? 6 : -6), y1 + 1, 1.4, "#9a7a58", "#5a3e24"); // twigs
+    }
+    for (let k = 6; k < w - 8; k += 9) r(k, h - 6, 3, 1, "#c8a070"); // light grain
+  },
+  root_arch(r, w, h) {
+    for (let i = 0; i < 9; i++) {
+      // roots arching over a hollow fish swim under
+      const k = i / 8;
+      const left = 2 + i * 1.5;
+      const right = w - 2 - i * 1.5;
+      const peak = 2 + i * 1.2;
+      for (let s = 0; s <= 120; s++) {
+        const t = s / 120;
+        const x = left + (right - left) * t + Math.sin(t * 9 + i) * 0.8; // gnarled
+        const y = h - (h - peak) * Math.sin(t * Math.PI) - k;
+        r(x, y, 2.4 - k, 2.4 - k, i % 3 ? "#2a1a10" : "#3e2816");
+      }
+    }
+    r(0, h - 2, 8, 2, "#1e140c");
+    r(w - 8, h - 2, 8, 2, "#1e140c");
+  },
+  spider_tree(r, w, h) {
+    const cx = w / 2;
+    aquaBranch(r, cx - 2, h, cx + 1, h * 0.45, 4.5, "#d8c098", "#b8a078"); // a pale trunk
+    const forks = [[cx + 1, h * 0.45], [cx - 6, h * 0.62], [cx + 7, h * 0.7]];
+    const tips = [[2, 6], [8, 0], [16, 4], [24, 0], [32, 3], [40, 1], [w - 1, 10], [4, 22], [w - 3, 26]];
+    tips.forEach(([x, y], i) => {
+      const [fx, fy] = forks[i % forks.length];
+      const mx = (fx + x) / 2 + (x < cx ? -4 : 4);
+      const my = (fy + y) / 2 + 3;
+      aquaBranch(r, fx, fy, mx, my, 2.4, "#d8c098", "#b8a078");
+      aquaBranch(r, mx, my, x, y, 1.2, "#e8d4b0", "#b8a078");
+    });
+    aquaDisc(r, cx - 1, h - 2, 7, 2.5, "#c8b088");
   },
 });

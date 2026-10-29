@@ -1101,6 +1101,7 @@ class PieceIn(BaseModel):
     y: float
     layer: str | None = None
     flip: bool | None = None
+    rot: int | None = None
 
 
 def _aqua_call(action, *args):
@@ -1149,7 +1150,7 @@ def tank_place(spot: int, body: TankPlaceIn, conn=Depends(get_db), learner_id: i
 def tank_move(
     spot: int, piece_id: int, body: PieceIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)
 ) -> dict:
-    _aqua_call(aquarium.move, conn, learner_id, piece_id, body.x, body.y, body.layer, body.flip)
+    _aqua_call(aquarium.move, conn, learner_id, piece_id, body.x, body.y, body.layer, body.flip, body.rot)
     return _tank(conn, learner_id, spot)
 
 

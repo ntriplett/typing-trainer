@@ -367,6 +367,7 @@ _ADDED_COLUMNS = [
     ("practice_chunk", "seed_at", "TEXT"),
     ("pet", "along", "INTEGER"),
     ("pet", "school", "INTEGER"),  # a fish copied into a school: the first fish's id
+    ("tank_piece", "rot", "INTEGER NOT NULL DEFAULT 0"),  # degrees: 0, 90, 180, 270
 ]
 
 
@@ -1211,7 +1212,7 @@ def update_tank(conn: sqlite3.Connection, learner_id: int, spot: int, **fields) 
     conn.execute(f"UPDATE tank SET {sets} WHERE learner_id = ? AND spot = ?", (*fields.values(), learner_id, spot))
 
 
-_PIECE_COLUMNS = "id, item_id, tank, x, y, layer, flip"
+_PIECE_COLUMNS = "id, item_id, tank, x, y, layer, flip, rot"
 
 
 def list_tank_pieces(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
@@ -1227,7 +1228,7 @@ def add_tank_piece(conn: sqlite3.Connection, learner_id: int, item_id: str, laye
 
 
 def update_tank_piece(conn: sqlite3.Connection, learner_id: int, piece_id: int, **fields) -> None:
-    bad = set(fields) - {"tank", "x", "y", "layer", "flip"}
+    bad = set(fields) - {"tank", "x", "y", "layer", "flip", "rot"}
     if bad:
         raise ValueError(f"can't update {bad}")
     sets = ", ".join(f"{k} = ?" for k in fields)

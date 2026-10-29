@@ -73,11 +73,11 @@ function draw() {
   drawTankScene(ctx, UNIT, world, state.tank, t, cache);
   if (mode === "decorate" && selected) {
     const p = pieceById(selected);
-    const item = itemOf(p.item_id);
+    const [w, h] = aquaSize(itemOf(p.item_id), p.rot);
     ctx.strokeStyle = "#e8b33e";
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
-    ctx.strokeRect(p.x * UNIT - 2, (p.y - item.h) * UNIT - 2, item.w * UNIT + 4, item.h * UNIT + 4);
+    ctx.strokeRect(p.x * UNIT - 2, (p.y - h) * UNIT - 2, w * UNIT + 4, h * UNIT + 4);
     ctx.setLineDash([]);
   }
 }
@@ -176,6 +176,7 @@ function renderPieceTools() {
     return b;
   };
   button("↔ Flip", () => act(`/api/aquarium/${spot}/pieces/${p.id}`, "PUT", { x: p.x, y: p.y, flip: !p.flip }));
+  if (item.turns) button("⟳ Turn", () => act(`/api/aquarium/${spot}/pieces/${p.id}`, "PUT", { x: p.x, y: p.y, rot: (p.rot + 90) % 360 }));
   for (const layer of state.layers) {
     button(LAYER_NAMES[layer], () => act(`/api/aquarium/${spot}/pieces/${p.id}`, "PUT", { x: p.x, y: p.y, layer }), p.layer === layer ? "button-go" : "");
   }
@@ -231,8 +232,8 @@ function toTank(e) {
 function pieceAt(x, y) {
   const order = ["front", "middle", "back"];
   const hits = state.tank.pieces.filter((p) => {
-    const item = state.items[p.item_id];
-    return x >= p.x && x <= p.x + item.w && y >= p.y - item.h && y <= p.y;
+    const [w, h] = aquaSize(state.items[p.item_id], p.rot);
+    return x >= p.x && x <= p.x + w && y >= p.y - h && y <= p.y;
   });
   hits.sort((a, b) => order.indexOf(a.layer) - order.indexOf(b.layer) || b.id - a.id);
   return hits[0];
@@ -255,9 +256,9 @@ function moveDrag(e) {
   if (!drag) return;
   const [x, y] = toTank(e);
   const p = pieceById(drag.id);
-  const item = state.items[p.item_id];
-  p.x = Math.min(Math.max(x - drag.dx, 0), TANK_W - item.w);
-  p.y = Math.min(Math.max(y - drag.dy, item.h), TANK_H);
+  const [w, h] = aquaSize(state.items[p.item_id], p.rot);
+  p.x = Math.min(Math.max(x - drag.dx, 0), TANK_W - w);
+  p.y = Math.min(Math.max(y - drag.dy, h), TANK_H);
   drag.moved = true;
   world.feats = FishMotion.features(state.tank.pieces, state.items);
 }

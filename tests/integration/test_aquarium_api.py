@@ -116,7 +116,7 @@ def test_schools_of_fish():
     dog = add_pet("dog")
     care = client.get("/api/care").json()
     fish = next(p for p in care["pets"] if p["id"] == head)
-    assert fish["school"] == 1 and fish["copy_price"] >= 50
+    assert fish["school"] == 1 and 5 <= fish["copy_price"] <= 60  # a fifth of a fish's price
     assert client.post(f"/api/care/{dog}/copy").status_code == 400
     for _ in range(3):
         r = client.post(f"/api/care/{head}/copy").json()
@@ -140,3 +140,17 @@ def test_schools_of_fish():
     r = client.post(f"/api/care/{head}/copy")
     r = client.put(f"/api/care/{head}/tank", json={"spot": 0})
     assert r.status_code == 400 and "room for" in r.json()["detail"]
+
+
+def test_driftwood_and_rocks_turn():
+    give(500)
+    wood = client.post("/api/aquarium-shop/spiderwood").json()["bought"]["piece"]
+    grass = client.post("/api/aquarium-shop/grass").json()["bought"]["piece"]
+    client.post("/api/aquarium/0/pieces", json={"piece": wood})
+    client.post("/api/aquarium/0/pieces", json={"piece": grass})
+    state = client.put(f"/api/aquarium/0/pieces/{wood}", json={"x": 200, "y": 70, "rot": 90}).json()
+    placed = next(p for p in state["tank"]["pieces"] if p["id"] == wood)
+    assert placed["rot"] == 90 and placed["x"] == 160 - 52  # turned: 52 wide now
+    assert client.put(f"/api/aquarium/0/pieces/{wood}", json={"x": 0, "y": 70, "rot": 45}).status_code == 400
+    assert client.put(f"/api/aquarium/0/pieces/{grass}", json={"x": 0, "y": 70, "rot": 90}).status_code == 400
+    assert client.put(f"/api/aquarium/0/pieces/{grass}", json={"x": 0, "y": 70, "rot": 0}).status_code == 200
