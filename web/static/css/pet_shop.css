@@ -334,42 +334,31 @@
 
 /* --- special orders ------------------------------------------------------------------ */
 
-.shop-grid.habitats-floor {
+.gallery-plaque {
+  font-size: clamp(10px, 1.4vw, 15px);
+  margin-bottom: 0;
+}
+
+.gallery-frame.locked .gallery-plaque {
+  background: var(--muted-fill);
+}
+
+.habitat-tier {
+  font-size: 0.6em;
+  color: var(--ink-soft);
+}
+
+.habitat-preview canvas {
   display: block;
-}
-
-.habitat-tier-title {
-  margin: 0.75rem 0 0.4rem;
-}
-
-.habitat-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.75rem;
-}
-
-.habitat-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem;
-  background: var(--sand);
-  border: 3px solid var(--wood-light);
-}
-
-.habitat-card h3 {
-  margin: 0;
-}
-
-.habitat-card canvas {
   width: 100%;
+  max-width: 480px;
   image-rendering: pixelated;
-  border: 3px solid var(--outline);
+  border: 4px solid var(--outline);
 }
 
-.habitat-card .card-price {
-  font-size: 22px;
-  margin: 0;
+.scene-nav.sign-second {
+  left: auto;
+  right: 30%;
 }
 
 .shop-grid.orders-floor {

@@ -44,7 +44,8 @@ def test_rename_and_feed_a_pet(page: Page, live_server, tmp_path):
 
 def test_move_into_a_meadow_and_bring_along(page: Page, live_server, tmp_path):
     page.goto(f"{live_server}/pets/shop?dept=habitats")
-    page.locator("[data-kind='meadow']").get_by_role("button", name="Get it free!").click()
+    page.locator("[data-kind='meadow']").click()
+    page.get_by_role("button", name="Get it free!").click()
     expect(page.locator("#dept-hint")).to_contain_text("Your Meadow is ready")
     dog, cat = _setup(tmp_path)
     page.goto(f"{live_server}/pets/care?pet={cat}")

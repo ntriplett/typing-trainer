@@ -307,12 +307,21 @@ function renderRoom() {
   drawScene();
 
   const spots = slots.map((slot, i) => stationButton(slot, stations[i]));
-  spots.push(sceneSign("⬅ Entrance", "sign-left", goEntrance));
-  if (pages > 1) {
-    const next = (page + 1) % pages;
-    spots.push(sceneSign(next > page ? `${def.pages[next]} ▶` : `◀ ${def.pages[next]}`, "sign-right", () => openRoomPage(next)));
-  }
+  spots.push(...roomSigns(def.pages.slice(0, pages)));
   $("shop-spots").replaceChildren(...spots);
+}
+
+// The way back to the entrance, and arrows to a department's other rooms.
+function roomSigns(names) {
+  const signs = [sceneSign("⬅ Entrance", "sign-left", goEntrance)];
+  if (names.length === 2) {
+    const other = 1 - page;
+    signs.push(sceneSign(other ? `${names[other]} ▶` : `◀ ${names[other]}`, "sign-right", () => openRoomPage(other)));
+  } else if (names.length > 2) {
+    if (page < names.length - 1) signs.push(sceneSign(`${names[page + 1]} ▶`, "sign-right", () => openRoomPage(page + 1)));
+    if (page > 0) signs.push(sceneSign(`◀ ${names[page - 1]}`, "sign-left sign-second", () => openRoomPage(page - 1)));
+  }
+  return signs;
 }
 
 function openRoomPage(n) {
@@ -376,38 +385,69 @@ function badges(slot) {
 
 // --- habitats (app/pet_care.py, looks in habitats.js) -----------------------------------
 
-function renderHabitats() {
-  const h = dept.habitats;
-  scene = null;
-  $("shop-scene").hidden = true;
-  $("shop-spots").replaceChildren();
-  $("dept-title").textContent = "Habitats";
-  $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned} of ${h.spots}.`;
-  const grid = $("shop-grid");
-  grid.className = "shop-grid habitats-floor";
-  grid.replaceChildren(
-    ...Object.keys(TIER_NAME).map((tier) => {
-      const section = document.createElement("section");
-      section.className = "habitat-tier-group";
-      section.innerHTML = `<h3 class="habitat-tier-title">${TIER_NAME[tier]}</h3><div class="habitat-cards"></div>`;
-      section.querySelector(".habitat-cards").append(...h.kinds.filter((k) => k.tier === tier).map(habitatCard));
-      return section;
-    })
-  );
+// The gallery's rooms: each tier's habitats, GALLERY_PER_ROOM at a time.
+function galleryRooms() {
+  const rooms = [];
+  for (const tier of Object.keys(GALLERY_ROOMS)) {
+    const kinds = dept.habitats.kinds.filter((k) => k.tier === tier);
+    for (let i = 0; i * GALLERY_PER_ROOM < kinds.length; i++) {
+      rooms.push({ tier, name: GALLERY_ROOMS[tier][i] || `${TIER_NAME[tier]} ${i + 1}`, kinds: kinds.slice(i * GALLERY_PER_ROOM, (i + 1) * GALLERY_PER_ROOM) });
+    }
+  }
+  return rooms;
 }
 
-function habitatCard(kind) {
+function renderHabitats() {
   const h = dept.habitats;
-  const card = document.createElement("div");
-  card.className = "habitat-card";
-  card.dataset.kind = kind.id;
+  const rooms = galleryRooms();
+  page = Math.min(page, rooms.length - 1);
+  const room = rooms[page];
+  $("dept-title").textContent = `Habitats: ${room.name}`;
+  $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned} of ${h.spots}. Click a picture to look closer!`;
+  $("shop-scene").hidden = false;
+
+  const bg = sceneCanvas();
+  const ctx = bg.getContext("2d");
+  const r = habitatPainter(ctx, SCENE_PX);
+  drawGalleryRoom(r, room.tier);
+  const frames = galleryFrames();
+  room.kinds.forEach((kind, i) => {
+    const f = frames[i];
+    drawGalleryFrame(r, f, !kind.open);
+    ctx.drawImage(habitatBackground(kind.id, (f.w / HABITAT_W) * SCENE_PX), f.x * SCENE_PX, f.y * SCENE_PX);
+    if (!kind.open) r(f.x, f.y, f.w, f.h, "rgba(30, 20, 50, 0.45)");
+  });
+  scene = { bg, front: null, pets: [] };
+  drawScene();
+  $("shop-spots").replaceChildren(...room.kinds.map((kind, i) => galleryButton(kind, frames[i])), ...roomSigns(rooms.map((x) => x.name)));
+}
+
+function galleryButton(kind, f) {
+  const btn = document.createElement("button");
+  btn.className = "shop-slot gallery-frame" + (kind.open ? "" : " locked");
+  btn.dataset.kind = kind.id;
+  place(btn, { x: f.x - 2, y: f.y - 2, w: f.w + 4, h: f.h + 10 });
+  btn.setAttribute("aria-label", `${kind.name}, ${kind.open ? (kind.price ? `${kind.price} coins` : "free") : "opens with Mythical Pets"}`);
+  const price = !kind.open ? "🔒" : kind.price ? coins(kind.price) : "Free!";
+  btn.innerHTML = `<span class="slot-tag gallery-plaque">${kind.name} · ${price}</span>`;
+  btn.onclick = () => showHabitat(kind);
+  return btn;
+}
+
+// The close-up: the habitat big, and Buy.
+function showHabitat(kind) {
+  const h = dept.habitats;
+  const body = $("detail-body");
+  body.innerHTML = `
+    <h2 class="panel-title">${kind.name} <small class="habitat-tier">${TIER_NAME[kind.tier]}</small></h2>
+    <div class="habitat-preview"></div>
+    <p>A home on your Trailhead for up to ${h.capacity} pets.${kind.price ? "" : " Your first habitat is free!"}</p>
+    <div class="detail-actions"></div>`;
+  body.querySelector(".habitat-preview").appendChild(habitatBackground(kind.id, 3));
   const full = h.owned >= h.spots;
   const short = dept.coins < kind.price;
-  card.innerHTML = `<h3>${kind.name}</h3>
-    <p class="card-price">${kind.price ? coins(kind.price) : "<b>Free!</b> Your first habitat is on us."}</p>`;
-  card.insertBefore(habitatBackground(kind.id, 2), card.querySelector(".card-price"));
   const btn = document.createElement("button");
-  btn.className = "button-gold";
+  btn.className = "button-gold big-button";
   btn.disabled = full || short || !kind.open;
   btn.textContent = !kind.open
     ? "Opens with Mythical Pets"
@@ -419,19 +459,21 @@ function habitatCard(kind) {
           ? `Buy for ${kind.price.toLocaleString()} coins`
           : "Get it free!";
   btn.onclick = () => buyHabitat(kind);
-  card.appendChild(btn);
-  return card;
+  body.querySelector(".detail-actions").appendChild(btn);
+  const dialog = $("pet-detail");
+  if (!dialog.open) dialog.showModal();
 }
 
 async function buyHabitat(kind) {
   try {
     const data = await call(`/api/pets/shop/habitats/${kind.id}`, "POST");
+    closeDetail();
     setDept(data);
     say("");
     $("dept-hint").innerHTML = `🎉 Your <b>${data.bought.name}</b> is ready! Find it on the <a href="/pets/trail">Trailhead</a>, and move pets in at the <a href="/pets/care">Pet Care Center</a>.`;
   } catch (err) {
+    closeDetail();
     say(err.message);
-    renderHabitats();
   }
 }
 

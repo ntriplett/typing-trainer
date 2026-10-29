@@ -574,7 +574,8 @@ turtles). Wandering stays within ~45 units.
 
 **Batches**: (1) engine + Forest, Stream, Mountain; (3-5) all the rest, done 2026-10-28 (looks
 in `habitats_outdoors.js`, `habitats_cozy.js`, `habitats_magic.js`; the shop groups habitat
-cards by tier). Still to do: (2) a Habitats gallery room in the Pet Shop.
+cards by tier); (2) the Pet Shop's Habitats department is a gallery: framed pictures, 8 to a room
+(Outdoors Hall, Outdoors Annex, Cozy Corner, Magical Wing), click one for a big preview and Buy.
 
 ## 12. Workflow
 

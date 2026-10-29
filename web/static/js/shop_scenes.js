@@ -362,3 +362,49 @@ const SHOP_ROOMS = {
     area: (s) => ({ left: s.x + 2, right: s.x + s.w - 2, top: s.floor - 5, bottom: s.floor - 4 }),
   },
 };
+
+// --- the Habitats gallery -----------------------------------------------------------
+
+// Habitats hang as framed pictures, 8 to a room; each tier has its own
+// rooms (an Outdoors Hall and Annex, a Cozy Corner, a Magical Wing).
+const GALLERY_PER_ROOM = 8;
+const GALLERY_ROOMS = { everyday: ["Outdoors Hall", "Outdoors Annex"], cozy: ["Cozy Corner"], magical: ["Magical Wing"] };
+const GALLERY_WALLS = {
+  everyday: { wall: "#d8e4c0", panel: "#c8d8a8", floor: ["#b8905a", "#a07a48"] },
+  cozy: { wall: "#f0d8b8", panel: "#e4c8a0", floor: ["#c89a60", "#b0844c"] },
+  magical: { wall: "#3a2e5e", panel: "#44386e", floor: ["#5a4a7a", "#4a3c68"] },
+};
+
+// The frames: two rows of four pictures, 30x17 (16:9), with a plaque below.
+function galleryFrames() {
+  return shopRows([[4, 36], [4, 74]], 30, 17).map((f) => ({ ...f, y: f.floor - 17 - 6 }));
+}
+
+function drawGalleryRoom(r, tier) {
+  const c = GALLERY_WALLS[tier];
+  r(0, 0, SHOP_W, 82, c.wall);
+  for (let x = 0; x < SHOP_W; x += 20) r(x, 0, 10, 82, c.panel);
+  r(0, 0, SHOP_W, 3, "#8b5a2b");
+  if (tier === "magical") {
+    const rand = shopRand(17);
+    for (let i = 0; i < 40; i++) r(rand() * SHOP_W, rand() * 80, 0.6, 0.6, i % 3 ? "#fbf1dc" : "#f8e08a");
+  }
+  shopPlanks(r, 82, 8, c.floor[0], c.floor[1]);
+  r(0, 82, SHOP_W, 1, "#5c3a1a");
+}
+
+// One picture's frame, its spotlight, and its plaque (the picture itself is
+// drawn in by pet_shop.js). Locked pictures get a velvet rope.
+function drawGalleryFrame(r, f, locked) {
+  for (let k = 0; k < 5; k++) r(f.x + 4 - k, f.y - 6 + k, f.w - 8 + 2 * k, 1, "rgba(255, 244, 200, 0.12)"); // spotlight
+  r(f.x + f.w / 2 - 3, f.y - 8, 6, 2, "#3b2417");
+  r(f.x - 2, f.y - 2, f.w + 4, f.h + 4, "#c8a030"); // a gold frame
+  r(f.x - 1, f.y - 1, f.w + 2, f.h + 2, "#8b5a2b");
+  r(f.x - 2, f.y - 2, f.w + 4, 1, "#e8c84a");
+  r(f.x + f.w / 2 - 8, f.y + f.h + 2, 16, 3, "#5c3a1a"); // the plaque
+  if (locked) {
+    for (let i = 0; i < f.w + 4; i++) r(f.x - 2 + i, f.y + f.h + 1 + Math.round(Math.sin((i / (f.w + 4)) * Math.PI) * 2), 1, 1, "#b8432f");
+    r(f.x - 3, f.y + f.h - 2, 2, 6, "#c8a030");
+    r(f.x + f.w + 1, f.y + f.h - 2, 2, 6, "#c8a030");
+  }
+}
