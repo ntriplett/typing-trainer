@@ -288,6 +288,10 @@ def _tank_view(tank: dict, pieces: list[dict], pets: list[dict]) -> dict:
     }
 
 
+def _items_view() -> dict:
+    return {i.id: {"name": i.name, "kind": i.kind, "w": i.w, "h": i.h, "sees": list(i.sees)} for i in CATALOG.values()}
+
+
 def hall(conn, learner_id: int) -> dict:
     """The Aquarium hall: all TANK_SPOTS stands, a tank or None."""
     pieces = db.list_tank_pieces(conn, learner_id)
@@ -296,6 +300,7 @@ def hall(conn, learner_id: int) -> dict:
     return {
         "spots": [_tank_view(by_spot[s], pieces, pets) if s in by_spot else None for s in range(TANK_SPOTS)],
         "size": {"w": TANK_W, "h": TANK_H, "substrate": SUBSTRATE_H},
+        "items": _items_view(),
     }
 
 
@@ -308,7 +313,7 @@ def tank_state(conn, learner_id: int, spot: int) -> dict:
         "tank": _tank_view(tank, pieces, pets),
         "storage": [p for p in pieces if p["tank"] is None],
         "looks": sorted(owned_looks(conn, learner_id)),
-        "items": {i.id: {"name": i.name, "kind": i.kind, "w": i.w, "h": i.h, "sees": list(i.sees)} for i in CATALOG.values()},
+        "items": _items_view(),
         "waiting_fish": [_fish_view(p) for p in pets if p["species"] == "fish" and not p["home"]],
         "size": {"w": TANK_W, "h": TANK_H, "substrate": SUBSTRATE_H},
         "layers": list(LAYERS),

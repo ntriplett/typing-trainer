@@ -15,8 +15,7 @@ def test_the_pets_hub_is_open_from_the_start(page: Page, live_server):
     expect(page.locator("h1")).to_have_text("Pets")
     expect(page.locator(".hub-building")).to_have_count(4)
     expect(page.locator("#hub-pets")).to_contain_text("No pets yet")
-    page.locator("[data-building='aquarium']").click()
-    expect(page.locator("#hub-message")).to_contain_text("Aquarium is still being built")
+    expect(page.locator(".hub-building.soon")).to_have_count(0)  # every building is open
     page.locator("[data-building='shop']").click()
     expect(page.locator("#dept-title")).to_have_text("Welcome to the Pet Shop!")
     page.get_by_role("link", name="🐾 Pets").click()

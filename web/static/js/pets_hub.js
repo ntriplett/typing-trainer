@@ -1,7 +1,7 @@
 // The Pets hub (PLAN.md 11h): a field where your pets wander (fish wait for
 // the Aquarium), with buildings to visit: the Pet Shop, the Pet Care
-// Center, the Aquarium, and the Trailhead out to your habitats. All but the
-// Aquarium are open. A new player's field fills up with visitors.
+// Center, the Aquarium, and the Trailhead out to your habitats. A new
+// player's field fills up with visitors.
 //
 // The scene is drawn on a 160x90 grid at 6x; each building has a real
 // link (or "coming soon" button) laid over it, so the keyboard works too.
@@ -18,7 +18,7 @@ const TICK_MS = 120;
 const BUILDINGS = [
   { id: "shop", name: "Pet Shop", href: "/pets/shop", x: 5, y: 18, w: 36, h: 32, draw: drawShop },
   { id: "care", name: "Pet Care Center", href: "/pets/care", x: 45, y: 18, w: 34, h: 32, draw: drawCare },
-  { id: "aquarium", name: "Aquarium", soon: true, x: 83, y: 18, w: 36, h: 32, draw: drawAquarium },
+  { id: "aquarium", name: "Aquarium", href: "/pets/aquarium", x: 83, y: 18, w: 36, h: 32, draw: drawAquarium },
   { id: "trailhead", name: "Trailhead", href: "/pets/trail", x: 124, y: 18, w: 32, h: 32, draw: drawTrailhead },
 ];
 const SIGN_H = 8; // the sign plank under each building
@@ -197,7 +197,7 @@ function renderPets() {
   const fish = hub.pets.filter((p) => p.species === "fish").length;
   $("hub-pets").textContent = !n
     ? "No pets yet! Visit the Pet Shop to find one."
-    : `You have ${n} pet${n > 1 ? "s" : ""}.` + (fish ? ` ${fish === n ? "They're" : `${fish} of them are`} fish, waiting for the Aquarium to open.` : "");
+    : `You have ${n} pet${n > 1 ? "s" : ""}.` + (fish ? ` ${fish === n ? "They're" : `${fish} of them are`} fish, swimming in the Aquarium.` : "");
 }
 
 // --- start --------------------------------------------------------------------------

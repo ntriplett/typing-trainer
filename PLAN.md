@@ -577,6 +577,31 @@ in `habitats_outdoors.js`, `habitats_cozy.js`, `habitats_magic.js`; the shop gro
 cards by tier); (2) the Pet Shop's Habitats department is a gallery: framed pictures, 8 to a room
 (Outdoors Hall, Outdoors Annex, Cozy Corner, Magical Wing), click one for a big preview and Buy.
 
+## 11k. Pets v3: aquariums you build yourself (agreed 2026-10-28)
+
+**Tanks** (`app/aquarium.py`): a 75-gallon tank (160x70 units, ~48"x21") for up to 10 fish, 400
+coins; everyone starts with one empty basic tank (Deep Blue background, Sand). 10 tanks to start.
+**Supplies**, all in the Pet Shop: backgrounds (40-60) and substrates (20-40) bought once and used
+in any tank; plants, rocks and decorations (10-100) bought per copy, kept in storage, placed with
+x/y, a layer (back: behind fish, middle: fish swim around it, front: in front of fish) and flip.
+Each item tells fish what it is (`sees`: hide, explore, through, bubbles). Tables: `tank`,
+`tank_piece`, `aqua_owned`; fish live in a tank via `pet.home = "tank:<spot>"`. Fish aren't fed yet.
+
+**Pet Shop**: a cute spiral staircase up to **Homes & Supplies**: Habitats (the gallery), Aquarium
+Supplies (rooms of display tanks: Tanks & Backdrops, Sand & Gravel, Plants, Rocks, Decorations),
+Pet Supplies (soon).
+
+**Aquarium** (`/pets/aquarium`): a dim hall of glowing live tanks: 4 in the main hall, 3 each in the
+Reef Room and the River Room. `/pets/aquarium/{spot}`: one tank, with Decorate (like the bedroom:
+backgrounds, bottoms, storage, drag, flip, layer, put away) and a Fish panel. The Care Center moves
+fish into tanks too.
+
+**Fish movement** (`fish_motion.js`): stay near `behavior.height` most of the time; curious fish
+explore pieces and roam; small schooling fish steer together and turn as one; shy fish hide in
+plants, caves and castles; bottom feeders poke along the substrate; playful fish ride bubbles;
+fish swim through arches; fish always face forward; each fish's depth decides whether it passes
+behind or in front of middle-layer pieces.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

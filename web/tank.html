@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Tank</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/aquarium.css" />
+</head>
+<body data-particles>
+  <main class="aquarium-page">
+    <header class="page-head">
+      <div class="tank-name"><h1 id="tank-name">Tank</h1><button id="rename-tank" class="link-button">✏️ Rename</button></div>
+      <nav class="signposts" aria-label="Go back"><a class="signpost" id="tank-back" href="/pets/aquarium">🐠 Aquarium</a><a class="signpost" href="/pets">🐾 Pets</a><a class="signpost" href="/">🏠 Home</a></nav>
+    </header>
+    <p id="tank-message" class="error-text" role="status"></p>
+    <section class="panel tank-panel">
+      <div class="tank-frame"><canvas id="tank-canvas" width="960" height="420"></canvas></div>
+      <div class="tank-tools">
+        <button id="decorate" class="button-gold">🎨 Decorate</button>
+        <button id="fish-button" class="button-go">🐠 Fish</button>
+      </div>
+      <div id="piece-tools" class="piece-tools" hidden></div>
+    </section>
+    <section id="decorate-panel" class="panel tank-side" hidden>
+      <h2 class="panel-title">Background</h2>
+      <div id="look-backgrounds" class="look-picks"></div>
+      <h2 class="panel-title">Bottom</h2>
+      <div id="look-substrates" class="look-picks"></div>
+      <h2 class="panel-title">Your storage</h2>
+      <p class="hint">Click a piece to put it in the tank, then drag it where you like. Buy more at the <a href="/pets/shop?dept=aqua">Pet Shop</a>.</p>
+      <div id="storage" class="storage"></div>
+    </section>
+    <section id="fish-panel" class="panel tank-side" hidden>
+      <h2 class="panel-title" id="fish-count">Fish</h2>
+      <div id="tank-fish" class="fish-list"></div>
+      <h2 class="panel-title">Fish waiting for a tank</h2>
+      <div id="waiting-fish" class="fish-list"></div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/aquarium_items.js"></script>
+  <script src="/static/js/fish_motion.js"></script>
+  <script src="/static/js/tank.js"></script>
+</body>
+</html>

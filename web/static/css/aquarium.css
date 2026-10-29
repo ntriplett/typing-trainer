@@ -1,0 +1,170 @@
+/* The Aquarium hall (aquarium.js) and one tank (tank.js); frames, buttons,
+   and colors come from theme.css. */
+
+.hall-scene {
+  position: relative;
+  aspect-ratio: 16 / 9;
+}
+
+.hall-scene canvas,
+.tank-frame canvas {
+  display: block;
+  width: 100%;
+  image-rendering: pixelated;
+  border: 4px solid var(--outline);
+}
+
+.hall-scene canvas {
+  height: 100%;
+}
+
+.hall-tank,
+.hall-door {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0;
+  border: none;
+  border-image: none;
+  background: none;
+  text-decoration: none;
+  text-shadow: none;
+}
+
+.hall-tank:hover,
+.hall-tank:focus-visible,
+.hall-door:hover,
+.hall-door:focus-visible {
+  outline: 3px dashed var(--leaf-gold);
+  outline-offset: 2px;
+}
+
+.hall-door:active {
+  transform: none;
+}
+
+.hall-plaque {
+  font-family: var(--font-ui);
+  font-size: clamp(11px, 1.6vw, 17px);
+  line-height: 1.05;
+  padding: 0.05rem 0.35rem 0.12rem;
+  background: var(--wood);
+  border: 3px solid var(--wood-dark);
+  color: var(--on-wood);
+  text-shadow: 1px 1px 0 var(--outline);
+  white-space: nowrap;
+}
+
+.hall-tank.empty .hall-plaque {
+  background: #4a5260;
+  border-color: #2a323e;
+}
+
+.hall-door .hall-plaque {
+  writing-mode: vertical-rl;
+  margin-bottom: 30%;
+  padding: 0.35rem 0.05rem;
+}
+
+/* --- one tank --- */
+
+.tank-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.tank-name h1 {
+  margin: 0;
+}
+
+.tank-frame {
+  background: #0a0e14;
+  padding: 6px;
+  border-bottom: 10px solid #2a1e16;
+}
+
+.tank-frame canvas {
+  height: auto;
+  touch-action: none;
+}
+
+.tank-tools {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.tank-tools .active {
+  outline: 3px solid var(--moss);
+}
+
+.tank-side {
+  margin-top: 1rem;
+}
+
+.tank-side[hidden],
+.piece-tools[hidden] {
+  display: none;
+}
+
+.piece-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  margin-top: 0.75rem;
+  background: var(--card-good);
+  border: 3px dashed var(--moss);
+  font-size: 20px;
+}
+
+.look-picks,
+.storage,
+.fish-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.look-pick,
+.storage-piece,
+.fish-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.3rem;
+  font-size: 16px;
+}
+
+.look-pick canvas,
+.storage-piece canvas,
+.fish-card canvas {
+  image-rendering: pixelated;
+  border: 2px solid var(--outline);
+  background: #2a5a7a;
+}
+
+.storage-piece canvas {
+  background: linear-gradient(#78c4e0, #2a6a90);
+}
+
+.look-pick.current {
+  outline: 3px solid var(--moss);
+}
+
+.rename-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rename-form input {
+  font: inherit;
+  font-size: 24px;
+  width: 12em;
+}

@@ -138,7 +138,7 @@ function filters() {
 function shown() {
   const keep = {
     all: () => true,
-    waiting: (p) => p.spot === null && !p.water,
+    waiting: (p) => p.spot === null && p.tank === null,
     along: (p) => p.along,
     water: (p) => p.water,
   }[filterKey] || ((p) => `spot:${p.spot}` === filterKey);
@@ -225,6 +225,7 @@ function renderDetail() {
   }
   const g = p.genes;
   const habitat = p.spot !== null ? care.habitats.find((h) => h.spot === p.spot) : null;
+  const tank = p.tank !== null ? care.tanks.find((h) => h.spot === p.tank) : null;
   const colors = g.hex
     .map((hex, i) => (hex ? `<span class="swatch" style="background:${hex}"></span>${g.color_names[i]}` : ""))
     .filter(Boolean)
@@ -245,7 +246,7 @@ function renderDetail() {
     <div class="detail-actions" id="detail-actions"></div>
     <div id="detail-picker"></div>
     <dl class="detail-facts">
-      <dt>Home</dt><dd>${p.water ? "Waiting for the Aquarium" : habitat ? `Lives in <b>${habitat.name}</b>` : "Here at the Care Center"}${p.along ? ` · 🎒 Comes along on your ${SIDE[p.along]}` : ""}</dd>
+      <dt>Home</dt><dd>${p.water ? (tank ? `Swims in <b>${escapeHtml(tank.name)}</b>` : "Waiting for a tank") : habitat ? `Lives in <b>${habitat.name}</b>` : "Here at the Care Center"}${p.along ? ` · 🎒 Comes along on your ${SIDE[p.along]}` : ""}</dd>
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
       <dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>
       <dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>
@@ -286,6 +287,7 @@ function renderActions(p) {
   else if (p.fed_today) out.push(button("Full for today", "", null, true));
   else out.push(button("🥕 Feed", "button-go", () => openMode("feed")));
   if (!p.water) out.push(button(p.spot === null ? "🏡 Move to a habitat" : "🏡 Move", "", () => openMode("move")));
+  else out.push(button(p.tank === null ? "🐠 Move to a tank" : "🐠 Move", "", () => openMode("tank")));
   if (p.along) out.push(button("Stay home", "", () => setAlong(p, null)));
   else if (!p.water) out.push(button("🎒 Bring along", "", () => bringAlong(p)));
   $("detail-actions").replaceChildren(...out);
@@ -324,6 +326,15 @@ function renderPicker(p) {
     box.replaceChildren(...picks);
     if (!care.habitats.length)
       box.innerHTML = `<p>You don't have a habitat yet. Get one in the <a href="/pets/shop?dept=habitats">Pet Shop</a>!</p>`;
+  } else if (mode === "tank") {
+    const picks = care.tanks
+      .filter((h) => h.spot !== p.tank)
+      .map((h) => {
+        const full = h.count >= h.capacity;
+        return button(`${h.name} (${h.count}/${h.capacity})${full ? " full" : ""}`, "", () => act(`/api/care/${p.id}/tank`, "PUT", { spot: h.spot }), full);
+      });
+    if (p.tank !== null) picks.push(button("Back to the Care Center", "", () => act(`/api/care/${p.id}/tank`, "PUT", { spot: null })));
+    box.replaceChildren(...picks);
   } else if (mode === "along") {
     const along = care.pets.filter((x) => x.along).sort((a, b) => a.along - b.along);
     box.innerHTML = `<p>You can bring ${care.max_along} pets. Who should stay home?</p>`;
