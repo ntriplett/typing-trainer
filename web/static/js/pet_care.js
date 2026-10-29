@@ -249,6 +249,7 @@ function renderDetail() {
     <dl class="detail-facts">
       <dt>Home</dt><dd>${p.water ? (tank ? `Swims in <b>${escapeHtml(tank.name)}</b>` : "Waiting for a tank") : habitat ? `Lives in <b>${habitat.name}</b>` : "Here at the Care Center"}${p.along ? ` · 🎒 Comes along on your ${SIDE[p.along]}` : ""}</dd>
       ${p.water ? `<dt>School</dt><dd>${p.school > 1 ? `You have <b>${p.school}</b> of these` : "Just one. Buy more for a school!"}</dd>` : ""}
+      ${p.water ? "" : `<dt>Happy</dt><dd class="hearts" title="${p.joy} of 5">${"♥".repeat(p.joy)}<span class="empty">${"♡".repeat(5 - p.joy)}</span>${p.joy ? "" : " Play with it in its habitat!"}</dd>`}
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
       <dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>
       <dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>
@@ -295,6 +296,7 @@ function renderActions(p) {
     const short = care.coins < p.copy_price;
     out.push(button(short ? `🐟 Another: need ${(p.copy_price - care.coins).toLocaleString()} more coins` : `🐟 Buy another (${p.copy_price.toLocaleString()} coins)`, "", buyCopy(p), short));
   }
+  out.push(button("🧪 Use a potion", "", () => openMode("potion")));
   if (p.along) out.push(button("Stay home", "", () => setAlong(p, null)));
   else if (!p.water) out.push(button("🎒 Bring along", "", () => bringAlong(p)));
   $("detail-actions").replaceChildren(...out);
@@ -333,6 +335,9 @@ function renderPicker(p) {
     box.replaceChildren(...picks);
     if (!care.habitats.length)
       box.innerHTML = `<p>You don't have a habitat yet. Get one in the <a href="/pets/shop?dept=habitats">Pet Shop</a>!</p>`;
+  } else if (mode === "potion") {
+    box.innerHTML = `<p>Loading your potions…</p>`;
+    loadPotions(p, box);
   } else if (mode === "tank") {
     const picks = care.tanks
       .filter((h) => h.spot !== p.tank)
@@ -392,6 +397,33 @@ function feed(p, veggie) {
     const news = fed.favorite ? `Yum, its favorite! ${p.name} grew a lot!` : `Yum! ${p.name} grew!`;
     say(fed.growth >= data.max_growth ? `${news} All grown up now!` : news, true);
   });
+}
+
+async function loadPotions(p, box) {
+  const r = await fetch(`/api/care/${p.id}/potions`);
+  const potions = (await r.json()).potions || [];
+  if (mode !== "potion" || selectedId !== p.id) return;
+  if (!potions.length) {
+    box.innerHTML = `<p>No potions that work on ${escapeHtml(p.name)}. Find new ones every day in the <a href="/pets/shop?dept=supplies&page=2">Pet Shop</a>!</p>`;
+    return;
+  }
+  box.innerHTML = `<p>Pick a potion to repaint ${escapeHtml(p.name)}${p.school > 1 ? " and its whole school" : ""}. A ? is a surprise!</p>`;
+  for (const potion of potions) {
+    const b = document.createElement("button");
+    b.className = "potion-pick";
+    b.dataset.potion = potion.id;
+    const c = document.createElement("canvas");
+    c.width = 48;
+    c.height = 48;
+    supplyCanvas(c, (r) => drawPotion(r, potion.shown));
+    const label = potion.shown.map((col) => (col ? col.name : "?")).join(" + ");
+    b.append(c, Object.assign(document.createElement("span"), { textContent: label }));
+    b.onclick = () =>
+      act(`/api/care/${p.id}/potion`, "POST", { potion: potion.id }, (data) => {
+        say(`✨ Ta-da! ${p.name} is now ${data.potion.colors.map((col) => col.name).join(" and ")}!`, true);
+      });
+    box.appendChild(b);
+  }
 }
 
 function buyCopy(p) {

@@ -168,3 +168,78 @@
   font-size: 24px;
   width: 12em;
 }
+
+/* --- fish food: the shelf and the words to type --- */
+
+.tank-frame {
+  position: relative;
+}
+
+.food-shelf {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 20px;
+}
+
+.shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.shelf-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 15px;
+  padding: 0.2rem 0.5rem;
+}
+
+.shelf-item canvas {
+  image-rendering: pixelated;
+}
+
+.shelf-item.current {
+  outline: 3px solid var(--leaf-gold);
+}
+
+#throw-words {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#throw-words.oops {
+  animation: words-oops 0.25s;
+}
+
+@keyframes words-oops {
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.throw-word {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-type);
+  font-size: clamp(18px, 3vw, 30px);
+  padding: 0.1rem 0.5rem;
+  background: var(--parchment);
+  color: var(--ink);
+  border: 3px solid var(--outline);
+}
+
+.throw-word.locked {
+  border-color: var(--leaf-gold);
+}
+
+.throw-word .typed {
+  color: var(--moss);
+  text-decoration: underline;
+}

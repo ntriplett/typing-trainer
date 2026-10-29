@@ -138,6 +138,25 @@ CREATE TABLE IF NOT EXISTS pet (
 );
 CREATE INDEX IF NOT EXISTS idx_pet_learner ON pet(learner_id);
 
+-- Pet Supplies (PLAN.md 11l): how many of each treat, toy, fish food.
+CREATE TABLE IF NOT EXISTS pet_supply (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    item_id TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learner_id, item_id)
+);
+
+-- Color potions bought (slot: which of that day's stock); used_on once used.
+CREATE TABLE IF NOT EXISTS potion (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    colors TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    slot INTEGER NOT NULL,
+    bought_on TEXT NOT NULL,
+    used_on TEXT
+);
+
 -- Aquarium tanks (PLAN.md 11k): spot 0..9 in the Aquarium hall; the
 -- background and substrate are item ids from app/aquarium.py.
 CREATE TABLE IF NOT EXISTS tank (
@@ -368,6 +387,8 @@ _ADDED_COLUMNS = [
     ("pet", "along", "INTEGER"),
     ("pet", "school", "INTEGER"),  # a fish copied into a school: the first fish's id
     ("tank_piece", "rot", "INTEGER NOT NULL DEFAULT 0"),  # degrees: 0, 90, 180, 270
+    ("pet", "joy", "INTEGER NOT NULL DEFAULT 0"),  # hearts (app/pet_supplies.py)
+    ("pet", "joy_on", "TEXT"),  # the day they were last set
 ]
 
 
@@ -1132,7 +1153,7 @@ def remove_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int) 
 
 # --- pets v3 and the pet shop (PLAN.md 11h) ---------------------------------------
 
-_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, along, school, adopted_at"
+_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, along, school, joy, joy_on, adopted_at"
 
 
 def _v3_pet(row: sqlite3.Row) -> dict:
@@ -1162,7 +1183,7 @@ def get_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int) -> dict |
     return _v3_pet(row) if row else None
 
 
-_V3_PET_UPDATABLE = {"name", "growth", "last_fed", "home", "along"}
+_V3_PET_UPDATABLE = {"name", "growth", "last_fed", "home", "along", "joy", "joy_on"}
 
 
 def update_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, **fields) -> None:
@@ -1171,6 +1192,46 @@ def update_v3_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, **fiel
         raise ValueError(f"can't update {bad}")
     sets = ", ".join(f"{k} = ?" for k in fields)
     conn.execute(f"UPDATE pet SET {sets} WHERE learner_id = ? AND id = ?", (*fields.values(), learner_id, pet_id))
+
+
+def update_v3_pet_genes(conn: sqlite3.Connection, learner_id: int, pet_id: int, genes_json: str) -> None:
+    """A potion repaints a pet: its genes change (nothing else ever does that)."""
+    conn.execute("UPDATE pet SET genes = ? WHERE learner_id = ? AND id = ?", (genes_json, learner_id, pet_id))
+
+
+# --- pet supplies (PLAN.md 11l) ------------------------------------------------------------
+
+
+def get_supply_counts(conn: sqlite3.Connection, learner_id: int) -> dict[str, int]:
+    rows = conn.execute("SELECT item_id, count FROM pet_supply WHERE learner_id = ? AND count > 0", (learner_id,))
+    return {r["item_id"]: r["count"] for r in rows}
+
+
+def add_supply(conn: sqlite3.Connection, learner_id: int, item_id: str, amount: int) -> None:
+    conn.execute(
+        "INSERT INTO pet_supply (learner_id, item_id, count) VALUES (?, ?, ?)"
+        " ON CONFLICT(learner_id, item_id) DO UPDATE SET count = count + excluded.count",
+        (learner_id, item_id, amount),
+    )
+
+
+def list_potions(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, colors, tier, slot, bought_on, used_on FROM potion WHERE learner_id = ? ORDER BY id", (learner_id,)
+    )
+    return [{**dict(r), "colors": json.loads(r["colors"])} for r in rows]
+
+
+def add_potion(conn: sqlite3.Connection, learner_id: int, colors: list[str], tier: str, slot: int, bought_on: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO potion (learner_id, colors, tier, slot, bought_on) VALUES (?, ?, ?, ?, ?)",
+        (learner_id, json.dumps(colors), tier, slot, bought_on),
+    )
+    return cur.lastrowid
+
+
+def use_potion(conn: sqlite3.Connection, learner_id: int, potion_id: int, used_on: str) -> None:
+    conn.execute("UPDATE potion SET used_on = ? WHERE learner_id = ? AND id = ?", (used_on, learner_id, potion_id))
 
 
 def list_habitats(conn: sqlite3.Connection, learner_id: int) -> list[dict]:

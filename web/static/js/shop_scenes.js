@@ -505,3 +505,24 @@ function drawAquaDisplay(r, f) {
   r(f.x - 1.5, f.y - 1.5, f.w + 3, 1, "#3a4a5a");
   r(f.x + f.w / 2 - 8, f.y + f.h + 2.5, 16, 3, "#3b2417"); // the plaque
 }
+
+// --- Pet Supplies -------------------------------------------------------------------
+
+// Shelf spots, two rows of five, each with a tag below.
+function supplySlots() {
+  return shopRows([[5, 40], [5, 80]], 22, 18).map((f) => ({ ...f, y: f.floor - 18 - 6 }));
+}
+
+function drawSuppliesRoom(r, magic) {
+  r(0, 0, SHOP_W, SHOP_H, magic ? "#2e1e4a" : "#e8d4b0");
+  if (magic) {
+    const rand = shopRand(23);
+    for (let i = 0; i < 50; i++) r(rand() * SHOP_W, rand() * 84, 0.6, 0.6, i % 3 ? "#e8d8ff" : "#f8e08a");
+  } else for (let x = 4; x < SHOP_W; x += 12) r(x, 0, 3, 84, "#e0c8a0");
+  r(0, 0, SHOP_W, 3, "#5c3a1a");
+  for (const y of [40, 80]) {
+    r(0, y - 6, SHOP_W, 6, magic ? "#4a2e6a" : "#8b5a2b"); // shelves
+    r(0, y - 6, SHOP_W, 1, magic ? "#7a5aa0" : "#a87a44");
+  }
+  r(0, 82, SHOP_W, 8, magic ? "#241640" : "#c89a60");
+}

@@ -325,6 +325,36 @@ const PetMotion = (() => {
     if (!moving) w.frame = 0;
   }
 
+  // A treat or toy lands at (x, y): pets in `ids` run to it, then bounce
+  // about happily with hearts. onArrive(walker) is called for the first one
+  // there (a treat gets eaten).
+  function attract(world, ids, x, y, onArrive) {
+    let first = true;
+    for (const w of world.walkers) {
+      if (w.still || !ids.includes(w.p.id)) continue;
+      const tx = x - w.width / 2 + rand(-5, 5);
+      const ty = y + rand(-2, 2);
+      if (w.ledge !== null) {
+        leapTo(w, tx, ty, null); // hop down first; it walks over once it lands
+        w.after = { x: tx, y: ty };
+      } else walkTo(world, w, tx, ty, "happy", 1.5);
+      w.running = true;
+      w.arrive = first ? onArrive : null;
+      first = false;
+    }
+  }
+
+  function startHappy(w) {
+    w.state = "happy";
+    w.timer = Math.floor(rand(60, 110));
+    w.phase = 0;
+    w.running = false;
+    if (w.arrive) {
+      w.arrive(w);
+      w.arrive = null;
+    }
+  }
+
   const RESTING = new Set(["idle", "nap", "look", "cuddle", "bask"]);
 
   function stepOne(world, w) {
@@ -348,6 +378,15 @@ const PetMotion = (() => {
         w.hop = 0;
         rest(w);
       }
+    } else if (w.state === "happy") {
+      w.phase += 0.35 + w.e * 0.2;
+      w.hop = Math.abs(Math.sin(w.phase)) * (2.5 + w.pl * 2);
+      if (Math.sin(w.phase / 3) > 0.95) w.dir = -w.dir; // spinning with joy
+      moving = true;
+      if (--w.timer <= 0) {
+        w.hop = 0;
+        rest(w);
+      }
     } else if (w.state === "leap") {
       w.t = Math.min(1, w.t + w.leapRate);
       w.x = w.from[0] + (w.tx - w.from[0]) * w.t;
@@ -356,7 +395,10 @@ const PetMotion = (() => {
       if (w.t >= 1) {
         w.hop = 0;
         w.ledge = w.toLedge;
-        rest(w, 0.7);
+        if (w.after) {
+          walkTo(world, w, w.after.x, w.after.y, "happy", 1.5); // on its way to a treat or toy
+          w.after = null;
+        } else rest(w, 0.7);
       }
     } else if (w.state === "walk" || w.state === "swim") {
       moving = true;
@@ -389,6 +431,8 @@ const PetMotion = (() => {
           w.phase = 0;
         } else if (w.then === "prop") {
           atProp(w);
+        } else if (w.then === "happy") {
+          startHappy(w);
         } else if (w.then === "cuddle") {
           w.state = "cuddle";
           w.dir = w.lookAt < center(w) ? -1 : 1;
@@ -433,6 +477,7 @@ const PetMotion = (() => {
       if (w.state === "splash" || (w.state === "walk" && pool && !swims(w))) droplets(px, w, "rgba(200, 230, 250, 0.9)");
       if (w.state === "dig" || w.state === "jump") droplets(px, w, w.bits);
       if (ctx && w.state === "nap") snore(ctx, unit, w);
+      if (w.state === "happy") hearts(px, w);
       if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
     }
   }
@@ -443,6 +488,17 @@ const PetMotion = (() => {
       const k = (w.ticks * 7 + i * 13) % 10;
       const side = i % 2 ? -1 : 1;
       px(center(w) + side * (w.width * 0.3 + k * 0.3), w.y - 1 - Math.sin((k / 10) * Math.PI) * 4, 0.6, 0.6, color);
+    }
+  }
+
+  const HEART = [".X.X.", "XXXXX", ".XXX.", "..X.."];
+
+  function hearts(px, w) {
+    for (let i = 0; i < 2; i++) {
+      const rise = ((w.timer * 0.6 + i * 9) % 18) / 18;
+      const hx = center(w) + (i ? w.width * 0.3 : -w.width * 0.35) + Math.sin(rise * 6) * 1.2;
+      const hy = w.y - w.height - 2 - rise * 7;
+      HEART.forEach((row, j) => [...row].forEach((c, k) => c === "X" && px(hx + k * 0.8, hy + j * 0.8, 0.8, 0.8, "#e84a6a")));
     }
   }
 
@@ -466,5 +522,5 @@ const PetMotion = (() => {
     ctx.fillText(w.p.name, cx, top);
   }
 
-  return { create, step, draw };
+  return { create, step, draw, attract };
 })();

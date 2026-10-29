@@ -265,6 +265,7 @@ function renderFloor() {
   $("shop-grid").className = "shop-grid";
   if (d.id === "habitats") return renderHabitats();
   if (d.id === "aqua") return renderAquaSupplies();
+  if (d.id === "supplies") return renderPetSupplies();
   renderRoom();
   if (d.id === "orders") return renderOrders();
   $("dept-hint").textContent = dept.coupon
@@ -672,6 +673,143 @@ async function buyAqua(item) {
         : item.kind === "background" || item.kind === "substrate"
           ? `🎉 Use it in any tank from your <a href="/pets/aquarium">Aquarium</a>.`
           : `🎉 It's waiting in your <a href="/pets/aquarium">Aquarium</a>.`;
+    $("detail-body").appendChild(note);
+  } catch (err) {
+    closeDetail();
+    say(err.message);
+  }
+}
+
+// --- Pet Supplies (app/pet_supplies.py; art in supply_art.js) -------------------------
+
+const SUPPLY_ROOMS = [
+  { name: "Treats & Fish Food", has: (i) => i.kind === "treat" || i.kind === "fish_food" },
+  { name: "Toys", has: (i) => i.kind === "toy" },
+  { name: "Magic Potions", potions: true },
+];
+const POTION_TIER = {
+  mystery: { name: "Mystery Potion", about: "Nobody knows what colors are inside!" },
+  second: { name: "Half-Mystery Potion", about: "You can see its second color. The main color is a mystery!" },
+  main: { name: "Half-Mystery Potion", about: "You can see its main color. The second color is a mystery!" },
+  clear: { name: "Clear Potion", about: "You can see both of its colors." },
+};
+
+function likesText(likes) {
+  const names = likes.map((sp) => speciesName(plural(sp)));
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+}
+
+function renderPetSupplies() {
+  page = Math.min(page, SUPPLY_ROOMS.length - 1);
+  const room = SUPPLY_ROOMS[page];
+  const sup = dept.supplies;
+  $("dept-title").textContent = `Pet Supplies: ${room.name}`;
+  $("dept-hint").textContent = room.potions
+    ? "A potion repaints a pet in its colors, one time. New potions every day! Use them at the Pet Care Center."
+    : "Throw treats and toys for your pets in their habitats: type a word to throw! Treats get eaten; toys you keep.";
+  $("shop-scene").hidden = false;
+  const bg = sceneCanvas();
+  const ctx = bg.getContext("2d");
+  drawSuppliesRoom(habitatPainter(ctx, SCENE_PX), room.potions);
+  const slots = supplySlots();
+  const entries = room.potions ? sup.potions.stock : sup.items.filter(room.has);
+  entries.forEach((e, i) => {
+    const f = slots[i];
+    const px = Math.floor((Math.min(f.w, f.h) * SCENE_PX) / SUPPLY_GRID);
+    const ox = (f.x + f.w / 2) * SCENE_PX - (SUPPLY_GRID * px) / 2;
+    const oy = (f.y + f.h) * SCENE_PX - SUPPLY_GRID * px;
+    const r = (x, y, w, h, c) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(ox + x * px, oy + y * px, w * px, h * px);
+    };
+    if (room.potions) {
+      if (!e.sold) drawPotion(r, e.shown);
+    } else drawSupply(r, e.id);
+  });
+  scene = { bg, front: null, pets: [] };
+  drawScene();
+  $("shop-spots").replaceChildren(...entries.map((e, i) => supplyButton(e, slots[i], room.potions)), ...roomSigns(SUPPLY_ROOMS.map((r) => r.name)));
+}
+
+function supplyButton(e, f, potion) {
+  const btn = document.createElement("button");
+  btn.className = "shop-slot gallery-frame" + (potion && e.sold ? " sold" : "");
+  place(btn, { x: f.x - 1, y: f.y - 1, w: f.w + 2, h: f.h + 8 });
+  if (potion) {
+    btn.dataset.potion = e.index;
+    btn.disabled = e.sold;
+    btn.setAttribute("aria-label", `${POTION_TIER[e.tier].name}, ${e.price} coins`);
+    btn.innerHTML = `<span class="slot-tag gallery-plaque">${e.sold ? "Sold!" : coins(e.price)}</span>`;
+    btn.onclick = () => showPotion(e.index);
+  } else {
+    btn.dataset.item = e.id;
+    btn.setAttribute("aria-label", `${e.name}, ${e.price} coins`);
+    const have = e.kind === "toy" ? (e.have ? " ✓" : "") : e.have ? ` ×${e.have}` : "";
+    btn.innerHTML = `<span class="slot-tag gallery-plaque">${e.name} · ${coins(e.price)}${have}</span>`;
+    btn.onclick = () => showSupply(e.id);
+  }
+  return btn;
+}
+
+function supplyDialog(title, draw, about, buy) {
+  const body = $("detail-body");
+  body.innerHTML = `<h2 class="panel-title">${title}</h2>
+    <div class="supply-preview"><canvas width="160" height="160"></canvas></div>
+    <p>${about}</p><div class="detail-actions"></div>`;
+  supplyCanvas(body.querySelector("canvas"), draw);
+  body.querySelector(".detail-actions").appendChild(buy);
+  const dialog = $("pet-detail");
+  if (!dialog.open) dialog.showModal();
+}
+
+function buyButton(price, done, onclick, doneText = "Yours!") {
+  const btn = document.createElement("button");
+  btn.className = "button-gold big-button";
+  const short = dept.coins < price;
+  btn.disabled = done || short;
+  btn.textContent = done ? doneText : short ? `Need ${(price - dept.coins).toLocaleString()} more coins` : `Buy for ${price.toLocaleString()} coins`;
+  btn.onclick = onclick;
+  return btn;
+}
+
+function showSupply(id) {
+  const item = dept.supplies.items.find((i) => i.id === id);
+  const kind = { treat: "A treat: gets eaten.", toy: "A toy: you keep it and throw it again and again.", fish_food: item.sinks ? "Sinks to the bottom for the bottom feeders." : "Floats down slowly from the top." }[item.kind];
+  const who = item.kind === "fish_food" ? "Fish swim over to eat it in your tanks." : `${likesText(item.likes)} love it!`;
+  const have = item.have ? ` You have ${item.kind === "toy" ? "it" : item.have}.` : "";
+  supplyDialog(item.name, (r) => drawSupply(r, id), `${kind} ${who}${have}`, buyButton(item.price, item.kind === "toy" && item.have > 0, () => buySupply(item)));
+}
+
+function showPotion(index) {
+  const p = dept.supplies.potions.stock[index];
+  const tier = POTION_TIER[p.tier];
+  const colors = p.shown.map((c) => (c ? `<b>${c.name}</b>` : "<b>?</b>")).join(" and ");
+  supplyDialog(tier.name, (r) => drawPotion(r, p.shown), `${tier.about} Colors: ${colors}. Use it on a pet at the Pet Care Center.`, buyButton(p.price, p.sold, () => buyPotion(p), "Sold!"));
+}
+
+async function refreshSupplies(data) {
+  dept.supplies = data.supplies;
+  dept.coins = data.coins;
+  renderPetSupplies();
+}
+
+async function buySupply(item) {
+  try {
+    await refreshSupplies(await call(`/api/supplies/${item.id}`, "POST"));
+    showSupply(item.id); // stays open: buy another
+  } catch (err) {
+    closeDetail();
+    say(err.message);
+  }
+}
+
+async function buyPotion(p) {
+  try {
+    await refreshSupplies(await call(`/api/supplies/potions/${p.index}`, "POST"));
+    showPotion(p.index);
+    const note = document.createElement("p");
+    note.className = "unlocked-colors";
+    note.innerHTML = `🧪 It's yours! Pick a pet at the <a href="/pets/care">Pet Care Center</a> and use it.`;
     $("detail-body").appendChild(note);
   } catch (err) {
     closeDetail();

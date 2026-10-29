@@ -16,12 +16,13 @@
     </header>
     <p id="tank-message" class="error-text" role="status"></p>
     <section class="panel tank-panel">
-      <div class="tank-frame"><canvas id="tank-canvas" width="960" height="420"></canvas></div>
+      <div class="tank-frame"><canvas id="tank-canvas" width="960" height="420"></canvas><div id="throw-words"></div></div>
       <div class="tank-tools">
         <button id="decorate" class="button-gold">🎨 Decorate</button>
         <button id="fish-button" class="button-go">🐠 Fish</button>
       </div>
       <div id="piece-tools" class="piece-tools" hidden></div>
+      <div class="food-shelf"><span class="food-label">Fish food:</span><div id="food" class="shelf"></div></div>
     </section>
     <section id="decorate-panel" class="panel tank-side" hidden>
       <h2 class="panel-title">Background</h2>
@@ -48,6 +49,7 @@
   <script src="/static/js/header.js"></script>
   <script src="/static/js/aquarium_items.js"></script>
   <script src="/static/js/fish_motion.js"></script>
+  <script src="/static/js/supply_art.js"></script>
   <script src="/static/js/tank.js"></script>
 </body>
 </html>

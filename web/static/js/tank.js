@@ -1,4 +1,6 @@
-// One tank up close (PLAN.md 11k): fish swimming (fish_motion.js), and
+// One tank up close (PLAN.md 11k): fish swimming (fish_motion.js); fish
+// food (PLAN.md 11l): pick flakes or pellets, type a word to sprinkle them
+// there, and watch the fish eat; and
 // Decorate mode, like the bedroom: pick the background and bottom you own,
 // put pieces from storage into the tank, drag them about, flip them, set
 // them behind or in front of the fish, or put them away. The Fish panel
@@ -18,6 +20,9 @@ let t = 0;
 let mode = null; // "decorate" | "fish" | null
 let selected = null; // a placed piece's id
 let drag = null; // {id, dx, dy}
+let words = [];
+let aiming = null; // {item, choices: [{word, x}], typed}
+const FOOD_SPOTS = [0.2, 0.5, 0.8];
 
 async function call(url, method = "GET", body = null) {
   const r = await fetch(url, {
@@ -61,6 +66,8 @@ function setState(data) {
     }
   }
   if (selected && !pieceById(selected)) selected = null;
+  if (old) world.food = old.food; // food still sinking stays
+  renderFood();
   $("fish-button").textContent = `🐠 Fish (${state.tank.fish.length}/${state.tank.capacity})`;
   renderPanels();
   draw();
@@ -221,6 +228,106 @@ function renderFish() {
   if (!state.waiting_fish.length) $("waiting-fish").innerHTML = `<p class="hint">Every fish has a home. Find more fish at the <a href="/pets/shop?dept=fish">Pet Shop</a>!</p>`;
 }
 
+// --- fish food -------------------------------------------------------------------------
+
+function renderFood() {
+  const box = $("food");
+  if (!state.food.length) {
+    box.innerHTML = `<span class="hint">None yet. Get fish food upstairs in the <a href="/pets/shop?dept=supplies">Pet Shop</a>!</span>`;
+    return;
+  }
+  box.replaceChildren(
+    ...state.food.map((item) => {
+      const b = document.createElement("button");
+      b.className = "shelf-item" + (aiming && aiming.item.id === item.id ? " current" : "");
+      b.dataset.food = item.id;
+      const c = document.createElement("canvas");
+      c.width = 40;
+      c.height = 40;
+      supplyCanvas(c, (r) => drawSupply(r, item.id));
+      b.append(c, Object.assign(document.createElement("span"), { textContent: `${item.name} ×${item.have}` }));
+      b.onclick = () => aimFood(item);
+      return b;
+    })
+  );
+}
+
+function aimFood(item) {
+  const pool = [...words];
+  const picked = [];
+  while (picked.length < FOOD_SPOTS.length && pool.length) {
+    const w = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    if (!picked.some((o) => o[0] === w[0])) picked.push(w);
+  }
+  while (picked.length < FOOD_SPOTS.length) picked.push(["go", "food", "yum"][picked.length]);
+  aiming = { item, typed: "", choices: picked.map((word, i) => ({ word, x: TANK_W * FOOD_SPOTS[i] })) };
+  renderFood();
+  renderWords();
+}
+
+function renderWords() {
+  const box = $("throw-words");
+  if (!aiming) return box.replaceChildren();
+  box.replaceChildren(
+    ...aiming.choices.map((c) => {
+      const el = document.createElement("span");
+      el.className = "throw-word";
+      Object.assign(el.style, { left: `${(c.x / TANK_W) * 100}%`, top: "18%" });
+      const done = c.word.startsWith(aiming.typed) ? aiming.typed.length : 0;
+      el.innerHTML = `<span class="typed">${c.word.slice(0, done)}</span>${c.word.slice(done)}`;
+      el.classList.toggle("locked", done > 0);
+      return el;
+    })
+  );
+}
+
+function onKey(e) {
+  if (!aiming || e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input")) return;
+  if (e.key === "Escape") {
+    aiming = null;
+    renderFood();
+    return renderWords();
+  }
+  if (e.key === "Backspace") {
+    e.preventDefault();
+    aiming.typed = aiming.typed.slice(0, -1);
+    return renderWords();
+  }
+  if (e.key.length !== 1) return;
+  e.preventDefault();
+  const next = aiming.typed + e.key.toLowerCase();
+  if (!aiming.choices.some((c) => c.word.startsWith(next))) {
+    $("throw-words").classList.remove("oops");
+    void $("throw-words").offsetWidth;
+    $("throw-words").classList.add("oops");
+    return;
+  }
+  aiming.typed = next;
+  const hit = aiming.choices.find((c) => c.word === next);
+  renderWords();
+  if (hit) sprinkle(aiming.item, hit.x);
+}
+
+async function sprinkle(item, x) {
+  aiming = null;
+  renderWords();
+  try {
+    const r = await fetch(`/api/aquarium/${spot}/food`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item: item.id }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "Couldn't feed them.");
+    state.food = data.shelf;
+    FishMotion.addFood(world, x, data.sinks);
+    say("");
+  } catch (err) {
+    say(err.message);
+  }
+  renderFood();
+}
+
 // --- dragging pieces ----------------------------------------------------------------
 
 function toTank(e) {
@@ -315,6 +422,11 @@ async function load() {
     renderPanels();
   };
   $("rename-tank").onclick = startRename;
+  document.addEventListener("keydown", onKey);
+  fetch("/api/play/words")
+    .then((r) => r.json())
+    .then((d) => (words = d.words || []))
+    .catch(() => {});
   const canvas = $("tank-canvas");
   canvas.addEventListener("pointerdown", startDrag);
   canvas.addEventListener("pointermove", moveDrag);

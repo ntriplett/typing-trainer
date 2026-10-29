@@ -308,3 +308,26 @@
     height: 54px;
   }
 }
+
+.hearts {
+  color: #d84a5a;
+  font-size: 20px;
+  letter-spacing: 0.1em;
+}
+
+.hearts .empty {
+  color: var(--ink-soft);
+}
+
+.potion-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 15px;
+  padding: 0.25rem 0.4rem;
+}
+
+.potion-pick canvas {
+  image-rendering: pixelated;
+}

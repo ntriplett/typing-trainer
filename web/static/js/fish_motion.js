@@ -41,7 +41,7 @@ const FishMotion = (() => {
   }
 
   function create(fish, tank, items, scale) {
-    const world = { fish: [], pieces: tank.pieces, items, scale, feats: features(tank.pieces, items), t: 0 };
+    const world = { fish: [], pieces: tank.pieces, items, scale, feats: features(tank.pieces, items), t: 0, food: [] };
     world.fish = fish.map((f, i) => {
       const size = petSize(f.genes, f.growth);
       const fishScale = scale * sizeScale(f);
@@ -129,13 +129,49 @@ const FishMotion = (() => {
     }
   }
 
+  // Food in the water: flakes drift down slowly for the fish up top and in
+  // the middle; pellets sink fast for the bottom feeders (and anyone low).
+  function addFood(world, x, sinks) {
+    for (let i = 0; i < (sinks ? 7 : 12); i++) {
+      world.food.push({ x: x + rand(-7, 7), y: SURFACE + rand(0, 3), vy: sinks ? rand(0.2, 0.3) : rand(0.04, 0.08), sinks, life: 900, c: i % 3 });
+    }
+  }
+
+  function stepFood(world) {
+    for (const f of world.food) {
+      f.y = Math.min(FLOOR - 1, f.y + f.vy);
+      if (!f.sinks) f.x += Math.sin((world.t + f.life) / 15) * 0.05;
+      f.life -= 1;
+    }
+    world.food = world.food.filter((f) => f.life > 0);
+  }
+
+  function hungryFor(world, fish) {
+    let best = null;
+    let bestD = 70;
+    for (const f of world.food) {
+      const wants = f.sinks ? fish.bottom || fish.prefY > FLOOR - 25 || f.y > FLOOR - 6 : !fish.bottom;
+      const d = Math.hypot(f.x - fish.x, f.y - fish.y);
+      if (wants && d < bestD) [best, bestD] = [f, d];
+    }
+    return best;
+  }
+
   function stepFish(world, fish) {
+    const food = world.food.length && hungryFor(world, fish);
+    if (food) {
+      fish.goal = [food.x, food.y]; // dinner!
+      fish.state = "eat";
+      fish.timer = 30;
+      if (Math.hypot(food.x - fish.x, food.y - fish.y) < 2.5) world.food.splice(world.food.indexOf(food), 1);
+    }
     if (!fish.goal || --fish.timer <= 0) choose(world, fish);
     const maxSpeed = 0.18 + fish.e * 0.32;
     let [gx, gy] = fish.goal;
     if (fish.state === "bubbles" && Math.abs(fish.x - gx) < 2) gy = SURFACE + fish.h / 2; // ride up the stream
-    let ax = (gx - fish.x) * 0.004;
-    let ay = (gy - fish.y) * 0.006;
+    const pull = fish.state === "eat" ? 3 : 1;
+    let ax = (gx - fish.x) * 0.004 * pull;
+    let ay = (gy - fish.y) * 0.006 * pull;
     const near = Math.hypot(gx - fish.x, gy - fish.y) < 3;
     if (near && (fish.state === "hide" || fish.state === "explore")) {
       ax *= 0.2; // linger
@@ -188,6 +224,7 @@ const FishMotion = (() => {
 
   function step(world) {
     world.t += 1;
+    stepFood(world);
     for (const fish of world.fish) stepFish(world, fish);
   }
 
@@ -200,7 +237,7 @@ const FishMotion = (() => {
     });
   }
 
-  return { create, step, drawFish, features };
+  return { create, step, drawFish, features, addFood };
 })();
 
 // A whole tank, back to front: its look (cached), back pieces, far fish,
@@ -234,6 +271,7 @@ function drawTankScene(ctx, unit, world, tank, t, cache = {}) {
   pieces("back");
   for (const f of fish) if (f.z < 0.5) FishMotion.drawFish(world, px, f);
   pieces("middle");
+  for (const f of world.food) px(f.x, f.y, 0.9, 0.9, f.sinks ? "#7a4a22" : ["#e8582a", "#f4c430", "#6ab84a"][f.c]);
   for (const f of fish) if (f.z >= 0.5) FishMotion.drawFish(world, px, f);
   pieces("front");
   px(0, 0, TANK_W, 1.2, "rgba(220, 240, 255, 0.35)"); // the water's surface

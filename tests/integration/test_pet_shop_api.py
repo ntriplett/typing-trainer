@@ -56,14 +56,14 @@ def owned():
 
 def test_a_new_player_can_shop_for_fish_and_habitats(clock):
     d = depts()
-    assert [k for k, v in d.items() if v["open"]] == ["fish", "habitats", "aqua"]
-    assert d["household"]["missing"] == "asdfghjkl;" and d["supplies"]["soon"]
+    assert [k for k, v in d.items() if v["open"]] == ["fish", "habitats", "aqua", "supplies"]
+    assert d["household"]["missing"] == "asdfghjkl;"
     fish = client.get("/api/pets/shop/fish").json()
     assert len(fish["slots"]) == 16 and all(s["species"] == "fish" for s in fish["slots"])
     assert not fish["coupon"]
     closed = client.get("/api/pets/shop/household")
     assert closed.status_code == 403 and "learn" in closed.json()["detail"]
-    assert client.get("/api/pets/shop/supplies").status_code == 403
+    assert client.get("/api/pets/shop/supplies").status_code == 200  # Pet Supplies is open from the start
     assert client.get("/api/pets/shop/nope").status_code == 400
 
 

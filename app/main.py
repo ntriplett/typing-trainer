@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -1112,7 +1112,10 @@ def _aqua_call(action, *args):
 
 
 def _tank(conn, learner_id: int, spot: int) -> dict:
-    return {**_me(conn, learner_id), **_aqua_call(aquarium.tank_state, conn, learner_id, spot)}
+    return {
+        **_me(conn, learner_id), **_aqua_call(aquarium.tank_state, conn, learner_id, spot),
+        "food": pet_supplies.shelf(conn, learner_id, ("fish_food",)),
+    }
 
 
 @app.get("/api/aquarium")
@@ -1189,6 +1192,81 @@ def buy_aqua_item(item_id: str, conn=Depends(get_db), learner_id: int = Depends(
     return {**_me(conn, learner_id), **aquarium.supplies_state(conn, learner_id), "bought": bought}
 
 
+# --- Pet Supplies API (PLAN.md 11l) -------------------------------------------------
+
+
+class SupplyIn(BaseModel):
+    item: str
+
+
+class PotionIn(BaseModel):
+    potion: int
+
+
+def _supply_call(action, *args):
+    try:
+        return action(*args)
+    except pet_supplies.SupplyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+
+@app.post("/api/supplies/potions/{index}")
+def buy_potion(index: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _supply_call(pet_supplies.buy_potion, conn, learner_id, index, _today())
+    return {**_department(conn, learner_id, "supplies"), "bought": bought}
+
+
+@app.post("/api/supplies/{item_id}")
+def buy_supply(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _supply_call(pet_supplies.buy, conn, learner_id, item_id)
+    return {**_department(conn, learner_id, "supplies"), "bought": bought}
+
+
+@app.get("/api/care/{pet_id}/potions")
+def care_potions(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    pet = db.get_v3_pet(conn, learner_id, pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="You don't have that pet.")
+    return {"potions": pet_supplies.potions_for(conn, learner_id, pet)}
+
+
+@app.post("/api/care/{pet_id}/potion")
+def care_use_potion(pet_id: int, body: PotionIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    members = [p["id"] for p in _care_call(pet_care.school_of, conn, learner_id, pet_id)]
+    used = _supply_call(pet_supplies.use_potion, conn, learner_id, members, body.potion, _today())
+    return _care(conn, learner_id, potion=used)
+
+
+@app.post("/api/trail/{spot}/play")
+def habitat_play(spot: int, body: SupplyIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    played = _supply_call(pet_supplies.play, conn, learner_id, spot, body.item, _today())
+    return {**played, "shelf": pet_supplies.shelf(conn, learner_id, ("treat", "toy"))}
+
+
+@app.post("/api/aquarium/{spot}/food")
+def tank_food(spot: int, body: SupplyIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    fed = _supply_call(pet_supplies.feed_fish, conn, learner_id, spot, body.item)
+    return {**fed, "shelf": pet_supplies.shelf(conn, learner_id, ("fish_food",))}
+
+
+PLAY_WORDS = ["go", "fetch", "jump", "play", "run", "catch", "yay", "toss"]  # before enough letters are learned
+
+
+@app.get("/api/play/words")
+def play_words(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Words to throw treats and toys with: the games' words for the letters you know."""
+    module = _game_module("game_pet_battle_v1")
+    focus_keys, allowed, key_stats = _lab_letters(conn, learner_id, "mine", "")
+    if not module.is_eligible(focus_keys, allowed):
+        return {"words": PLAY_WORDS}
+    content = module.generate(
+        focus_keys, allowed, chars_per_second=brain.chars_per_second_for_wpm(_lab_wpm(conn, learner_id)),
+        difficulty=PRACTICE_DIFFICULTIES["easy"], skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
+    )
+    words = content.game["words"]
+    return {"words": sorted(set(words.get("short", []) + words.get("medium", [])))}
+
+
 @app.get("/api/trail")
 def trail(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return {**_me(conn, learner_id), **pet_care.trail(conn, learner_id, _today())}
@@ -1200,7 +1278,7 @@ def trail_habitat(spot: int, conn=Depends(get_db), learner_id: int = Depends(cur
         found = pet_care.habitat(conn, learner_id, spot, _today())
     except pet_care.CareError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
-    return {**_me(conn, learner_id), "habitat": found}
+    return {**_me(conn, learner_id), "habitat": found, "shelf": pet_supplies.shelf(conn, learner_id, ("treat", "toy"))}
 
 
 # --- room API -------------------------------------------------------------------------

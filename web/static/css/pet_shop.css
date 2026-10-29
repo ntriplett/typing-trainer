@@ -337,6 +337,14 @@
   color: var(--ink-soft);
 }
 
+.supply-preview canvas {
+  display: block;
+  margin: 0 auto;
+  image-rendering: pixelated;
+  background: var(--sand);
+  border: 3px solid var(--wood-light);
+}
+
 .aqua-preview canvas,
 .habitat-preview canvas {
   display: block;

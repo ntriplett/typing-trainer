@@ -8,7 +8,7 @@ import random
 from dataclasses import dataclass
 from datetime import date
 
-from app import aquarium, db, garden
+from app import aquarium, db, garden, pet_supplies
 from app import pet_genes as g
 
 MAX_GROWTH = 10
@@ -106,6 +106,7 @@ def view(pet: dict, today: date, fed_any_time: bool = False) -> dict:
         "rarity": round(g.rarity(pet["genes"]), 3),
         "rare": g.rare_features(pet["genes"]),
         "water": pet["species"] in WATER_ONLY,
+        "joy": pet_supplies.joy(pet, today),
     }
 
 

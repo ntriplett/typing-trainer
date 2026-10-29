@@ -611,6 +611,27 @@ plants, caves and castles; bottom feeders poke along the substrate; playful fish
 fish swim through arches; fish always face forward; each fish's depth decides whether it passes
 behind or in front of middle-layer pieces.
 
+## 11l. Pets v3: Pet Supplies, playing, happiness, potions (agreed 2026-10-28)
+
+**Shop** (upstairs, `app/pet_supplies.py`): Treats & Fish Food, Toys, Magic Potions rooms. Treats (5
+coins, used up) and toys (100, kept) each loved by a few species; fish food (5): flakes float down
+slowly, pellets sink for the bottom feeders.
+
+**Playing**: under a habitat, a shelf of your treats and toys. Click one: three words appear in the
+scene (left, middle, right); typing one throws it there. Pets that like it run over (leaping down
+from ledges) and bounce with hearts; a treat is eaten by the first one there; a toy comes back.
+Words: the games' words for the letters you know (`/api/play/words`). No rewards but happy pets.
+**Happiness**: up to 5 hearts per pet (`pet.joy`, `pet.joy_on`): +1 per treat or toy it likes,
+-1 per day nobody plays. Shown in the Care Center and the habitat's list. Fish have none.
+
+**Fish food**: on a tank's page, the same type-a-word throw sprinkles food; fish swim to it at their
+own height and eat it.
+
+**Color potions** (one use): two colors each, applied to the pet's main and second color (the whole
+school for fish), and unlocked. New every day, two per tier: Mystery (no colors shown) 20, second
+color shown 40, main color shown 60, Clear (both shown) 150. Used from the Care Center's 🧪 button,
+which lists only potions that species can wear.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every
