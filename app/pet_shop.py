@@ -387,6 +387,31 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
     return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": [g.COLORS[c].name for c in new]}
 
 
+# A school: buy another of a fish you have, at its shop price (its colors are yours already).
+COPY_PRICE_ROLL = 1.0
+
+
+def copy_price(conn, learner_id: int, genes: dict) -> int:
+    return price(genes, db.list_pet_color_unlocks(conn, learner_id), COPY_PRICE_ROLL)
+
+
+def buy_fish_copy(conn, learner_id: int, pet_id: int) -> dict:
+    """Another of a fish, joining its school: same look, name and growth."""
+    pet = db.get_v3_pet(conn, learner_id, pet_id)
+    if pet is None:
+        raise ShopError("You don't have that pet.")
+    if pet["species"] != "fish":
+        raise ShopError("Only fish come in schools!")
+    head = db.get_v3_pet(conn, learner_id, pet["school"]) if pet["school"] else pet
+    cost = copy_price(conn, learner_id, head["genes"])
+    balance = db.get_coin_balance(conn, learner_id)
+    if balance < cost:
+        raise ShopError(f"You need {cost - balance:,} more coins for another {head['name']}.")
+    db.add_coins(conn, learner_id, -cost, "purchase", ref=f"pet:copy:{head['id']}")
+    new_id = db.add_v3_pet(conn, learner_id, head["genes"], head["name"], "copy", school=head["id"], growth=head["growth"])
+    return {"id": new_id, "price": cost}
+
+
 def save_pet(conn, learner_id: int, dept_id: str, index: int, today: date) -> None:
     if dept_id == "orders":
         raise ShopError("Special order pets are already waiting just for you!")

@@ -82,3 +82,23 @@ def test_fish_move_in_from_the_tank_and_the_care_center(page: Page, live_server,
     page.get_by_role("button", name="🐠 Move to a tank").click()
     page.get_by_role("button", name="Tank 1 (1/10)").click()
     expect(page.locator(".detail-facts")).to_contain_text("Swims in Tank 1")
+
+
+def test_buying_a_school_of_fish(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/care")
+    (head,) = _fish(tmp_path, 1)
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_coins(conn, 1, 2000, "test")
+    page.goto(f"{live_server}/pets/care?pet={head}")
+    expect(page.locator(".detail-facts")).to_contain_text("Just one")
+    buy = page.get_by_role("button", name="🐟 Buy another")
+    buy.click()
+    expect(page.locator("#care-message")).to_contain_text("You have 2")
+    page.get_by_role("button", name="🐟 Buy another").click()
+    expect(page.locator(".book-pet.current .book-pet-count")).to_have_text("×3")
+    expect(page.locator(".detail-facts")).to_contain_text("You have 3 of these")
+    page.get_by_role("button", name="🐠 Move the school to a tank").click()
+    page.get_by_role("button", name="Tank 1 (0/10)").click()
+    expect(page.locator(".detail-facts")).to_contain_text("Swims in Tank 1")
+    page.goto(f"{live_server}/pets/aquarium/0")
+    expect(page.get_by_role("button", name="🐠 Fish (3/10)")).to_be_visible()

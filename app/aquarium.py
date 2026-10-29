@@ -25,7 +25,7 @@ TANK_H = 70
 SUBSTRATE_H = 8  # the substrate band at the bottom of the tank
 LAYERS = ("back", "middle", "front")  # behind the fish .. in front of them
 LOOK_KINDS = ("background", "substrate")  # bought once, used anywhere
-PIECE_KINDS = ("plant", "rock", "decor")  # bought per copy, placed in tanks
+PIECE_KINDS = ("plant", "wood", "rock", "decor")  # bought per copy, placed in tanks
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +38,7 @@ class AquaItem:
     h: int = 0
     layer: str = "middle"  # where a newly placed copy goes
     sees: tuple[str, ...] = ()  # what fish make of it: hide, explore, through, bubbles
+    floats: bool = False  # starts at the surface (floating plants)
 
 
 def _items(*items: AquaItem) -> dict[str, AquaItem]:
@@ -68,12 +69,39 @@ CATALOG: dict[str, AquaItem] = _items(
     AquaItem("ludwigia", "Red Ludwigia", "plant", 20, 8, 26, "back", ("hide",)),
     AquaItem("sword", "Sword Plant", "plant", 30, 18, 28, "back", ("hide",)),
     AquaItem("lily", "Water Lily", "plant", 30, 16, 58, "back", ("hide",)),
+    # carpets and little plants for the front
+    AquaItem("hairgrass", "Dwarf Hairgrass", "plant", 10, 12, 5, "front", ("hide",)),
+    AquaItem("monte_carlo", "Monte Carlo Carpet", "plant", 10, 16, 4, "front"),
+    AquaItem("java_moss", "Java Moss", "plant", 10, 10, 6, "front", ("hide",)),
+    AquaItem("micro_sword", "Micro Sword Lawn", "plant", 10, 14, 6, "front"),
+    AquaItem("buce", "Bucephalandra", "plant", 20, 8, 7, "front"),
+    AquaItem("anubias", "Anubias Nana", "plant", 20, 10, 8, "middle", ("hide",)),
+    AquaItem("frogbit", "Frogbit (floats)", "plant", 10, 14, 9, "front", ("hide",), floats=True),
+    AquaItem("crypt", "Cryptocoryne", "plant", 20, 12, 14, "middle", ("hide",)),
+    # tall plants, up to the surface
+    AquaItem("wisteria", "Water Wisteria", "plant", 20, 14, 40, "back", ("hide",)),
+    AquaItem("pogostemon", "Octopus Plant", "plant", 20, 12, 46, "back", ("hide",)),
+    AquaItem("rotala", "Red Rotala", "plant", 20, 8, 52, "back", ("hide",)),
+    AquaItem("val", "Jungle Val", "plant", 20, 10, 60, "back", ("hide",)),
+    # driftwood
+    AquaItem("mopani", "Mopani Wood", "wood", 40, 24, 18, "middle", ("explore",)),
+    AquaItem("root_tangle", "Dark Root Tangle", "wood", 50, 36, 28, "middle", ("hide",)),
+    AquaItem("spiderwood", "Spiderwood", "wood", 60, 40, 52, "middle", ("hide", "explore")),
+    AquaItem("manzanita", "Manzanita Branch", "wood", 60, 30, 58, "back", ("explore",)),
+    AquaItem("wood_stump", "Hollow Stump", "wood", 80, 20, 36, "middle", ("hide", "explore")),
+    AquaItem("driftwood", "Driftwood", "wood", 100, 50, 26, "middle", ("hide", "explore")),
     # rocks
     AquaItem("pebble", "Pebble", "rock", 10, 5, 3, "front"),
     AquaItem("flat_stone", "Flat Stone", "rock", 20, 14, 5, "middle"),
     AquaItem("slate", "Slate Stack", "rock", 40, 18, 16, "middle", ("explore",)),
     AquaItem("big_rock", "Big Rock", "rock", 50, 24, 14, "middle", ("explore",)),
     AquaItem("cave_rock", "Cave Rock", "rock", 80, 30, 18, "middle", ("hide", "explore")),
+    AquaItem("coconut", "Coconut Cave", "rock", 20, 12, 8, "front", ("hide",)),
+    AquaItem("lava_rock", "Lava Rock", "rock", 20, 12, 9, "middle"),
+    AquaItem("dragon_stone", "Dragon Stone", "rock", 30, 18, 14, "middle", ("hide", "explore")),
+    AquaItem("seiryu", "Seiryu Stone", "rock", 30, 14, 22, "middle", ("explore",)),
+    AquaItem("spire", "Rock Spire", "rock", 50, 12, 36, "back", ("explore",)),
+    AquaItem("ledge", "Overhang Ledge", "rock", 70, 36, 18, "middle", ("hide", "explore")),
     # decorations
     AquaItem("diver", "Little Diver", "decor", 30, 8, 14, "middle", ("explore",)),
     AquaItem("clam", "Giant Clam", "decor", 30, 12, 7, "front", ("explore",)),
@@ -82,7 +110,6 @@ CATALOG: dict[str, AquaItem] = _items(
     AquaItem("arch", "Stone Arch", "decor", 60, 30, 22, "middle", ("through", "explore")),
     AquaItem("castle", "Castle", "decor", 80, 26, 30, "back", ("hide", "explore")),
     AquaItem("ship", "Sunken Ship", "decor", 100, 48, 24, "back", ("hide", "explore")),
-    AquaItem("driftwood", "Driftwood", "decor", 100, 50, 26, "middle", ("hide", "explore")),
 )
 STARTER_LOOK = {"background": "bg_blue", "substrate": "sand"}  # every player owns these
 
@@ -204,7 +231,8 @@ def place(conn, learner_id: int, piece_id: int, spot: int, x: float | None = Non
     piece = _piece(conn, learner_id, piece_id)
     item = _item(piece["item_id"])
     x = (TANK_W - item.w) / 2 if x is None else x
-    y = TANK_H - SUBSTRATE_H / 2 if y is None else y
+    if y is None:
+        y = item.h + 1 if item.floats else TANK_H - SUBSTRATE_H / 2
     x, y = _clamp(item, x, y)
     db.update_tank_piece(conn, learner_id, piece_id, tank=spot, x=x, y=y)
 
@@ -269,6 +297,19 @@ def set_fish_tank(conn, learner_id: int, pet_id: int, spot: int | None) -> None:
         if len(living) >= TANK_FISH:
             raise AquaError(f"{tank['name']} is full ({TANK_FISH} fish).")
     db.update_v3_pet(conn, learner_id, pet_id, home=tank_id(spot) if spot is not None else None)
+
+
+def set_school_tank(conn, learner_id: int, members: list[dict], spot: int | None) -> None:
+    """Move a whole school of fish together (the Care Center)."""
+    if spot is not None:
+        tank = _tank(conn, learner_id, spot)
+        ids = {m["id"] for m in members}
+        living = [p for p in db.list_v3_pets(conn, learner_id) if p["home"] == tank_id(spot) and p["id"] not in ids]
+        if len(living) + len(members) > TANK_FISH:
+            room = TANK_FISH - len(living)
+            raise AquaError(f"{tank['name']} only has room for {room} more fish.")
+    for m in members:
+        set_fish_tank(conn, learner_id, m["id"], spot)
 
 
 # --- views ---------------------------------------------------------------------------

@@ -366,6 +366,7 @@ _ADDED_COLUMNS = [
     ("appearance", "eye_color", "TEXT NOT NULL DEFAULT 'brown'"),
     ("practice_chunk", "seed_at", "TEXT"),
     ("pet", "along", "INTEGER"),
+    ("pet", "school", "INTEGER"),  # a fish copied into a school: the first fish's id
 ]
 
 
@@ -1130,17 +1131,20 @@ def remove_room_item(conn: sqlite3.Connection, learner_id: int, placed_id: int) 
 
 # --- pets v3 and the pet shop (PLAN.md 11h) ---------------------------------------
 
-_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, along, adopted_at"
+_V3_PET_COLUMNS = "id, seed, species, genes, name, growth, last_fed, source, home, along, school, adopted_at"
 
 
 def _v3_pet(row: sqlite3.Row) -> dict:
     return {**dict(row), "genes": json.loads(row["genes"])}
 
 
-def add_v3_pet(conn: sqlite3.Connection, learner_id: int, genes: dict, name: str, source: str) -> int:
+def add_v3_pet(
+    conn: sqlite3.Connection, learner_id: int, genes: dict, name: str, source: str, school: int | None = None, growth: int = 0
+) -> int:
     cur = conn.execute(
-        "INSERT INTO pet (learner_id, seed, species, genes, name, source, adopted_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (learner_id, genes["seed"], genes["species"], json.dumps(genes), name, source, _now_iso()),
+        "INSERT INTO pet (learner_id, seed, species, genes, name, source, school, growth, adopted_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (learner_id, genes["seed"], genes["species"], json.dumps(genes), name, source, school, growth, _now_iso()),
     )
     return cur.lastrowid
 

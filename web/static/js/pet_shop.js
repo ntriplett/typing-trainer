@@ -157,10 +157,11 @@ function goEntrance(toFloor = floor) {
 }
 
 function renderEntrance() {
-  $("dept-title").textContent = floor ? "Upstairs: Homes & Supplies" : "Welcome to the Pet Shop!";
+  $("room-nav").replaceChildren();
+  $("dept-title").textContent = floor ? "Upstairs: Fish, Homes & Supplies" : "Welcome to the Pet Shop!";
   $("dept-hint").textContent = floor
-    ? "Homes for your pets, and everything for your fish tanks."
-    : "Click a department to look around. New pets arrive every night. Homes and supplies are up the stairs!";
+    ? "Fish, homes for your pets, and everything for your fish tanks."
+    : "Click a department to look around. New pets arrive every night. Fish, homes and supplies are up the stairs!";
   $("shop-grid").replaceChildren();
   $("shop-scene").hidden = false;
   const open = Object.fromEntries(front.departments.map((d) => [d.id, d.open]));
@@ -172,8 +173,8 @@ function renderEntrance() {
   stairs.className = "shop-spot";
   stairs.dataset.stairs = floor ? "down" : "up";
   place(stairs, SHOP_SPOTS[floor ? "down" : "stairs"]);
-  stairs.innerHTML = `<span class="spot-sign">${floor ? "⬇ <span class=\"spot-name\">Downstairs</span>" : "⬆ <span class=\"spot-name\">Homes & Supplies</span>"}</span>`;
-  stairs.setAttribute("aria-label", floor ? "Go downstairs" : "Go upstairs to Homes & Supplies");
+  stairs.innerHTML = `<span class="spot-sign">${floor ? "⬇ <span class=\"spot-name\">Downstairs</span>" : "⬆ <span class=\"spot-name\">Upstairs</span><small>Fish, Homes & Supplies</small>"}</span>`;
+  stairs.setAttribute("aria-label", floor ? "Go downstairs" : "Go upstairs to Fish, Homes & Supplies");
   stairs.onclick = () => goEntrance(floor ? 0 : 1);
   $("shop-spots").replaceChildren(
     stairs,
@@ -329,30 +330,28 @@ function renderRoom() {
 }
 
 // The way back to the entrance, and arrows to a department's other rooms.
+// Signposts above the scene: back to the hall, and to the department's
+// other rooms. (Returns nothing for the scene itself.)
 function roomSigns(names) {
-  const signs = [sceneSign(floor ? "⬅ Upstairs" : "⬅ Entrance", "sign-left", () => goEntrance())];
-  if (names.length === 2) {
-    const other = 1 - page;
-    signs.push(sceneSign(other ? `${names[other]} ▶` : `◀ ${names[other]}`, "sign-right", () => openRoomPage(other)));
-  } else if (names.length > 2) {
-    if (page < names.length - 1) signs.push(sceneSign(`${names[page + 1]} ▶`, "sign-right", () => openRoomPage(page + 1)));
-    if (page > 0) signs.push(sceneSign(`◀ ${names[page - 1]}`, "sign-left sign-second", () => openRoomPage(page - 1)));
-  }
-  return signs;
+  const signs = [signpost(floor ? "Upstairs" : "Entrance", () => goEntrance())];
+  if (page > 0) signs.push(signpost(names[page - 1], () => openRoomPage(page - 1)));
+  if (page < names.length - 1) signs.push(signpost(names[page + 1], () => openRoomPage(page + 1), true));
+  $("room-nav").replaceChildren(...signs);
+  return [];
+}
+
+function signpost(text, onclick, forward = false) {
+  const b = document.createElement("button");
+  b.className = "signpost" + (forward ? " forward" : "");
+  b.textContent = text;
+  b.onclick = onclick;
+  return b;
 }
 
 function openRoomPage(n) {
   page = n;
   history.replaceState(null, "", `?dept=${deptId}${page ? `&page=${page}` : ""}`);
   renderFloor();
-}
-
-function sceneSign(text, cls, onclick) {
-  const b = document.createElement("button");
-  b.className = `scene-nav ${cls}`;
-  b.textContent = text;
-  b.onclick = onclick;
-  return b;
 }
 
 // A pet's station: click it to meet the pet; its price tag hangs below.
@@ -496,12 +495,17 @@ async function buyHabitat(kind) {
 
 // --- Aquarium Supplies (app/aquarium.py; art in aquarium_items.js) ---------------------
 
+// Supplies rooms, 8 items at most each: by kind, and plants and rocks by size.
 const AQUA_ROOMS = [
-  { name: "Tanks & Backdrops", kinds: ["tank", "background"] },
-  { name: "Sand & Gravel", kinds: ["substrate"] },
-  { name: "Plants", kinds: ["plant"] },
-  { name: "Rocks", kinds: ["rock"] },
-  { name: "Decorations", kinds: ["decor"] },
+  { name: "Tanks & Backdrops", has: (i) => i.kind === "tank" || i.kind === "background" },
+  { name: "Sand & Gravel", has: (i) => i.kind === "substrate" },
+  { name: "Little Plants", has: (i) => i.kind === "plant" && i.h <= 10 },
+  { name: "Plants", has: (i) => i.kind === "plant" && i.h > 10 && i.h <= 30 },
+  { name: "Tall Plants", has: (i) => i.kind === "plant" && i.h > 30 },
+  { name: "Driftwood", has: (i) => i.kind === "wood" },
+  { name: "Little Rocks", has: (i) => i.kind === "rock" && i.h <= 10 },
+  { name: "Big Rocks", has: (i) => i.kind === "rock" && i.h > 10 },
+  { name: "Decorations", has: (i) => i.kind === "decor" },
 ];
 const AQUA_SEES = {
   hide: "Shy fish hide in it.",
@@ -520,7 +524,7 @@ function aquaItems() {
 function renderAquaSupplies() {
   page = Math.min(page, AQUA_ROOMS.length - 1);
   const room = AQUA_ROOMS[page];
-  const items = aquaItems().filter((i) => room.kinds.includes(i.kind));
+  const items = aquaItems().filter(room.has);
   $("dept-title").textContent = `Aquarium Supplies: ${room.name}`;
   $("dept-hint").textContent = "Build your own tanks! Pieces you buy wait in your Aquarium until you place them. Click anything to look closer.";
   $("shop-scene").hidden = false;
@@ -550,7 +554,12 @@ function drawAquaPreview(ctx, item, X, Y, W, H, t = 40) {
     ctx.fillStyle = c;
     ctx.fillRect(X + x * px, Y + y * px, w * px, h * px);
   };
-  const looks = { background: [item.id, "sand"], substrate: ["bg_blue", item.id], tank: ["bg_blue", "sand"] };
+  if (item.kind === "tank") {
+    drawShopTank(ctx, X, Y, W, H);
+    ctx.restore();
+    return;
+  }
+  const looks = { background: [item.id, "sand"], substrate: ["bg_blue", item.id] };
   const [bg, sub] = looks[item.kind] || ["bg_blue", "sand"];
   drawAquaLook(tank, bg, sub);
   if (AQUA_PIECES[item.id]) {
@@ -564,6 +573,38 @@ function drawAquaPreview(ctx, item, X, Y, W, H, t = 40) {
     drawAquaPiece(piece, item, 0, item.h, false, t);
   }
   ctx.restore();
+}
+
+// The tank for sale: a real glass tank on a stand, not just water.
+function drawShopTank(ctx, X, Y, W, H) {
+  const box = (x, y, w, h, c) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(X + x * W, Y + y * H, w * W, h * H);
+  };
+  box(0, 0, 1, 1, "#2a3446"); // the shop wall behind it
+  box(0, 0.82, 1, 0.18, "#5c3a1a"); // a wooden stand
+  box(0, 0.82, 1, 0.03, "#8b5a2b");
+  box(0.1, 0.88, 0.2, 0.12, "#3b2417");
+  box(0.7, 0.88, 0.2, 0.12, "#3b2417");
+  const tx = 0.08;
+  const tw = 0.84;
+  box(tx - 0.02, 0.06, tw + 0.04, 0.08, "#1a1a1e"); // the hood
+  box(tx, 0.08, tw, 0.02, "#f8f0c8");
+  const inner = (x, y, w, h, c) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(X + (tx + (x / TANK_W) * tw) * W, Y + (0.14 + (y / TANK_H) * 0.66) * H, (w / TANK_W) * tw * W, (h / TANK_H) * 0.66 * H);
+  };
+  drawAquaLook(inner, "bg_blue", "sand");
+  box(tx - 0.02, 0.14, 0.02, 0.68, "#1a1a1e"); // the frame
+  box(tx + tw, 0.14, 0.02, 0.68, "#1a1a1e");
+  box(tx - 0.02, 0.79, tw + 0.04, 0.03, "#1a1a1e");
+  ctx.fillStyle = "rgba(255, 255, 255, 0.22)"; // glare on the glass
+  ctx.beginPath();
+  ctx.moveTo(X + (tx + 0.1) * W, Y + 0.16 * H);
+  ctx.lineTo(X + (tx + 0.18) * W, Y + 0.16 * H);
+  ctx.lineTo(X + (tx + 0.08) * W, Y + 0.78 * H);
+  ctx.lineTo(X + tx * W, Y + 0.78 * H);
+  ctx.fill();
 }
 
 function aquaButton(item, f) {

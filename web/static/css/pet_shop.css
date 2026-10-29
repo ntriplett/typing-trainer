@@ -31,6 +31,23 @@
 
 /* --- the shop floor: a scene with real buttons over it ---------------------------- */
 
+.floor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.floor-head .panel-title {
+  margin: 0;
+}
+
+.floor-head .signpost {
+  font-size: 20px;
+}
+
 .shop-scene {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -183,34 +200,6 @@
   }
 }
 
-/* wooden signs inside a room: back to the entrance, to the next room */
-.scene-nav {
-  position: absolute;
-  top: 2%;
-  font-family: var(--font-ui);
-  font-size: clamp(13px, 1.9vw, 20px);
-  padding: 0.05rem 0.5rem 0.12rem;
-  background: var(--wood);
-  border: 3px solid var(--wood-dark);
-  border-image: none;
-  color: var(--on-wood);
-  text-shadow: 1px 1px 0 var(--outline);
-}
-
-.scene-nav:hover,
-.scene-nav:focus-visible {
-  background: var(--wood-light);
-  outline: 3px dashed var(--leaf-gold);
-  outline-offset: 2px;
-}
-
-.scene-nav.sign-left {
-  left: 1.5%;
-}
-
-.scene-nav.sign-right {
-  right: 1.5%;
-}
 
 
 .shop-grid {
@@ -355,11 +344,6 @@
   max-width: 480px;
   image-rendering: pixelated;
   border: 4px solid var(--outline);
-}
-
-.scene-nav.sign-second {
-  left: auto;
-  right: 30%;
 }
 
 .shop-grid.orders-floor {

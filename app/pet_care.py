@@ -112,6 +112,21 @@ def view(pet: dict, today: date, fed_any_time: bool = False) -> dict:
 # --- one pet ----------------------------------------------------------------------------
 
 
+# --- schools: copies of a fish (pet.school is the first fish's id) ------------------
+
+
+def school_of(conn, learner_id: int, pet_id: int) -> list[dict]:
+    """A fish and every copy of it (the first fish first); any other pet alone."""
+    pet = _pet(conn, learner_id, pet_id)
+    head = pet["school"] or pet["id"]
+    return [p for p in db.list_v3_pets(conn, learner_id) if p["id"] == head or p["school"] == head]
+
+
+def _each_in_school(conn, learner_id: int, pet_id: int, **fields) -> None:
+    for p in school_of(conn, learner_id, pet_id):
+        db.update_v3_pet(conn, learner_id, p["id"], **fields)
+
+
 def rename(conn, learner_id: int, pet_id: int, name: str) -> None:
     _pet(conn, learner_id, pet_id)
     name = " ".join(name.split())
@@ -119,7 +134,7 @@ def rename(conn, learner_id: int, pet_id: int, name: str) -> None:
         raise CareError("Your pet needs a name!")
     if len(name) > MAX_NAME:
         raise CareError(f"Names can be up to {MAX_NAME} letters.")
-    db.update_v3_pet(conn, learner_id, pet_id, name=name)
+    _each_in_school(conn, learner_id, pet_id, name=name)
 
 
 def feed(conn, learner_id: int, pet_id: int, veggie: str, today: date) -> dict:
@@ -136,7 +151,7 @@ def feed(conn, learner_id: int, pet_id: int, veggie: str, today: date) -> dict:
     favorite = g.resolve(pet["genes"])["personality"]["favorite"] == veggie
     growth = min(MAX_GROWTH, pet["growth"] + (FAVORITE_GROWTH if favorite else 1))
     db.add_veggies(conn, learner_id, veggie, -1, f"fed:pet:{pet_id}")
-    db.update_v3_pet(conn, learner_id, pet_id, growth=growth, last_fed=today.isoformat())
+    _each_in_school(conn, learner_id, pet_id, growth=growth, last_fed=today.isoformat())  # a school grows together
     return {"growth": growth, "favorite": favorite}
 
 
@@ -259,8 +274,24 @@ def habitat(conn, learner_id: int, spot: int, today: date) -> dict:
 
 
 def care_state(conn, learner_id: int, today: date) -> dict:
+    """The book: one entry per pet, a school of fish as one entry with its count."""
     any_time = bool(db.get_setting(conn, learner_id, SETTING_FEED_ANY_TIME))
-    pets = [view(p, today, any_time) for p in db.list_v3_pets(conn, learner_id)]
+    rows = db.list_v3_pets(conn, learner_id)
+    every = [view(p, today, any_time) for p in rows]  # every fish counts in its tank
+    schools: dict[int, list[dict]] = {}
+    for p in rows:
+        schools.setdefault(p["school"] or p["id"], []).append(p)
+    pets = []
+    for row, v in zip(rows, every, strict=True):
+        if row["school"]:
+            continue
+        members = schools[row["id"]]
+        entry = {**v, "school": len(members), "school_tanks": sorted({aquarium.tank_spot(m["home"]) for m in members} - {None})}
+        if v["water"]:
+            from app import pet_shop  # pet_shop imports this module; prices live there
+
+            entry["copy_price"] = pet_shop.copy_price(conn, learner_id, row["genes"])
+        pets.append(entry)
     return {
         "pets": pets,
         "habitats": [
@@ -268,7 +299,7 @@ def care_state(conn, learner_id: int, today: date) -> dict:
             for h in db.list_habitats(conn, learner_id)
         ],
         "tanks": [
-            {"spot": t["spot"], "name": t["name"], "count": sum(1 for p in pets if p["tank"] == t["spot"]),
+            {"spot": t["spot"], "name": t["name"], "count": sum(1 for p in every if p["tank"] == t["spot"]),
              "capacity": aquarium.TANK_FISH}
             for t in aquarium.tanks(conn, learner_id)
         ],

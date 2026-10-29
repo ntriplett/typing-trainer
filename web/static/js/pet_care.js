@@ -179,6 +179,7 @@ function renderGrid() {
         name.textContent = p.name;
         btn.appendChild(name);
         if (p.along) btn.insertAdjacentHTML("beforeend", `<span class="book-pet-badge" title="Coming along">🎒</span>`);
+        if (p.school > 1) btn.insertAdjacentHTML("beforeend", `<span class="book-pet-count" title="A school of ${p.school}">×${p.school}</span>`);
         btn.onclick = () => select(p.id);
         return btn;
       })
@@ -247,6 +248,7 @@ function renderDetail() {
     <div id="detail-picker"></div>
     <dl class="detail-facts">
       <dt>Home</dt><dd>${p.water ? (tank ? `Swims in <b>${escapeHtml(tank.name)}</b>` : "Waiting for a tank") : habitat ? `Lives in <b>${habitat.name}</b>` : "Here at the Care Center"}${p.along ? ` · 🎒 Comes along on your ${SIDE[p.along]}` : ""}</dd>
+      ${p.water ? `<dt>School</dt><dd>${p.school > 1 ? `You have <b>${p.school}</b> of these` : "Just one. Buy more for a school!"}</dd>` : ""}
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
       <dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>
       <dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>
@@ -287,7 +289,12 @@ function renderActions(p) {
   else if (p.fed_today) out.push(button("Full for today", "", null, true));
   else out.push(button("🥕 Feed", "button-go", () => openMode("feed")));
   if (!p.water) out.push(button(p.spot === null ? "🏡 Move to a habitat" : "🏡 Move", "", () => openMode("move")));
-  else out.push(button(p.tank === null ? "🐠 Move to a tank" : "🐠 Move", "", () => openMode("tank")));
+  else {
+    const school = p.school > 1 ? " the school" : "";
+    out.push(button(p.tank === null ? `🐠 Move${school} to a tank` : `🐠 Move${school}`, "", () => openMode("tank")));
+    const short = care.coins < p.copy_price;
+    out.push(button(short ? `🐟 Another: need ${(p.copy_price - care.coins).toLocaleString()} more coins` : `🐟 Buy another (${p.copy_price.toLocaleString()} coins)`, "", buyCopy(p), short));
+  }
   if (p.along) out.push(button("Stay home", "", () => setAlong(p, null)));
   else if (!p.water) out.push(button("🎒 Bring along", "", () => bringAlong(p)));
   $("detail-actions").replaceChildren(...out);
@@ -385,6 +392,14 @@ function feed(p, veggie) {
     const news = fed.favorite ? `Yum, its favorite! ${p.name} grew a lot!` : `Yum! ${p.name} grew!`;
     say(fed.growth >= data.max_growth ? `${news} All grown up now!` : news, true);
   });
+}
+
+function buyCopy(p) {
+  return () =>
+    act(`/api/care/${p.id}/copy`, "POST", null, () => {
+      const now = petById(p.id);
+      say(`Another ${p.name} joined the school! You have ${now.school}.`, true);
+    });
 }
 
 function move(p, spot) {

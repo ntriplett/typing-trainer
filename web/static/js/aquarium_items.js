@@ -321,3 +321,228 @@ function drawAquaLook(r, background, substrate) {
   (AQUA_BACKGROUNDS[background] || AQUA_BACKGROUNDS.bg_blue)(r);
   (AQUA_SUBSTRATES[substrate] || AQUA_SUBSTRATES.sand)(r);
 }
+
+// --- more plants, driftwood and stones (a planted-tank look) ---------------------------
+
+// Rows of a shape: edges(y) gives [left, right] in local units, or null.
+function aquaShape(r, h, edges, color, shade, seed = 1) {
+  const rand = aquaSeeded(seed);
+  for (let y = 0; y < h; y++) {
+    const e = edges(y);
+    if (!e) continue;
+    r(e[0], y, e[1] - e[0], 1, color);
+    if (shade && rand() < 0.5) r(e[0] + rand() * (e[1] - e[0]), y, 1, 1, shade);
+  }
+}
+
+// A branch from (x0, y0) to (x1, y1), thick to thin.
+function aquaBranch(r, x0, y0, x1, y1, thick, color, dark) {
+  const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    const w = Math.max(0.8, thick * (1 - t * 0.6));
+    r(x0 + (x1 - x0) * t - w / 2, y0 + (y1 - y0) * t, w, Math.max(1, w * 0.7), k % 5 ? color : dark);
+  }
+}
+
+Object.assign(AQUA_PIECES, {
+  hairgrass(r, w, h, t) {
+    const rand = aquaSeeded(21);
+    for (let i = 0; i < 26; i++) {
+      const bx = rand() * w;
+      const bh = 2 + rand() * (h - 1);
+      for (let k = 0; k < bh; k++) r(bx + aquaSway(t, k + i, 0.6), h - k - 1, 0.5, 1, i % 3 ? "#6ab84a" : "#4a9a3a");
+    }
+  },
+  monte_carlo(r, w, h) {
+    const rand = aquaSeeded(23);
+    for (let i = 0; i < 60; i++) {
+      const x = rand() * w;
+      const y = h - 1 - rand() * (h - 1) * Math.sin((x / w) * Math.PI); // a soft mound
+      r(x, y, 1, 1, ["#7ad85a", "#5ab84a", "#9ae86a"][i % 3]);
+    }
+  },
+  java_moss(r, w, h) {
+    const rand = aquaSeeded(25);
+    for (let i = 0; i < 70; i++) {
+      const a = rand() * Math.PI;
+      const d = rand();
+      r(w / 2 + Math.cos(a) * d * (w / 2), h - 0.5 - Math.sin(a) * d * h, 0.8, 0.8, ["#3a6a2a", "#2e5a22", "#4a7a32"][i % 3]); // fuzzy
+    }
+  },
+  micro_sword(r, w, h, t) {
+    for (let x = 0; x < w; x += 0.7) {
+      const bh = 3 + ((x * 7) % 3);
+      for (let k = 0; k < bh; k++) r(x + aquaSway(t, k + x * 3, 0.4), h - k - 1, 0.5, 1, (x * 10) % 3 < 1 ? "#8ad86a" : "#6ac84a");
+    }
+  },
+  buce(r, w, h) {
+    r(0.5, h - 1.5, w - 1, 1.5, "#4a3a2a");
+    for (const [lx, ly, c] of [[1, 4, "#3a5a3a"], [3, 1, "#4a4a6a"], [5, 3, "#3a5a3a"], [2.5, 5, "#5a4a6a"], [5.5, 0.5, "#2e4a32"]]) {
+      r(lx, ly, 2.5, 1.5, c);
+      r(lx + 0.5, ly + 0.4, 1, 0.5, "#7a8aa0");
+    }
+  },
+  anubias(r, w, h) {
+    r(0, h - 1.5, w, 1.5, "#5a4a32"); // the rhizome
+    for (const [lx, ly, lw] of [[0, 3, 5], [3, 0.5, 5], [5, 3.5, 5], [2, 4.5, 4]]) {
+      aquaDisc(r, lx + lw / 2, ly + 1.5, lw / 2, 1.5, "#1e4a22");
+      r(lx + 0.5, ly + 1.5, lw - 1, 0.4, "#3a7a3a");
+    }
+  },
+  frogbit(r, w, h, t) {
+    for (const [px, size] of [[1, 3], [5, 2.5], [9, 3], [4, 2]]) {
+      for (let k = 2; k < h; k++) r(px + size / 2 + Math.sin((t + k * 3 + px) / 8) * 0.6, k, 0.4, 1, "rgba(230, 230, 210, 0.7)"); // dangling roots
+      aquaDisc(r, px + size / 2, 1, size / 2, 0.9, "#5aa04a");
+      r(px + size / 2 - 0.5, 0.5, 1, 0.5, "#8ad06a");
+    }
+  },
+  crypt(r, w, h, t) {
+    for (let i = 0; i < 7; i++) {
+      const lean = (i - 3) / 2.5;
+      const len = h - Math.abs(i - 3) * 2;
+      for (let k = 0; k < len; k++) {
+        const wide = k > 2 && k < len - 2 ? 1.8 + Math.sin(k) * 0.4 : 1; // wavy edges
+        r(w / 2 + lean * k * 0.4 + aquaSway(t, k + i * 2, 0.6) - wide / 2, h - k - 1, wide, 1, i % 2 ? "#6a5a2a" : "#4a6a32");
+      }
+    }
+  },
+  wisteria(r, w, h, t) {
+    for (const sx of [3, 7, 11]) {
+      for (let k = 0; k < h - (sx % 4) * 2; k++) {
+        const x = sx + aquaSway(t, k + sx, 2);
+        r(x, h - k - 1, 0.6, 1, "#4a7a2a");
+        if (k % 3 === 1) {
+          for (const side of [-1, 1]) for (let j = 1; j < 3.5; j++) r(x + side * j, h - k - 1 - (j % 2) * 0.5, 0.6, 0.6, "#7ab84a"); // lacy leaves
+        }
+      }
+    }
+  },
+  pogostemon(r, w, h, t) {
+    for (const sx of [3, 6, 9]) {
+      const len = h - (sx === 6 ? 0 : 6);
+      for (let k = 0; k < len; k++) {
+        const x = sx + aquaSway(t, k + sx * 2, 1.5);
+        r(x, h - k - 1, 0.6, 1, "#5a8a3a");
+        if (k % 4 === 2) for (const side of [-2.5, -1.5, 1, 2]) r(x + side, h - k - 1 + Math.abs(side) * 0.3, 1.2, 0.5, k > len * 0.7 ? "#a8c85a" : "#6aaa4a"); // star whorls
+      }
+    }
+  },
+  rotala(r, w, h, t) {
+    for (const [sx, len] of [[1.5, h], [4, h - 6], [6.5, h - 3]]) {
+      for (let k = 0; k < len; k++) {
+        const x = sx + aquaSway(t, k * 0.4 + sx * 4, 0.6);
+        const red = k / len;
+        const c = red > 0.6 ? "#e8586a" : red > 0.35 ? "#c8786a" : "#7a9a4a"; // red at the top
+        r(x - 0.3, h - k - 1, 0.6, 1, red > 0.5 ? "#b8485a" : "#5a7a3a");
+        if (k % 2 === 0) {
+          r(x - 1.6, h - k - 1, 1.3, 0.7, c); // little leaf pairs
+          r(x + 0.3, h - k - 1, 1.3, 0.7, c);
+        }
+      }
+    }
+  },
+  val(r, w, h, t) {
+    for (let i = 0; i < 6; i++) {
+      const bx = 1 + i * 1.6;
+      for (let k = 0; k < h; k++) {
+        const x = bx + aquaSway(t, k * 0.3 + i * 2, 1) + (k / h) * (i - 2.5) * 1.5; // ribbons fanning a little
+        r(x, h - k - 1, 0.9, 1, i % 2 ? "#4a8a3a" : "#5a9a42");
+      }
+      const top = bx + aquaSway(t, h * 0.3 + i * 2, 1) + (i - 2.5) * 1.5;
+      for (let k = 0; k < 6 + i; k++) r(top + k, 0, 1, 0.8, "#5a9a42"); // lying along the surface
+    }
+  },
+  mopani(r, w, h) {
+    aquaShape(r, h, (y) => {
+      const t = y / h;
+      const half = (w / 2) * (0.5 + Math.sin(t * Math.PI) * 0.5) * (y % 5 === 0 ? 0.92 : 1);
+      return [w / 2 - half + Math.sin(y / 3) * 2, w / 2 + half + Math.sin(y / 3) * 2];
+    }, "#6a4a2a", null, 3);
+    const rand = aquaSeeded(31);
+    for (let i = 0; i < 9; i++) aquaDisc(r, 4 + rand() * (w - 8), 3 + rand() * (h - 6), 2 + rand() * 2, 1.5, "#c8a070"); // light patches
+    for (let i = 0; i < 4; i++) aquaDisc(r, 5 + rand() * (w - 10), 4 + rand() * (h - 8), 1.2, 1, "#2a1a10"); // knot holes
+  },
+  root_tangle(r, w, h) {
+    for (let k = 0; k < w; k += 0.5) r(k, h - 2 - Math.sin((k / w) * Math.PI) * 4, 1, 2, "#1e140c"); // the base
+    const roots = [[2, 1], [7, 5], [12, 2], [18, 0], [24, 3], [29, 1], [34, 6]];
+    roots.forEach(([x, top], i) => {
+      aquaBranch(r, w / 2 + (x - w / 2) * 0.3, h - 3, x, top, 3, i % 2 ? "#2a1a10" : "#3a2414", "#1a100a");
+      aquaBranch(r, x, top + 4, x + (i % 2 ? 4 : -4), top + 10, 1.5, "#2a1a10", "#1a100a");
+    });
+  },
+  spiderwood(r, w, h) {
+    const base = [w / 2, h - 2];
+    const tips = [[1, 26], [4, 10], [11, 0], [17, 16], [23, 4], [28, 14], [34, 2], [39, 22], [21, 30], [8, 36], [33, 34]];
+    for (const [x, y] of tips) {
+      const mid = [(base[0] + x) / 2 + (x < base[0] ? -6 : 6), (base[1] + y) / 2 + 6];
+      aquaBranch(r, base[0], base[1], mid[0], mid[1], 3, "#d8c098", "#b8a078");
+      aquaBranch(r, mid[0], mid[1], x, y, 1.6, "#e0caa4", "#b8a078");
+    }
+    aquaDisc(r, base[0], h - 2, 6, 2.5, "#c8b088");
+  },
+  manzanita(r, w, h) {
+    aquaBranch(r, w / 2 - 3, h, w / 2 + 2, h * 0.55, 4, "#8a3a2a", "#6a2a1a"); // the trunk, twisting up
+    aquaBranch(r, w / 2 + 2, h * 0.55, w / 2 - 4, h * 0.3, 3, "#9a4a32", "#6a2a1a");
+    aquaBranch(r, w / 2 - 4, h * 0.3, w / 2 + 3, 2, 2.2, "#9a4a32", "#6a2a1a");
+    aquaBranch(r, w / 2 + 2, h * 0.55, w - 2, h * 0.35, 2, "#a85a3a", "#6a2a1a");
+    aquaBranch(r, w / 2 - 4, h * 0.3, 2, h * 0.12, 1.8, "#a85a3a", "#6a2a1a");
+    aquaBranch(r, w - 2, h * 0.35, w - 6, h * 0.15, 1.2, "#a85a3a", "#6a2a1a");
+  },
+  wood_stump(r, w, h) {
+    aquaShape(r, h, (y) => [y < 2 ? 3 : 1 + Math.sin(y / 4) * 0.5, y < 2 ? w - 3 : w - 1 - Math.sin(y / 5) * 0.5], "#5a3a22", "#3e2614", 7);
+    r(3, 0, w - 6, 2, "#8a6a48"); // the rim
+    aquaDisc(r, w / 2, h - 9, 5, 8, "#140c06"); // the hollow: a dark hiding place
+    r(w / 2 - 5, h - 3, 10, 3, "#140c06");
+    for (let y = 4; y < h - 4; y += 6) r(2, y, 1.2, 4, "#7a5a3a"); // bark lines
+  },
+  coconut(r, w, h) {
+    aquaShape(r, h, (y) => {
+      const half = (w / 2) * Math.sqrt(Math.max(0, 1 - ((h - y) / h) ** 2));
+      return half > 0.4 ? [w / 2 - half, w / 2 + half] : null;
+    }, "#6e4a2a", "#4e321a", 9);
+    aquaDisc(r, w / 2, h - 2.5, 2.5, 2.5, "#140c06"); // the doorway
+    r(w / 2 - 2.5, h - 2, 5, 2, "#140c06");
+  },
+  lava_rock(r, w, h) {
+    aquaShape(r, h, (y) => [1 + Math.abs(Math.sin(y)) * 1.5, w - 1 - Math.abs(Math.cos(y * 1.3)) * 1.5], "#3a2e2e", "#5a3a32", 11);
+    const rand = aquaSeeded(13);
+    for (let i = 0; i < 10; i++) r(2 + rand() * (w - 4), 1 + rand() * (h - 2), 1, 1, i % 3 ? "#1a1414" : "#7a4a3a"); // pores
+  },
+  dragon_stone(r, w, h) {
+    aquaShape(r, h, (y) => {
+      const t = y / h;
+      return [w * 0.15 * (1 - t) + Math.sin(y * 1.7) * 0.8, w - w * 0.25 * (1 - t) + Math.cos(y * 1.1)];
+    }, "#a8784a", "#c8945a", 15);
+    const rand = aquaSeeded(17);
+    for (let i = 0; i < 14; i++) aquaDisc(r, 3 + rand() * (w - 6), 2 + rand() * (h - 4), 0.9 + rand(), 0.7, "#4a2e1a"); // the pits
+    aquaDisc(r, w * 0.6, h - 3, 2.5, 2, "#2a1a10"); // one deep hole to hide in
+  },
+  seiryu(r, w, h) {
+    aquaShape(r, h, (y) => {
+      const t = y / h;
+      const left = w * 0.45 * (1 - t) ** 1.4 + (y % 6 < 2 ? 1 : 0); // jagged, tall
+      const right = w - w * 0.3 * (1 - t) ** 0.8 - (y % 7 < 2 ? 1 : 0);
+      return [left, right];
+    }, "#6a7480", "#5a646e", 19);
+    for (const [x0, y0, x1, y1] of [[3, h - 2, 9, h * 0.4], [7, h - 4, 12, h * 0.6], [5, h * 0.5, 8, h * 0.2]]) {
+      for (let k = 0; k <= 10; k++) r(x0 + ((x1 - x0) * k) / 10, y0 + ((y1 - y0) * k) / 10, 0.6, 0.6, "#e8eef4"); // white veins
+    }
+  },
+  spire(r, w, h) {
+    for (let k = 0; k < 6; k++) {
+      const sw = w - k * 1.3;
+      const sh = h / 6;
+      const y = h - (k + 1) * sh;
+      aquaDisc(r, w / 2 + (k % 2 ? 0.8 : -0.8), y + sh / 2, sw / 2, sh / 2 + 0.5, k % 2 ? "#6a645a" : "#7a7468");
+      r(w / 2 - sw / 4, y + 1, sw / 3, 0.6, "#9a948a");
+    }
+  },
+  ledge(r, w, h) {
+    aquaDisc(r, 6, h - 4, 6, 4, "#6a645a"); // two rocks...
+    aquaDisc(r, w - 6, h - 5, 6, 5, "#5a544a");
+    r(6, h - 8, w - 12, 8, "#100c0a"); // ...a dark cave under the slab
+    aquaShape(r, 7, (y) => [y < 2 ? 2 : 0, y < 2 ? w - 2 : w], "#7a7468", "#8a8478", 21); // the slab
+    r(2, 0, w - 4, 1, "#a8a296");
+  },
+});

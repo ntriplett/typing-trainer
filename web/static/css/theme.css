@@ -961,6 +961,22 @@ body[data-particles] main {
   clip-path: polygon(16px 0, 100% 0, 100% 100%, 16px 100%, 0 50%);
 }
 
+/* a sign pointing on, to the next room */
+.signpost.forward {
+  padding: 0.15rem 1.4rem 0.2rem 0.9rem;
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
+}
+
+button.signpost {
+  border: none;
+  border-image: none;
+  box-shadow: none;
+}
+
+button.signpost:active {
+  transform: none;
+}
+
 .signpost:hover,
 .signpost:focus-visible {
   background: var(--wood-light);

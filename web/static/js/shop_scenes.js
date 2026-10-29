@@ -39,21 +39,21 @@ function shopLamp(r, x, glow) {
 // Where each department is in the hall (its clickable area; the sign hangs
 // at the bottom). Archways along the back wall, corners on the floor.
 const SHOP_SPOTS = {
-  fish: { x: 3, y: 12, w: 25, h: 34 },
-  household: { x: 29, y: 12, w: 25, h: 34 },
-  farm: { x: 55, y: 12, w: 25, h: 34 },
-  reptiles: { x: 81, y: 12, w: 25, h: 34 },
-  mythical: { x: 107, y: 12, w: 25, h: 34 },
+  household: { x: 4, y: 12, w: 29, h: 34 },
+  farm: { x: 36, y: 12, w: 29, h: 34 },
+  reptiles: { x: 68, y: 12, w: 29, h: 34 },
+  mythical: { x: 100, y: 12, w: 29, h: 34 },
   orders: { x: 6, y: 56, w: 46, h: 26 },
-  stairs: { x: 134, y: 6, w: 24, h: 80 }, // up to Homes & Supplies
+  stairs: { x: 134, y: 6, w: 24, h: 80 }, // up to Fish, Homes & Supplies
   // upstairs
-  habitats: { x: 10, y: 10, w: 40, h: 40 },
-  aqua: { x: 60, y: 10, w: 40, h: 40 },
-  supplies: { x: 110, y: 10, w: 40, h: 40 },
+  fish: { x: 8, y: 10, w: 32, h: 40 },
+  habitats: { x: 46, y: 10, w: 32, h: 40 },
+  aqua: { x: 84, y: 10, w: 32, h: 40 },
+  supplies: { x: 122, y: 10, w: 32, h: 40 },
   down: { x: 4, y: 58, w: 36, h: 28 }, // back down the stairs
 };
 // Which floor each department is on (the rest are downstairs).
-const SHOP_UPSTAIRS = new Set(["habitats", "aqua", "supplies"]);
+const SHOP_UPSTAIRS = new Set(["fish", "habitats", "aqua", "supplies"]);
 
 // What you glimpse through each department's archway.
 const SHOP_GLIMPSE = {
@@ -145,7 +145,7 @@ function drawShopEntrance(r, open) {
   r(56, 54, 48, 32, "#c85a3a");
   r(58, 56, 44, 28, "#b8432f");
   for (const x of [20, 80, 140]) shopLamp(r, x, "#f8e08a");
-  for (const id of ["fish", "household", "farm", "reptiles", "mythical"]) drawShopArch(r, SHOP_SPOTS[id], id, open[id]);
+  for (const id of ["household", "farm", "reptiles", "mythical"]) drawShopArch(r, SHOP_SPOTS[id], id, open[id]);
   drawOrdersCorner(r, SHOP_SPOTS.orders);
   drawSpiralStairs(r, SHOP_SPOTS.stairs);
 }
@@ -222,11 +222,11 @@ function drawShopUpstairs(r, open) {
   shopPlanks(r, 52, 38, "#c89a60", "#b0844c");
   r(0, 52, SHOP_W, 1, "#8b5a2b");
   for (const x of [30, 80, 130]) shopLamp(r, x, "#f8e08a");
-  for (const id of ["habitats", "aqua", "supplies"]) {
+  for (const id of ["fish", "habitats", "aqua", "supplies"]) {
     const spot = SHOP_SPOTS[id];
     const glimpse = { x: spot.x + 3, y: spot.y + 4, w: spot.w - 6, h: spot.h - 4 };
-    SHOP_UP_GLIMPSE[id](r, glimpse);
-    drawShopArch(r, spot, null, open[id], true);
+    (SHOP_UP_GLIMPSE[id] || SHOP_GLIMPSE[id])(r, glimpse);
+    drawShopArch(r, spot, null, open[id]);
   }
   // the top of the spiral stairs: a railing around the hole in the floor
   const d = SHOP_SPOTS.down;

@@ -108,3 +108,35 @@ def test_every_item_is_well_formed():
         if item.kind in aquarium.PIECE_KINDS:
             assert 10 <= item.price <= 100 and item.w > 0 and item.h > 0 and item.layer in aquarium.LAYERS
             assert set(item.sees) <= {"hide", "explore", "through", "bubbles"}
+
+
+def test_schools_of_fish():
+    give(5000)
+    head = add_pet(seed=8)
+    dog = add_pet("dog")
+    care = client.get("/api/care").json()
+    fish = next(p for p in care["pets"] if p["id"] == head)
+    assert fish["school"] == 1 and fish["copy_price"] >= 50
+    assert client.post(f"/api/care/{dog}/copy").status_code == 400
+    for _ in range(3):
+        r = client.post(f"/api/care/{head}/copy").json()
+    fish = next(p for p in r["pets"] if p["id"] == head)
+    assert fish["school"] == 4 and len(r["pets"]) == 2  # one entry in the book
+    assert r["coins"] == 5000 - 3 * fish["copy_price"]
+    client.put(f"/api/care/{head}/name", json={"name": "Neon"})
+    state = client.get("/api/aquarium/0").json()
+    assert [f["name"] for f in state["waiting_fish"]] == ["Neon"] * 4  # each copy can swim on its own
+    care = client.put(f"/api/care/{head}/tank", json={"spot": 0}).json()  # the whole school moves in
+    assert care["tanks"][0]["count"] == 4 and next(p for p in care["pets"] if p["id"] == head)["school_tanks"] == [0]
+    copy = client.get("/api/aquarium/0").json()["tank"]["fish"][1]["id"]
+    client.delete(f"/api/aquarium/0/fish/{copy}")
+    assert len(client.get("/api/aquarium/0").json()["tank"]["fish"]) == 3
+    with db.open_db(main.DB_PATH) as conn:
+        for k in range(6):
+            pid = db.add_v3_pet(conn, 1, g.roll("fish", None, None, 50 + k), "X", "shop")
+            db.update_v3_pet(conn, 1, pid, home="tank:0")
+    r = client.put(f"/api/care/{head}/tank", json={"spot": 0})  # 9 in there: no room for the school's last
+    assert r.status_code == 200  # the 3 already in stay; the 4th fits
+    r = client.post(f"/api/care/{head}/copy")
+    r = client.put(f"/api/care/{head}/tank", json={"spot": 0})
+    assert r.status_code == 400 and "room for" in r.json()["detail"]

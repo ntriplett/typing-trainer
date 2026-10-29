@@ -112,6 +112,16 @@
   visibility: hidden;
 }
 
+.book-pet-count {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 16px;
+  padding: 0 0.25rem;
+  background: var(--parchment);
+  border: 2px solid var(--outline);
+}
+
 .book-empty {
   font-size: 22px;
   color: var(--ink-soft);

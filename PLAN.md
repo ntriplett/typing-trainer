@@ -587,9 +587,18 @@ x/y, a layer (back: behind fish, middle: fish swim around it, front: in front of
 Each item tells fish what it is (`sees`: hide, explore, through, bubbles). Tables: `tank`,
 `tank_piece`, `aqua_owned`; fish live in a tank via `pet.home = "tank:<spot>"`. Fish aren't fed yet.
 
-**Pet Shop**: a cute spiral staircase up to **Homes & Supplies**: Habitats (the gallery), Aquarium
-Supplies (rooms of display tanks: Tanks & Backdrops, Sand & Gravel, Plants, Rocks, Decorations),
-Pet Supplies (soon).
+**Pet Shop**: 4 doorways downstairs (Household, Farm, Reptiles, Mythical) plus the Special Orders
+counter; a cute spiral staircase up to **Fish, Homes & Supplies**: Fish, Habitats (the gallery),
+Aquarium Supplies, Pet Supplies (soon). Supplies rooms hold 8 items at most: Tanks & Backdrops,
+Sand & Gravel, Little Plants, Plants, Tall Plants, Driftwood, Little Rocks, Big Rocks, Decorations
+(a planted-tank look: carpets, stem plants to the surface, floating Frogbit, spiderwood, manzanita,
+seiryu, dragon stone; hiding spots are dark inside). Room navigation is signposts above the scene,
+never signs inside it.
+
+**Schools**: you can buy another of a fish you own (its shop price, no new-color bonus): a copy is
+its own `pet` row with `school` = the first fish's id, so each copy swims in a tank; the Care Center
+shows the school once ("×4"); renaming, feeding and moving to a tank go for the whole school.
+**Fish size**: in a tank the size gene scales a fish's pixels by 2^(0.6 x size), about 0.66x-1.5x.
 
 **Aquarium** (`/pets/aquarium`): a dim hall of glowing live tanks: 4 in the main hall, 3 each in the
 Reef Room and the River Room. `/pets/aquarium/{spot}`: one tank, with Decorate (like the bedroom:

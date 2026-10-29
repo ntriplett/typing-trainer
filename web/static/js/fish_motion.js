@@ -24,6 +24,8 @@ const FishMotion = (() => {
   const rand = (a, b) => a + Math.random() * (b - a);
   const trait = (f, k) => (f.genes.personality || {})[k] ?? 0.5;
   const behavior = (f, k, d) => (f.genes.behavior || {})[k] ?? d;
+  // In a tank, the size gene also scales a fish's pixels: tiny nano fish to big ones.
+  const sizeScale = (f) => 2 ** (0.6 * ((f.genes.shape || {}).size || 0));
 
   // What the tank's pieces mean to fish: boxes to hide in, explore, swim through, bubble columns.
   function features(pieces, items) {
@@ -41,12 +43,14 @@ const FishMotion = (() => {
     const world = { fish: [], pieces: tank.pieces, items, scale, feats: features(tank.pieces, items), t: 0 };
     world.fish = fish.map((f, i) => {
       const size = petSize(f.genes, f.growth);
-      const w = size.w * scale;
-      const h = size.h * scale;
+      const fishScale = scale * sizeScale(f);
+      const w = size.w * fishScale;
+      const h = size.h * fishScale;
       const height = behavior(f, "height", 0.5);
       const prefY = FLOOR - h / 2 - height * (FLOOR - SURFACE - h);
       return {
         f,
+        scale: fishScale,
         w,
         h,
         x: rand(w, TANK_W - w),
@@ -190,7 +194,7 @@ const FishMotion = (() => {
     drawPet(px, fish.x - fish.w / 2, fish.y + fish.h / 2, fish.f.genes, fish.f.growth, {
       frame: Math.floor(fish.frame),
       faceLeft: fish.dir < 0,
-      scale: world.scale,
+      scale: fish.scale,
       shadow: false,
     });
   }

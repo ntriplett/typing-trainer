@@ -1066,8 +1066,16 @@ def care_along(pet_id: int, body: AlongIn, conn=Depends(get_db), learner_id: int
 
 @app.put("/api/care/{pet_id}/tank")
 def care_tank(pet_id: int, body: HomeIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    _aqua_call(aquarium.set_fish_tank, conn, learner_id, pet_id, body.spot)
+    """The whole school moves together."""
+    members = _care_call(pet_care.school_of, conn, learner_id, pet_id)
+    _aqua_call(aquarium.set_school_tank, conn, learner_id, members, body.spot)
     return _care(conn, learner_id)
+
+
+@app.post("/api/care/{pet_id}/copy")
+def care_copy(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _shop_call(pet_shop.buy_fish_copy, conn, learner_id, pet_id)
+    return _care(conn, learner_id, bought=bought)
 
 
 # --- Aquarium API (PLAN.md 11k) ------------------------------------------------------
