@@ -17,9 +17,9 @@ def open_game(page: Page, live_server: str, module: str, state: str, query: str 
     return errors
 
 
-def test_lab_lists_both_games_with_options(page: Page, live_server):
+def test_lab_lists_every_game_with_options(page: Page, live_server):
     page.goto(f"{live_server}/game-lab")
-    expect(page.locator(".lab-card")).to_have_count(2)
+    expect(page.locator(".lab-card")).to_have_count(3)
     page.select_option("#opt-difficulty", "hard")
     href = page.locator(".lab-card").first.get_attribute("href")
     assert href.startswith("/game/") and "difficulty=hard" in href
@@ -251,3 +251,176 @@ def test_losing_naps_then_pick_again(page: Page, live_server):
     expect(page.locator(".game-card h2")).to_have_text("Clover needs a nap!")
     page.keyboard.press(" ")
     page.wait_for_function("game.state === 'pick' && game.levelIndex === 0")
+
+
+# --- Farm Stand ----------------------------------------------------------------------
+
+FARM = "game_farm_stand_v1"
+
+
+def start_farm(page: Page, live_server: str, query: str = "?keys=home_top") -> list[str]:
+    errors = open_game(page, live_server, FARM, "start", query)
+    page.keyboard.press(" ")
+    page.wait_for_function("game.state === 'ready'")
+    return errors
+
+
+def type_word(page: Page, js: str) -> None:
+    page.keyboard.type(page.evaluate(js))
+
+
+def plant(page: Page, crop: str = "radish") -> None:
+    type_word(page, f"game.packets.find((p) => p.crop.id === '{crop}').word")
+
+
+def test_farm_stand_opens_when_you_plant(page: Page, live_server):
+    errors = start_farm(page, live_server)
+    expect(page.locator(".seed-packet:not(.coming-seed)")).to_have_count(3)
+    expect(page.locator(".coming-seed")).to_contain_text("Tomato")  # more veggies are coming
+    expect(page.locator(".farm-delivery")).to_have_count(2)  # in the sky
+    expect(page.locator(".farm-next")).to_have_count(4)  # the orders coming, in the sky
+    page.wait_for_timeout(300)
+    assert page.evaluate("game.clock") == 0  # nothing moves before the first seed
+    plant(page)
+    page.wait_for_function("game.state === 'hour' && game.hour === 1")
+    assert page.evaluate("game.plots[0].crop") == "radish" and page.evaluate("game.money") == 19
+    assert page.evaluate("game.arriveIn") > 9  # the first animal comes 10s after
+    assert errors == []
+
+
+def test_farm_stand_word_groups_share_a_first_letter(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.arrive(); game.arrive()")
+    firsts = page.evaluate(
+        """[game.packets, game.deliveries, game.waiting()].map((g) => [...new Set(g.map((t) => t.word[0]))])"""
+    )
+    assert all(len(f) == 1 for f in firsts) and len({f[0] for f in firsts}) == 3
+    # the first key lights up the whole group
+    page.keyboard.press(firsts[1][0])
+    expect(page.locator(".farm-delivery.locked")).to_have_count(2)
+
+
+def test_farm_stand_works_with_only_four_letters(page: Page, live_server):
+    errors = open_game(page, live_server, FARM, "start")
+    # words from just j, d, k, f, like a brand-new learner's
+    page.evaluate(
+        """(() => {
+          const make = (n) => Array.from({length: 60}, () => Array.from({length: n}, () => 'jdkf'[Math.floor(Math.random() * 4)]).join(''));
+          game.game.words = {short: [...make(2), ...make(3)], medium: make(4), long: make(6)};
+          game.letters = game.groupLetters();
+        })()"""
+    )
+    page.keyboard.press(" ")
+    page.wait_for_function("game.state === 'ready'")
+    plant(page)
+    page.evaluate("game.shelf = {radish: 2, peas: 2}; game.arrive(); game.arrive(); game.arrive()")
+    words = page.evaluate("game.worded().map((t) => t.word)")
+    assert all(words) and len(words) == 3 + 2 + 3  # every seed, delivery and customer has a word
+    type_word(page, "game.customers[0].word")  # while it's still walking up
+    page.wait_for_function("game.day.served === 1")
+    assert errors == []
+
+
+def test_farm_stand_line_fills_itself_and_icons_keep_their_shape(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.arriveIn = 0")
+    page.wait_for_function("game.waiting().length === 3", timeout=10000)  # a new animal as soon as there's room
+    page.wait_for_timeout(600)
+    # ticket icons are drawn at their real size even while the ticket was hidden
+    sizes = page.evaluate("[...document.querySelectorAll('.farm-ticket .veggie-icon')].map((c) => [c.width, c.height])")
+    assert sizes and all(w * 28 == h * 24 for w, h in sizes), sizes
+    assert page.evaluate("game.customers[0].max") > 50  # they wait a long time
+
+
+def test_farm_stand_seeds_go_on_credit(page: Page, live_server):
+    start_farm(page, live_server)
+    page.evaluate("game.money = 0")
+    plant(page, "carrot")
+    assert page.evaluate("game.money") == -3
+    assert page.evaluate("game.plots[0].crop") == "carrot"
+
+
+def test_farm_stand_line_steps_up_when_someone_leaves(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.arrive(); game.arrive(); game.arrive()")
+    first, second = page.evaluate("[game.customers[1].word, game.customers[2].word]")
+    page.evaluate("game.leave(game.customers[0], false)")
+    assert page.evaluate("game.waiting().map((c) => c.slot)") == [0, 1]
+    assert page.evaluate("game.waiting().map((c) => c.word)") == [first, second]
+
+
+def test_farm_stand_fancy_customers_pay_double(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.farm.max_tip = 0; game.shelf = {peas: 4}")
+    page.evaluate("game.line[0].order = {peas: 2}; game.line[0].fancy = true; game.arrive()")
+    type_word(page, "game.customers[0].word")
+    page.wait_for_function("game.day.served === 1")
+    assert page.evaluate("game.day.earned") == 2 * 3 * 2
+
+
+def test_farm_stand_robot_and_pet_plots(page: Page, live_server):
+    errors = open_game(page, live_server, FARM, "start")
+    page.evaluate(
+        """(() => {
+          const pet = {...game.game.customers[0], name: 'Pip'};
+          game.pets = [{...pet, x: 150, tx: null, rest: 0, dir: 1, trip: null, joy: 0, hop: 0}];
+          game.courier = game.gardener = game.pets[0];
+          game.petPlots = [0, 1].map(() => ({crop: null, grown: 0, left: 0, kind: 'pet'}));
+          game.robotPlots = [{crop: null, grown: 0, left: 0, kind: 'robot'}];
+          game.layoutPlots();
+        })()"""
+    )
+    page.keyboard.press(" ")
+    page.wait_for_function("game.state === 'ready'")
+    plant(page, "peas")
+    page.wait_for_function("game.robotPlots[0].crop === 'peas'")  # the robot copies your first seed
+    page.wait_for_function("game.petPlots.every((p) => p.crop)")  # the gardener's plots fill themselves
+    assert page.evaluate("game.day.spent") == 4  # yours and the robot's seed; the pet's are free
+    assert errors == []
+
+
+def test_farm_stand_swaps_when_out_and_says_what_is_missing(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.line[0].order = {carrot: 2}; game.arrive()")
+    type_word(page, "game.customers[0].word")
+    expect(page.locator(".crow-bubble")).to_have_text("Need Carrot!")
+    page.evaluate("game.shelf = {peas: 3}")
+    expect(page.locator(".swap-tag")).to_be_visible()
+    type_word(page, "game.customers[0].word")
+    page.wait_for_function("game.day.served === 1")
+    assert page.evaluate("game.shelf.peas") == 1
+
+
+def test_farm_stand_sends_a_delivery(page: Page, live_server):
+    start_farm(page, live_server)
+    plant(page)
+    page.evaluate("game.shelf = {...game.deliveries[0].order}")
+    pay = page.evaluate("game.deliveries[0].pay")
+    type_word(page, "game.deliveries[0].word")
+    page.wait_for_function("game.deliveries[0].done")
+    assert page.evaluate("game.day.earned") == pay  # no pet along: no tip
+
+
+def test_farm_stand_a_whole_day_ends_in_the_evening_and_shop(page: Page, live_server):
+    errors = start_farm(page, live_server)
+    plant(page)
+    for hour in range(1, 5):
+        page.wait_for_function(f"game.state === 'hour' && game.hour === {hour}")
+        page.evaluate("game.clock = 999")
+        page.wait_for_function("game.state === 'tally'")
+        expect(page.locator(".tally-go")).to_be_visible(timeout=10000)
+        page.keyboard.press(" ")
+    page.wait_for_function("game.state === 'evening'")
+    expect(page.locator(".game-card")).to_contain_text("practice day")  # a lab play isn't saved
+    expect(page.locator(".game-card")).to_contain_text("2 missed")  # the deliveries
+    page.keyboard.press(" ")
+    page.wait_for_function("game.state === 'shop'")
+    expect(page.locator(".game-card h2")).to_have_text("Farm Shop")
+    page.keyboard.press("Enter")
+    expect(page.locator(".game-card")).to_contain_text("Final score")
+    assert errors == []

@@ -138,6 +138,13 @@ CREATE TABLE IF NOT EXISTS pet (
 );
 CREATE INDEX IF NOT EXISTS idx_pet_learner ON pet(learner_id);
 
+-- Farm Stand (PLAN.md 11m): one saved farm per learner, app/farm_stand.py's JSON.
+CREATE TABLE IF NOT EXISTS farm_save (
+    learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
+    state TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Pet Supplies (PLAN.md 11l): how many of each treat, toy, fish food.
 CREATE TABLE IF NOT EXISTS pet_supply (
     learner_id INTEGER NOT NULL REFERENCES learner(id),
@@ -1313,6 +1320,21 @@ def unlock_pet_colors(conn: sqlite3.Connection, learner_id: int, colors: list[st
     conn.executemany(
         "INSERT OR IGNORE INTO pet_color_unlock (learner_id, color, unlocked_at) VALUES (?, ?, ?)",
         [(learner_id, c, _now_iso()) for c in colors],
+    )
+
+
+def get_farm(conn: sqlite3.Connection, learner_id: int) -> dict | None:
+    row = conn.execute("SELECT state FROM farm_save WHERE learner_id = ?", (learner_id,)).fetchone()
+    return json.loads(row["state"]) if row else None
+
+
+def save_farm(conn: sqlite3.Connection, learner_id: int, state: dict) -> None:
+    conn.execute(
+        """
+        INSERT INTO farm_save (learner_id, state, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(learner_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at
+        """,
+        (learner_id, json.dumps(state), _now_iso()),
     )
 
 

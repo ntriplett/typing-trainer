@@ -186,4 +186,21 @@ PET_BATTLE = GameModule(
     ),
 )
 
-GAME_MODULES = (CROW_PATROL, PET_BATTLE)
+FARM_STAND = GameModule(
+    id="game_farm_stand_v1",
+    title="Farm Stand",
+    blurb="Grow veggies and sell them at your own farm stand. Your farm grows bigger every day you play!",
+    how_to="Type a seed's word to plant it. Type a customer's word to sell them their order.",
+    game="farm_stand",
+    coins_per_point=0.24,
+    # The market hours after the morning's planting (app/farm_stand.py has
+    # the farm itself: crops, upgrades, the save). seconds: how long the hour is.
+    levels=(
+        {"name": "Opening Time", "seconds": 60},
+        {"name": "Late Morning", "seconds": 60},
+        {"name": "Lunch Rush", "seconds": 60},
+        {"name": "Afternoon", "seconds": 60},
+    ),
+)
+
+GAME_MODULES = (CROW_PATROL, PET_BATTLE, FARM_STAND)

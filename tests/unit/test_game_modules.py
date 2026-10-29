@@ -25,7 +25,7 @@ def test_generate_gives_levels_and_word_groups_in_allowed_letters(module):
     game = content.game
     assert content.kind == "game" and content.title == module.title
     assert game["game"] == module.game
-    assert len(game["levels"]) == 5
+    assert len(game["levels"]) == (4 if module.game == "farm_stand" else 5)
     for name, (lo, hi) in WORD_LENGTHS.items():
         words = game["words"][name]
         assert len(words) >= 50

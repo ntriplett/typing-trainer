@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import sqlite3
 
-from app import db, lessons
+from app import db, farm_stand, lessons
 from app.activities.game_modules import GAME_MODULES
 
-PRICES = {"game_crow_patrol_v1": 1, "game_pet_battle_v1": 2}
+PRICES = {"game_crow_patrol_v1": 1, "game_pet_battle_v1": 2, farm_stand.GAME_ID: 1}
 
 
 class ArcadeError(ValueError):
@@ -50,4 +50,6 @@ def play(conn: sqlite3.Connection, learner_id: int, game_id: str) -> int:
     if db.get_token_balance(conn, learner_id) < price:
         raise ArcadeError(f"That game needs {price} token{'s' if price > 1 else ''}. Practice to earn more!")
     db.add_tokens(conn, learner_id, -price, "arcade", ref=game_id)
+    if game_id == farm_stand.GAME_ID:
+        farm_stand.open_day(conn, learner_id)  # this play's day gets saved
     return db.get_token_balance(conn, learner_id)

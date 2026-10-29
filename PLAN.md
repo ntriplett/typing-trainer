@@ -629,6 +629,58 @@ school for fish), and unlocked. New every day, two per tier: Mystery (no colors 
 color shown 40, main color shown 60, Clear (both shown) 150. Used from the Care Center's 🧪 button,
 which lists only potions that species can wear.
 
+## 11m. Farm Stand: the first persistent game (agreed 2026-10-28)
+
+- One arcade token (1) = one market day of 4 hours x 60s in real time (reworked twice after
+  playtests, 2026-10-28). Nothing moves until the first seed is planted; the first customer comes
+  10s later. Crops grow in seconds (radish 20s .. pumpkin 110s), ripe ones go onto the shelf while
+  it has room, and seed packets stay out so you replant while you serve. Customers are grown
+  animals rolled like the Pet Shop's (2% mythical), every ~6-12s (sign upgrade = customers per
+  minute, never faster than the learner can type), up to 3 in line, patience x1.3.
+  Third pass (same day): the line refills as soon as it has room (1.5s apart), so 2-3 always
+  wait and you choose; each waits 4x as long. The sign upgrade became "more big-basket
+  customers" (share 15%..50%, from 8 reputation); pacing model uses ~9s per order served.
+- Word groups (PrefixTyper in game_kit.js): every seed word starts with one letter, every
+  customer with a second, every delivery with a third (the letters with the most words). The
+  first key lights the group, later keys pick one; no word is the start of another, and second
+  letters differ when they can. So 4 learned letters are enough (the first version ran out).
+- Information, so planting is a choice: the next 4 customers' orders stack in the sky and the
+  bottom one drops down to each animal that walks up; delivery orders (`farm_stand.deliveries()`,
+  2-3 a day: an animal, a 3-5+ veggie order, due by the end of hour 2-4, pays x1.5; a missed
+  deadline counts as a missed customer). Orders lean to the animal's favorite veggie. (Hot
+  veggies were tried and dropped.)
+- Serving: type a customer's word (even while they walk up). Short of something, the ticket shows
+  "swap" and typing sells a swap: swapped-in veggies at half price (full if it's their favorite),
+  no tip; nothing to swap shows "Need Carrot!". Tips up to +50% for quick full orders. Each
+  hour's tally pays coins like other games.
+- Your pets along help: the first carries deliveries (walks off with a basket, back in a few
+  seconds, +10% tip; no other delivery meanwhile); the second (or only) pet is the gardener: it
+  hops about a fenced pet plot that it replants with its favorite veggie for free (it hops over
+  to plant, hearts when it ripens); a customer of your pet's species gets a
+  happy hello (hearts) and waits 25% longer.
+- Delivery orders hang in the sky at the top left; seed packets are the only thing below.
+- Seeds go on credit during the day (money may dip below $0, so you can't get stuck with nothing
+  to sell); a finished day never saves below $0. Coins 0.24/point (tripled at the user's ask).
+- Fourth pass (same day): the line steps up when someone leaves (the front one waited longest);
+  coins 0.08/point; a live star meter in the HUD and a big "PET FOOD!" reward card; the next
+  locked veggie shows as a greyed "new seeds coming" packet; up to 4 delivery orders (2 + wagon).
+- Upgrades (all open with reputation; something new about every 3 days to ~day 115 for a greedy
+  player): More Plots (4-24; the plot grid adds rows and shrinks cells), Bigger Shelf, Sprout Alarm
+  (empty plots flash), Shop Bell (patience), Tip Jar, Seed Catalog (seeds cheaper), Bigger Sign
+  (big baskets), Delivery Wagon, Sprinkler (grow faster), Pet Patch (gardener gets 1-3 plots),
+  Price Board (+10-30%), Fancy Customers (10-30% of customers want 50% more, wait half as long,
+  pay double), Robo-Farmer (1-3 robot plots replanting your first seed of the day; it pays for
+  seeds), Compost, and 12 decorations.
+- The farm is saved (`farm_save` table, `app/farm_stand.py`): its own "stand money" (not coins),
+  reputation (+0..3 stars a day), upgrades (plots 4-12, shelf, bell = patience, sign = customers,
+  compost = +yield) and 12 decorations drawn on the stand. Crops are the 10 garden veggies, opening
+  with reputation. Prices are tuned with `typical_day_profit()`; a test checks something new opens
+  at least every 5 days through day 50 (the shop runs out around day 64 for a greedy player).
+- Only arcade plays count: spending the token opens a day; `POST /api/farm/day` saves it and closes
+  it (server checks the day is possible). Lab plays get a tally and change nothing.
+- A 3-star day (80%+ served, at least 6) gives one veggie (pet food) from the day's sales.
+- Later: seasons, special customers (regulars, chef, mayor), crops that stay in the ground overnight.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

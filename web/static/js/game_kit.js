@@ -59,6 +59,60 @@ class Typer {
 }
 
 // The word as HTML: typed part, then the next letter, then the rest.
+// Like Typer, but for words that share first letters (a game's groups:
+// every seed starts with one letter, every customer with another). Each key
+// narrows the words that still match what's typed; they all light up until
+// one is typed whole. A key that matches none is a slip (or a stray, before
+// anything's typed). No word may be the start of another.
+//
+//   r.kind: "lock" | "hit" | "done" | "slip" | "stray"; r.target when "done"
+//   typer.matches(t): is t still in the running (to light it up)
+class PrefixTyper {
+  constructor() {
+    this.prefix = "";
+    this.keystrokes = [];
+    this.lastAt = performance.now();
+  }
+
+  get target() {
+    return null; // never one target until it's done
+  }
+
+  matches(t) {
+    return this.prefix !== "" && Boolean(t.word) && t.word.startsWith(this.prefix);
+  }
+
+  press(ch, targets) {
+    const now = performance.now();
+    const latency = Math.max(1, Math.min(5000, Math.round(now - this.lastAt)));
+    this.lastAt = now;
+    const live = targets.filter((t) => this.matches(t));
+    if (this.prefix && !live.length) this.release(targets); // what we were typing went away
+    const next = this.prefix + ch;
+    const hits = targets.filter((t) => t.word && t.word.startsWith(next));
+    if (!hits.length) {
+      if (!this.prefix) return { kind: "stray" };
+      const expected = live[0].word[this.prefix.length];
+      this.keystrokes.push({ expected_char: expected, typed_char: ch, correct: false, latency_ms: latency });
+      return { kind: "slip", targets: live };
+    }
+    this.keystrokes.push({ expected_char: ch, typed_char: ch, correct: true, latency_ms: latency });
+    this.prefix = next;
+    for (const t of targets) t.typed = this.matches(t) ? next.length : 0;
+    const done = hits.find((t) => t.word === next);
+    if (done) {
+      this.release(targets);
+      return { kind: "done", target: done };
+    }
+    return { kind: next.length === 1 ? "lock" : "hit", targets: hits };
+  }
+
+  release(targets = []) {
+    this.prefix = "";
+    for (const t of targets) t.typed = 0;
+  }
+}
+
 function wordHtml(word, typed = 0) {
   const done = escapeHtml(word.slice(0, typed));
   const next = escapeHtml(word.slice(typed, typed + 1));

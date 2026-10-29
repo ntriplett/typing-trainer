@@ -18,9 +18,9 @@ def isolated_db(tmp_path, monkeypatch):
     yield
 
 
-def test_modules_lists_both_games():
+def test_modules_lists_every_game():
     data = client.get("/api/game/modules").json()
-    assert {g["game"] for g in data} == {"crow_patrol", "pet_battle"}
+    assert {g["game"] for g in data} == {"crow_patrol", "pet_battle", "farm_stand"}
 
 
 def test_pages_serve():

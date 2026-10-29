@@ -257,6 +257,19 @@ const HOME_ICONS = {
       });
     },
   },
+  game_farm_stand_v1: {
+    w: 16,
+    h: 22,
+    draw(px, frame) {
+      cabinet(px, frame, { p: "#b8432f", P: "#7a2a1f" }, () => {
+        // a little stand: striped roof, counter, a veggie hopping on it
+        for (let i = 0; i < 4; i++) px(4 + i * 2, 5, 2, 1, i % 2 ? "#fbf1dc" : "#d8283a");
+        px(4, 9, 8, 2, "#8b5a2b");
+        px(5, 8 - (frame % 2), 2, 1, "#e8822b");
+        px(9, 8, 2, 1, "#4a7f2a");
+      });
+    },
+  },
   store: {
     w: 20,
     h: 16,

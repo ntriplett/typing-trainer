@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -547,6 +547,8 @@ def game_content(
     out = asdict(content)
     if module.game == "pet_battle":
         out["game"] = pet_care.battle_pets(out["game"])
+    if module.game == "farm_stand":
+        out["game"] = farm_stand.game_data(conn, learner_id, out["game"])
     return out
 
 
@@ -703,6 +705,40 @@ def parent_settings(learner_id: int, body: SettingsIn, conn=Depends(get_db)) -> 
         raise HTTPException(status_code=404, detail="There's no player like that.")
     daily.save_settings(conn, learner_id, daily.Settings(body.goal_minutes, body.learn_vs_practice))
     return _parent_entry(conn, learner_id)
+
+
+# --- Farm Stand (PLAN.md 11m) -----------------------------------------------------------
+
+
+class FarmDayRequest(BaseModel):
+    """A finished market day, as the browser counted it (farm_stand.check_day checks it)."""
+
+    served: int = Field(ge=0, le=500)
+    missed: int = Field(ge=0, le=500)
+    sold: dict[str, int] = {}
+    earned: int = Field(ge=0, le=100000)
+    spent: int = Field(ge=0, le=100000)
+
+
+@app.get("/api/farm")
+def farm_state(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return farm_stand.state(farm_stand.load(conn, learner_id))
+
+
+@app.post("/api/farm/buy/{upgrade_id}")
+def farm_buy(upgrade_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        return farm_stand.state(farm_stand.buy(conn, learner_id, upgrade_id))
+    except farm_stand.FarmError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/farm/day")
+def farm_day(body: FarmDayRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        return farm_stand.finish_day(conn, learner_id, body.served, body.missed, body.sold, body.earned, body.spent)
+    except farm_stand.FarmError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --- arcade --------------------------------------------------------------------------------

@@ -21,12 +21,12 @@ is still practice, but it also commits you to something.
   Arcade tally per round (pumpkins worth 10 crows); upgrades between rounds.
 - **Pet Battles** (turn-based). Pick a partner (Leaf/Splash/Ember types) for each critter; each type
   has its own moves, each critter its own trick; a bag of items; tally and coins per win.
+- **Farm Stand** (persistent, 2026-10-28). Plant by typing seed words, then 4 market hours of
+  animal customers (rolled like shop pets) ordering veggies. The farm is saved: stand money,
+  reputation, upgrades and decorations, paced to keep growing past 50 plays. A 3-star day gives
+  a veggie for your pets. See PLAN.md 11m.
 
 ## Later
-
-- **Farm Stand** (wants persistence). Morning: type which seeds to plant (cost, grow time).
-  Afternoon: customers with patience meters order produce; type to serve. Profit buys
-  bigger plots and seeds. Better as a persistent game that grows between sessions.
 - **Train Switchyard** (real-time puzzle). Trains roll toward junctions; type a station
   word to route the next train. Wrong station costs stars.
 - **Snowball Fort** (real-time). Short word = quick throw, long word = big throw that

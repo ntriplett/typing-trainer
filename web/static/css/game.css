@@ -419,3 +419,246 @@
   .tally-row { font-size: 20px; }
   .tally-wow { display: none; }
 }
+
+/* --- farm stand ---------------------------------------------------------------------- */
+
+.game-canvas.farm-field {
+  aspect-ratio: 240 / 120;
+}
+
+.farm-below-title {
+  font-size: 20px;
+  margin: 0.4rem 0 0.2rem;
+}
+
+/* seeds and delivery orders share one grid, so their boxes line up */
+.farm-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+}
+
+.farm-card {
+  background: var(--parchment);
+  border: 3px solid var(--wood-light);
+  padding: 0.1rem 0.4rem;
+  font-size: 20px;
+  text-align: center;
+}
+
+.farm-card h3 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.farm-card h3 .veggie-icon {
+  width: 18px;
+  height: 21px;
+  vertical-align: middle;
+}
+
+.farm-card p {
+  margin: 0;
+}
+
+.farm-card .choice-word {
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.1;
+}
+
+.farm-card.locked {
+  border-color: var(--leaf-gold);
+  background: var(--card-good);
+}
+
+.farm-card.cant,
+.choice-card.cant {
+  opacity: 0.45;
+}
+
+/* delivery orders, in the sky at the top left of the field */
+.farm-deliveries {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 4px;
+  max-width: 48%;
+}
+
+.farm-deliveries[hidden] {
+  display: none;
+}
+
+.farm-deliveries-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--heading);
+}
+
+.farm-delivery {
+  background: var(--surface);
+  border: 3px solid var(--leaf-gold);
+  padding: 1px 6px;
+  font-size: 20px;
+  text-align: center;
+}
+
+.farm-delivery p {
+  margin: 0;
+}
+
+.farm-delivery .delivery-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.farm-delivery .crow-word-text {
+  font-family: var(--font-type);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.farm-delivery.locked {
+  background: var(--parchment);
+  z-index: 10;
+}
+
+.farm-delivery.over {
+  opacity: 0.5;
+}
+
+/* the orders coming, stacked in the sky; the bottom one drops to its animal */
+.farm-next {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 20px;
+  background: var(--surface);
+  border: 3px dashed var(--wood-light);
+  transition: top 0.4s, left 0.4s, opacity 0.4s;
+  white-space: nowrap;
+  width: max-content; /* near the edge the browser would squeeze it into a column */
+}
+
+.farm-next.big {
+  border-color: var(--leaf-gold);
+}
+
+.farm-next.dropping {
+  opacity: 0;
+}
+
+.farm-next .veggie-icon {
+  width: 18px;
+  height: 21px;
+  vertical-align: middle;
+}
+
+.swap-tag {
+  font-size: 20px;
+  color: var(--surface);
+  background: var(--leaf-gold);
+  padding: 0 4px;
+}
+
+.farm-ticket.can-serve {
+  border-color: var(--moss);
+}
+
+.farm-ticket {
+  text-align: center;
+}
+
+.farm-ticket.big {
+  border-color: var(--leaf-gold);
+}
+
+.ticket-order {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-size: 20px;
+}
+
+.ticket-order .veggie-icon {
+  width: 24px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.ticket-order .short {
+  opacity: 0.35;
+}
+
+.farm-stars {
+  font-size: 44px;
+}
+
+/* the great-day reward: a big bouncing veggie */
+.farm-gift {
+  margin: 0.4rem auto;
+  padding: 0.3rem 0.6rem;
+  max-width: 26rem;
+  background: var(--card-good);
+  border: 3px solid var(--leaf-gold);
+}
+
+.farm-gift .veggie-icon {
+  width: 64px;
+  height: 76px;
+  animation: gift-bounce 0.7s ease-in-out infinite alternate;
+}
+
+.farm-gift b {
+  display: block;
+  color: var(--leaf-red);
+  font-size: 40px;
+}
+
+@keyframes gift-bounce {
+  from { transform: translateY(0) rotate(-6deg); }
+  to { transform: translateY(-10px) rotate(6deg); }
+}
+
+.farm-goal {
+  color: var(--leaf-red);
+}
+
+.farm-ticket.fancy,
+.farm-next.fancy {
+  border-color: #9a6ad6;
+  background: #f4ecff;
+}
+
+.coming-seed {
+  border-style: dashed;
+  opacity: 0.7;
+}
+
+.coming-seed .veggie-icon {
+  filter: grayscale(1);
+}
+
+.farm-shop {
+  flex-wrap: wrap;
+}
+
+.farm-shop .choice-card {
+  flex: 1 1 30%;
+}
+
+.farm-shop .shop-why {
+  font-size: 20px;
+  font-weight: 700;
+}
