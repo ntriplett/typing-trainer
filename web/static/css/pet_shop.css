@@ -335,17 +335,24 @@
 /* --- special orders ------------------------------------------------------------------ */
 
 .shop-grid.habitats-floor {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  display: block;
+}
+
+.habitat-tier-title {
+  margin: 0.75rem 0 0.4rem;
+}
+
+.habitat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
 }
 
 .habitat-card {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  padding: 0.6rem;
-  max-width: 340px;
+  padding: 0.5rem;
   background: var(--sand);
   border: 3px solid var(--wood-light);
 }

@@ -115,7 +115,7 @@ function setupMini(spot) {
   }
   const look = HABITAT_LOOKS[h.kind];
   backgrounds[h.kind] ||= habitatBackground(h.kind, MINI_PX);
-  const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props };
+  const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props, terrain: look.terrain };
   mini = { world: PetMotion.create(h.pets, area, MINI_PET_SCALE), background: backgrounds[h.kind] };
   drawMini();
 }

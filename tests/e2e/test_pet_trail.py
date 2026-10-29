@@ -6,6 +6,7 @@ from __future__ import annotations
 from playwright.sync_api import Page, expect
 
 from app import db
+from app import pet_care
 from app import pet_genes as g
 
 
@@ -56,3 +57,25 @@ def test_down_from_the_first_stop_goes_back_to_pets(page: Page, live_server):
     expect(page).to_have_url(f"{live_server}/pets")
     page.get_by_role("link", name="🏠 Home").click()
     expect(page).to_have_url(f"{live_server}/")
+
+
+def test_every_habitat_kind_has_a_look_and_runs_with_pets(page: Page, live_server, tmp_path):
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/pets/trail")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_habitat(conn, 1, 0, "meadow", "Test")
+        for k, sp in enumerate(["goat", "turtle", "cat", "lizard", "dog", "phoenix"]):
+            pid = db.add_v3_pet(conn, 1, g.roll(sp, None, None, 40 + k), sp.capitalize(), "shop")
+            db.update_v3_pet(conn, 1, pid, home="trail:0", growth=6)
+    page.goto(f"{live_server}/pets/trail/0")
+    expect(page.locator("#habitat-name")).to_have_text("Test")
+    looks = set(page.evaluate("Object.keys(HABITAT_LOOKS)"))
+    assert set(pet_care.HABITAT_KINDS) <= looks
+    for kind in pet_care.HABITAT_KINDS:
+        with db.open_db(tmp_path / "e2e.db") as conn:
+            conn.execute("UPDATE habitat SET kind = ? WHERE learner_id = 1 AND spot = 0", (kind,))
+        page.goto(f"{live_server}/pets/trail/0")
+        expect(page.locator("#habitat-count")).to_have_text("Living here: 6 of 6")
+        page.evaluate("for (let i = 0; i < 1500; i++) PetMotion.step(world)")  # minutes of pet life, fast
+    assert errors == []

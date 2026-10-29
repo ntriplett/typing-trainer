@@ -997,7 +997,8 @@ def unsave_shop_pet(conn=Depends(get_db), learner_id: int = Depends(current_lear
 
 @app.post("/api/pets/shop/habitats/{kind}")
 def buy_habitat(kind: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    bought = _care_call(pet_care.buy_habitat, conn, learner_id, kind)
+    magical = pet_shop.magical_habitats_open(conn, learner_id)
+    bought = _care_call(pet_care.buy_habitat, conn, learner_id, kind, magical)
     return {**_department(conn, learner_id, "habitats"), "bought": bought}
 
 

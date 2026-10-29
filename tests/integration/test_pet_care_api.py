@@ -116,7 +116,8 @@ def test_pets_along_ride_with_the_avatar():
 def test_the_first_meadow_is_free_then_1500():
     shop = client.get("/api/pets/shop/habitats").json()
     assert shop["department"]["open"] and shop["slots"] == []
-    assert shop["habitats"]["kinds"] == [{"id": "meadow", "name": "Meadow", "price": 0}]
+    meadow = shop["habitats"]["kinds"][0]
+    assert meadow == {"id": "meadow", "name": "Meadow", "tier": "everyday", "price": 0, "open": True}
     r = client.post("/api/pets/shop/habitats/meadow").json()
     assert r["bought"] == {"spot": 0, "kind": "meadow", "name": "Meadow", "price": 0}
     assert r["habitats"]["kinds"][0]["price"] == 1500
@@ -177,3 +178,29 @@ def test_the_temporary_switch_lets_pets_eat_any_time():
     client.post(f"/api/care/{pid}/feed", json={"veggie": "carrot"})
     r = client.post(f"/api/care/{pid}/feed", json={"veggie": "carrot"}).json()
     assert pet(r, pid)["growth"] >= 2 and not pet(r, pid)["fed_today"]
+
+
+def test_tiers_price_habitats_and_only_everyday_ones_start_free():
+    kinds = {k["id"]: k for k in client.get("/api/pets/shop/habitats").json()["habitats"]["kinds"]}
+    assert kinds["forest"]["price"] == 0 and kinds["mountain"]["price"] == 0
+    with db.open_db(main.DB_PATH) as conn:
+        assert pet_care.habitat_price(conn, 1, "forest") == 0
+    pet_care.HABITAT_KINDS["test_cozy"] = pet_care.HabitatKind("test_cozy", "Test Nook", "cozy")
+    pet_care.HABITAT_KINDS["test_magic"] = pet_care.HabitatKind("test_magic", "Test Cave", "magical")
+    try:
+        kinds = {k["id"]: k for k in client.get("/api/pets/shop/habitats").json()["habitats"]["kinds"]}
+        assert kinds["test_cozy"]["price"] == 2500 and kinds["test_magic"]["price"] == 5000
+        assert not kinds["test_magic"]["open"]
+        give(coins=10_000)
+        r = client.post("/api/pets/shop/habitats/test_magic")
+        assert r.status_code == 400 and "Mythical" in r.json()["detail"]
+        assert client.post("/api/pets/shop/habitats/test_cozy").json()["coins"] == 7500  # never free
+    finally:
+        del pet_care.HABITAT_KINDS["test_cozy"], pet_care.HABITAT_KINDS["test_magic"]
+
+
+def test_the_same_habitat_twice():
+    give(coins=5000)
+    client.post("/api/pets/shop/habitats/forest")
+    r = client.post("/api/pets/shop/habitats/forest").json()
+    assert r["bought"]["name"] == "Forest 2" and r["bought"]["price"] == 1500

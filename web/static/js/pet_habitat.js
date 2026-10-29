@@ -53,7 +53,7 @@ async function load() {
   $("habitat-name").textContent = habitat.name;
   const look = HABITAT_LOOKS[habitat.kind];
   background = habitatBackground(habitat.kind, SCENE_PX);
-  const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props };
+  const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props, terrain: look.terrain };
   world = PetMotion.create(habitat.pets, area, PET_SCALE);
   renderResidents();
   step();

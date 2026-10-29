@@ -551,6 +551,31 @@ and the `owned_pet` table are gone.
 **Temporary**: the `pet_shop_open_all` learner setting opens every shop department for testing
 (`app/pet_shop.py` `_taught`); remove it when testing is done.
 
+## 11j. Pets v3: many habitats and how pets move in them (agreed 2026-10-28)
+
+**26 habitats** in three price tiers (`app/pet_care.py` TIER_PRICE; a player's first habitat is
+free only if it's an everyday one; the same kind can be bought again, "Forest 2"):
+- **Everyday / Outdoors, 1,500:** Meadow, Forest, Stream, Mountain, Farmyard, Backyard, Beach,
+  Desert, Jungle, Snowy Tundra, Autumn Orchard, Pond & Marsh, Savanna.
+- **Cozy, 2,500:** Cozy Cottage, Greenhouse, Treehouse Village, Library Nook, Playroom, Hay Loft,
+  Attic Hideaway, Sunny Porch.
+- **Magical, 5,000 (open with the Mythical department):** Crystal Cave, Cloud Kingdom, Volcano
+  Rim, Enchanted Grove, Starry Observatory.
+
+A kind is sold once `habitats.js` HABITAT_LOOKS has its look. Trail spots stay 10 for now (later:
+buy more spots). Not now: favorite habitats, day/night looks.
+
+**Movement** (`pet_motion.js`): each look gives `terrain` (feet coordinates): `water` rects
+(swimmers swim, others hop across or splash at the edge), `blocks` (no feet: rocks, logs,
+furniture), `ledges` {x0, x1, y} (raised walkways pets leap up onto and down from), and `props`
+with an `action`: look, bask, nap, dig, jump (in leaves, a ball pit), optionally on a ledge.
+Species leanings: CLIMBERS (goats most), SWIMMERS (turtles most), BASKERS (lizards, snakes,
+turtles). Wandering stays within ~45 units.
+
+**Batches**: (1) engine + Forest, Stream, Mountain; (3-5) all the rest, done 2026-10-28 (looks
+in `habitats_outdoors.js`, `habitats_cozy.js`, `habitats_magic.js`; the shop groups habitat
+cards by tier). Still to do: (2) a Habitats gallery room in the Pet Shop.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

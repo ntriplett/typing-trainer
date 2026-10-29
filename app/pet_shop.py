@@ -281,6 +281,11 @@ def _open_dept(conn, learner_id: int, dept_id: str) -> Department:
     return dept
 
 
+def magical_habitats_open(conn, learner_id: int) -> bool:
+    """Magical habitats open with the Mythical department."""
+    return is_open(DEPARTMENTS["mythical"], _taught(conn, learner_id))
+
+
 def has_coupon(conn, learner_id: int) -> bool:
     taught = _taught(conn, learner_id)
     return is_open(DEPARTMENTS[COUPON_DEPT], taught) and db.get_setting(conn, learner_id, SETTING_COUPON_USED) is None
@@ -339,7 +344,7 @@ def department_state(conn, learner_id: int, dept_id: str, today: date, rng: rand
             "pick_secondary": capitals_done(conn, learner_id),
         }
     if dept_id == "habitats":
-        out["habitats"] = pet_care.habitats_state(conn, learner_id)
+        out["habitats"] = pet_care.habitats_state(conn, learner_id, magical_habitats_open(conn, learner_id))
     return out
 
 

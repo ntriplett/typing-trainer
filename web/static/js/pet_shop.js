@@ -29,6 +29,7 @@ const RARE_LABEL = {
   sparkle: "Sparkly eyes",
   "main color": "Rare color",
 };
+const TIER_NAME = { everyday: "Outdoors", cozy: "Cozy", magical: "Magical" };
 const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", habitats: "🌳", supplies: "🦴" };
 
 let front = null; // /api/pets/shop
@@ -385,31 +386,41 @@ function renderHabitats() {
   const grid = $("shop-grid");
   grid.className = "shop-grid habitats-floor";
   grid.replaceChildren(
-    ...h.kinds.map((kind) => {
-      const card = document.createElement("div");
-      card.className = "habitat-card";
-      card.dataset.kind = kind.id;
-      const view = habitatBackground(kind.id, 2);
-      const full = h.owned >= h.spots;
-      const short = dept.coins < kind.price;
-      card.innerHTML = `<h3>${kind.name}</h3>
-        <p class="card-price">${kind.price ? coins(kind.price) : "<b>Free!</b> Your first habitat is on us."}</p>`;
-      card.insertBefore(view, card.querySelector(".card-price"));
-      const btn = document.createElement("button");
-      btn.className = "button-gold big-button";
-      btn.disabled = full || short;
-      btn.textContent = full
-        ? "Your trail is full"
-        : short
-          ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
-          : kind.price
-              ? `Buy for ${kind.price.toLocaleString()} coins`
-              : "Get it free!";
-      btn.onclick = () => buyHabitat(kind);
-      card.appendChild(btn);
-      return card;
+    ...Object.keys(TIER_NAME).map((tier) => {
+      const section = document.createElement("section");
+      section.className = "habitat-tier-group";
+      section.innerHTML = `<h3 class="habitat-tier-title">${TIER_NAME[tier]}</h3><div class="habitat-cards"></div>`;
+      section.querySelector(".habitat-cards").append(...h.kinds.filter((k) => k.tier === tier).map(habitatCard));
+      return section;
     })
   );
+}
+
+function habitatCard(kind) {
+  const h = dept.habitats;
+  const card = document.createElement("div");
+  card.className = "habitat-card";
+  card.dataset.kind = kind.id;
+  const full = h.owned >= h.spots;
+  const short = dept.coins < kind.price;
+  card.innerHTML = `<h3>${kind.name}</h3>
+    <p class="card-price">${kind.price ? coins(kind.price) : "<b>Free!</b> Your first habitat is on us."}</p>`;
+  card.insertBefore(habitatBackground(kind.id, 2), card.querySelector(".card-price"));
+  const btn = document.createElement("button");
+  btn.className = "button-gold";
+  btn.disabled = full || short || !kind.open;
+  btn.textContent = !kind.open
+    ? "Opens with Mythical Pets"
+    : full
+      ? "Your trail is full"
+      : short
+        ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
+        : kind.price
+          ? `Buy for ${kind.price.toLocaleString()} coins`
+          : "Get it free!";
+  btn.onclick = () => buyHabitat(kind);
+  card.appendChild(btn);
+  return card;
 }
 
 async function buyHabitat(kind) {

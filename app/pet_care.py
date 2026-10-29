@@ -24,11 +24,45 @@ WATER_ONLY = {"fish"}  # they wait for the Aquarium
 class HabitatKind:
     id: str
     name: str
-    price: int
+    tier: str  # TIER_PRICE; magical ones open with the Mythical department
 
 
-# More looks (mountain, ...) come later; the first habitat is free.
-HABITAT_KINDS: dict[str, HabitatKind] = {h.id: h for h in [HabitatKind("meadow", "Meadow", 1500)]}
+TIER_PRICE = {"everyday": 1500, "cozy": 2500, "magical": 5000}
+FREE_TIER = "everyday"  # a player's first habitat is free if it's an everyday one
+
+# Each kind's look is web/static/js/habitats.js HABITAT_LOOKS; a kind is sold
+# once it has one. More come in batches (PLAN.md 11j).
+HABITAT_KINDS: dict[str, HabitatKind] = {
+    h.id: h
+    for h in [
+        HabitatKind("meadow", "Meadow", "everyday"),
+        HabitatKind("forest", "Forest", "everyday"),
+        HabitatKind("stream", "Stream", "everyday"),
+        HabitatKind("mountain", "Mountain", "everyday"),
+        HabitatKind("farmyard", "Farmyard", "everyday"),
+        HabitatKind("backyard", "Backyard", "everyday"),
+        HabitatKind("beach", "Beach", "everyday"),
+        HabitatKind("desert", "Desert", "everyday"),
+        HabitatKind("jungle", "Jungle", "everyday"),
+        HabitatKind("tundra", "Snowy Tundra", "everyday"),
+        HabitatKind("orchard", "Autumn Orchard", "everyday"),
+        HabitatKind("pond", "Pond & Marsh", "everyday"),
+        HabitatKind("savanna", "Savanna", "everyday"),
+        HabitatKind("cottage", "Cozy Cottage", "cozy"),
+        HabitatKind("greenhouse", "Greenhouse", "cozy"),
+        HabitatKind("treehouse", "Treehouse Village", "cozy"),
+        HabitatKind("library", "Library Nook", "cozy"),
+        HabitatKind("playroom", "Playroom", "cozy"),
+        HabitatKind("hayloft", "Hay Loft", "cozy"),
+        HabitatKind("attic", "Attic Hideaway", "cozy"),
+        HabitatKind("porch", "Sunny Porch", "cozy"),
+        HabitatKind("crystalcave", "Crystal Cave", "magical"),
+        HabitatKind("cloudkingdom", "Cloud Kingdom", "magical"),
+        HabitatKind("volcano", "Volcano Rim", "magical"),
+        HabitatKind("grove", "Enchanted Grove", "magical"),
+        HabitatKind("observatory", "Starry Observatory", "magical"),
+    ]
+}
 
 
 # TEMPORARY test switch: a learner with this setting can feed a pet any
@@ -153,15 +187,19 @@ def along_pets(conn, learner_id: int) -> list[dict]:
 
 
 def habitat_price(conn, learner_id: int, kind: str) -> int:
-    if not db.list_habitats(conn, learner_id):
+    tier = HABITAT_KINDS[kind].tier
+    if tier == FREE_TIER and not db.list_habitats(conn, learner_id):
         return 0
-    return HABITAT_KINDS[kind].price
+    return TIER_PRICE[tier]
 
 
-def buy_habitat(conn, learner_id: int, kind: str) -> dict:
-    """A new habitat takes the first empty spot on the trail."""
+def buy_habitat(conn, learner_id: int, kind: str, magical_open: bool = False) -> dict:
+    """A new habitat takes the first empty spot on the trail. The same kind
+    can be bought again ("Forest 2")."""
     if kind not in HABITAT_KINDS:
         raise CareError("There's no habitat like that.")
+    if HABITAT_KINDS[kind].tier == "magical" and not magical_open:
+        raise CareError("Magical habitats open with the Mythical Pets department.")
     habitats = db.list_habitats(conn, learner_id)
     taken = {h["spot"] for h in habitats}
     spot = next((s for s in range(TRAIL_SPOTS) if s not in taken), None)
@@ -179,12 +217,16 @@ def buy_habitat(conn, learner_id: int, kind: str) -> dict:
     return {"spot": spot, "kind": kind, "name": name, "price": cost}
 
 
-def habitats_state(conn, learner_id: int) -> dict:
+def habitats_state(conn, learner_id: int, magical_open: bool = False) -> dict:
     """The Pet Shop's Habitats department."""
     habitats = db.list_habitats(conn, learner_id)
     return {
         "kinds": [
-            {"id": h.id, "name": h.name, "price": habitat_price(conn, learner_id, h.id)} for h in HABITAT_KINDS.values()
+            {
+                "id": h.id, "name": h.name, "tier": h.tier, "price": habitat_price(conn, learner_id, h.id),
+                "open": h.tier != "magical" or magical_open,
+            }
+            for h in HABITAT_KINDS.values()
         ],
         "owned": len(habitats),
         "spots": TRAIL_SPOTS,
