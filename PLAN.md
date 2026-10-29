@@ -548,9 +548,6 @@ critters and starters are rolled server-side, `pet_care.battle_pets`; the Hedge 
 became a lizard); the store's Pets tab, the old pet room, the free-pet unlock, `app/pets.py`
 and the `owned_pet` table are gone.
 
-**Temporary**: the `pet_shop_open_all` learner setting opens every shop department for testing
-(`app/pet_shop.py` `_taught`); remove it when testing is done.
-
 ## 11j. Pets v3: many habitats and how pets move in them (agreed 2026-10-28)
 
 **26 habitats** in three price tiers (`app/pet_care.py` TIER_PRICE; a player's first habitat is

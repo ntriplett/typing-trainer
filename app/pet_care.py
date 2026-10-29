@@ -65,17 +65,6 @@ HABITAT_KINDS: dict[str, HabitatKind] = {
 }
 
 
-# TEMPORARY test switch: a learner with this setting can feed a pet any
-# number of times a day. Remove once feeding testing is done.
-SETTING_FEED_ANY_TIME = "pet_feed_any_time"
-
-
-def _fed_today(conn, learner_id: int, pet: dict, today: date) -> bool:
-    if db.get_setting(conn, learner_id, SETTING_FEED_ANY_TIME):
-        return False
-    return pet["last_fed"] == today.isoformat()
-
-
 class CareError(ValueError):
     """Kid-readable, like ShopError."""
 
@@ -95,13 +84,13 @@ def _pet(conn, learner_id: int, pet_id: int) -> dict:
     return pet
 
 
-def view(pet: dict, today: date, fed_any_time: bool = False) -> dict:
+def view(pet: dict, today: date) -> dict:
     genes = g.resolve(pet["genes"])
     return {
         "id": pet["id"], "name": pet["name"], "species": pet["species"], "growth": pet["growth"],
         "genes": genes, "source": pet["source"], "adopted_at": pet["adopted_at"],
         "spot": home_spot(pet["home"]), "tank": aquarium.tank_spot(pet["home"]), "along": pet["along"],
-        "fed_today": not fed_any_time and pet["last_fed"] == today.isoformat(),
+        "fed_today": pet["last_fed"] == today.isoformat(),
         "grown": pet["growth"] >= MAX_GROWTH,
         "rarity": round(g.rarity(pet["genes"]), 3),
         "rare": g.rare_features(pet["genes"]),
@@ -145,7 +134,7 @@ def feed(conn, learner_id: int, pet_id: int, veggie: str, today: date) -> dict:
         raise CareError("That's not a veggie.")
     if pet["growth"] >= MAX_GROWTH:
         raise CareError(f"{pet['name']} is all grown up!")
-    if _fed_today(conn, learner_id, pet, today):
+    if pet["last_fed"] == today.isoformat():
         raise CareError(f"{pet['name']} is full. Come back tomorrow!")
     if db.get_veggies(conn, learner_id).get(veggie, 0) < 1:
         raise CareError(f"You don't have any {garden.VEGGIES[veggie].plural.lower()}. Grow some in the garden!")
@@ -276,9 +265,8 @@ def habitat(conn, learner_id: int, spot: int, today: date) -> dict:
 
 def care_state(conn, learner_id: int, today: date) -> dict:
     """The book: one entry per pet, a school of fish as one entry with its count."""
-    any_time = bool(db.get_setting(conn, learner_id, SETTING_FEED_ANY_TIME))
     rows = db.list_v3_pets(conn, learner_id)
-    every = [view(p, today, any_time) for p in rows]  # every fish counts in its tank
+    every = [view(p, today) for p in rows]  # every fish counts in its tank
     schools: dict[int, list[dict]] = {}
     for p in rows:
         schools.setdefault(p["school"] or p["id"], []).append(p)

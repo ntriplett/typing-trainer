@@ -170,16 +170,6 @@ def test_pet_care_rules_constants():
     assert pet_care.HABITAT_PETS == 6 and pet_care.TRAIL_SPOTS == 10 and pet_care.MAX_GROWTH == 10
 
 
-def test_the_temporary_switch_lets_pets_eat_any_time():
-    pid = add_pet()
-    give(carrot=3)
-    with db.open_db(main.DB_PATH) as conn:
-        db.set_setting(conn, 1, pet_care.SETTING_FEED_ANY_TIME, "1")
-    client.post(f"/api/care/{pid}/feed", json={"veggie": "carrot"})
-    r = client.post(f"/api/care/{pid}/feed", json={"veggie": "carrot"}).json()
-    assert pet(r, pid)["growth"] >= 2 and not pet(r, pid)["fed_today"]
-
-
 def test_tiers_price_habitats_and_only_everyday_ones_start_free():
     kinds = {k["id"]: k for k in client.get("/api/pets/shop/habitats").json()["habitats"]["kinds"]}
     assert kinds["forest"]["price"] == 0 and kinds["mountain"]["price"] == 0

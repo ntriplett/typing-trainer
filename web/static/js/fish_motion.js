@@ -157,7 +157,7 @@ const FishMotion = (() => {
     return best;
   }
 
-  const DINNER_SPEED = 3; // fish dash to food, and zoom about after a bite
+  const DINNER_SPEED = 5; // fish dash to food, and zoom about after a bite
 
   function stepFish(world, fish) {
     const food = fish.state !== "zoom" && world.food.length && hungryFor(world, fish);

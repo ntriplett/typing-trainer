@@ -231,18 +231,6 @@ COUPON_DEPT = "household"
 SETTING_COUPON_USED = "pet_coupon_used"
 
 
-# TEMPORARY test switch: a learner with this setting has every department and
-# the order's second color open. Remove once shop testing is done.
-SETTING_OPEN_ALL = "pet_shop_open_all"
-_ALL_KEYS = set("abcdefghijklmnopqrstuvwxyz0123456789;,./'")
-
-
-def _taught(conn, learner_id: int) -> set[str]:
-    if db.get_setting(conn, learner_id, SETTING_OPEN_ALL):
-        return _ALL_KEYS
-    return lessons.taught_keys(conn, learner_id)
-
-
 class Closed(PermissionError):
     """A department that hasn't opened yet (kid-readable)."""
 
@@ -274,7 +262,7 @@ def _open_dept(conn, learner_id: int, dept_id: str) -> Department:
     dept = DEPARTMENTS.get(dept_id)
     if dept is None:
         raise ShopError("There's no department like that.")
-    missing = missing_keys(dept, _taught(conn, learner_id))
+    missing = missing_keys(dept, lessons.taught_keys(conn, learner_id))
     if dept.soon:
         raise Closed(f"{dept.name} is coming soon!")
     if missing:
@@ -284,11 +272,11 @@ def _open_dept(conn, learner_id: int, dept_id: str) -> Department:
 
 def magical_habitats_open(conn, learner_id: int) -> bool:
     """Magical habitats open with the Mythical department."""
-    return is_open(DEPARTMENTS["mythical"], _taught(conn, learner_id))
+    return is_open(DEPARTMENTS["mythical"], lessons.taught_keys(conn, learner_id))
 
 
 def has_coupon(conn, learner_id: int) -> bool:
-    taught = _taught(conn, learner_id)
+    taught = lessons.taught_keys(conn, learner_id)
     return is_open(DEPARTMENTS[COUPON_DEPT], taught) and db.get_setting(conn, learner_id, SETTING_COUPON_USED) is None
 
 
@@ -317,7 +305,7 @@ def _saved(conn, learner_id: int) -> Slot | None:
 
 def shop_state(conn, learner_id: int, today: date) -> dict:
     """The shop's front: every department, the saved pet, the coupon."""
-    taught = _taught(conn, learner_id)
+    taught = lessons.taught_keys(conn, learner_id)
     saved = _saved(conn, learner_id)
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
     return {
@@ -330,7 +318,7 @@ def shop_state(conn, learner_id: int, today: date) -> dict:
 def department_state(conn, learner_id: int, dept_id: str, today: date, rng: random.Random | None = None) -> dict:
     slots = stock(conn, learner_id, dept_id, today, rng)
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
-    taught = _taught(conn, learner_id)
+    taught = lessons.taught_keys(conn, learner_id)
     saved = _saved(conn, learner_id)
     out = {
         "department": _dept_info(DEPARTMENTS[dept_id], taught),
@@ -435,8 +423,6 @@ def unsave_pet(conn, learner_id: int, today: date) -> str:
 
 def capitals_done(conn, learner_id: int) -> bool:
     """Picking an order's second color opens once capital letters are learned."""
-    if db.get_setting(conn, learner_id, SETTING_OPEN_ALL):
-        return True
     taught = db.list_taught(conn, learner_id)
     return all(lesson_ref(CAPS_ID, letters) in taught for letters in CAPS_GROUPS)
 
@@ -449,7 +435,7 @@ def _color(color_id: str) -> dict:
 def order_choices(conn, learner_id: int) -> list[dict]:
     """Every species an order can ask for (its department is open), with its
     fee and the colors it can be ordered in."""
-    taught = _taught(conn, learner_id)
+    taught = lessons.taught_keys(conn, learner_id)
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
     return [
         {
