@@ -157,19 +157,27 @@ const FishMotion = (() => {
     return best;
   }
 
+  const DINNER_SPEED = 3; // fish dash to food, and zoom about after a bite
+
   function stepFish(world, fish) {
-    const food = world.food.length && hungryFor(world, fish);
+    const food = fish.state !== "zoom" && world.food.length && hungryFor(world, fish);
     if (food) {
       fish.goal = [food.x, food.y]; // dinner!
       fish.state = "eat";
       fish.timer = 30;
-      if (Math.hypot(food.x - fish.x, food.y - fish.y) < 2.5) world.food.splice(world.food.indexOf(food), 1);
+      if (Math.hypot(food.x - fish.x, food.y - fish.y) < 2.5) {
+        world.food.splice(world.food.indexOf(food), 1);
+        fish.state = "zoom"; // a happy lap round the tank
+        fish.timer = 45;
+        fish.goal = clampGoal(fish, fish.x < TANK_W / 2 ? TANK_W - fish.w : fish.w, fish.y + rand(-8, 8));
+      }
     }
     if (!fish.goal || --fish.timer <= 0) choose(world, fish);
-    const maxSpeed = 0.18 + fish.e * 0.32;
+    const fast = fish.state === "eat" || fish.state === "zoom" ? DINNER_SPEED : 1;
+    const maxSpeed = (0.18 + fish.e * 0.32) * fast;
     let [gx, gy] = fish.goal;
     if (fish.state === "bubbles" && Math.abs(fish.x - gx) < 2) gy = SURFACE + fish.h / 2; // ride up the stream
-    const pull = fish.state === "eat" ? 3 : 1;
+    const pull = fast;
     let ax = (gx - fish.x) * 0.004 * pull;
     let ay = (gy - fish.y) * 0.006 * pull;
     const near = Math.hypot(gx - fish.x, gy - fish.y) < 3;
