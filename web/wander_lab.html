@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Wanderpaw Lab</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/wanderpaw.css" />
+</head>
+<body>
+  <main class="wander-lab">
+    <section class="panel">
+      <h1>Wanderpaw lab</h1>
+      <p class="hint">The whole world with no fog and no walls in your way. Look at any seed, click a place to see it, and move yourself anywhere in your own world. (Zooming into a place's small map comes with phase 2.)</p>
+      <div class="lab-options">
+        <button id="mine-button" class="button-go">My world</button>
+        <label>Seed <input id="opt-seed" type="number" min="0" style="width: 9em" /></label>
+        <button id="seed-button" class="button-go">Show seed</button>
+        <button id="random-button" class="button-go">Random seed</button>
+      </div>
+      <div class="lab-options">
+        <label><input id="opt-fog" type="checkbox" /> What I've seen</label>
+        <label><input id="opt-names" type="checkbox" checked /> Names</label>
+        <label><input id="opt-paths" type="checkbox" checked /> Paths</label>
+        <label><input id="opt-steps" type="checkbox" /> Steps from Camp</label>
+        <label>Size <input id="opt-size" type="range" min="22" max="56" value="38" /></label>
+      </div>
+    </section>
+    <div class="wander-lab-grid">
+      <section class="panel wander-board">
+        <canvas id="wander-map" class="wander-map" aria-label="Map"></canvas>
+      </section>
+      <aside>
+        <section class="panel wander-info" id="info">
+          <h2 class="panel-title">Place</h2>
+          <p class="hint">Click a place on the map.</p>
+        </section>
+        <section class="panel wander-stats" id="stats"></section>
+      </aside>
+    </div>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/backgrounds.js"></script>
+  <script src="/static/js/wardrobe.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script src="/static/js/avatar.js"></script>
+  <script src="/static/js/themes.js"></script>
+  <script src="/static/js/header.js"></script>
+  <script src="/static/js/wander_map.js"></script>
+  <script src="/static/js/wander_lab.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+/* Wanderpaw (PLAN.md 11n): the big map, and its lab. */
+
+.wander,
+.wander-lab {
+  max-width: 1100px;
+  margin: 1rem auto;
+  padding: 0 16px;
+}
+
+.wander-hero {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+}
+
+.wander-hero h1 {
+  margin: 0;
+}
+
+.wander-where,
+.wander-keys {
+  font-size: 20px;
+  margin: 0.2rem 0;
+}
+
+.wander-message {
+  min-height: 1.5em;
+  font-size: 20px;
+  text-align: center;
+  color: var(--type-wrong);
+}
+
+.wander-board {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.wander-map {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.type-chip {
+  display: inline-block;
+  padding: 0 0.5em;
+  border: 2px solid var(--outline);
+  color: #fffaf0;
+  font-size: 20px;
+}
+
+/* Lab */
+main.wander-lab {
+  width: min(1500px, calc(100% - 32px));
+  max-width: none;
+}
+
+.wander-lab .lab-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  align-items: center;
+  font-size: 20px;
+}
+
+.wander-lab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .wander-lab-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wander-lab .wander-map {
+  cursor: pointer;
+}
+
+.wander-info dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.8rem;
+  font-size: 20px;
+  margin: 0.5rem 0;
+}
+
+.wander-info dt {
+  color: var(--ink-soft);
+}
+
+.wander-info dd {
+  margin: 0;
+}
+
+.wander-info .button-go {
+  margin: 0.3rem 0.3rem 0 0;
+}
+
+.wander-stats {
+  font-size: 20px;
+}

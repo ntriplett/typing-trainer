@@ -681,6 +681,83 @@ which lists only potions that species can wear.
 - A 3-star day (80%+ served, at least 6) gives one veggie (pet food) from the day's sales.
 - Later: seasons, special customers (regulars, chef, mayor), crops that stay in the ground overnight.
 
+## 11n. Wanderpaw: an adventure that replaces Pet Battles (agreed 2026-10-29)
+
+A persistent exploring game: lead a party of your pets across one world per player, reach the five
+type temples, bring their relics home for the ending. Leans away from "pet fights in an arena":
+clean storybook fantasy, critters get tired and wander off happy (or are befriended), "energy"
+not health. Replaces `game_pet_battle_v1` when it's ready (pre-1.0, breaking is fine).
+
+**Pacing.** 2 tokens = one trip of ~5-10 min (5 rushing, 10 exploring and reading). A temple
+takes ~5-10 trips including the quests that open its path; the whole game ~50 trips.
+
+**Types (5, a ring).** Splash -> Ember -> Dream -> Leaf -> Shock -> Splash. Each type is very
+strong (x2) vs the next, strong (x1.5) vs the one after, weak (x2/3) and very weak (x1/2) vs the
+other two. Colors: Ember red, Splash blue, Leaf green, Dream purple (sleep/mind), Shock
+yellow-orange. Species (draft): Ember fox, dragon, phoenix; Splash fish, turtle; Leaf bunny,
+goat, llama; Shock cat, dog, lizard; Dream unicorn, sheep, snake. A pet defends with its base
+type and attacks with either type. At level 5 it picks a second type from 2: the type of the
+partner it fought beside most, and one other at random.
+
+**Pets.** Energy (not HP: stamina + level + growth), mana (big moves; refills a little each
+turn), power (strength + level), speed (who acts first). Personality perks: curious spots hidden
+things, friendly befriends better, sleepy resists Dream and rests better, playful sometimes gets
+a free action. XP to pets that fought: 100 x difficulty clamped to 25..250 (even fight 100);
+a level per 500 XP; levels raise energy, power, mana; new moves at some levels.
+
+**Party.** Up to 5 pets per trip; empty slots get temp starters (don't level). The picker
+remembers the last party and defaults to it; starred pets list first, the rest tucked away.
+**Camp** holds up to 5 befriended critters (usable on trips, not in your pet area); a rare charm
+(one per temple) promotes one to a real pet, freeing its slot.
+
+**Battles.** 2 of your pets active, no swaps; each turn you type a move for each and they
+resolve together. Both out of energy = battle lost; the others carry the trip on. Moves are
+words (big moves 3-4 words, cost mana); each slip takes ~10% off that move (floor ~40%). Each
+type leaves a mark: Splash Soaked, Ember Glowing, Leaf Tangled, Dream Drowsy, Shock Static;
+marks combo across types (Soaked + Shock = chain zap) and stack within a type (2 Tangled =
+Rooted, 2 Drowsy = Fast Asleep). Duets: big moves only two same-type active pets can do. Blocks
+are typed: a block can't stop a type it's weak to, and bounces some back from types it's strong
+against. Critters telegraph their next move; a quick dodge or shield word answers it. Terrain
+boosts types (home region +, lakeside Splash, night Dream). Befriend by typing a kind phrase
+(better on calm or Drowsy critters, with friendly pets): the critter joins as a temp party
+member for the trip. Why two of one type: duets, stacking, two-pet field skills, home-region
+boosts, and different second types.
+
+**Field skills.** Types work on the map: Ember lights dark caves, Splash fills wells and douses
+fires, Leaf grows vine bridges, Shock powers windmills and gates, Dream calms a guardian so you
+can pass. Some need two pets of the type.
+
+**World.** One per player, generated once from a seed (local maps rebuild from it; only
+discoveries and unlocks are saved). Big map: ~60-90 big hexes, Camp in the center, five type
+regions as wedges out to the edges, each with its temple at the far edge; harder farther from
+Camp. Each big hex zooms into a local map of small hexes, 6 on a side (radius 5, 91 hexes),
+walked by typing the word on a neighbor hex. You see only your hex and the six touching it;
+walked hexes stay on your map. Every big hex has one easy-to-spot campfire. Explored big hexes
+are crossed in one step on the big map. A town fills ~1/4 of a big hex; each building is one
+small hex: stand on it and "go in" to get its screen (shop, dialog, camp, battle). A trip ends
+when every pet is out of energy (or you head home): nap, then the next trip starts at the closest
+campfire you've found (or Camp, if you choose). Kept forever: map, unlocks, temple progress,
+relics, items, XP, everything found (losing just means a nap). Reset each trip: critters and
+in-progress side quests.
+
+**Story.** Each temple's gate needs that region's quest item and its field skill. Inside: the
+relic, a permanent buff for the pet of that type who opened it (the bunny that opens the Leaf
+temple gets Elder Leaf), and one befriending charm. All 5 relics open the final spot at the
+center: an ending scene and credits. Quests give lasting rewards (shortcuts, bridges, key items,
+waystones); small repeatable ones give coins and items.
+
+**Build order.** (1) World gen + big map view; (2) local maps, walking, sight, campfires,
+resume; (3) POIs, towns, quests, gates, temples, story; (4) pets: types, stats, XP, party, Camp;
+(5) battles; (6) balance, credits, replace Pet Battles in the arcade.
+
+**Phase 1 (built 2026-10-29).** `app/wanderpaw/` (hexes.py grid math, world.py generator,
+save.py in the `wander_save` table). Pointy-top axial hexes, big map radius 5 trimmed to ~75-87.
+Walls: each region is a "growing tree" maze from its one gate onto the heartland (the best of 16
+tries, aiming at 10 steps gate -> temple) plus a few loops and rare crossings between regions;
+temples average ~10 walking steps from Camp (5 in a straight line). `/wanderpaw` walks the big
+map by typing (a stand-in until local maps); `/wander-lab` (admin, linked from the parent page)
+shows any seed with no fog, steps-from-Camp, and moves you anywhere or restarts your world.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

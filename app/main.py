@@ -11,6 +11,7 @@ try any module directly and are linked from the parent page.
 from __future__ import annotations
 
 import os
+import random
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -25,12 +26,14 @@ from app import analytics, appearance, aquarium, arcade, brain, config, daily, d
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
-from app.activities.game_modules import GAME_MODULES, MAX_ROUND_SCORE
+from app.activities.game_modules import GAME_MODULES, MAX_ROUND_SCORE, MIN_LETTERS, word_groups
 from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
+from app.wanderpaw import save as wander
+from app.wanderpaw import world as wander_world
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 # Overridable via env var so a separately-spawned server process (e.g.
@@ -775,6 +778,85 @@ def farm_day(body: FarmDayRequest, conn=Depends(get_db), learner_id: int = Depen
         return farm_stand.finish_day(conn, learner_id, body.served, body.missed, body.sold, body.earned, body.spent)
     except farm_stand.FarmError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# --- Wanderpaw (PLAN.md 11n) -------------------------------------------------------------
+# /wanderpaw plays your own world; /wander-lab is the admin view (no fog, no
+# walls, any seed) and can move you anywhere or start your world over.
+
+WANDER_WORDS = 60
+
+
+class WanderStepRequest(BaseModel):
+    q: int
+    r: int
+
+
+class WanderResetRequest(BaseModel):
+    seed: int | None = Field(default=None, ge=0, lt=2**31)
+
+
+def _wander_words(conn, learner_id: int) -> list[str]:
+    """Words to label the places you can walk to: short and medium ones from
+    the letters you've learned (home row until there are enough)."""
+    _, allowed, key_stats = _lab_letters(conn, learner_id, "mine", "")
+    if len(allowed) - 1 < MIN_LETTERS:
+        allowed = [" ", *PRACTICE_KEY_SETS["home"]]
+    skill = snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id))
+    groups = word_groups([], allowed, 0.3, skill, random.Random(), count=WANDER_WORDS)
+    return groups["short"] + groups["medium"]
+
+
+def _wander_state(conn, learner_id: int, save: dict) -> dict:
+    return {**wander.view(save), "words": _wander_words(conn, learner_id)}
+
+
+@app.get("/wanderpaw")
+def wanderpaw_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "wanderpaw.html")
+
+
+@app.get("/wander-lab")
+def wander_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "wander_lab.html")
+
+
+@app.get("/api/wander")
+def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_state(conn, learner_id, wander.load(conn, learner_id))
+
+
+@app.post("/api/wander/step")
+def wander_step(body: WanderStepRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        return _wander_state(conn, learner_id, wander.step(conn, learner_id, (body.q, body.r)))
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/wander-lab/world")
+def wander_lab_world(seed: int | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """A whole world, fog off: yours (with where you are), or any seed's."""
+    save = wander.load(conn, learner_id)
+    out = wander_world.to_json(wander_world.generate(save["seed"] if seed is None else seed))
+    if seed is None or seed == save["seed"]:
+        out["me"] = {"at": save["at"], "visited": save["visited"]}
+    return out
+
+
+@app.post("/api/wander-lab/teleport")
+def wander_lab_teleport(body: WanderStepRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        wander.teleport(conn, learner_id, (body.q, body.r))
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_lab_world(None, conn, learner_id)
+
+
+@app.post("/api/wander-lab/reset")
+def wander_lab_reset(body: WanderResetRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    wander.reset(conn, learner_id, body.seed)
+    return wander_lab_world(None, conn, learner_id)
 
 
 # --- arcade --------------------------------------------------------------------------------
