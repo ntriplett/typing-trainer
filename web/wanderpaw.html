@@ -25,6 +25,12 @@
     <div class="wander-play">
       <section class="panel wander-board">
         <canvas id="wander-local" class="wander-map" aria-label="Where you are"></canvas>
+        <div class="wander-screen panel" id="screen" hidden>
+          <h2 class="panel-title" id="screen-title"></h2>
+          <p id="screen-text"></p>
+          <p class="wander-line" id="screen-line" hidden></p>
+          <p class="wander-screen-keys" id="screen-keys"></p>
+        </div>
       </section>
       <aside class="wander-side">
         <section class="panel">
@@ -33,6 +39,14 @@
           <p class="wander-campfires" id="campfires"></p>
         </section>
         <section class="panel wander-help" id="help"></section>
+        <section class="panel wander-bag">
+          <h2 class="panel-title">Bag</h2>
+          <div id="bag"></div>
+          <h2 class="panel-title">Story</h2>
+          <div id="story"></div>
+          <h2 class="panel-title">Party <small>(stand-in)</small></h2>
+          <div id="party"></div>
+        </section>
       </aside>
     </div>
   </main>

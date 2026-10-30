@@ -25,3 +25,21 @@ def test_lab_opens_small_maps_and_the_gallery(page: Page, live_server):
     page.click("#gallery-button")
     expect(page.locator("#gallery figure").first).to_be_visible()
     assert page.locator("#gallery figure").count() >= 15
+
+
+def test_go_in_to_the_elder_and_take_the_quest(page: Page, live_server):
+    from app.wanderpaw import local as lc
+    from app.wanderpaw import world as wd
+
+    page.goto(f"{live_server}/wanderpaw")
+    seed = page.request.get(f"{live_server}/api/wander-lab/world").json()["seed"]
+    q = wd.generate(seed).quests["leaf"]
+    elder = next(h for h, role in lc.generate(seed, q.town).buildings.items() if role == "elder")
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    page.request.post(f"{live_server}/api/wander-lab/teleport", data={"q": q.town[0], "r": q.town[1], "spot": list(elder)})
+    page.reload()
+    page.wait_for_function("state && state.screen")
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen-title")).to_have_text("Old Badger")
+    page.keyboard.press("Enter")
+    expect(page.locator("#story")).to_contain_text("Acorn Locket")

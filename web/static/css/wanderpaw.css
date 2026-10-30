@@ -183,3 +183,61 @@ main.wander {
   height: auto;
   image-rendering: pixelated;
 }
+
+/* Going in: a screen over the small map. */
+.wander-board {
+  position: relative;
+}
+
+.wander-screen {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 90%);
+  font-size: 20px;
+  z-index: 2;
+}
+
+.wander-screen-keys {
+  color: var(--ink-soft);
+}
+
+.wander-line {
+  font-family: var(--font-type);
+  font-size: 22px;
+  background: var(--surface);
+  padding: 0.5rem;
+  border: 2px solid var(--outline);
+  word-break: break-word;
+}
+
+.wander-line .done {
+  color: var(--type-correct);
+}
+
+.wander-line .next {
+  background: var(--leaf-gold);
+}
+
+.wander-line .wrong {
+  background: var(--type-wrong-bg);
+  color: var(--type-wrong);
+}
+
+.wander-credits {
+  text-align: center;
+}
+
+.wander-bag {
+  font-size: 20px;
+}
+
+.wander-bag .panel-title {
+  margin-top: 0.4rem;
+}
+
+.wander-bag ul {
+  margin: 0.2rem 0;
+  padding-left: 1.2rem;
+}

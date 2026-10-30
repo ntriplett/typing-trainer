@@ -797,6 +797,15 @@ class WanderTripRequest(BaseModel):
     from_camp: bool = False
 
 
+class WanderActRequest(BaseModel):
+    action: str
+    accuracy: float = Field(default=1.0, ge=0, le=1)
+
+
+class WanderPartyRequest(BaseModel):
+    party: list[str]
+
+
 class WanderTeleportRequest(BaseModel):
     q: int
     r: int
@@ -819,7 +828,7 @@ def _wander_words(conn, learner_id: int) -> list[str]:
 
 
 def _wander_state(conn, learner_id: int, save: dict) -> dict:
-    return {**wander.view(save), "words": _wander_words(conn, learner_id)}
+    return {**wander.view(save), "words": _wander_words(conn, learner_id), "coin_balance": db.get_coin_balance(conn, learner_id)}
 
 
 def _wander_act(conn, learner_id: int, act) -> dict:
@@ -860,9 +869,16 @@ def wander_trip_end(conn=Depends(get_db), learner_id: int = Depends(current_lear
     return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id))
 
 
+@app.post("/api/wander/act")
+def wander_go_in(body: WanderActRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Do what the place you're standing on offers (save.screen's action)."""
+    return _wander_act(conn, learner_id, lambda: wander.go_in(conn, learner_id, body.action, body.accuracy))
+
+
 def _lab_me(save: dict) -> dict:
     return {"at": save["at"], "spot": save["spot"], "visited": save["visited"], "trip": save["trip"],
-            "seen": wander.seen_all(save)}
+            "seen": wander.seen_all(save), "party": save["party"], "cleared": save["cleared"],
+            "quests": save["quests"], "temples": save["temples"]}
 
 
 @app.get("/api/wander-lab/world")
@@ -908,6 +924,15 @@ def wander_lab_teleport(body: WanderTeleportRequest, conn=Depends(get_db), learn
 @app.post("/api/wander-lab/refill")
 def wander_lab_refill(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     wander.refill(conn, learner_id)
+    return wander_lab_world(None, conn, learner_id)
+
+
+@app.post("/api/wander-lab/party")
+def wander_lab_party(body: WanderPartyRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        wander.set_party(conn, learner_id, body.party)
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return wander_lab_world(None, conn, learner_id)
 
 

@@ -75,3 +75,20 @@ def test_lab_teleport_refill_and_reset():
     assert client.post("/api/wander-lab/refill").json()["me"]["trip"]["energy"] > 0
     fresh = client.post("/api/wander-lab/reset", json={"seed": 1234}).json()
     assert fresh["seed"] == 1234 and fresh["me"]["at"] == [0, 0]
+
+
+def test_going_in_and_party():
+    seed = _seed()
+    world = wd.generate(seed)
+    q = world.quests["leaf"]
+    town = lc.generate(seed, q.town)
+    elder = next(h for h, role in town.buildings.items() if role == "elder")
+    client.post("/api/wander/trip/start", json={})
+    client.post("/api/wander-lab/teleport", json={"q": q.town[0], "r": q.town[1], "spot": list(elder)})
+    data = client.get("/api/wander").json()
+    assert data["screen"]["action"] == "ask"
+    data = client.post("/api/wander/act", json={"action": "ask"}).json()
+    assert data["quests"][0]["state"] == "asked"
+    assert client.post("/api/wander/act", json={"action": "ask"}).status_code == 400
+    assert client.post("/api/wander-lab/party", json={"party": ["leaf", "leaf"]}).json()["me"]["party"] == ["leaf", "leaf"]
+    assert client.post("/api/wander-lab/party", json={"party": ["fire"]}).status_code == 400

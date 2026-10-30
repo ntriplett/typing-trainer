@@ -26,6 +26,7 @@
         <label><input id="opt-names" type="checkbox" checked /> Names</label>
         <label><input id="opt-paths" type="checkbox" checked /> Paths</label>
         <label><input id="opt-steps" type="checkbox" /> Steps from Camp</label>
+        <label><input id="opt-story" type="checkbox" checked /> Story</label>
         <label>Size <input id="opt-size" type="range" min="22" max="56" value="38" /></label>
       </div>
     </section>
@@ -39,6 +40,12 @@
           <p class="hint">Click a place on the map.</p>
         </section>
         <section class="panel wander-stats" id="stats"></section>
+        <section class="panel wander-stats" id="party-box">
+          <h2 class="panel-title">Stand-in party</h2>
+          <p class="hint">Types your party has until real pets join. Gates and temples check these.</p>
+          <div id="party-picks" class="lab-options"></div>
+          <button id="party-button" class="button-go">Set party</button>
+        </section>
       </aside>
     </div>
     <div class="wander-lab-grid" id="local-section" hidden>

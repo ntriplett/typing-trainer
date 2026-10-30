@@ -36,7 +36,7 @@ const WanderMap = (() => {
   const PAL = {
     k: "#3b2417", g: "#3f6e34", G: "#5f9a3c", t: "#7a5230", b: "#3a7fc8", B: "#a8d5e2", w: "#fbf1dc",
     r: "#b8432f", o: "#e8b33e", y: "#f6d465", s: "#8a8478", S: "#c9c1b0", p: "#8a4fb8", P: "#d6b8ee",
-    m: "#d9822b", c: "#c95b8c", n: "#8b5a2b",
+    m: "#d9822b", c: "#c95b8c", n: "#8b5a2b", O: "#fffaf0",
   };
   const GLYPHS = {
     tree: ["..g..", ".gGg.", "gGgGg", ".gGg.", "..t.."],
@@ -61,6 +61,22 @@ const WanderMap = (() => {
     cliffs: ["kkk..", ".....", "..kkk", ".....", "kk.kk"],
     sign: ["nnnn.", "nnnnn", "nnnn.", ".n...", ".n..."],
     smoke: [".S...", "..S..", ".S.S.", "..S..", ".S..."],
+    // gates
+    dark: ["kkkkk", "k...k", "k.y.k", "k...k", "kkkkk"],
+    flames: ["o.o.o", "omomo", "mymym", "nnnnn", "....."],
+    gap: ["n...n", "n...n", "k...k", "kk.kk", "kkkkk"],
+    old_gate: ["sssss", "s.s.s", "sysys", "s.s.s", "sssss"],
+    guardian: [".sss.", "skSks", "sSSSs", ".sSs.", "ss.ss"],
+    broken_bridge: ["n.n..", "nn..n", ".....", "n..nn", "..n.n"],
+    // places
+    forage: [".....", ".g...", "grG..", ".Grg.", "..G.."],
+    chest: [".....", "nnnnn", "nonon", "nnnnn", "....."],
+    shrine: ["..y..", ".sSs.", ".S.S.", ".S.S.", "sssss"],
+    lost: ["..y..", ".yoy.", "yooOy", ".yoy.", "..y.."],
+    elder: ["..y..", ".rrr.", "rrrrr", ".wnw.", ".wnw."],
+    board: ["nnnnn", "nwwwn", "nwwwn", "nnnnn", ".n.n."],
+    inn: [".rrr.", "rrrrr", "ryyyr", ".wnw.", ".wnw."],
+    shop: ["rwrwr", "rwrwr", ".....", ".wnw.", ".wnw."],
   };
   const BIOME_GLYPHS = {
     fields: ["tuft"], orchard: ["apple", "tuft"],
@@ -209,6 +225,37 @@ const WanderMap = (() => {
     ctx.restore();
   }
 
+  // A gate on a big edge: a diamond in its type's color (two for a
+  // two-pet gate), planks for a broken shortcut; faded once cleared.
+  function drawGate(ctx, g, e) {
+    const [x0, y0] = center(g, ...e.a);
+    const [x1, y1] = center(g, ...e.b);
+    const x = (x0 + x1) / 2;
+    const y = (y0 + y1) / 2;
+    const s = Math.max(4, g.size * 0.2);
+    ctx.save();
+    ctx.globalAlpha = e.gate.cleared ? 0.35 : 1;
+    if (e.gate.kind === "quest") {
+      glyph(ctx, GLYPHS.broken_bridge, x, y, Math.max(2, Math.round(g.size / 9)));
+    } else {
+      const offsets = e.gate.need === 2 ? [-s * 0.7, s * 0.7] : [0];
+      offsets.forEach((dx) => {
+        ctx.beginPath();
+        ctx.moveTo(x + dx, y - s);
+        ctx.lineTo(x + dx + s, y);
+        ctx.lineTo(x + dx, y + s);
+        ctx.lineTo(x + dx - s, y);
+        ctx.closePath();
+        ctx.fillStyle = TYPE_COLORS[e.gate.kind];
+        ctx.fill();
+        ctx.strokeStyle = "#3b2417";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+  }
+
   function drawTrail(ctx, g, a, b) {
     const [x0, y0] = center(g, a[0], a[1]);
     const [x1, y1] = center(g, b[0], b[1]);
@@ -293,6 +340,7 @@ const WanderMap = (() => {
     }
     map.edges.forEach((e) => {
       if (e.kind !== "open") drawWall(ctx, g, e.a, e.b, e.kind);
+      if (e.gate) drawGate(ctx, g, e);
     });
     // Glimpsed hexes: hazy until visited.
     if (fog) {
@@ -323,10 +371,10 @@ const WanderMap = (() => {
       ctx.lineWidth = 4;
       ctx.stroke();
     }
-    (opts.marks || []).forEach(([q, r]) => {
+    // Marks: places an elder told you about (a star, even in the fog).
+    [...(opts.marks || []), ...(map.marks || [])].forEach(([q, r]) => {
       const [x, y] = center(g, q, r);
-      ctx.fillStyle = "rgba(232, 179, 62, 0.85)";
-      ctx.fillRect(x - 3, y + g.size * 0.45, 6, 6);
+      glyph(ctx, GLYPHS.lost, x, y - g.size * 0.35, Math.max(2, Math.round(g.size / 8)));
     });
     if (map.at) {
       const [x, y] = center(g, ...map.at);
@@ -350,6 +398,7 @@ const WanderMap = (() => {
   // --- small maps ---------------------------------------------------------------
 
   const TILE_FILL = {
+    dark: "#3b3448", flames: "#d9a066", gap: "#5c4430", old_gate: "#b8ae9c", guardian: "#b8ae9c", broken_bridge: "#6fa8d6",
     path: "#dcc08e", sand: "#ecd9a0", plaza: "#d6c6a6", water: "#6fa8d6", bridge: "#6fa8d6",
     ford: "#9fd0e0", cliff: "#8a6446", building: "#d6c6a6", temple: "#d6c6a6", stone: "#d6c6a6",
   };
@@ -374,11 +423,13 @@ const WanderMap = (() => {
       case "bridge": return GLYPHS.planks;
       case "ford": return GLYPHS.stones;
       case "flowers": return GLYPHS.flower;
-      case "building": return GLYPHS.house;
+      case "building": return null; // drawn by its role
       case "campfire": return GLYPHS.logfire;
       case "camp": return SPECIALS.camp;
       case "temple": return SPECIALS.temple;
       case "stone": return SPECIALS.final;
+      case "dark": case "flames": case "gap": case "old_gate": case "guardian": case "broken_bridge":
+        return GLYPHS[kind];
       default: return null;
     }
   }
@@ -398,6 +449,8 @@ const WanderMap = (() => {
     const rows = tileGlyph(t.kind, biome);
     if (rows) glyph(ctx, rows, x, y, big ? Math.max(2, Math.round(g.size / 10)) : blocker ? Math.max(2, Math.round(g.size / 5.5)) : px);
     else if (t.kind === "grass" && hashRand(t.q, t.r)() < 0.3) glyph(ctx, GLYPHS.tuft, x, y, px);
+    if (t.role && GLYPHS[t.role]) glyph(ctx, GLYPHS[t.role], x, y, px + 1);
+    if (t.poi) glyph(ctx, GLYPHS[t.poi], x, y, px);
     if (t.exit !== undefined) glyph(ctx, GLYPHS.sign, x + g.size * 0.35, y - g.size * 0.3, Math.max(2, px - 1));
   }
 

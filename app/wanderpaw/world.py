@@ -28,6 +28,7 @@ from app.wanderpaw import hexes as hx
 from app.wanderpaw.hexes import Hex
 
 WORLD_VERSION = 1
+STORY_VERSION = 1  # gates and quests (they don't move the land)
 MAP_RADIUS = 5
 HEARTLAND_RADIUS = 1
 TRIM_CHANCE = 0.35  # outer-ring hexes dropped for a ragged coast
@@ -38,6 +39,7 @@ MAZE_TRIES = 16  # mazes tried per region; the one whose temple walk is nearest 
 TEMPLE_WALK = 10  # big-hex steps from the region's gate to its temple
 BORDER_LOOP_CHANCE = 0.06  # ... between two type regions
 TOWNS_PER_REGION = (1, 2)
+LOOP_GATE_CHANCE = 0.2  # loops in a region that need two pets of a type
 
 # The type ring, in order around the map (each beats the next two).
 REGIONS = ("splash", "ember", "dream", "leaf", "shock")
@@ -96,10 +98,34 @@ class BigHex:
 
 
 @dataclass(frozen=True, slots=True)
+class Gate:
+    """Something in the way on an open big edge: a field skill clears it
+    (`kind` a type, `need` pets of that type), or, for kind "quest", the
+    story quest of `region` repairs it (a shortcut)."""
+
+    kind: str
+    need: int = 1
+    region: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Quest:
+    """A region's story: its elder lives in `town`, lost something in
+    `lost`; bringing it back repairs the `shortcut` edge."""
+
+    region: str
+    town: Hex
+    lost: Hex
+    shortcut: tuple[Hex, Hex]
+
+
+@dataclass(frozen=True, slots=True)
 class World:
     seed: int
     hexes: dict[Hex, BigHex]
     edges: dict[tuple[Hex, Hex], str]  # edge_key -> "open" or a wall kind
+    gates: dict[tuple[Hex, Hex], Gate]  # on open edges
+    quests: dict[str, Quest]
 
     def is_open(self, a: Hex, b: Hex) -> bool:
         return self.edges.get(hx.edge_key(a, b)) == "open"
@@ -129,7 +155,11 @@ def generate(seed: int) -> World:
         h: BigHex(h, regions[h], hx.distance(h, (0, 0)), biomes[h], names[h], specials.get(h))
         for h in sorted(coords)
     }
-    return World(seed, big, edges)
+    # The story has its own random stream, so it can change without moving the land.
+    story = random.Random(f"wanderpaw-story:{STORY_VERSION}:{seed}")
+    quests = _plan_quests(story, big, edges, temples)
+    gates = _place_gates(story, big, edges, temples, quests)
+    return World(seed, big, edges, gates, quests)
 
 
 def _wedge(h: Hex, rotation: float, jitter: float) -> str:
@@ -312,11 +342,88 @@ def _name_hexes(rng: random.Random, regions: dict[Hex, str], biomes: dict[Hex, s
     return names
 
 
-def distances_from(world: World, start: Hex) -> dict[Hex, int]:
-    """Walking steps from start to every reachable hex (open edges only)."""
+# --- the story: quests, shortcuts, gates -----------------------------------------
+
+
+def _steps(edges: dict, start: Hex, extra: tuple[Hex, Hex] | None = None) -> dict[Hex, int]:
+    """Walking steps from start over open edges (and one extra edge)."""
+    nbrs: dict[Hex, list[Hex]] = {}
+    for (a, b), kind in edges.items():
+        if kind == "open" or (a, b) == extra:
+            nbrs.setdefault(a, []).append(b)
+            nbrs.setdefault(b, []).append(a)
+    dist, todo = {start: 0}, [start]
+    for h in todo:
+        for n in nbrs.get(h, []):
+            if n not in dist:
+                dist[n] = dist[h] + 1
+                todo.append(n)
+    return dist
+
+
+def _path(edges: dict, start: Hex, goal: Hex) -> list[Hex]:
+    dist = _steps(edges, goal)
+    path = [start]
+    while path[-1] != goal:
+        h = path[-1]
+        path.append(min((n for n in hx.neighbors(h) if edges.get(hx.edge_key(h, n)) == "open" and n in dist), key=lambda n: (dist[n], n)))
+    return path
+
+
+def _plan_quests(rng: random.Random, big: dict[Hex, BigHex], edges: dict, temples: dict[str, Hex]) -> dict[str, Quest]:
+    """Each region's elder (its town nearest Camp), the far place where the
+    lost thing is, and the wall the reward turns into a shortcut: the one
+    whose opening saves the most steps from Camp to the temple."""
+    quests = {}
+    for region in REGIONS:
+        cells = [h for h, b in big.items() if b.region == region]
+        town = min((h for h in cells if big[h].special == "town"), key=lambda h: (big[h].ring, h))
+        far = [h for h in cells if not big[h].special and big[h].ring >= 4] or [h for h in cells if not big[h].special]
+        lost = rng.choice(sorted(far))
+        base = _steps(edges, (0, 0))[temples[region]]
+        walls = [e for e, kind in edges.items() if kind != "open" and big[e[0]].region == big[e[1]].region == region]
+        shortcut = max(walls, key=lambda e: (base - _steps(edges, (0, 0), e)[temples[region]], e))
+        edges[shortcut] = "open"
+        quests[region] = Quest(region, town, lost, shortcut)
+    return quests
+
+
+def _place_gates(rng, big: dict[Hex, BigHex], edges: dict, temples: dict[str, Hex], quests: dict[str, Quest]) -> dict:
+    """On each region's way to its temple: a gate of the region's own type
+    (deep) and one of another type (on the way). Some loops get a gate
+    that needs two pets of a type. Shortcuts are quest gates."""
+    gates = {q.shortcut: Gate("quest", 1, q.region) for q in quests.values()}
+    before = {e: ("wall" if e in gates else kind) for e, kind in edges.items()}  # the way before any shortcut
+    for region in REGIONS:
+        path = _path(before, (0, 0), temples[region])
+        steps = [hx.edge_key(a, b) for a, b in zip(path, path[1:])
+                 if big[a].region == big[b].region == region and hx.edge_key(a, b) not in gates]
+        if not steps:
+            continue
+        deep = steps[-1] if len(steps) < 3 else steps[-2]
+        gates[deep] = Gate(region)
+        early = [e for e in steps[: max(1, len(steps) // 2)] if e != deep]
+        if early:
+            gates[rng.choice(early)] = Gate(rng.choice([r for r in REGIONS if r != region]))
+        on_path = {hx.edge_key(a, b) for a, b in zip(path, path[1:])}
+        loops = [e for e, kind in edges.items()
+                 if kind == "open" and e not in gates and e not in on_path
+                 and big[e[0]].region == big[e[1]].region == region]
+        for e in sorted(loops):
+            if rng.random() < LOOP_GATE_CHANCE:
+                gates[e] = Gate(rng.choice(REGIONS), 2)
+    return gates
+
+
+def distances_from(world: World, start: Hex, passable=None) -> dict[Hex, int]:
+    """Walking steps from start to every reachable hex (open edges only;
+    `passable(edge_key, gate)` can rule out gated ones)."""
     dist, todo = {start: 0}, [start]
     for h in todo:
         for n in world.exits(h):
+            key = hx.edge_key(h, n)
+            if passable and key in world.gates and not passable(key, world.gates[key]):
+                continue
             if n not in dist:
                 dist[n] = dist[h] + 1
                 todo.append(n)
@@ -327,8 +434,15 @@ def hex_json(b: BigHex) -> dict:
     return {"q": b.coord[0], "r": b.coord[1], "region": b.region, "ring": b.ring, "biome": b.biome, "name": b.name, "special": b.special}
 
 
-def edge_json(key: tuple[Hex, Hex], kind: str) -> dict:
-    return {"a": list(key[0]), "b": list(key[1]), "kind": kind}
+def edge_json(key: tuple[Hex, Hex], kind: str, gate: Gate | None = None) -> dict:
+    out = {"a": list(key[0]), "b": list(key[1]), "kind": kind}
+    if gate:
+        out["gate"] = {"kind": gate.kind, "need": gate.need, "region": gate.region}
+    return out
+
+
+def quest_json(q: Quest) -> dict:
+    return {"region": q.region, "town": list(q.town), "lost": list(q.lost), "shortcut": [list(q.shortcut[0]), list(q.shortcut[1])]}
 
 
 def to_json(world: World) -> dict:
@@ -338,5 +452,6 @@ def to_json(world: World) -> dict:
         "version": WORLD_VERSION,
         "radius": MAP_RADIUS,
         "hexes": [hex_json(b) for b in world.hexes.values()],
-        "edges": [edge_json(k, v) for k, v in world.edges.items()],
+        "edges": [edge_json(k, v, world.gates.get(k)) for k, v in world.edges.items()],
+        "quests": [quest_json(q) for q in world.quests.values()],
     }

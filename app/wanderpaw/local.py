@@ -44,6 +44,16 @@ ZONE_HALF = 2  # a zone is the corner hex and two either side
 WALKABLE = frozenset({"grass", "flowers", "path", "sand", "plaza", "bridge", "ford", "building", "campfire", "camp", "temple", "stone"})
 BLOCKED = frozenset({"tree", "bush", "rock", "cliff", "water"})
 WALL_TILES = {"river": "water", "cliff": "cliff", "thicket": "tree", "rocks": "rock"}
+# What stands in a gated exit until it's cleared (by a field skill, or for
+# "quest", by finishing the region's story quest). Blocked until then.
+GATE_TILES = {"ember": "dark", "splash": "flames", "leaf": "gap", "shock": "old_gate", "dream": "guardian", "quest": "broken_bridge"}
+CLEARED_TILES = {"gap": "bridge", "broken_bridge": "bridge"}  # else path
+POI_KINDS = ("forage", "chest", "shrine", "lost")
+# Town buildings: the region's quest town has the elder.
+BUILDING_ROLES = ("board", "inn", "shop")
+FORAGE_SPOTS = (1, 3)
+CHEST_CHANCE = (0.15, 0.07)  # + per ring from Camp
+SHRINE_CHANCE = 0.12
 EDGE_OF_WORLD = "water"
 # What a trail turns a blocker into when it has to go through one.
 CROSSING = {"water": "bridge", "tree": "path", "bush": "path", "rock": "path", "cliff": "path"}
@@ -89,7 +99,9 @@ class LocalMap:
     tiles: dict[Hex, str]
     exits: dict[Hex, int]  # exit hex -> big-map direction it leads
     campfire: Hex
-    buildings: tuple[Hex, ...] = ()
+    buildings: dict[Hex, str]  # building hex -> its role (BUILDING_ROLES)
+    gates: dict[Hex, tuple[Hex, Hex]]  # gate tile -> the big edge it guards
+    pois: dict[Hex, str]  # places of interest on walkable hexes: POI_KINDS
 
     def walkable(self, h: Hex) -> bool:
         return self.tiles.get(h) in WALKABLE
@@ -146,6 +158,15 @@ def generate(seed: int, big: Hex) -> LocalMap:
             tiles[h] = wall
             locked.add(h)
 
+    # Gated exits are blocked (and locked) before any trails, so nothing
+    # inside comes to depend on walking through one.
+    gates = {}
+    for h, d in exits.items():
+        key = hx.edge_key(big, hx.neighbor(big, d))
+        if key in world.gates:
+            gates[h] = key
+            tiles[h] = GATE_TILES[world.gates[key].kind]
+
     campfire, buildings, landmarks = _place_specials(rng, tiles, locked, here, world, big)
     tiles[campfire] = "camp" if here.special == "camp" else "campfire"
     locked.add(campfire)
@@ -162,7 +183,45 @@ def generate(seed: int, big: Hex) -> LocalMap:
     for start in sorted(exits) + landmarks:
         _carve(tiles, locked, noise, style, start, campfire)
     _join_or_fill(tiles, locked, noise, style, campfire)
-    return LocalMap(big, here.biome, style.name, tiles, exits, campfire, tuple(buildings))
+
+    # Places of interest have their own random stream (the land stays put).
+    story = random.Random(f"wanderpaw-poi:{wd.STORY_VERSION}:{seed}:{big[0]}:{big[1]}")
+    roles = _building_roles(story, buildings, any(q.town == big for q in world.quests.values()))
+    pois = _place_pois(story, tiles, exits, campfire, here, any(q.lost == big for q in world.quests.values()))
+    return LocalMap(big, here.biome, style.name, tiles, exits, campfire, roles, gates, pois)
+
+
+def _building_roles(rng: random.Random, buildings: list[Hex], quest_town: bool) -> dict[Hex, str]:
+    roles = (["elder"] if quest_town else []) + list(BUILDING_ROLES)
+    order = sorted(buildings)
+    rng.shuffle(order)
+    return {h: roles[i] if i < len(roles) else "house" for i, h in enumerate(order)}
+
+
+def _place_pois(rng: random.Random, tiles, exits, campfire: Hex, here: wd.BigHex, lost: bool) -> dict[Hex, str]:
+    """Forage spots, maybe a chest or a shrine, and the lost thing of a
+    region's story, on open ground away from the campfire and exits."""
+    ground = [h for h in CELLS if tiles[h] in ("grass", "flowers", "path", "sand")
+              and h not in exits and hx.distance(h, campfire) >= 2]
+    rng.shuffle(ground)
+    pois: dict[Hex, str] = {}
+
+    def put(kind: str, spots: list[Hex]) -> None:
+        free = [h for h in spots if h not in pois and not any(n in pois for n in hx.neighbors(h))]
+        if free:
+            pois[free[0]] = kind
+
+    if lost:  # as far from the campfire as it gets
+        put("lost", sorted(ground, key=lambda h: (-hx.distance(h, campfire), h)))
+    if here.special in ("camp", "town", "temple", "final"):
+        return pois
+    for _ in range(rng.randint(*FORAGE_SPOTS)):
+        put("forage", ground)
+    if rng.random() < CHEST_CHANCE[0] + CHEST_CHANCE[1] * here.ring:
+        put("chest", sorted(ground, key=lambda h: (-hx.distance(h, campfire), rng.random())))
+    if here.region != wd.HEARTLAND and rng.random() < SHRINE_CHANCE:
+        put("shrine", ground)
+    return pois
 
 
 # --- terrain by style ------------------------------------------------------------
@@ -388,6 +447,10 @@ def tile_json(local: LocalMap, h: Hex) -> dict:
     out = {"q": h[0], "r": h[1], "kind": local.tiles[h]}
     if h in local.exits:
         out["exit"] = local.exits[h]
+    if h in local.pois:
+        out["poi"] = local.pois[h]
+    if h in local.buildings:
+        out["role"] = local.buildings[h]
     return out
 
 

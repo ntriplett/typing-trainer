@@ -40,11 +40,14 @@ async function show(seed) {
   loadLocal();
 }
 
-// Walking steps from Camp along open edges.
+// Walking steps from Camp along open edges (field-skill gates count as open).
 function stepsFrom(start) {
   const exits = new Map();
+  const cleared = new Set(isMine() ? world.me.cleared : []);
   world.edges.forEach((e) => {
     if (e.kind !== "open") return;
+    // Shortcuts count once repaired (in your world), not before.
+    if (e.gate && e.gate.kind === "quest" && !cleared.has(`${e.a.join(",")}|${e.b.join(",")}`)) return;
     const a = WanderMap.key(...e.a);
     const b = WanderMap.key(...e.b);
     (exits.get(a) || exits.set(a, []).get(a)).push(b);
@@ -67,8 +70,11 @@ function stepsFrom(start) {
 // The map as the player sees it (their save's fog), or all of it.
 function mapView() {
   const at = isMine() ? world.me.at : null;
+  const cleared = new Set(isMine() ? world.me.cleared : []);
+  const edgeView = (e) => (e.gate ? { ...e, gate: { ...e.gate, cleared: cleared.has(`${e.a.join(",")}|${e.b.join(",")}`) } } : e);
+  const marks = opt("opt-story").checked ? world.quests.flatMap((q) => [q.lost]) : [];
   if (!opt("opt-fog").checked) {
-    return { radius: world.radius, at, hexes: world.hexes.map((h) => ({ ...h, visited: true })), edges: world.edges };
+    return { radius: world.radius, at, marks, hexes: world.hexes.map((h) => ({ ...h, visited: true })), edges: world.edges.map(edgeView) };
   }
   const visited = new Set(world.me.visited.map((v) => WanderMap.key(...v)));
   const seen = new Set(visited);
@@ -79,8 +85,8 @@ function mapView() {
       const known = visited.has(WanderMap.key(h.q, h.r));
       return { ...h, visited: known, name: known ? h.name : null };
     });
-  const edges = world.edges.filter((e) => visited.has(WanderMap.key(...e.a)) || visited.has(WanderMap.key(...e.b)));
-  return { radius: world.radius, at, hexes, edges };
+  const edges = world.edges.filter((e) => visited.has(WanderMap.key(...e.a)) || visited.has(WanderMap.key(...e.b))).map(edgeView);
+  return { radius: world.radius, at, hexes, edges, marks: [] };
 }
 
 function drawOpts() {
@@ -185,9 +191,45 @@ function renderStats() {
       .map((t) => `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[t.region]}">${t.region} ${dist.get(WanderMap.key(t.q, t.r))}</span>`)
       .join(" ")}</p>
     <p>Edges: ${Object.entries(walls).map(([k, v]) => `${k} ${v}`).join(", ")}</p>
-    ${isMine() ? `<p>Visited ${world.me.visited.length} places.</p>` : ""}
+    <p>Gates: ${gateSummary()}</p>
+    <p>Story (elder's town / lost thing, star on the map):<br>${world.quests
+      .map((q) => {
+        const name = (h) => world.hexes.find((x) => x.q === h[0] && x.r === h[1]).name;
+        const state = isMine() ? world.me.quests[q.region] || "-" : "";
+        return `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[q.region]}">${q.region}</span> ${name(q.town)} / ${name(q.lost)} ${state}`;
+      })
+      .join("<br>")}</p>
+    ${isMine() ? `<p>Visited ${world.me.visited.length} places. Temples open: ${world.me.temples.join(", ") || "none"}. Gates cleared: ${world.me.cleared.length}.</p>` : ""}
   `;
+  renderParty();
 }
+
+function gateSummary() {
+  const counts = {};
+  world.edges.forEach((e) => {
+    if (!e.gate) return;
+    const k = e.gate.kind === "quest" ? "shortcut" : `${e.gate.kind}${e.gate.need === 2 ? " x2" : ""}`;
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  return Object.entries(counts).sort().map(([k, v]) => `${k} ${v}`).join(", ");
+}
+
+const TYPES = ["ember", "splash", "leaf", "dream", "shock"];
+
+function renderParty() {
+  const box = document.getElementById("party-box");
+  box.hidden = !isMine();
+  if (!isMine()) return;
+  const picks = document.getElementById("party-picks");
+  picks.innerHTML = [0, 1, 2, 3, 4]
+    .map((i) => `<select data-slot="${i}"><option value="">-</option>${TYPES.map((t) => `<option ${world.me.party[i] === t ? "selected" : ""}>${t}</option>`).join("")}</select>`)
+    .join("");
+}
+
+opt("party-button").onclick = () => {
+  const party = [...document.querySelectorAll("#party-picks select")].map((s) => s.value).filter(Boolean);
+  act("/api/wander-lab/party", { party });
+};
 
 canvas.addEventListener("click", (e) => {
   if (!world) return;
@@ -252,7 +294,8 @@ function renderLocal() {
       <dt>Exits</dt><dd>${local.tiles.filter((t) => t.exit !== undefined).length}</dd>
       <dt>Tiles</dt><dd>${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}</dd>
     </dl>
-    ${picked ? `<p>Small hex ${picked.q}, ${picked.r}: <b>${words(picked.kind)}</b>${picked.exit !== undefined ? " (exit)" : ""}</p>` : `<p class="hint">Click a small hex.</p>`}
+    <p>Places: ${local.tiles.filter((t) => t.poi || t.role).map((t) => t.poi || t.role).join(", ") || "none"}</p>
+    ${picked ? `<p>Small hex ${picked.q}, ${picked.r}: <b>${words(picked.kind)}</b>${picked.exit !== undefined ? " (exit)" : ""}${picked.poi ? `, ${picked.poi}` : ""}${picked.role ? `, ${picked.role}` : ""}</p>` : `<p class="hint">Click a small hex.</p>`}
     ${picked && walkable && isMine() ? `<button class="button-go" id="spot-button">Put me here</button>` : ""}
   `;
   const btn = document.getElementById("spot-button");
@@ -302,7 +345,7 @@ opt("seed-button").onclick = () => show(Number(opt("opt-seed").value) || 0);
 opt("random-button").onclick = () => show(Math.floor(Math.random() * 2 ** 31));
 opt("refill-button").onclick = () => act("/api/wander-lab/refill", {});
 opt("gallery-button").onclick = showGallery;
-["opt-fog", "opt-names", "opt-paths", "opt-steps", "opt-size"].forEach((id) =>
+["opt-fog", "opt-names", "opt-paths", "opt-steps", "opt-size", "opt-story"].forEach((id) =>
   opt(id).addEventListener("input", () => {
     render();
     renderLocal();

@@ -93,3 +93,23 @@ def test_specials(seed):
             assert "temple" in kinds
         if big.special == "final":
             assert "stone" in kinds
+
+
+def test_gates_sit_in_exits_and_lead_inside():
+    for seed, big, local in _maps():
+        world = wd.generate(seed)
+        for h, edge in local.gates.items():
+            assert h in local.exits and edge in world.gates
+            assert local.tiles[h] == lc.GATE_TILES[world.gates[edge].kind]
+            assert any(local.walkable(n) for n in hx.neighbors(h) if n in lc.CELL_SET)
+
+
+def test_pois_and_building_roles():
+    for seed, big, local in _maps():
+        world = wd.generate(seed)
+        assert all(local.walkable(h) and h not in local.exits for h in local.pois)
+        if world.hexes[big].special == "town":
+            roles = set(local.buildings.values())
+            assert {"board", "inn", "shop"} <= roles
+            assert ("elder" in roles) == any(q.town == big for q in world.quests.values())
+        assert ("lost" in local.pois.values()) == any(q.lost == big for q in world.quests.values())

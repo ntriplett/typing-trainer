@@ -777,6 +777,27 @@ ends the trip; next trip starts there or at Camp (C). Lab: click a big hex for i
 (fog toggle, click a small hex to put yourself there), Full energy, and a Land gallery of every biome.
 Later: crossing explored big hexes in one step on the big map.
 
+**Phase 3 (built 2026-10-29): gates, places, story.** World gets `gates` and `quests` from their own
+random stream (STORY_VERSION; the land doesn't move). Per region: the elder lives in its town nearest
+Camp, lost something in a ring-4+ hex (a star on your big map once asked), and the reward repairs the
+`shortcut` (the wall whose opening saves the most steps to the temple; a "quest" gate until then).
+On the pre-shortcut way to each temple: a gate of the region's own type (deep) and one of another
+type (early); 20% of in-region loops get two-pet gates. Gates sit in the exits on both sides (dark
+tunnel = Ember, brush fire = Splash, gap = Leaf, old gate = Shock, guardian = Dream, broken bridge =
+quest); typing a gate's word uses the field skill if the party has the pets (2 energy); cleared
+stays cleared. Party = a stand-in list of types (all five) until pets (phase 4); lab edits it.
+Places (own random stream): 1-3 forage spots (region find, once per trip), chests (more likely
+farther out; coins, once ever), shrines (type a line on the stone: energy x accuracy, once per
+trip), the lost thing. Town buildings: elder (quest town only), notice board (side quest: 3 of the
+region's find for 10 coins; forgotten at trip end), inn (+25 energy once per trip), shop (not
+stocked yet), houses (chatter). Enter goes in (save.screen/act); the temple wants its key + a pet of
+its type and gives the relic, a befriending charm and the Elder buff (recorded per type for now);
+five relics at the Heartstone = credits. Words in `app/wanderpaw/story.py`. Save v3 adds party,
+items, cleared, chests, quests, temples, charms, buffs, finished, stats, events (what the last move
+did: the API pays coins and the page shows them). Lab: gates on the big map, story overlay (stars +
+list), stand-in party editor, steps counted without unrepaired shortcuts.
+Later: wild encounters (phase 5), the shop's stock, waystones.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

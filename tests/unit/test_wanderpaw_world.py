@@ -80,16 +80,44 @@ def test_regions_are_one_piece_with_towns(seed):
 @pytest.mark.parametrize("seed", SEEDS)
 def test_everything_reachable_but_you_have_to_weave(seed):
     world = wd.generate(seed)
-    dist = wd.distances_from(world, (0, 0))
+    dist = wd.distances_from(world, (0, 0), _before_shortcuts)
     assert set(dist) == set(world.hexes)
     walls = [k for k, v in world.edges.items() if v != "open"]
     assert len(walls) > len(world.edges) / 3
     assert all(v in {"open", "river", "cliff", "thicket", "rocks"} for v in world.edges.values())
 
 
-def test_temples_take_weaving_to_reach():
-    walks = [d for seed in SEEDS for d in (lambda w: [wd.distances_from(w, (0, 0))[h] for h in w.temples().values()])(wd.generate(seed))]
+def _before_shortcuts(key, gate):
+    return gate.kind != "quest"
+
+
+def test_temples_take_weaving_to_reach_until_the_shortcuts_open():
+    walks, cut = [], []
+    for seed in SEEDS:
+        w = wd.generate(seed)
+        before = wd.distances_from(w, (0, 0), _before_shortcuts)
+        after = wd.distances_from(w, (0, 0))
+        walks += [before[h] for h in w.temples().values()]
+        cut += [before[h] - after[h] for h in w.temples().values()]
     assert sum(walks) / len(walks) >= 8  # a straight line is 5
+    assert sum(cut) / len(cut) >= 1.5  # the quest shortcuts help
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_quests_and_gates(seed):
+    world = wd.generate(seed)
+    before = wd.distances_from(world, (0, 0), _before_shortcuts)
+    assert set(world.quests) == set(wd.REGIONS)
+    for region, q in world.quests.items():
+        assert world.hexes[q.town].special == "town" and world.hexes[q.town].region == region
+        assert world.hexes[q.lost].region == region and not world.hexes[q.lost].special
+        assert q.town in before and q.lost in before  # reachable before the shortcut
+        assert world.gates[q.shortcut] == wd.Gate("quest", 1, region)
+        # the region's own type guards the way to its temple
+        assert any(g.kind == region and g.need == 1 for g in world.gates.values())
+    for key, gate in world.gates.items():
+        assert world.edges[key] == "open"
+        assert world.hexes[key[0]].region != wd.HEARTLAND or world.hexes[key[1]].region != wd.HEARTLAND
 
 
 @pytest.mark.parametrize("seed", SEEDS)
