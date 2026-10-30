@@ -1,0 +1,9 @@
+# Windows scripts need CRLF; git archive (the release zip) applies this too.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.pyw text eol=crlf
+*.ico binary
+
+# Left out of the release zip (.github/workflows/release.yml).
+tests/ export-ignore
+.github/ export-ignore

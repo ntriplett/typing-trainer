@@ -1,5 +1,5 @@
-"""Integration tests for rooms that unlock as letters are learned: the
-Bedroom (top row). Pets are open from the start (the Pet Shop opens its
+"""Integration tests for rooms that unlock as letters are learned. None wait
+today: the Home and Pets are open from the start (the Pet Shop opens its
 departments itself, tests/integration/test_pet_shop_api.py)."""
 
 import pytest
@@ -32,29 +32,18 @@ def teach(*pairs):
             db.mark_taught(conn, 1, lesson_ref(PAIR_ID, pair), "lesson")
 
 
-def test_a_new_player_has_the_bedroom_locked():
+def test_a_new_player_can_use_their_home_right_away():
     u = unlocks()
-    assert not u["bedroom"] and "pets" not in u and not u["pet_coupon"]
-    assert u["missing"]["bedroom"] == "qwertyuiop"
-    assert client.get("/api/room").status_code == 403
-
-
-def test_bedroom_things_cant_be_bought_while_its_locked():
+    assert "bedroom" not in u and "pets" not in u and not u["pet_coupon"]
+    assert client.get("/api/room").status_code == 200
     with db.open_db(main.DB_PATH) as conn:
         db.add_coins(conn, 1, 5000, "test")
-    assert client.post("/api/store/buy/furniture_bed_blue").status_code == 403
+    assert client.post("/api/store/buy/furniture_bed_blue").status_code == 200
 
 
 def test_the_home_row_brings_the_pet_coupon():
     teach("fj", "dk", "sl", "a;", "gh")
-    u = unlocks()
-    assert u["pet_coupon"] and not u["bedroom"]
-
-
-def test_the_top_row_opens_the_bedroom():
-    teach("fj", "dk", "sl", "a;", "gh", "ru", "ei", "wo", "qp", "ty")
-    assert unlocks()["bedroom"]
-    assert client.get("/api/room").status_code == 200
+    assert unlocks()["pet_coupon"]
 
 
 def test_finishing_the_last_home_row_lesson_reports_the_unlock(monkeypatch):

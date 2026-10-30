@@ -5456,10 +5456,19 @@ function buildFish(genes, stage, frame, V) {
 
   // the face: an eye up front, the mouth at the nose, a gill line
   const face = { eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] };
-  const iris = (genes.face && genes.face.eyes) || "#e0a828";
+  // a dark eye color would melt into the pupil, so those fish get a bright
+  // gold or silver ring instead (real fish eyes shine like that); silver
+  // would vanish on a pale fish, so those get gold
+  const lum = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+  let iris = (genes.face && genes.face.eyes) || "#e0a828";
+  const body = (genes.hex || [])[0];
+  if (lum(iris) < 90) iris = genes.seed % 2 && !(body && lum(body) > 170) ? "#d8dce8" : "#e8c050";
   const eyeX = x0 + L * 0.9;
   const big = top(eyeX) + bot(eyeX) >= 6;
-  face.eyes.push({ x: Math.round(eyeX) - (big ? 2 : 1), y: Math.round(cy - top(eyeX) * 0.45) - (big ? 1 : 0), size: big ? "fish" : "duo", iris });
+  face.eyes.push({ x: Math.round(eyeX) - (big ? 2 : 1), y: Math.round(cy - top(eyeX) * 0.45) - (big ? 1 : 0), size: big ? "fish" : "fishsmall", iris });
   face.smile.push(mouth, [mouth[0] - 1, mouth[1]]);
   // the gill cover's edge: a curve bowing back toward the tail
   const gx = x0 + L * gillT;
@@ -5502,7 +5511,8 @@ const EYE_SHAPES = {
   dark: ["PP", "PP"], // plain dark dot
   almond: [".II", "IPI", "II."], // slanted cat eye
   duo: ["IP", "IP"], // color on the left, dark on the right
-  fish: [".I.", "IPI", ".I."], // a round fish eye: a ring of color, a dark pupil
+  fish: ["IIW", "IPI", "III"], // a fish eye: a ring of color, a dark pupil, a glint
+  fishsmall: ["IW", "IP"], // a little fish's eye: color, pupil, a glint
   closed: ["..", "KK"], // asleep: just a lash line
   goat: ["III", "PPP"], // a goat's sideways bar pupil
 };

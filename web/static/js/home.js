@@ -4,6 +4,7 @@
 // home_icons.js and gently animates.
 
 const TICK_MS = 600;
+const TILE_PIXEL = 4; // every tile's art at one pixel size, like the arcade row
 const $ = (id) => document.getElementById(id);
 
 // The hero's greeting, picked by where the day is at ({name} is filled in).
@@ -63,21 +64,10 @@ function greeting(me) {
   return pool[Math.floor(greetingRoll * pool.length)].replace("{name}", me.learner.name);
 }
 
-// Locked rooms show a "?" block until enough letters are learned (app/unlocks.py).
+// Pets is open from the start (the Pet Shop's Fish department is), and so is the Home.
 function renderLocks(me) {
-  const u = me.unlocks;
-  const lock = (room, name, openName, openSub, art) => {
-    const tile = document.querySelector(`.tile-${room}`);
-    tile.classList.toggle("locked", !u[room]);
-    tile.querySelector(".tile-art").dataset.icon = u[room] ? art : "mystery";
-    $(`${room}-name`).textContent = u[room] ? openName : "Mystery";
-    if (!u[room]) $(`${room}-sub`).textContent = `Learn the ${room === "pets" ? "home" : "top"} row!`;
-    else if (openSub) $(`${room}-sub`).textContent = openSub;
-  };
-  // Pets is open from the start (the Pet Shop's Fish department is)
   $("pets-name").textContent = "Pets";
-  $("pets-sub").textContent = u.pet_coupon ? "A free pet is waiting!" : "Shop, care, and play";
-  lock("bedroom", "Bedroom", "Bedroom", "Decorate it", "bedroom");
+  $("pets-sub").textContent = me.unlocks.pet_coupon ? "A free pet is waiting!" : "Shop, care, and play";
 }
 
 function minutesLeft(seconds) {
@@ -128,6 +118,13 @@ function gardenWords(me) {
   return "Practice for a seed";
 }
 
+// Installed app only: point grown-ups at the update (it's applied from
+// the parent page, so a stray click here can't start one).
+fetch("/api/update")
+  .then((r) => r.json())
+  .then((u) => { $("update-note").hidden = !u.available; })
+  .catch(() => {});
+
 Header.ready.then((me) => {
   if (!me) return;
   let current = me;
@@ -142,7 +139,7 @@ Header.ready.then((me) => {
   let frame = 0;
   const draw = () => {
     drawAvatar(avatar, current.avatar, { frame });
-    tiles.forEach((c) => drawHomeIcon(c, c.dataset.icon, frame, current));
+    tiles.forEach((c) => drawHomeIcon(c, c.dataset.icon, frame, current, TILE_PIXEL));
   };
   draw();
   setInterval(() => {

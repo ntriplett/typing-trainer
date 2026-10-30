@@ -63,3 +63,82 @@ def test_main_reports_failure_if_server_never_becomes_healthy(monkeypatch):
     ok = launcher.main(open_browser=False)
 
     assert ok is False
+
+
+# --- The installed Windows copy ---------------------------------------------
+
+from pathlib import Path
+
+
+class FakeProc:
+    """poll() answers None until `exits_after` calls, then 0."""
+
+    def __init__(self, exits_after=None):
+        self.exits_after, self.polls, self.terminated = exits_after, 0, False
+
+    def poll(self):
+        self.polls += 1
+        if self.terminated or (self.exits_after is not None and self.polls > self.exits_after):
+            return 0
+        return None
+
+    def terminate(self):
+        self.terminated = True
+
+    def wait(self, timeout=None):
+        return 0
+
+
+def _clock(step):
+    t = [0.0]
+
+    def clock():
+        t[0] += step
+        return t[0]
+
+    return clock
+
+
+def test_find_browser_prefers_chrome_then_edge(tmp_path):
+    env = {"PROGRAMFILES": str(tmp_path / "pf"), "PROGRAMFILES(X86)": str(tmp_path / "pf86"),
+           "LOCALAPPDATA": str(tmp_path / "local")}
+    assert launcher.find_browser(env) is None
+    edge = tmp_path / "pf86" / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+    edge.parent.mkdir(parents=True)
+    edge.touch()
+    assert launcher.find_browser(env) == edge
+    chrome = tmp_path / "local" / "Google" / "Chrome" / "Application" / "chrome.exe"
+    chrome.parent.mkdir(parents=True)
+    chrome.touch()
+    assert launcher.find_browser(env) == chrome
+
+
+def test_app_window_uses_app_mode_and_its_own_profile():
+    args = launcher.app_window_args(Path("chrome.exe"), Path("data/browser"))
+    assert f"--app={launcher.APP_URL}" in args
+    assert f"--user-data-dir={Path('data/browser')}" in args
+
+
+def test_installed_env_points_at_the_data_folder(tmp_path):
+    env = launcher.installed_env(tmp_path)
+    assert env["TYPING_TRAINER_HOME"] == str(tmp_path)
+    assert env["TYPING_TRAINER_DB_PATH"] == str(tmp_path / "data" / "typing.db")
+    assert env["TYPING_TRAINER_DEV_START_COINS"] == "0"
+
+
+def test_closing_the_window_stops_the_server():
+    server, window = FakeProc(), FakeProc(exits_after=3)
+    launcher.wait_for_close(server, window, clock=_clock(10), sleep=lambda s: None)
+    assert server.terminated
+
+
+def test_window_handed_off_leaves_the_server_to_its_idle_watch():
+    server, window = FakeProc(exits_after=20), FakeProc(exits_after=0)
+    launcher.wait_for_close(server, window, clock=_clock(0.1), sleep=lambda s: None)
+    assert not server.terminated  # it quit by itself
+
+
+def test_server_quitting_to_update_closes_the_window():
+    server, window = FakeProc(exits_after=2), FakeProc()
+    launcher.wait_for_close(server, window, clock=_clock(10), sleep=lambda s: None)
+    assert window.terminated

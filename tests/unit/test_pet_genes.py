@@ -9,7 +9,7 @@ from app import pet_genes as g
 
 
 def test_the_color_pool_is_90_plus_flames_and_metals_with_about_45_per_species():
-    assert len(g.COLORS) == 90 + 24 + 8 + 5  # shared, phoenix flames, fish neons, treasure metals
+    assert len(g.COLORS) == 90 + 24 + 45 + 8 + 5  # shared, phoenix flames, bold fish, fish neons, treasure metals
     for species, starters in g.STARTER_COLORS.items():
         eligible = g.eligible_colors(species)
         assert set(starters) <= set(eligible)
@@ -375,13 +375,16 @@ def test_fish_roll_every_part_on_its_own():
     assert len({(f["shape"]["body"], f["shape"]["head"]) for f in fish}) > 50
 
 
-def test_fish_wear_the_shared_pool_plus_rare_neons_and_a_fin_pattern():
+def test_fish_wear_the_shared_pool_plus_bold_colors_rare_neons_and_a_fin_pattern():
     import collections
 
     fish = [g.roll("fish", None, None, seed) for seed in range(4000)]
     fams = collections.Counter(g.COLORS[c].family for f in fish for c in f["coat"]["colors"][:2])
     assert len(fams) >= 14
     assert 0 < fams["neon"] < 0.08 * 8000
+    # about a third of fish colors are the bold ones
+    bold = sum(n for fam, n in fams.items() if fam.startswith("bold"))
+    assert 0.2 * 8000 < bold < 0.5 * 8000
     bodies = collections.Counter(f["coat"]["pattern"] for f in fish)
     fins = collections.Counter(f["coat"]["fins"] for f in fish)
     assert set(bodies) == set(g.SPECIES_PATTERNS["fish"]) and bodies["solid"] > bodies["scaled"]
@@ -390,7 +393,10 @@ def test_fish_wear_the_shared_pool_plus_rare_neons_and_a_fin_pattern():
     with pytest.raises(g.GeneError):
         g.roll("cat", "neon_blue", None, 1, {"neon_blue"})
     assert g.roll("fish", "neon_blue", "snow", 1, {"neon_blue", "snow"})
-    assert len(g.color_catalog(set(), "fish")) == 90 + 8
+    # so are the bold colors
+    with pytest.raises(g.GeneError):
+        g.roll("dog", "cobalt", None, 1, {"cobalt"})
+    assert len(g.color_catalog(set(), "fish")) == 90 + 45 + 8
     assert len(g.color_catalog(set(), "cat")) == 90
 
 

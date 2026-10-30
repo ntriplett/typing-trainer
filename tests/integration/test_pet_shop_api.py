@@ -59,7 +59,7 @@ def test_a_new_player_can_shop_for_fish_and_habitats(clock):
     assert [k for k, v in d.items() if v["open"]] == ["fish", "habitats", "aqua", "supplies"]
     assert d["household"]["missing"] == "asdfghjkl;"
     fish = client.get("/api/pets/shop/fish").json()
-    assert len(fish["slots"]) == 16 and all(s["species"] == "fish" for s in fish["slots"])
+    assert len(fish["slots"]) == 24 and all(s["species"] == "fish" for s in fish["slots"])
     assert not fish["coupon"]
     closed = client.get("/api/pets/shop/household")
     assert closed.status_code == 403 and "learn" in closed.json()["detail"]

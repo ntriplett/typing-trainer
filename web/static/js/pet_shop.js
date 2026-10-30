@@ -181,7 +181,7 @@ function renderEntrance() {
     ...front.departments.filter((d) => SHOP_UPSTAIRS.has(d.id) === Boolean(floor)).map((d) => {
       const spot = SHOP_SPOTS[d.id];
       const btn = document.createElement("button");
-      btn.className = "shop-spot" + (d.open ? "" : " closed");
+      btn.className = "shop-spot" + (d.open ? "" : " closed") + (SHOP_TOP_SIGNS.has(d.id) ? " top-sign" : "");
       btn.dataset.dept = d.id;
       place(btn, spot);
       const keys = d.missing.toUpperCase().split("").join(" ");

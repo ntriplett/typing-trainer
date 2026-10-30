@@ -12,6 +12,29 @@ strategy, and build order).
 Runnable: `python launcher/start.py` starts the server and opens the app. See PLAN.md Section 10 for
 the build order and PLAN.md Section 11b for known issues.
 
+## Install on Windows
+
+1. Download **Install-TypingTrainer.cmd** from the
+   [latest release](https://github.com/ntriplett/typing-trainer/releases/latest) and double-click it.
+   (SmartScreen may warn about a downloaded script: *More info* -> *Run anyway*.) No admin needed;
+   it takes a minute the first time.
+2. It adds a **Typing Trainer** shortcut to the desktop and Start menu. The app opens in its own
+   Chrome window (Edge if there's no Chrome); closing the window stops it.
+3. Updates: when a newer release exists, the home page says so and the **Grown-ups** page has an
+   *Update now* button. The app closes, updates, and reopens. Running the installer again also
+   updates (or repairs) it.
+
+Everything lives in `%LOCALAPPDATA%\TypingTrainer`. Progress is in `data\typing.db`, apart from
+the program, and is copied to `data\backups\` before every update. To move progress from another
+computer, close the app and copy a `typing.db` over that one. Uninstall: delete the folder and the
+two shortcuts.
+
+### Releasing
+
+Bump `version` in `pyproject.toml`, commit, then `git tag v0.2.0 && git push origin v0.2.0`. The
+release workflow runs the tests and publishes the zip plus installer; installed copies see it
+within the hour. If dependencies change, run `uv lock` and commit `uv.lock` (installs use it as-is).
+
 ## Development
 
 ```bash

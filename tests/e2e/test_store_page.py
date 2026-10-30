@@ -5,6 +5,8 @@ visibly, and the store can buy + wear an item.
 
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import Page, expect
 
 from app import db, store
@@ -31,7 +33,7 @@ def test_finishing_a_lesson_pays_coins_in_the_header(page: Page, live_server):
     expect(page.locator("#coin-count")).not_to_have_text("0")
 
 
-def test_buy_and_wear_an_item(page: Page, live_server, tmp_path):
+def test_buying_puts_it_on_and_points_to_the_home(page: Page, live_server, tmp_path):
     item = min((i for i in store.CATALOG.values() if not i.starter), key=lambda i: i.price)
     page.goto(live_server)  # creates learner 1 before we add coins
     expect(page.locator("#coin-count")).to_have_text("0")
@@ -42,7 +44,7 @@ def test_buy_and_wear_an_item(page: Page, live_server, tmp_path):
     card.get_by_role("button", name="Buy").click()
 
     expect(card).to_have_class("item-card equipped")
-    expect(card.get_by_role("button", name="Take off")).to_be_visible()
+    expect(card.get_by_role("button", name=re.compile("✓"))).to_be_visible()  # changed in your Home from now on
     expect(page.locator("#coin-count")).to_have_text("0")
 
 

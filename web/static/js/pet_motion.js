@@ -17,12 +17,17 @@
 //   PetMotion.draw(world, px, {ctx, unit, tags});  // px(x, y, w, h, color) in scene units
 //
 // area: {left, right, top, bottom, props, terrain}. top..bottom is where
-// feet can be on the ground. props: [{id, x, y, action, ledge}], action one
-// of look (default), bask, nap, dig, jump; ledge: the ledge it's on. terrain
-// (all optional, rects in feet coordinates):
+// feet can be on the ground. props: [{id, x, y, action, ledge, who}], action
+// one of look (default), bask, nap, dig, jump; ledge: the ledge it's on.
+// terrain (all optional, rects in feet coordinates):
 //   water:  [{x, y, w, h, color}]  swimmers swim in it; others go around or hop across
 //   blocks: [{x, y, w, h}]         no feet in here (rocks, trunks, furniture)
-//   ledges: [{x0, x1, y}]          raised walkways pets leap up onto
+//   ledges: [{x0, x1, y, who}]     raised walkways pets leap up onto
+// `who` (props and ledges, optional): the species allowed (a bed for cats
+// and bunnies); everyone when left out.
+//
+// PetMotion.drawOne(world, w, px, opts) draws one pet, for scenes that layer
+// pets between their own things (the bedroom's furniture).
 
 const PetMotion = (() => {
   // how much each species likes to climb, swim, or bask (added to its odds)
@@ -50,6 +55,7 @@ const PetMotion = (() => {
   }
 
   const swims = (w) => (SWIMMERS[w.p.species] || 0) >= 0.5;
+  const allowed = (thing, w) => !thing.who || thing.who.includes(w.p.species);
 
   function create(pets, area, scale) {
     const world = { walkers: [], area, scale };
@@ -184,7 +190,7 @@ const PetMotion = (() => {
     const others = world.walkers.filter((o) => o !== w && !o.still && o.ledge === w.ledge);
     const friends = others.filter((o) => o.f > 0.5 && o.state !== "walk" && o.state !== "leap");
     const players = others.filter((o) => o.pl > 0.5 && o.state !== "nap" && o.state !== "leap");
-    const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge);
+    const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge && allowed(p, w));
     const options = [["wander", 1]];
     if (w.s > 0.3) options.push(["nap", w.s * 1.2]);
     options.push(["hop", w.e * 0.6 + w.pl * 0.5]);
@@ -194,7 +200,7 @@ const PetMotion = (() => {
     }
     if (friends.length && w.f > 0.5) options.push(["friend", w.f * 1.3]);
     if (players.length && w.pl > 0.5) options.push(["chase", w.pl * 1.0]);
-    if (ledges.length) options.push(["climb", w.e * 0.5 + (CLIMBERS[species] || 0) + (w.ledge !== null ? 0.6 : 0)]);
+    if (w.ledge !== null || ledges.some((l) => allowed(l, w))) options.push(["climb", w.e * 0.5 + (CLIMBERS[species] || 0) + (w.ledge !== null ? 0.6 : 0)]);
     if (water.length && w.ledge === null) {
       if (swims(w)) options.push(["swim", (SWIMMERS[species] || 0) + w.pl * 0.3]);
       else options.push(["splash", w.pl * 0.5]);
@@ -245,7 +251,7 @@ const PetMotion = (() => {
     const cx = center(w);
     const near = ledges
       .map((l, i) => ({ l, i, gap: Math.max(0, l.x0 - cx, cx - l.x1) + Math.abs(l.y - w.y) }))
-      .filter((c) => c.i !== w.ledge);
+      .filter((c) => c.i !== w.ledge && allowed(c.l, w));
     if (w.ledge !== null && (!near.length || Math.random() < 0.5)) {
       // down: somewhere on the ground below
       const a = world.area;
@@ -461,25 +467,27 @@ const PetMotion = (() => {
 
   // --- drawing --------------------------------------------------------------------------
 
-  function draw(world, px, { ctx, unit, tags = false } = {}) {
-    for (const w of [...world.walkers].sort((a, b) => a.y - b.y)) {
-      const cx = center(w);
-      const pool = w.ledge === null && w.hop === 0 && waterAt(world, cx, w.y);
-      const sink = pool && swims(w) ? Math.min(3, w.height * 0.25) : 0; // swimmers sit low in the water
-      if (w.p.species !== "fish" && !pool) px(w.x + w.width * 0.15, w.y - 0.5, w.width * 0.7, 1, "rgba(40, 60, 20, 0.25)"); // shadow
-      drawPet(px, w.x, w.y - w.hop + sink, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
-      if (pool) {
-        const top = w.y - Math.max(1, w.height * 0.35) + sink;
-        px(w.x - 1, top, w.width + 2, w.y + sink - top + 0.5, pool.color ? `${pool.color}cc` : "rgba(74, 138, 176, 0.8)");
-        px(w.x - 1, top, w.width + 2, 0.5, "rgba(220, 240, 250, 0.8)"); // the waterline
-        if (w.frame % 2) px(w.x - 2, top + 0.5, 1, 0.5, "rgba(220, 240, 250, 0.8)");
-      }
-      if (w.state === "splash" || (w.state === "walk" && pool && !swims(w))) droplets(px, w, "rgba(200, 230, 250, 0.9)");
-      if (w.state === "dig" || w.state === "jump") droplets(px, w, w.bits);
-      if (ctx && w.state === "nap") snore(ctx, unit, w);
-      if (w.state === "happy") hearts(px, w);
-      if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
+  function draw(world, px, opts = {}) {
+    for (const w of [...world.walkers].sort((a, b) => a.y - b.y)) drawOne(world, w, px, opts);
+  }
+
+  function drawOne(world, w, px, { ctx, unit, tags = false } = {}) {
+    const cx = center(w);
+    const pool = w.ledge === null && w.hop === 0 && waterAt(world, cx, w.y);
+    const sink = pool && swims(w) ? Math.min(3, w.height * 0.25) : 0; // swimmers sit low in the water
+    if (w.p.species !== "fish" && !pool) px(w.x + w.width * 0.15, w.y - 0.5, w.width * 0.7, 1, "rgba(40, 60, 20, 0.25)"); // shadow
+    drawPet(px, w.x, w.y - w.hop + sink, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
+    if (pool) {
+      const top = w.y - Math.max(1, w.height * 0.35) + sink;
+      px(w.x - 1, top, w.width + 2, w.y + sink - top + 0.5, pool.color ? `${pool.color}cc` : "rgba(74, 138, 176, 0.8)");
+      px(w.x - 1, top, w.width + 2, 0.5, "rgba(220, 240, 250, 0.8)"); // the waterline
+      if (w.frame % 2) px(w.x - 2, top + 0.5, 1, 0.5, "rgba(220, 240, 250, 0.8)");
     }
+    if (w.state === "splash" || (w.state === "walk" && pool && !swims(w))) droplets(px, w, "rgba(200, 230, 250, 0.9)");
+    if (w.state === "dig" || w.state === "jump") droplets(px, w, w.bits);
+    if (ctx && w.state === "nap") snore(ctx, unit, w);
+    if (w.state === "happy") hearts(px, w);
+    if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
   }
 
   // A few bits flying up around a pet's feet (water, dirt, leaves).
@@ -522,5 +530,5 @@ const PetMotion = (() => {
     ctx.fillText(w.p.name, cx, top);
   }
 
-  return { create, step, draw, attract };
+  return { create, step, draw, drawOne, attract };
 })();

@@ -1,5 +1,5 @@
 // Who's playing? Pick your player (each shown as their avatar), or make a
-// new one: name -> character designer -> a quick placement -> home.
+// new one: name -> your look (the Home's vanity mirror) -> a quick placement -> home.
 // Picking sets this browser's player cookie (PLAN.md 11d).
 
 const playersEl = document.getElementById("players");
@@ -58,7 +58,7 @@ document.getElementById("new-player-form").addEventListener("submit", async (e) 
     messageEl.textContent = data.detail || "That name didn't work.";
     return;
   }
-  window.location.href = "/designer?setup=1"; // next: make your character
+  window.location.href = "/bedroom?room=mirror&setup=1"; // next: make your character
 });
 
 load();

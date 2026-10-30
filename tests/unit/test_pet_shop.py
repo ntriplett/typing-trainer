@@ -19,7 +19,7 @@ def days(n):
 
 def test_departments_match_the_plan():
     expect = {
-        "fish": (16, 100, {"fish"}),
+        "fish": (24, 100, {"fish"}),
         "household": (16, 800, {"dog", "cat", "bunny"}),
         "farm": (12, 2000, {"goat", "sheep", "llama", "fox"}),
         "reptiles": (8, 3000, {"turtle", "lizard", "snake"}),

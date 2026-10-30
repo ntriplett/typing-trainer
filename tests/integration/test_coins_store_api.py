@@ -134,9 +134,10 @@ def test_designer_saves_appearance_and_guards_dyes():
     assert "dye" in resp.json()["detail"]
 
 
-def test_profile_and_designer_pages_are_served():
+def test_profile_page_is_served_and_the_designer_moved_to_the_home():
     assert "Profile" in client.get("/profile").text
-    assert "Designer" in client.get("/designer").text
+    moved = client.get("/designer?setup=1", follow_redirects=False)
+    assert moved.headers["location"] == "/bedroom?room=mirror&setup=1"
 
 
 def test_night_toggle_endpoint():

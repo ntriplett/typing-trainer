@@ -38,7 +38,8 @@
 
 /* --- tiles ---------------------------------------------------------------------
    Each tile is a framed sign: a little sky-and-ground scene with its art,
-   then the name on a plank. Practice is the big one. */
+   then the name on a plank. Practice is the big one. Every tile has its own
+   color (--frame, with -light and -dark shades) for its frame and plank. */
 
 .home-grid {
   display: grid;
@@ -50,14 +51,24 @@
 .home-tile {
   --sky: #a8d5e2;
   --ground: #6b8e3a;
+  --frame: var(--wood);
+  --frame-light: var(--wood-light);
+  --frame-dark: var(--wood-dark);
   display: flex;
   flex-direction: column;
   align-items: stretch;
   text-align: center;
   color: var(--ink);
   text-decoration: none;
-  border: 12px solid transparent;
-  border-image: var(--panel-frame) 4 fill / 12px stretch;
+  padding: 9px;
+  background: var(--parchment);
+  border: 3px solid var(--outline);
+  /* a pixel frame: light top-left edge, the color, then a dark inner rim */
+  box-shadow:
+    inset 3px 3px 0 var(--frame-light),
+    inset 0 0 0 6px var(--frame),
+    inset 0 0 0 9px var(--frame-dark);
+  clip-path: polygon(3px 0, calc(100% - 3px) 0, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 0 calc(100% - 3px), 0 3px);
   transition: transform 0.15s steps(2);
 }
 
@@ -89,9 +100,9 @@
   font-size: 30px;
   color: var(--on-wood);
   text-shadow: 2px 2px 0 var(--outline);
-  background: var(--wood);
+  background: var(--frame);
   border: 3px solid var(--outline);
-  box-shadow: inset 0 -3px 0 var(--wood-dark), inset 0 3px 0 var(--wood-light);
+  box-shadow: inset 0 -3px 0 var(--frame-dark), inset 0 3px 0 var(--frame-light);
 }
 
 .tile-sub {
@@ -109,7 +120,10 @@
   grid-column: span 2;
   grid-row: span 2;
   --sky: #f6d9a0;
-  --ground: #6b8e3a;
+  --ground: #b07a43;
+  --frame: #6b8e3a;
+  --frame-light: #8fb85a;
+  --frame-dark: #4a6627;
 }
 
 .tile-practice .tile-art {
@@ -120,8 +134,6 @@
 
 .tile-practice .tile-name {
   font-size: 40px;
-  background: var(--moss);
-  box-shadow: inset 0 -3px 0 var(--moss-dark), inset 0 3px 0 #8fb85a;
 }
 
 .tile-practice .tile-sub {
@@ -129,14 +141,15 @@
   color: var(--heading);
 }
 
-.tile-practice.resting .tile-art {
-  --sky: #39344c;
-  --ground: #2f4030;
+.tile-practice.resting {
+  --frame: #5c3594;
+  --frame-light: #8a55c4;
+  --frame-dark: #2a1740;
 }
 
-.tile-practice.resting .tile-name {
-  background: #5c3594;
-  box-shadow: inset 0 -3px 0 #2a1740, inset 0 3px 0 #8a55c4;
+.tile-practice.resting .tile-art {
+  --sky: #39344c;
+  --ground: #4a3a30;
 }
 
 /* Arcade: dusk purple, two columns wide, the tokens shine. */
@@ -144,11 +157,9 @@
   grid-column: span 2;
   --sky: #5c3a7a;
   --ground: #3a2850;
-}
-
-.tile-arcade .tile-name {
-  background: #5c3594;
-  box-shadow: inset 0 -3px 0 #2a1740, inset 0 3px 0 #8a55c4;
+  --frame: #7a48b8;
+  --frame-light: #a77ad8;
+  --frame-dark: #4a2a7a;
 }
 
 .tile-arcade .tile-sub {
@@ -158,31 +169,43 @@
 .tile-store {
   --sky: #f6d465;
   --ground: #b07a43;
+  --frame: #c8443a;
+  --frame-light: #e8705a;
+  --frame-dark: #8a2a1f;
 }
 
+/* Pets: two columns wide, room for both pets that come along. */
 .tile-pets {
+  grid-column: span 2;
   --sky: #cfe8c0;
   --ground: #6b8e3a;
+  --frame: #2f9a8a;
+  --frame-light: #5fc4b2;
+  --frame-dark: #1f665a;
 }
 
 .tile-bedroom {
   --sky: #f2c4b0;
   --ground: #8b5a2b;
-}
-
-.tile-wardrobe {
-  --sky: #f8e6c4;
-  --ground: #b8432f;
+  --frame: #d0608a;
+  --frame-light: #ec92b2;
+  --frame-dark: #8a3456;
 }
 
 .tile-progress {
   --sky: #a8d5e2;
   --ground: #4a6627;
+  --frame: #e0a22a;
+  --frame-light: #f6cc5a;
+  --frame-dark: #9a6614;
 }
 
 .tile-garden {
   --sky: #cfe3a4;
   --ground: #6b4423;
+  --frame: #e07a2a;
+  --frame-light: #f5a45a;
+  --frame-dark: #9a4a14;
 }
 
 :root[data-night] .tile-arcade .tile-sub {
@@ -192,6 +215,12 @@
 .home-tile.locked .tile-art {
   --sky: #39344c;
   --ground: #2b2838;
+}
+
+.home-tile.locked {
+  --frame: #7a7488;
+  --frame-light: #a29cb0;
+  --frame-dark: #4a4560;
 }
 
 .home-tile.locked .tile-name {

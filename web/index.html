@@ -30,10 +30,15 @@
         <span class="tile-name">Arcade</span>
         <span class="tile-sub"><span class="token-icon"></span> <span id="arcade-tokens">0 tokens</span></span>
       </a>
-      <a class="home-tile tile-progress" href="/analysis">
-        <canvas class="tile-art" data-icon="progress" width="160" height="120"></canvas>
-        <span class="tile-name">Progress</span>
-        <span class="tile-sub">See how you're growing</span>
+      <a class="home-tile tile-pets" href="/pets">
+        <canvas class="tile-art" data-icon="pets" width="400" height="120"></canvas>
+        <span class="tile-name" id="pets-name">Pets</span>
+        <span class="tile-sub" id="pets-sub">Shop, care, and play</span>
+      </a>
+      <a class="home-tile tile-bedroom" href="/bedroom">
+        <canvas class="tile-art" data-icon="bedroom" width="160" height="120"></canvas>
+        <span class="tile-name" id="bedroom-name">Bedroom</span>
+        <span class="tile-sub" id="bedroom-sub">Decorate &amp; dress up</span>
       </a>
       <a class="home-tile tile-garden" href="/garden">
         <canvas class="tile-art" data-icon="garden" width="160" height="120"></canvas>
@@ -45,23 +50,13 @@
         <span class="tile-name">Store</span>
         <span class="tile-sub">Hats, pets, places</span>
       </a>
-      <a class="home-tile tile-pets" href="/pets">
-        <canvas class="tile-art" data-icon="pets" width="160" height="120"></canvas>
-        <span class="tile-name" id="pets-name">Pets</span>
-        <span class="tile-sub" id="pets-sub">Shop, care, and play</span>
-      </a>
-      <a class="home-tile tile-bedroom" href="/bedroom">
-        <canvas class="tile-art" data-icon="bedroom" width="160" height="120"></canvas>
-        <span class="tile-name" id="bedroom-name">Bedroom</span>
-        <span class="tile-sub" id="bedroom-sub">Decorate it</span>
-      </a>
-      <a class="home-tile tile-wardrobe" href="/wardrobe">
-        <canvas class="tile-art" data-icon="wardrobe" width="160" height="120"></canvas>
-        <span class="tile-name">Wardrobe</span>
-        <span class="tile-sub">Get dressed</span>
+      <a class="home-tile tile-progress" href="/analysis">
+        <canvas class="tile-art" data-icon="progress" width="160" height="120"></canvas>
+        <span class="tile-name">Progress</span>
+        <span class="tile-sub">See how you're growing</span>
       </a>
     </nav>
-    <p class="home-footnote"><a href="/parent">Grown-ups</a></p>
+    <p class="home-footnote"><a href="/parent">Grown-ups</a><span id="update-note" hidden> · <a href="/parent#update">A new version is ready</a></span></p>
   </main>
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>
@@ -69,7 +64,9 @@
   <script src="/static/js/pet_render.js"></script>
   <script src="/static/js/avatar.js"></script>
   <script src="/static/js/themes.js"></script>
+  <script src="/static/js/scenery.js"></script>
   <script src="/static/js/veggies.js"></script>
+  <script src="/static/js/alive.js"></script>
   <script src="/static/js/header.js"></script>
   <script src="/static/js/home_icons.js"></script>
   <script src="/static/js/home.js"></script>

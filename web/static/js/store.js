@@ -1,5 +1,7 @@
 // The store page: tabs of shelves, each item shown on the player's own
-// avatar ("try it on"), with buy / wear / take-off buttons. A clothing
+// avatar ("try it on"), with a buy button. The store is for buying (a new
+// thing goes on straight away); things you own are changed in your Home
+// (/bedroom), so their button walks you to the right spot there. A clothing
 // style sold in several colors is one card with color swatches.
 // All rules live server-side (app/store.py); this page just reflects
 // /api/store and posts actions.
@@ -86,12 +88,6 @@ previewReset.addEventListener("click", () => {
   renderPreview();
 });
 
-// Locked rooms (app/unlocks.py) keep their tabs hidden until they open.
-function visibleTabs() {
-  const open = (state && state.unlocks) || {};
-  return TABS.filter((t) => (t.id === "bedroom" ? open.bedroom : true));
-}
-
 function loadTab() {
   const asked = new URLSearchParams(location.search).get("tab"); // e.g. /store?tab=places
   if (asked && TABS.some((t) => t.id === asked)) return asked;
@@ -145,7 +141,7 @@ function renderPreview() {
 
 function render() {
   renderPreview();
-  const tabs = visibleTabs();
+  const tabs = TABS;
   if (!tabs.some((t) => t.id === currentTab)) currentTab = tabs[0].id;
   tabsEl.replaceChildren(
     ...tabs.map((tab) => {
@@ -241,40 +237,20 @@ function swatches(key, variants, shown) {
   return row;
 }
 
+// Where in the Home you use what you own (bedroom.js views).
+function homeSpot(item) {
+  const room = { shirt: "closet", pants: "closet", shoes: "closet", hat: "hats", accessory: "accessories", hair_dye: "mirror", night: "nook" }[item.slot];
+  if (item.slot === "background") return `/bedroom?room=board-${item.group}`;
+  return room ? `/bedroom?room=${room}` : "/bedroom";
+}
+
 function actionButton(item) {
   const btn = document.createElement("button");
-  const usable = ["hair_dye", "wallpaper", "flooring"].includes(item.slot); // used, not worn
-  if (item.slot === "furniture" && item.equipped) {
-    btn.textContent = "In your room ✓";
-    btn.onclick = () => (window.location.href = "/bedroom");
-  } else if (item.slot === "furniture" && item.owned) {
-    btn.textContent = "Put in room";
-    btn.className = "button-go";
-    btn.onclick = () => act(`/api/store/equip/${item.id}`);
-  } else if (item.slot === "night" && item.equipped) {
-    btn.textContent = "Turn off";
-    btn.onclick = () => act("/api/me/night", null, "PUT", { on: false });
-  } else if (item.slot === "night" && item.owned && !item.places.some((p) => p.owned)) {
-    btn.textContent = "Get one of its places";
-    btn.onclick = () => {
-      currentTab = "places";
-      saveTab("places");
-      render();
-    };
-  } else if (item.slot === "night" && item.owned) {
-    btn.textContent = "Turn on night";
-    btn.className = "button-go";
-    btn.onclick = () => act(`/api/store/equip/${item.id}`);
-  } else if (item.equipped && usable) {
-    btn.textContent = "In use";
-    btn.disabled = true;
-  } else if (item.equipped) {
-    btn.textContent = "Take off";
-    btn.onclick = () => act(`/api/store/unequip/${item.slot}`);
-  } else if (item.owned) {
-    btn.textContent = usable ? "Use" : "Wear";
-    btn.className = "button-go";
-    btn.onclick = () => act(`/api/store/equip/${item.id}`);
+  if (item.owned) {
+    const inUse = { furniture: "In your room ✓", background: "You're here ✓", night: "Night is on ✓", wallpaper: "On your walls ✓", flooring: "On your floor ✓", hair_dye: "In your hair ✓" };
+    btn.textContent = item.equipped ? inUse[item.slot] || "Wearing it ✓" : "Owned: go see it";
+    btn.title = "Change it in your Home";
+    btn.onclick = () => (window.location.href = homeSpot(item));
   } else if (item.affordable) {
     btn.textContent = "Buy";
     btn.className = "button-gold";

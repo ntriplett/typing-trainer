@@ -10,8 +10,8 @@ stable value for it without changing anything they already rolled
 adoption time, so genes are stored, not re-derived.
 
 Colors: COLORS is the shared pool (90), plus phoenix flames (24, their own
-palette: SPECIAL_PALETTE), rare fish neons (8: the shared pool plus these)
-and treasure metals (5). Families only one species wears: OWN_FAMILIES. Unlocked colors are one set per
+palette: SPECIAL_PALETTE), fish-only colors (the shared pool plus 45 bold,
+saturated ones and 8 rare neons) and treasure metals (5). Families only one species wears: OWN_FAMILIES. Unlocked colors are one set per
 learner, shared by every species (starting_unlocks(): every species'
 starter colors), so a color found on any pet can be picked for any pet.
 Each species' families and realism weights (SPECIES_COLORS) only steer
@@ -64,9 +64,23 @@ def mute(hex_: str, family: str) -> str:
     return "#" + "".join(f"{round(c * 255):02x}" for c in (r, g, b))
 
 
+# Bold fish colors keep this much of their saturation: bright, but a step
+# back from the neons.
+BOLD_SATURATION = 0.8
+
+
+def soften(hex_: str, family: str) -> str:
+    """A bold fish color, a little less saturated."""
+    r, g, b = (int(hex_[i : i + 2], 16) / 255 for i in (1, 3, 5))
+    h, light, sat = colorsys.rgb_to_hls(r, g, b)
+    r, g, b = colorsys.hls_to_rgb(h, light, sat * BOLD_SATURATION)
+    return "#" + "".join(f"{round(c * 255):02x}" for c in (r, g, b))
+
+
 def _family(family: str, *colors: tuple[str, str]) -> list[PetColor]:
-    # flames stay bright: the cozy muting would put them out
-    tone = (lambda h, f: h) if family.startswith(("fire", "neon")) else mute
+    # flames and neons stay bright (the cozy muting would put them out); bold
+    # fish colors are only softened a little
+    tone = (lambda h, f: h) if family.startswith(("fire", "neon")) else soften if family.startswith("bold") else mute
     return [PetColor(name.lower().replace(" ", "_"), name, tone(hex_, family), family) for name, hex_ in colors]
 
 
@@ -133,6 +147,31 @@ COLORS: dict[str, PetColor] = {
             "neon", ("Neon Blue", "#1e90ff"), ("Electric Blue", "#28c8ff"), ("Neon Red", "#ff2a4a"), ("Neon Pink", "#ff4fc0"),
             ("Neon Green", "#3cf070"), ("Neon Yellow", "#f8f040"), ("Neon Orange", "#ff8a1a"), ("Neon Purple", "#b040ff"),
         ),
+        # --- bold: saturated reef colors only fish wear (45), brighter than the
+        # cozy pool, not as loud as the neons ---
+        *_family(
+            "bold_red", ("Tomato", "#e8301e"), ("Poppy", "#d81e2c"), ("Cardinal", "#b8102e"), ("Firetruck", "#e81818"),
+            ("Garnet", "#9a1030"), ("Lobster", "#e0281e"),
+        ),
+        *_family(
+            "bold_orange", ("Clownfish", "#f26a10"), ("Papaya", "#ff7f24"), ("Persimmon", "#e8541a"), ("Mango", "#ffa01e"),
+            ("Koi", "#f0581e"), ("Tiger", "#e86010"),
+        ),
+        *_family("bold_yellow", ("Canary", "#ffd21e"), ("Goldfish", "#f5a800"), ("Dandelion", "#f8c80a"), ("Yolk", "#ffbe0a"), ("Banana", "#ffe02a")),
+        *_family(
+            "bold_green", ("Emerald", "#10a050"), ("Kelly", "#22b03a"), ("Shamrock", "#20a868"), ("Grass", "#4cb82a"),
+            ("Clover", "#1c8a3a"), ("Parrot", "#3ac02a"),
+        ),
+        *_family("bold_teal", ("Peacock", "#0a8a9a"), ("Caribbean", "#00a8a8"), ("Cyan", "#10c0d0"), ("Reef", "#0aa088"), ("Deep Teal", "#00707a")),
+        *_family(
+            "bold_blue", ("Cobalt", "#1e50d0"), ("Sapphire", "#1a3aa8"), ("Royal Blue", "#2a5ae8"), ("Azure", "#1e88e0"),
+            ("Ultramarine", "#3a2ad8"), ("Blue Tang", "#1a6ae0"),
+        ),
+        *_family("bold_purple", ("Grape", "#6a1eb0"), ("Amethyst", "#8a30d0"), ("Indigo", "#4a20a8"), ("Purple Tang", "#7a28c8"), ("Royal Purple", "#5a1a90")),
+        *_family(
+            "bold_pink", ("Magenta", "#d81e8a"), ("Fuchsia", "#e830a8"), ("Hot Pink", "#f03a8a"), ("Raspberry", "#c8185a"),
+            ("Flamingo", "#f0508a"), ("Watermelon", "#e83a5a"),
+        ),
         # --- treasure metals: only ever a dragon's third color (5) ---
         *_family("metal", ("Gilt", "#f0c040"), ("Sterling", "#c8ccd8"), ("Bronze", "#b87a38"), ("Rose Gold", "#e8a088"), ("Platinum", "#ecebe4")),
     ]
@@ -143,7 +182,7 @@ GLOW_ONLY = {"white_gold", "starlight", "mint_glow", "lilac_glow"}
 # Species with a palette of their own instead of the shared one.
 SPECIAL_PALETTE = {"phoenix"}
 # Family (by name prefix) -> the one species that can wear it.
-OWN_FAMILIES = {"fire": "phoenix", "neon": "fish"}
+OWN_FAMILIES = {"fire": "phoenix", "neon": "fish", "bold": "fish"}
 
 
 def fits(species: str | None, color_id: str) -> bool:
@@ -175,12 +214,13 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     # mythical: storybook colors are the natural ones (never the metals,
     # which are only third colors)
     "dragon": {"green": NATURAL, "red": NATURAL, "gold": NATURAL, "black": NATURAL, "purple": NATURAL, "blue": NATURAL, "teal": NATURAL, "white": RARE},
-    # fish: the whole shared pool (tropical fish come in every color), and
-    # now and then a neon
+    # fish: the whole shared pool (tropical fish come in every color), their
+    # own bold reef colors (about one fish color in three), and now and then a neon
     "fish": {
         "white": NATURAL, "cream": NATURAL, "tan": NATURAL, "brown": NATURAL, "orange": NATURAL, "red": NATURAL, "gold": NATURAL,
         "gray": NATURAL, "black": NATURAL, "blue": NATURAL, "teal": NATURAL, "green": NATURAL, "pink": 0.6, "purple": 0.6,
         "fancy": 0.6, "neon": 0.25,
+        **dict.fromkeys(("bold_red", "bold_orange", "bold_yellow", "bold_green", "bold_teal", "bold_blue", "bold_purple", "bold_pink"), NATURAL),
     },
     # flames: bright oranges most often, then reds and golds; blue, green and
     # violet fire are rare (about 1 in 10 between them)

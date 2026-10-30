@@ -1,5 +1,5 @@
-"""Real-browser e2e tests for the profile page and character designer
-(PLAN.md 11c-2, phase 1)."""
+"""Real-browser e2e tests for the profile page and changing your look at
+the Home's vanity mirror (PLAN.md 11c-2, phase 1)."""
 
 from __future__ import annotations
 
@@ -15,31 +15,38 @@ def test_header_avatar_menu_opens_the_profile_page(page: Page, live_server):
     expect(page.locator("#stats .stat")).to_have_count(5)
 
 
-def test_designer_click_saves_the_look(page: Page, live_server):
-    page.goto(f"{live_server}/designer")
-    page.get_by_role("button", name="Girl").click()
-    expect(page.locator("#designer-status")).to_have_text("Saved!")
-    page.reload()
-    expect(page.get_by_role("button", name="Girl")).to_have_class("choice selected")
+def _look(page: Page, field: str) -> str:
+    return page.evaluate(f"fetch('/api/me').then(r => r.json()).then(d => d.avatar.appearance.{field})")
 
 
-def test_locked_dye_swatch_is_marked_locked(page: Page, live_server):
-    page.goto(f"{live_server}/designer")
-    expect(page.locator("#choices-hair_color .swatch-choice.locked").first).to_be_visible()
+def _mirror(page: Page, live_server) -> None:
+    page.goto(f"{live_server}/bedroom?room=mirror")
+    expect(page.locator("#name-plate")).to_have_value("Tester")  # loaded
 
 
-def test_rename(page: Page, live_server):
-    page.goto(f"{live_server}/designer")
-    expect(page.locator("#name-input")).to_have_value("Tester")  # loaded; CI was racing this
-    page.fill("#name-input", "Robin")
-    page.click("#name-form button")
-    expect(page.locator("#designer-status")).to_have_text("Hi, Robin!")
+def test_clicking_a_portrait_at_the_mirror_saves_the_look(page: Page, live_server):
+    _mirror(page, live_server)
+    page.locator("[data-spot='gender-girl']").click()
+    page.wait_for_function("fetch('/api/me').then(r => r.json()).then(d => d.avatar.appearance.gender === 'girl')")
+
+
+def test_a_locked_dye_points_to_the_store(page: Page, live_server):
+    _mirror(page, live_server)
+    page.locator("[data-spot='hair_color-blue']").click()
+    expect(page.locator("#room-message")).to_contain_text("store")
+    assert _look(page, "hair_color") != "blue"
+
+
+def test_rename_at_the_name_plate(page: Page, live_server):
+    _mirror(page, live_server)
+    page.fill("#name-plate", "Robin")
+    page.locator("#name-plate").press("Enter")
+    expect(page.locator("#room-message")).to_have_text("Hi, Robin!")
     page.goto(f"{live_server}/profile")
     expect(page.locator("#profile-name")).to_have_text("Robin")
 
 
 def test_eye_color_choice_saves(page: Page, live_server):
-    page.goto(f"{live_server}/designer")
-    page.locator("#choices-eye_color .swatch-choice").nth(1).click()
-    expect(page.locator("#designer-status")).to_have_text("Saved!")
-    assert page.evaluate("fetch('/api/me').then(r => r.json()).then(d => d.avatar.appearance.eye_color)") == "blue"
+    _mirror(page, live_server)
+    page.locator("[data-spot='eye_color-blue']").click()
+    page.wait_for_function("fetch('/api/me').then(r => r.json()).then(d => d.avatar.appearance.eye_color === 'blue')")

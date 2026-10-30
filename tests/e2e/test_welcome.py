@@ -1,4 +1,4 @@
-"""Real-browser e2e tests for picking/creating players and the wardrobe
+"""Real-browser e2e tests for picking/creating players and getting dressed
 (PLAN.md 11d)."""
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ def test_no_player_goes_to_welcome_and_new_player_flow(page: Page, live_server):
 
     page.fill("#new-name", "Robin")
     page.click("#new-player-form button")
-    expect(page).to_have_url(f"{live_server}/designer?setup=1")
-    page.get_by_role("link", name="Next →").click()
+    expect(page).to_have_url(f"{live_server}/bedroom?room=mirror&setup=1")  # set up your look at the mirror
+    page.locator("#room-nav").get_by_role("button", name="Next").click()
 
     expect(page).to_have_url(f"{live_server}/placement")
     page.get_by_role("button", name="The home row (asdf jkl;)").click()
@@ -37,16 +37,14 @@ def test_switch_player_and_pick_from_the_list(page: Page, live_server):
     expect(page.locator(".profile-menu-name")).to_have_text("Tester")
 
 
-def test_wardrobe_changes_into_owned_clothes(page: Page, live_server, tmp_path):
+def test_the_closet_changes_into_owned_clothes(page: Page, live_server, tmp_path):
     from app import db, store
 
     with db.open_db(tmp_path / "e2e.db") as conn:
         db.add_coins(conn, 1, store.CATALOG["shirt_tee_blue"].price, "test")
     page.request.post(f"{live_server}/api/store/buy/shirt_tee_blue")  # bought, not worn
 
-    page.goto(f"{live_server}/wardrobe")
-    tunic = page.locator(".wardrobe-choice[data-item-id='shirt_tunic']")
-    expect(tunic).to_have_class("choice wardrobe-choice selected")
-    page.locator(".wardrobe-choice[data-item-id='shirt_tee_blue']").click()
-    expect(page.locator(".wardrobe-choice[data-item-id='shirt_tee_blue']")).to_have_class("choice wardrobe-choice selected")
-    assert page.evaluate("fetch('/api/me').then(r => r.json()).then(d => d.avatar.shirt)") == "shirt_tee_blue"
+    page.goto(f"{live_server}/wardrobe")  # the old page: now the Home's closet
+    expect(page).to_have_url(f"{live_server}/bedroom?room=closet")
+    page.locator("[data-spot='shirt_tee_blue']").click()
+    page.wait_for_function("fetch('/api/me').then(r => r.json()).then(d => d.avatar.shirt === 'shirt_tee_blue')")

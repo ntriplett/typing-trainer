@@ -102,5 +102,6 @@ def test_wardrobe_lists_owned_wearables_including_starters():
 
 def test_new_pages_are_served():
     b = browser()
-    for path in ("/welcome", "/placement", "/wardrobe"):
+    for path in ("/welcome", "/placement", "/bedroom"):
         assert b.get(path).status_code == 200
+    assert b.get("/wardrobe", follow_redirects=False).headers["location"] == "/bedroom?room=closet"

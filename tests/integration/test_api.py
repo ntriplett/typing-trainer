@@ -61,3 +61,10 @@ def test_page_routes_are_never_cached_either():
     for path in ("/", "/session", "/analysis", "/teach-lab"):
         resp = client.get(path)
         assert resp.headers["cache-control"] == "no-store", path
+
+
+def test_update_endpoints_are_off_in_dev(monkeypatch):
+    monkeypatch.delenv("TYPING_TRAINER_HOME", raising=False)
+    assert client.get("/api/update").json()["installed"] is False
+    assert client.post("/api/update").status_code == 409
+    assert client.post("/api/alive").json() == {"ok": True}

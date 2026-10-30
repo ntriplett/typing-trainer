@@ -1,14 +1,18 @@
 // Room drawing (PLAN.md 11c-2, phase 5): wallpapers, floors, and
-// furniture on a 96x96 pixel grid, plus the avatar and wandering pets.
+// furniture on a 160x90 pixel grid, plus the avatar and wandering pets.
 // Original placeholder art. Keyed by app/catalog.py's wallpaper_*,
 // flooring_*, and furniture_* ids. The bedroom page (bedroom.js) adds
 // dragging; the store uses drawRoomThumb() for item thumbnails.
 //
 // Needs sprites.js, backgrounds.js, wardrobe.js, pet_render.js, avatar.js.
 
-const ROOM = 96;
-const WALL_BOTTOM = 60; // wall is y 0..59, baseboard 60..61, floor 62..95
-const FLOOR_TOP = 62;
+const ROOM_W = 160;
+const ROOM_H = 90;
+const WALL_BOTTOM = 54; // wall is y 0..53, baseboard 54..55, floor 56..89
+const FLOOR_TOP = 56;
+
+// Little flecks scattered over a floor (carpet fibers, pink fluff).
+const FLOOR_FLECKS = Array.from({ length: 14 }, (_, i) => [(i * 37 + 6) % ROOM_W, FLOOR_TOP + 2 + ((i * 13) % 30)]);
 
 // outlined box: the basic furniture brush
 function box(px, x, y, w, h, fill, outline = INK) {
@@ -20,13 +24,13 @@ function box(px, x, y, w, h, fill, outline = INK) {
 
 const WALLPAPERS = {
   wallpaper_cream(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#f4ead2");
-    for (let x = 2; x < ROOM; x += 8) px(x, 0, 3, WALL_BOTTOM, "#ead8b4");
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#f4ead2");
+    for (let x = 2; x < ROOM_W; x += 8) px(x, 0, 3, WALL_BOTTOM, "#ead8b4");
   },
   wallpaper_floral(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#f6e2dc");
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#f6e2dc");
     for (let y = 3; y < WALL_BOTTOM; y += 10) {
-      for (let x = (y / 10) % 2 ? 8 : 3; x < ROOM; x += 10) {
+      for (let x = (y / 10) % 2 ? 8 : 3; x < ROOM_W; x += 10) {
         px(x, y, 3, 1, "#e87aa8");
         px(x + 1, y - 1, 1, 3, "#e87aa8");
         px(x + 1, y, 1, 1, "#e8b33e");
@@ -35,27 +39,27 @@ const WALLPAPERS = {
     }
   },
   wallpaper_wood(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#b07a43");
-    for (let x = 0; x < ROOM; x += 8) px(x, 0, 1, WALL_BOTTOM, "#7a5228");
-    for (const [x, y] of [[4, 12], [21, 38], [44, 20], [60, 46], [75, 8], [90, 30]]) px(x, y, 2, 2, "#8b5a2b");
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#b07a43");
+    for (let x = 0; x < ROOM_W; x += 8) px(x, 0, 1, WALL_BOTTOM, "#7a5228");
+    for (const [x, y] of [[4, 12], [21, 38], [44, 20], [60, 46], [75, 8], [90, 30], [108, 16], [124, 40], [141, 10], [155, 34]]) px(x, y, 2, 2, "#8b5a2b");
   },
   wallpaper_mint(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#d4efe4");
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#d4efe4");
     for (let y = 4; y < WALL_BOTTOM; y += 8) {
-      for (let x = (y / 8) % 2 ? 8 : 4; x < ROOM; x += 8) px(x, y, 2, 2, "#a8dcc4");
+      for (let x = (y / 8) % 2 ? 8 : 4; x < ROOM_W; x += 8) px(x, y, 2, 2, "#a8dcc4");
     }
   },
   wallpaper_stars(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#2a2c50");
-    for (const [x, y] of [[5, 6], [18, 20], [30, 8], [44, 30], [57, 12], [70, 40], [83, 18], [91, 50], [12, 44], [38, 52], [64, 2], [78, 54]]) {
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#2a2c50");
+    for (const [x, y] of [[5, 6], [18, 20], [30, 8], [44, 30], [57, 12], [70, 40], [83, 18], [91, 46], [12, 44], [38, 48], [64, 2], [104, 10], [117, 32], [130, 4], [142, 24], [153, 44]]) {
       px(x, y + 1, 3, 1, "#f6e27a");
       px(x + 1, y, 1, 3, "#f6e27a");
     }
   },
   wallpaper_ocean(px) {
-    px(0, 0, ROOM, WALL_BOTTOM, "#a8dcf0");
+    px(0, 0, ROOM_W, WALL_BOTTOM, "#a8dcf0");
     for (let y = 6; y < WALL_BOTTOM; y += 8) {
-      for (let x = 0; x < ROOM; x += 6) {
+      for (let x = 0; x < ROOM_W; x += 6) {
         px(x, y, 3, 1, "#7cc0dc");
         px(x + 3, y - 1, 3, 1, "#7cc0dc");
       }
@@ -65,32 +69,32 @@ const WALLPAPERS = {
 
 const FLOORINGS = {
   flooring_planks(px) {
-    px(0, FLOOR_TOP, ROOM, ROOM - FLOOR_TOP, "#a0703a");
-    for (let y = FLOOR_TOP + 5, row = 0; y < ROOM; y += 6, row++) {
-      px(0, y, ROOM, 1, "#7a5228");
-      for (let x = row % 2 ? 10 : 24; x < ROOM; x += 28) px(x, y - 5, 1, 5, "#7a5228");
+    px(0, FLOOR_TOP, ROOM_W, ROOM_H - FLOOR_TOP, "#a0703a");
+    for (let y = FLOOR_TOP + 5, row = 0; y < ROOM_H; y += 6, row++) {
+      px(0, y, ROOM_W, 1, "#7a5228");
+      for (let x = row % 2 ? 10 : 24; x < ROOM_W; x += 28) px(x, y - 5, 1, 5, "#7a5228");
     }
   },
   flooring_checker(px) {
-    for (let y = FLOOR_TOP; y < ROOM; y += 8) {
-      for (let x = 0; x < ROOM; x += 8) {
+    for (let y = FLOOR_TOP; y < ROOM_H; y += 8) {
+      for (let x = 0; x < ROOM_W; x += 8) {
         px(x, y, 8, 8, ((x + y) / 8) % 2 ? "#3a3640" : "#f4f0e8");
       }
     }
   },
   flooring_carpet(px) {
-    px(0, FLOOR_TOP, ROOM, ROOM - FLOOR_TOP, "#6b9a4a");
-    for (const [x, y] of [[6, 66], [22, 80], [40, 70], [58, 88], [76, 74], [88, 92], [14, 90], [66, 64]]) px(x, y, 2, 1, "#5a8a3a");
+    px(0, FLOOR_TOP, ROOM_W, ROOM_H - FLOOR_TOP, "#6b9a4a");
+    for (const [x, y] of FLOOR_FLECKS) px(x, y, 2, 1, "#5a8a3a");
   },
   flooring_stone(px) {
-    px(0, FLOOR_TOP, ROOM, ROOM - FLOOR_TOP, "#7a7a74");
-    for (let y = FLOOR_TOP, row = 0; y < ROOM; y += 8, row++) {
-      for (let x = row % 2 ? -6 : 0; x < ROOM; x += 12) px(x + 1, y + 1, 10, 6, "#9a9a94");
+    px(0, FLOOR_TOP, ROOM_W, ROOM_H - FLOOR_TOP, "#7a7a74");
+    for (let y = FLOOR_TOP, row = 0; y < ROOM_H; y += 8, row++) {
+      for (let x = row % 2 ? -6 : 0; x < ROOM_W; x += 12) px(x + 1, y + 1, 10, 6, "#9a9a94");
     }
   },
   flooring_pink(px) {
-    px(0, FLOOR_TOP, ROOM, ROOM - FLOOR_TOP, "#f2b8cc");
-    for (const [x, y] of [[6, 66], [22, 80], [40, 70], [58, 88], [76, 74], [88, 92], [14, 90], [66, 64]]) px(x, y, 2, 1, "#e698b4");
+    px(0, FLOOR_TOP, ROOM_W, ROOM_H - FLOOR_TOP, "#f2b8cc");
+    for (const [x, y] of FLOOR_FLECKS) px(x, y, 2, 1, "#e698b4");
   },
 };
 
@@ -371,13 +375,17 @@ function isWallPiece(id, zones) {
 
 // --- the whole room ------------------------------------------------------------
 
-// room: /api/room's room object. scene: {avatar, walkers: [{pet, x, y,
-// dir}], frame, selected: placed id}. Draws through `px` (room pixels).
+// room: /api/room's room object. scene: {avatar (the window's view, and
+// night), extras: [{bottom, draw()}] (pets: drawn among the furniture by
+// where their feet are), selected: placed id, shell(px): drawn on the bare
+// walls before any furniture (the Home's doorways)}. Draws through `px`
+// (room pixels).
 function paintRoom(px, room, scene = {}) {
   (WALLPAPERS[room.wallpaper] || WALLPAPERS.wallpaper_cream)(px);
   (FLOORINGS[room.flooring] || FLOORINGS.flooring_planks)(px);
-  px(0, WALL_BOTTOM, ROOM, 2, "#8b5a2b"); // baseboard
-  px(0, WALL_BOTTOM + 1, ROOM, 1, "#5c3a1a");
+  px(0, WALL_BOTTOM, ROOM_W, 2, "#8b5a2b"); // baseboard
+  px(0, WALL_BOTTOM + 1, ROOM_W, 1, "#5c3a1a");
+  if (scene.shell) scene.shell(px);
 
   const zones = room.zones;
   const pieces = room.items.map((p) => ({ ...p, f: furnitureFor(p.item_id) })).filter((p) => p.f);
@@ -392,18 +400,10 @@ function paintRoom(px, room, scene = {}) {
   const standing = floor
     .filter((p) => !p.f.def.flat)
     .map((p) => ({ bottom: p.y + p.f.def.h, draw: () => p.f.def.draw(px, p.x, p.y, ctxFor(p)) }));
-  if (scene.avatar) {
-    const ax = scene.avatarX ?? 30, ay = scene.avatarY ?? 46; // feet land ~y 89
-    const at = (x, y, w, h, c) => px(x + ax, y + ay, w, h, c);
-    standing.push({ bottom: ay + 44, draw: () => paintAvatar(at, scene.avatar, { background: false, pets: false, frame: scene.frame }) });
-  }
-  for (const w of scene.walkers || []) {
-    const opts = { frame: scene.frame, faceLeft: w.dir < 0, scale: ALONG_PET_SCALE };
-    standing.push({ bottom: w.y, draw: () => drawPet(px, Math.round(w.x), w.y, w.pet.genes, w.pet.growth, opts) });
-  }
+  standing.push(...(scene.extras || []));
   standing.sort((a, b) => a.bottom - b.bottom).forEach((s) => s.draw());
 
-  if (scene.avatar && scene.avatar.night) px(0, 0, ROOM, ROOM, "rgba(16, 20, 52, 0.35)");
+  if (scene.avatar && scene.avatar.night) px(0, 0, ROOM_W, ROOM_H, "rgba(16, 20, 52, 0.35)");
 
   const sel = pieces.find((p) => p.id === scene.selected);
   if (sel) {
@@ -415,10 +415,10 @@ function paintRoom(px, room, scene = {}) {
   }
 }
 
-function canvasPx(canvas, gridSize) {
+function canvasPx(canvas, gridWidth) {
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
-  const scale = canvas.width / gridSize;
+  const scale = canvas.width / gridWidth;
   return (x, y, w, h, c) => {
     ctx.fillStyle = c;
     ctx.fillRect(x * scale, y * scale, w * scale, h * scale);
@@ -428,12 +428,14 @@ function canvasPx(canvas, gridSize) {
 // Store thumbnails: the piece (or surface) in a little 48x48 room corner.
 function drawRoomThumb(canvas, itemId) {
   const px = canvasPx(canvas, 48);
-  const big = (x, y, w, h, c) => px(x / 2, y / 2, w / 2, h / 2, c); // room pixels at half size
+  // room pixels at half size, the floor reaching the bottom edge
+  const big = (x, y, w, h, c) => px(x / 2, (y + 6) / 2, w / 2, h / 2, c);
   const wallpaper = WALLPAPERS[itemId] ? itemId : "wallpaper_cream";
   const flooring = FLOORINGS[itemId] ? itemId : "flooring_planks";
+  px(0, 0, 48, 48, "#f4ead2");
   WALLPAPERS[wallpaper](big);
   FLOORINGS[flooring](big);
-  big(0, WALL_BOTTOM, ROOM, 2, "#8b5a2b");
+  big(0, WALL_BOTTOM, ROOM_W, 2, "#8b5a2b");
   const f = furnitureFor(itemId);
   if (f) {
     const { w, h } = f.def;

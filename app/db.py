@@ -396,6 +396,7 @@ _ADDED_COLUMNS = [
     ("tank_piece", "rot", "INTEGER NOT NULL DEFAULT 0"),  # degrees: 0, 90, 180, 270
     ("pet", "joy", "INTEGER NOT NULL DEFAULT 0"),  # hearts (app/pet_supplies.py)
     ("pet", "joy_on", "TEXT"),  # the day they were last set
+    ("room_item", "wide", "INTEGER NOT NULL DEFAULT 0"),  # 1: placed on the 160x90 room grid
 ]
 
 
@@ -410,7 +411,14 @@ def init_schema(conn: sqlite3.Connection) -> None:
     for table, column, decl in _ADDED_COLUMNS:
         existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
         if column not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            except sqlite3.OperationalError as exc:  # another request added it first
+                if "duplicate column" not in str(exc):
+                    raise
+    # The room grew from 96x96 to 160x90 (wall 54 tall, was 60): move old
+    # furniture over so it keeps its spot, centered, against the baseboard.
+    conn.execute("UPDATE room_item SET x = x + 32, y = MAX(0, y - 6), wide = 1 WHERE wide = 0")
     conn.commit()
 
 
@@ -1140,7 +1148,7 @@ def list_room_items(conn: sqlite3.Connection, learner_id: int, room: str) -> lis
 
 def add_room_item(conn: sqlite3.Connection, learner_id: int, room: str, item_id: str, x: int, y: int) -> int:
     cur = conn.execute(
-        "INSERT INTO room_item (learner_id, room, item_id, x, y) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO room_item (learner_id, room, item_id, x, y, wide) VALUES (?, ?, ?, ?, ?, 1)",
         (learner_id, room, item_id, x, y),
     )
     return cur.lastrowid

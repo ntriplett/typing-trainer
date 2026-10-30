@@ -1,30 +1,16 @@
-/* Bedroom editor; frames, buttons, and colors come from theme.css. */
+/* The Home (bedroom.js): the scene comes from scene.css; frames, buttons,
+   and colors from theme.css. */
 
 main.wide {
   width: min(1060px, calc(100% - 32px));
 }
 
-.bedroom-layout {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 1rem;
-  align-items: start;
-}
-
-.room-panel {
-  line-height: 0;
-}
-
-#room-canvas {
-  width: 576px;
-  max-width: 100%;
-  aspect-ratio: 1;
-  border: 4px solid var(--outline);
+#room-canvas.editing {
   cursor: grab;
   touch-action: none;
 }
 
-#room-canvas:active {
+#room-canvas.editing:active {
   cursor: grabbing;
 }
 
@@ -32,8 +18,35 @@ main.wide {
   outline: 3px dashed var(--leaf-gold);
 }
 
-.room-side .panel {
-  margin-bottom: 0.75rem;
+/* the name plate under the vanity mirror: your name, carved in; click to change it */
+.name-plate {
+  position: absolute;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: clamp(13px, 2vw, 20px);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.name-plate:focus {
+  outline: 3px dashed var(--leaf-gold);
+  background: rgba(255, 250, 235, 0.8);
+}
+
+/* decorating, under the bedroom: selected piece, inventory, surfaces */
+.decorate-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1.4fr;
+  gap: 1rem;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.decorate-row[hidden] {
+  display: none;
 }
 
 .thumb-grid {
@@ -70,7 +83,7 @@ main.wide {
 }
 
 @media (max-width: 900px) {
-  .bedroom-layout {
+  .decorate-row {
     grid-template-columns: 1fr;
   }
 }

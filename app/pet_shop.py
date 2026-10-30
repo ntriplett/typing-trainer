@@ -43,7 +43,7 @@ class Department:
 DEPARTMENTS: dict[str, Department] = {
     d.id: d
     for d in [
-        Department("fish", "Fish", ("fish",), 16, 100, ""),
+        Department("fish", "Fish", ("fish",), 24, 100, ""),
         Department("household", "Household Pets", ("dog", "cat", "bunny"), 16, 800, HOME_ROW),
         Department("farm", "Farm Pets", ("goat", "sheep", "llama", "fox"), 12, 2000, TOP_ROW),
         Department("reptiles", "Reptiles & Amphibians", ("turtle", "lizard", "snake"), 8, 3000, BOTTOM_ROW),

@@ -86,3 +86,10 @@
 .next-new {
   margin: 0.3rem 0;
 }
+
+.update-notes {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 16px;
+}

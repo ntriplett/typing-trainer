@@ -501,22 +501,27 @@ button:focus-visible,
   }
 }
 
-/* The place's ground along the bottom of the page (themes.js colors it). */
-.page-ground {
+/* The place's scenery behind everything (scenery.js), in big pixels. */
+.scenery {
   position: fixed;
   left: 0;
-  right: 0;
-  bottom: 0;
-  height: 28px;
-  z-index: -1;
+  top: 0;
+  z-index: -2;
   pointer-events: none;
-  background: var(--ground, transparent);
-  border-top: 4px solid var(--ground-top, transparent);
   image-rendering: pixelated;
 }
 
+/* Words straight on a dark scenery sky (space by day) stay readable. */
+:root[data-dark-scenery] main > h1,
+:root[data-dark-scenery] main > p,
+:root[data-dark-scenery] .page-head h1,
+:root[data-dark-scenery] .home-footnote {
+  color: #f6e27a;
+  text-shadow: 2px 2px 0 #14162a;
+}
+
 body[data-particles] main {
-  margin-bottom: 4rem; /* clear the ground strip */
+  margin-bottom: 4rem; /* leave the scenery's ground showing */
 }
 
 /* Day/night switch in the top bar (shown when night is unlocked here). */

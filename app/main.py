@@ -11,16 +11,17 @@ try any module directly and are linked from the parent page.
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, desktop, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -40,7 +41,15 @@ DB_PATH = Path(
     os.environ.get("TYPING_TRAINER_DB_PATH", str(Path(__file__).resolve().parent.parent / "typing.db"))
 )
 
-app = FastAPI(title="Typing Trainer")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    desktop.start_idle_watch()
+    yield
+
+
+app = FastAPI(title="Typing Trainer", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 
 
@@ -58,6 +67,7 @@ async def no_cache_responses(request, call_next):
     revisit with real cache-busting (versioned filenames) once the
     front-end stabilizes.
     """
+    desktop.touch()
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -115,6 +125,30 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.post("/api/alive")
+def alive() -> dict:
+    """Pages ping this so the installed copy knows it's still in use
+    (the middleware above does the remembering)."""
+    return {"ok": True}
+
+
+@app.get("/api/update")
+def update_status() -> dict:
+    return desktop.status()
+
+
+@app.post("/api/update")
+def start_update() -> dict:
+    """Installed copy only: the server exits and the launcher updates
+    and reopens the app (app/desktop.py)."""
+    try:
+        return desktop.request_update()
+    except RuntimeError:
+        raise HTTPException(status_code=409, detail="Updates only work in the installed app.")
+    except LookupError:
+        raise HTTPException(status_code=409, detail="You already have the newest version.")
+
+
 @app.get("/api/activities/hello-world")
 def hello_world_activity() -> dict:
     return HelloWorldActivity().generate()
@@ -145,9 +179,11 @@ def profile_page() -> FileResponse:
     return FileResponse(WEB_DIR / "profile.html")
 
 
+# The old Character Designer and Wardrobe pages live in the Home now: the
+# vanity mirror and the closet (new players set up their look at the mirror).
 @app.get("/designer")
-def designer_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "designer.html")
+def designer_page(setup: str | None = None) -> RedirectResponse:
+    return RedirectResponse("/bedroom?room=mirror" + ("&setup=1" if setup is not None else ""))
 
 
 @app.get("/pets")
@@ -216,8 +252,8 @@ def placement_page() -> FileResponse:
 
 
 @app.get("/wardrobe")
-def wardrobe_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "wardrobe.html")
+def wardrobe_page() -> RedirectResponse:
+    return RedirectResponse("/bedroom?room=closet")
 
 
 @app.get("/teach-lab")
@@ -864,9 +900,6 @@ def _store_action(action, conn, learner_id: int, arg: str) -> dict:
 
 @app.post("/api/store/buy/{item_id}")
 def store_buy(item_id: str, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    item = store.CATALOG.get(item_id)
-    if item and item.slot in unlocks.ROOM_SLOTS:
-        _require(conn, learner_id, "bedroom")
     return _store_action(store.buy, conn, learner_id, item_id)
 
 
@@ -947,13 +980,6 @@ class PetNameIn(BaseModel):
 
 class AlongIn(BaseModel):
     slot: int | None = None
-
-
-def _require(conn, learner_id: int, room_name: str) -> None:
-    try:
-        unlocks.require(conn, learner_id, room_name)
-    except unlocks.Locked as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from None
 
 
 # --- pet shop API (pets v3, PLAN.md 11h) --------------------------------------------
@@ -1336,12 +1362,10 @@ class SurfaceIn(BaseModel):
 
 
 def _room_state(conn, learner_id: int) -> dict:
-    _require(conn, learner_id, "bedroom")
     return {**_me(conn, learner_id), "room": room.state(conn, learner_id)}
 
 
 def _room_action(action, conn, learner_id: int, *args) -> dict:
-    _require(conn, learner_id, "bedroom")
     try:
         action(conn, learner_id, *args)
     except room.RoomError as exc:

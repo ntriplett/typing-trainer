@@ -88,6 +88,42 @@ function wire(el, p) {
   learn.addEventListener("change", save);
 }
 
+// The installed app's updates (app/desktop.py). Progress is kept: the
+// update only replaces the program, and backs up the database first.
+function renderUpdate(u) {
+  if (!u.installed) return;
+  $("update").hidden = false;
+  const text = $("update-text");
+  if (!u.available) {
+    text.textContent = u.latest
+      ? `Version ${u.current}. You have the newest version.`
+      : `Version ${u.current}. Couldn't reach GitHub to check for a newer one.`;
+    return;
+  }
+  text.textContent = `Version ${u.latest} is ready (you have ${u.current}). Progress is kept, and the app reopens by itself in about a minute.`;
+  if (u.notes) {
+    $("update-notes").textContent = u.notes;
+    $("update-notes").hidden = false;
+  }
+  const go = $("update-go");
+  go.hidden = false;
+  go.onclick = async () => {
+    go.disabled = true;
+    const res = await fetch("/api/update", { method: "POST" });
+    if (res.ok) {
+      text.textContent = "Updating... this window will close, and the app reopens when it's done.";
+    } else {
+      text.textContent = (await res.json()).detail;
+      go.disabled = false;
+    }
+  };
+}
+
+fetch("/api/update")
+  .then((r) => r.json())
+  .then(renderUpdate)
+  .catch(() => {});
+
 fetch("/api/parent")
   .then((r) => r.json())
   .then(render);

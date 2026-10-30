@@ -60,10 +60,24 @@ def test_positions_are_clamped_to_the_room(conn, learner_id):
     _buy(conn, learner_id, "furniture_plant")
     placed_id = room.place(conn, learner_id, "furniture_plant", x=-20, y=500)
     item = room.state(conn, learner_id)["items"][0]
-    assert (item["x"], item["y"]) == (0, room.ROOM_SIZE - 1)
+    assert (item["x"], item["y"]) == (0, room.ROOM_H - 1)
     room.move(conn, learner_id, placed_id, 300, -5)
     item = room.state(conn, learner_id)["items"][0]
-    assert (item["x"], item["y"]) == (room.ROOM_SIZE - 1, 0)
+    assert (item["x"], item["y"]) == (room.ROOM_W - 1, 0)
+
+
+def test_furniture_from_the_old_square_room_moves_over_once(conn, learner_id):
+    """The room grew from 96x96 to 160x90: old pieces shift right 32 (to stay
+    centered) and up 6 (the wall got shorter), and only the first time."""
+    _buy(conn, learner_id, "furniture_plant")
+    conn.execute(
+        "INSERT INTO room_item (learner_id, room, item_id, x, y, wide) VALUES (?, 'bedroom', 'furniture_plant', 10, 70, 0)",
+        (learner_id,),
+    )
+    db.init_schema(conn)
+    db.init_schema(conn)
+    item = room.state(conn, learner_id)["items"][0]
+    assert (item["x"], item["y"]) == (42, 64)
 
 
 def test_surfaces_need_ownership_except_starters(conn, learner_id):

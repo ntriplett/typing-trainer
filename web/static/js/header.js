@@ -93,8 +93,8 @@ const DayTracker = {
         <nav class="profile-menu" hidden>
           <p class="profile-menu-name"></p>
           <a href="/profile">My profile</a>
-          <a href="/wardrobe">Wardrobe</a>
-          <a href="/designer">Change my look</a>
+          <a href="/bedroom?room=dressing">Dressing Room</a>
+          <a href="/bedroom?room=mirror">Change my look</a>
           <button class="switch-player">Switch player</button>
         </nav>
       </div>
@@ -179,7 +179,7 @@ const DayTracker = {
     applyTheme(equipped);
   }
 
-  // Any response shaped like /api/me (store actions, designer, ...).
+  // Any response shaped like /api/me (store actions, the Home, ...).
   function update(me) {
     current = me;
     bar.querySelector(".profile-menu-name").textContent = me.learner.name;

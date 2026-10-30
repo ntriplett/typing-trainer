@@ -46,3 +46,11 @@ def test_typing_page_has_no_particles(page: Page, live_server):
     page.goto(f"{live_server}/session")
     expect(page.locator("#coin-count")).to_be_visible()
     assert page.locator(".particles").count() == 0
+
+
+def test_your_place_is_drawn_behind_the_page_but_not_while_typing(page: Page, live_server):
+    page.goto(live_server)
+    expect(page.locator("canvas.scenery")).to_have_count(1)
+    assert page.evaluate("Scenery.place") == "bg_meadow"
+    page.goto(f"{live_server}/session")
+    expect(page.locator("canvas.scenery")).to_have_count(0)
