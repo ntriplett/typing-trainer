@@ -32,6 +32,7 @@ from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
+from app.wanderpaw import local as wander_local
 from app.wanderpaw import save as wander
 from app.wanderpaw import world as wander_world
 
@@ -787,9 +788,19 @@ def farm_day(body: FarmDayRequest, conn=Depends(get_db), learner_id: int = Depen
 WANDER_WORDS = 60
 
 
-class WanderStepRequest(BaseModel):
+class WanderHexRequest(BaseModel):
     q: int
     r: int
+
+
+class WanderTripRequest(BaseModel):
+    from_camp: bool = False
+
+
+class WanderTeleportRequest(BaseModel):
+    q: int
+    r: int
+    spot: tuple[int, int] | None = None
 
 
 class WanderResetRequest(BaseModel):
@@ -811,6 +822,13 @@ def _wander_state(conn, learner_id: int, save: dict) -> dict:
     return {**wander.view(save), "words": _wander_words(conn, learner_id)}
 
 
+def _wander_act(conn, learner_id: int, act) -> dict:
+    try:
+        return _wander_state(conn, learner_id, act())
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/wanderpaw")
 def wanderpaw_page() -> FileResponse:
     return FileResponse(WEB_DIR / "wanderpaw.html")
@@ -826,30 +844,70 @@ def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner
     return _wander_state(conn, learner_id, wander.load(conn, learner_id))
 
 
-@app.post("/api/wander/step")
-def wander_step(body: WanderStepRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    try:
-        return _wander_state(conn, learner_id, wander.step(conn, learner_id, (body.q, body.r)))
-    except wander.WanderError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+@app.post("/api/wander/walk")
+def wander_walk(body: WanderHexRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """One step on the small map (or out through an exit: the hex past the edge)."""
+    return _wander_act(conn, learner_id, lambda: wander.walk(conn, learner_id, (body.q, body.r)))
+
+
+@app.post("/api/wander/trip/start")
+def wander_trip_start(body: WanderTripRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.begin(conn, learner_id, body.from_camp))
+
+
+@app.post("/api/wander/trip/end")
+def wander_trip_end(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id))
+
+
+def _lab_me(save: dict) -> dict:
+    return {"at": save["at"], "spot": save["spot"], "visited": save["visited"], "trip": save["trip"],
+            "seen": wander.seen_all(save)}
 
 
 @app.get("/api/wander-lab/world")
 def wander_lab_world(seed: int | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    """A whole world, fog off: yours (with where you are), or any seed's."""
+    """A whole world, fog off: yours (with where you are and what you've seen), or any seed's."""
     save = wander.load(conn, learner_id)
     out = wander_world.to_json(wander_world.generate(save["seed"] if seed is None else seed))
     if seed is None or seed == save["seed"]:
-        out["me"] = {"at": save["at"], "visited": save["visited"]}
+        out["me"] = _lab_me(save)
     return out
 
 
+@app.get("/api/wander-lab/local")
+def wander_lab_local(seed: int, q: int, r: int) -> dict:
+    """One big hex's whole small map."""
+    if (q, r) not in wander_world.generate(seed).hexes:
+        raise HTTPException(status_code=404, detail="That place isn't on the map.")
+    return wander_local.to_json(wander_local.generate(seed, (q, r)))
+
+
+@app.get("/api/wander-lab/gallery")
+def wander_lab_gallery(seed: int = 0) -> list[dict]:
+    """One small map of every biome (from this seed's world, or the next ones)."""
+    found: dict[str, dict] = {}
+    for s in range(seed, seed + 20):
+        world = wander_world.generate(s)
+        for big in world.hexes.values():
+            if big.biome not in found and not big.special:
+                found[big.biome] = {**wander_local.to_json(wander_local.generate(s, big.coord)), "seed": s, "name": big.name}
+    order = [b for _, biomes in wander_world.BIOMES.items() for b, *_ in biomes]
+    return [found[b] for b in order if b in found]
+
+
 @app.post("/api/wander-lab/teleport")
-def wander_lab_teleport(body: WanderStepRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+def wander_lab_teleport(body: WanderTeleportRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     try:
-        wander.teleport(conn, learner_id, (body.q, body.r))
+        wander.teleport(conn, learner_id, (body.q, body.r), tuple(body.spot) if body.spot else None)
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_lab_world(None, conn, learner_id)
+
+
+@app.post("/api/wander-lab/refill")
+def wander_lab_refill(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    wander.refill(conn, learner_id)
     return wander_lab_world(None, conn, learner_id)
 
 

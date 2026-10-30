@@ -12,12 +12,14 @@
   <main class="wander-lab">
     <section class="panel">
       <h1>Wanderpaw lab</h1>
-      <p class="hint">The whole world with no fog and no walls in your way. Look at any seed, click a place to see it, and move yourself anywhere in your own world. (Zooming into a place's small map comes with phase 2.)</p>
+      <p class="hint">The whole world with no fog and no walls in your way. Look at any seed, click a place to open its small map, click a small hex to move yourself there (in your own world), or compare every land's feel in the gallery.</p>
       <div class="lab-options">
         <button id="mine-button" class="button-go">My world</button>
         <label>Seed <input id="opt-seed" type="number" min="0" style="width: 9em" /></label>
         <button id="seed-button" class="button-go">Show seed</button>
         <button id="random-button" class="button-go">Random seed</button>
+        <button id="refill-button" class="button-go">Full energy</button>
+        <button id="gallery-button" class="button-go">Land gallery</button>
       </div>
       <div class="lab-options">
         <label><input id="opt-fog" type="checkbox" /> What I've seen</label>
@@ -39,6 +41,19 @@
         <section class="panel wander-stats" id="stats"></section>
       </aside>
     </div>
+    <div class="wander-lab-grid" id="local-section" hidden>
+      <section class="panel wander-board">
+        <canvas id="local-map" class="wander-map" aria-label="Small map"></canvas>
+      </section>
+      <aside>
+        <section class="panel wander-info" id="local-info"></section>
+      </aside>
+    </div>
+    <section class="panel" id="gallery-section" hidden>
+      <h2 class="panel-title">Land gallery</h2>
+      <p class="hint">One small map of every land, from this seed's world (or the next few). Click one to open it.</p>
+      <div class="wander-gallery" id="gallery"></div>
+    </section>
   </main>
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>

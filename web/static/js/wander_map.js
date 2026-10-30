@@ -52,6 +52,15 @@ const WanderMap = (() => {
     crystal: ["..P..", ".PpP.", ".PpP.", ".ppp.", "....."],
     star: ["..y..", ".yyy.", "..y..", ".....", "....."],
     apple: ["..g..", ".GrG.", "GrGrG", ".GGG.", "..t.."],
+    bush: [".....", ".GgG.", "GgGgG", ".ggg.", "....."],
+    flower: [".....", ".c.y.", "cGcGy", ".G.G.", "....."],
+    house: ["..r..", ".rrr.", "rrrrr", ".wnw.", ".wnw."],
+    logfire: ["..o..", ".omo.", ".oyo.", "nnnnn", "....."],
+    planks: ["n.n.n", "nnnnn", "n.n.n", "nnnnn", "n.n.n"],
+    stones: [".....", ".S...", "...S.", ".S...", "....."],
+    cliffs: ["kkk..", ".....", "..kkk", ".....", "kk.kk"],
+    sign: ["nnnn.", "nnnnn", "nnnn.", ".n...", ".n..."],
+    smoke: [".S...", "..S..", ".S.S.", "..S..", ".S..."],
   };
   const BIOME_GLYPHS = {
     fields: ["tuft"], orchard: ["apple", "tuft"],
@@ -81,7 +90,7 @@ const WanderMap = (() => {
 
   function geometry(canvas, map, opts) {
     const size = opts.size || 34;
-    const r = map.radius;
+    const r = opts.radius ?? map.radius;
     const width = Math.ceil(SQRT3 * size * (2 * r + 1)) + 8;
     const height = Math.ceil(size * (3 * r + 2)) + 8;
     return { size, width, height, cx: width / 2, cy: height / 2 };
@@ -337,6 +346,154 @@ const WanderMap = (() => {
     });
   }
 
+
+  // --- small maps ---------------------------------------------------------------
+
+  const TILE_FILL = {
+    path: "#dcc08e", sand: "#ecd9a0", plaza: "#d6c6a6", water: "#6fa8d6", bridge: "#6fa8d6",
+    ford: "#9fd0e0", cliff: "#8a6446", building: "#d6c6a6", temple: "#d6c6a6", stone: "#d6c6a6",
+  };
+  const TREE_GLYPH = {
+    deepwood: "pine", ridge: "pine", storm_peaks: "pine", ember_peaks: "pine", orchard: "apple",
+    mushroom_grove: "shroom", crystal_hollow: "crystal",
+  };
+
+  function shade(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (c) => Math.max(0, Math.min(255, Math.round(c * (1 - amount))));
+    return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
+  }
+
+  function tileGlyph(kind, biome) {
+    switch (kind) {
+      case "tree": return GLYPHS[TREE_GLYPH[biome] || "tree"];
+      case "bush": return GLYPHS.bush;
+      case "rock": return GLYPHS.rock;
+      case "cliff": return GLYPHS.cliffs;
+      case "water": return GLYPHS.wave;
+      case "bridge": return GLYPHS.planks;
+      case "ford": return GLYPHS.stones;
+      case "flowers": return GLYPHS.flower;
+      case "building": return GLYPHS.house;
+      case "campfire": return GLYPHS.logfire;
+      case "camp": return SPECIALS.camp;
+      case "temple": return SPECIALS.temple;
+      case "stone": return SPECIALS.final;
+      default: return null;
+    }
+  }
+
+  function drawTile(ctx, g, t, biome, x, y) {
+    const base = BIOME_COLORS[biome] || "#d8c7a0";
+    hexPath(ctx, g, x, y);
+    const dark = { tree: 0.3, bush: 0.12, rock: 0.12 }[t.kind];
+    ctx.fillStyle = TILE_FILL[t.kind] || (dark ? shade(base, dark) : base);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(59, 36, 23, 0.18)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const px = Math.max(2, Math.round(g.size / 8));
+    const big = ["camp", "temple", "stone"].includes(t.kind);
+    const blocker = ["tree", "bush", "rock", "cliff"].includes(t.kind);
+    const rows = tileGlyph(t.kind, biome);
+    if (rows) glyph(ctx, rows, x, y, big ? Math.max(2, Math.round(g.size / 10)) : blocker ? Math.max(2, Math.round(g.size / 5.5)) : px);
+    else if (t.kind === "grass" && hashRand(t.q, t.r)() < 0.3) glyph(ctx, GLYPHS.tuft, x, y, px);
+    if (t.exit !== undefined) glyph(ctx, GLYPHS.sign, x + g.size * 0.35, y - g.size * 0.3, Math.max(2, px - 1));
+  }
+
+  // local: {radius, tiles: [{q, r, kind, exit?, near?}], spot, campfire, ghosts, biome}
+  // opts: size, fog (dim tiles that aren't near; show the campfire's smoke
+  // even before it's seen), labels, selected, marks.
+  function drawLocal(canvas, local, opts = {}) {
+    const g = geometry(canvas, local, { ...opts, radius: local.radius + 1 });
+    canvas.width = g.width;
+    canvas.height = g.height;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    const fog = opts.fog !== false;
+    const known = new Set(local.tiles.map((t) => key(t.q, t.r)));
+
+    (local.ghosts || []).forEach((gh) => {
+      const [x, y] = center(g, gh.q, gh.r);
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      hexPath(ctx, g, x, y);
+      ctx.fillStyle = BIOME_COLORS[gh.biome] || "#d8c7a0";
+      ctx.fill();
+      ctx.restore();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "#3b2417";
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+    local.tiles.forEach((t) => {
+      const [x, y] = center(g, t.q, t.r);
+      drawTile(ctx, g, t, local.biome, x, y);
+    });
+    if (fog) {
+      local.tiles.forEach((t) => {
+        if (t.near) return;
+        const [x, y] = center(g, t.q, t.r);
+        hexPath(ctx, g, x, y);
+        ctx.fillStyle = "rgba(251, 241, 220, 0.38)";
+        ctx.fill();
+      });
+      // The campfire's smoke shows from anywhere in this big hex.
+      if (local.campfire && !known.has(key(...local.campfire))) {
+        const [x, y] = center(g, ...local.campfire);
+        glyph(ctx, GLYPHS.smoke, x, y - g.size * 0.3, Math.max(2, Math.round(g.size / 7)));
+        glyph(ctx, GLYPHS.flame, x, y + g.size * 0.25, Math.max(2, Math.round(g.size / 10)));
+      }
+    }
+    // The edge of the small map.
+    ctx.save();
+    ctx.strokeStyle = "rgba(59, 36, 23, 0.35)";
+    ctx.setLineDash([4, 4]);
+    hexPathBig(ctx, g, local.radius);
+    ctx.stroke();
+    ctx.restore();
+    if (opts.selected) {
+      const [x, y] = center(g, ...opts.selected);
+      hexPath(ctx, g, x, y, 2);
+      ctx.strokeStyle = "#e8b33e";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    if (local.spot) {
+      const [x, y] = center(g, ...local.spot);
+      ctx.fillStyle = "#fffaf0";
+      ctx.beginPath();
+      ctx.arc(x, y, g.size * 0.55, 0, 7);
+      ctx.fill();
+      ctx.strokeStyle = "#3b2417";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      glyph(ctx, SPECIALS.paw, x, y, Math.max(3, Math.round(g.size / 7)));
+    }
+    Object.entries(opts.labels || {}).forEach(([k, label]) => {
+      const [q, r] = k.split(",").map(Number);
+      const [x, y] = center(g, q, r);
+      drawLabel(ctx, g, x, y - g.size * 0.55, label);
+    });
+  }
+
+  // Outline of a radius-r hexagon of hexes (corner hexes' outer corners).
+  function hexPathBig(ctx, g, r) {
+    ctx.beginPath();
+    DIRS.forEach(([dq, dr], d) => {
+      const [x, y] = center(g, dq * r, dr * r);
+      const a = (Math.PI / 180) * (-60 * d);
+      const px = x + g.size * Math.cos(a) * 1.0;
+      const py = y + g.size * Math.sin(a) * 1.0;
+      d ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    });
+    ctx.closePath();
+  }
+
+  function hexAtLocal(canvas, local, opts, x, y) {
+    return hexAt(canvas, local, { ...opts, radius: local.radius + 1 }, x, y);
+  }
+
   function hexAt(canvas, map, opts, x, y) {
     const g = geometry(canvas, map, opts);
     const px = (x - g.cx) / g.size;
@@ -355,5 +512,5 @@ const WanderMap = (() => {
     return [rq, rr];
   }
 
-  return { draw, hexAt, TYPE_COLORS, BIOME_COLORS, DIRS, key };
+  return { draw, drawLocal, hexAt, hexAtLocal, TYPE_COLORS, BIOME_COLORS, DIRS, key };
 })();

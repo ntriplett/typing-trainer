@@ -107,3 +107,79 @@ main.wander-lab {
 .wander-stats {
   font-size: 20px;
 }
+
+/* Play: the small map, with the big map and help beside it. */
+main.wander {
+  width: min(1200px, calc(100% - 32px));
+  max-width: none;
+}
+
+.wander-play {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .wander-play {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wander-side .wander-map {
+  margin: 0 auto;
+}
+
+.wander-campfires,
+.wander-help {
+  font-size: 20px;
+}
+
+.wander-help p {
+  margin: 0.3rem 0;
+}
+
+.wander-energy {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 20px;
+}
+
+.energy-bar {
+  width: 180px;
+  height: 18px;
+  border: 3px solid var(--outline);
+  background: var(--surface-shadow);
+}
+
+.energy-fill {
+  height: 100%;
+  background: var(--leaf-gold);
+  transition: width 0.2s;
+}
+
+.wander-message.good {
+  color: var(--type-correct);
+}
+
+/* Lab: land gallery */
+.wander-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.8rem;
+}
+
+.wander-gallery figure {
+  margin: 0;
+  cursor: pointer;
+  text-align: center;
+  font-size: 20px;
+}
+
+.wander-gallery canvas {
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}

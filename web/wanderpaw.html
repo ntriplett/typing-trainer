@@ -15,12 +15,26 @@
         <h1>Wanderpaw</h1>
         <p class="wander-where"><span id="where-chip" class="type-chip"></span> <b id="where-name"></b> <span id="where-land"></span></p>
       </div>
-      <p class="wander-keys">Type a word to walk there. <kbd class="keycap">Esc</kbd> lets go of a word, or goes home.</p>
+      <div class="wander-energy" id="energy" hidden>
+        <span>Energy</span>
+        <div class="energy-bar"><div class="energy-fill" id="energy-fill"></div></div>
+        <span id="energy-text"></span>
+      </div>
     </section>
     <p id="wander-message" class="wander-message" role="status"></p>
-    <section class="panel wander-board">
-      <canvas id="wander-map" class="wander-map" aria-label="Map"></canvas>
-    </section>
+    <div class="wander-play">
+      <section class="panel wander-board">
+        <canvas id="wander-local" class="wander-map" aria-label="Where you are"></canvas>
+      </section>
+      <aside class="wander-side">
+        <section class="panel">
+          <h2 class="panel-title">Map</h2>
+          <canvas id="wander-map" class="wander-map" aria-label="The big map"></canvas>
+          <p class="wander-campfires" id="campfires"></p>
+        </section>
+        <section class="panel wander-help" id="help"></section>
+      </aside>
+    </div>
   </main>
   <script src="/static/js/sprites.js"></script>
   <script src="/static/js/backgrounds.js"></script>

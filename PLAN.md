@@ -758,6 +758,25 @@ temples average ~10 walking steps from Camp (5 in a straight line). `/wanderpaw`
 map by typing (a stand-in until local maps); `/wander-lab` (admin, linked from the parent page)
 shows any seed with no fog, steps-from-Camp, and moves you anywhere or restarts your world.
 
+**Phase 2 (built 2026-10-29): small maps.** `app/wanderpaw/local.py`: each big hex is a radius-5
+hexagon (91 small hexes) from the seed + its place. The outer ring is six 5-hex zones, each centered
+on the corner hex facing that big neighbor: an open big edge gets 1-3 exit hexes (signposts; seeded by
+the edge so both sides match, the far side mirrored), a walled one is all wall (river -> water, cliff,
+thicket -> trees, rocks), the world's edge is water. Feel by biome (STYLES): open (clumps, ~72%
+walkable), orchard rows (~75%), forest (~55%), deep forest (~47%), canyon/mountain cliff bands
+(~61/55%), river with crossings, ponds, lake, isles (~50%). Clumps are smoothed noise cut at an exact
+share (steady density). One visible trail per open side wiggles to the campfire (windier in forest
+and cliffs, merging with other trails); other exits, buildings and cut-off pockets just get a way
+through (bridges/fords over water), tiny pockets fill in; every walkable hex is reachable. Specials:
+Camp's camp, towns (plaza + 5-7 buildings, campfire in the square, ~1/4 of the hex), temple toward
+the world's edge, Heartstone in the middle. Save v2 (`save.py`): big `at` + small `spot`, per-big-hex
+`seen` bitmasks (you see your hex and the six touching it; seen stays, dimmed), campfire smoke shows
+anywhere in its big hex, found = seen. Trips: TRIP_ENERGY 120 steps (placeholder for pet energy); out
+of energy = nap at the nearest found campfire (big-map walking steps); Enter at a campfire rests and
+ends the trip; next trip starts there or at Camp (C). Lab: click a big hex for its whole small map
+(fog toggle, click a small hex to put yourself there), Full energy, and a Land gallery of every biome.
+Later: crossing explored big hexes in one step on the big map.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

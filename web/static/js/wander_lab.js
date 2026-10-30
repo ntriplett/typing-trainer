@@ -1,6 +1,7 @@
 // The Wanderpaw lab (PLAN.md 11n): admin view of whole worlds. No fog, no
-// walls in the way: click any place to see it; in your own world, put
-// yourself anywhere or start the world over.
+// walls in the way: click any place to open its small map; in your own
+// world, put yourself on any small hex, refill energy, or start the world
+// over. The land gallery shows one small map of every biome.
 
 const canvas = document.getElementById("wander-map");
 const info = document.getElementById("info");
@@ -8,6 +9,10 @@ const stats = document.getElementById("stats");
 const opt = (id) => document.getElementById(id);
 let world = null;
 let selected = null;
+let local = null; // the selected place's whole small map
+let tile = null; // the selected small hex
+const localCanvas = document.getElementById("local-map");
+const localInfo = document.getElementById("local-info");
 
 const words = (name) => (name || "").replace(/_/g, " ");
 const isMine = () => Boolean(world && world.me);
@@ -28,10 +33,11 @@ async function show(seed) {
   opt("opt-seed").value = world.seed;
   opt("opt-fog").disabled = !isMine();
   if (!isMine()) opt("opt-fog").checked = false;
-  selected = null;
+  selected = isMine() ? world.me.at : null;
   renderInfo();
   renderStats();
   render();
+  loadLocal();
 }
 
 // Walking steps from Camp along open edges.
@@ -149,6 +155,7 @@ function renderInfo() {
 
 async function act(url, body) {
   const keep = selected;
+  const keepTile = tile;
   try {
     world = await fetchJson(url, body);
   } catch (err) {
@@ -157,9 +164,11 @@ async function act(url, body) {
   }
   opt("opt-fog").disabled = false;
   selected = keep;
+  tile = keepTile;
   renderInfo();
   renderStats();
   render();
+  renderLocal();
 }
 
 function renderStats() {
@@ -190,11 +199,113 @@ canvas.addEventListener("click", (e) => {
   selected = [q, r];
   renderInfo();
   render();
+  loadLocal();
 });
+
+// --- the selected place's small map ---------------------------------------------
+
+async function loadLocal() {
+  if (!selected) {
+    document.getElementById("local-section").hidden = true;
+    return;
+  }
+  local = await fetchJson(`/api/wander-lab/local?seed=${world.seed}&q=${selected[0]}&r=${selected[1]}`);
+  tile = null;
+  document.getElementById("local-section").hidden = false;
+  renderLocal();
+}
+
+function here() {
+  return isMine() && local && world.me.at[0] === local.big[0] && world.me.at[1] === local.big[1];
+}
+
+// The small map as the player sees it (their fog), or all of it.
+function localView() {
+  const spot = here() ? world.me.spot : null;
+  const place = world.hexes.find((h) => h.q === local.big[0] && h.r === local.big[1]);
+  const base = { radius: local.radius, biome: local.biome, campfire: local.campfire, spot, ghosts: [] };
+  if (!opt("opt-fog").checked) return { ...base, tiles: local.tiles.map((t) => ({ ...t, near: true })), place };
+  const seen = new Set((world.me.seen[WanderMap.key(...local.big)] || []).map((h) => WanderMap.key(...h)));
+  const near = new Set(spot ? [WanderMap.key(...spot), ...WanderMap.DIRS.map(([dq, dr]) => WanderMap.key(spot[0] + dq, spot[1] + dr))] : []);
+  const tiles = local.tiles
+    .filter((t) => seen.has(WanderMap.key(t.q, t.r)))
+    .map((t) => ({ ...t, near: near.has(WanderMap.key(t.q, t.r)) }));
+  return { ...base, tiles, place };
+}
+
+function renderLocal() {
+  if (!local) return;
+  const view = localView();
+  WanderMap.drawLocal(localCanvas, view, { size: 34, fog: opt("opt-fog").checked, selected: tile });
+  const counts = {};
+  local.tiles.forEach((t) => {
+    counts[t.kind] = (counts[t.kind] || 0) + 1;
+  });
+  const picked = tile && local.tiles.find((t) => t.q === tile[0] && t.r === tile[1]);
+  const walkable = picked && !["tree", "bush", "rock", "cliff", "water"].includes(picked.kind);
+  localInfo.innerHTML = `
+    <h2 class="panel-title">${view.place.name}: small map</h2>
+    <dl>
+      <dt>Land</dt><dd>${words(local.biome)}</dd>
+      <dt>Feel</dt><dd>${words(local.style)}</dd>
+      <dt>Walkable</dt><dd>${Math.round(local.walkable * 100)}%</dd>
+      <dt>Exits</dt><dd>${local.tiles.filter((t) => t.exit !== undefined).length}</dd>
+      <dt>Tiles</dt><dd>${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}</dd>
+    </dl>
+    ${picked ? `<p>Small hex ${picked.q}, ${picked.r}: <b>${words(picked.kind)}</b>${picked.exit !== undefined ? " (exit)" : ""}</p>` : `<p class="hint">Click a small hex.</p>`}
+    ${picked && walkable && isMine() ? `<button class="button-go" id="spot-button">Put me here</button>` : ""}
+  `;
+  const btn = document.getElementById("spot-button");
+  if (btn) btn.onclick = () => act("/api/wander-lab/teleport", { q: local.big[0], r: local.big[1], spot: [picked.q, picked.r] });
+}
+
+localCanvas.addEventListener("click", (e) => {
+  if (!local) return;
+  const rect = localCanvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) * localCanvas.width) / rect.width;
+  const y = ((e.clientY - rect.top) * localCanvas.height) / rect.height;
+  const [q, r] = WanderMap.hexAtLocal(localCanvas, localView(), { size: 34 }, x, y);
+  if (!local.tiles.some((t) => t.q === q && t.r === r)) return;
+  tile = [q, r];
+  renderLocal();
+});
+
+// --- the land gallery --------------------------------------------------------------
+
+async function showGallery() {
+  const maps = await fetchJson(`/api/wander-lab/gallery?seed=${world.seed}`);
+  const box = document.getElementById("gallery");
+  box.innerHTML = "";
+  maps.forEach((m) => {
+    const fig = document.createElement("figure");
+    const c = document.createElement("canvas");
+    WanderMap.drawLocal(c, { ...m, spot: null, ghosts: [], tiles: m.tiles.map((t) => ({ ...t, near: true })) }, { size: 14, fog: false });
+    fig.append(c);
+    const cap = document.createElement("figcaption");
+    cap.textContent = `${words(m.biome)} (${words(m.style)}, ${Math.round(m.walkable * 100)}%)`;
+    fig.append(cap);
+    fig.onclick = async () => {
+      if (m.seed !== world.seed) await show(m.seed);
+      selected = m.big;
+      renderInfo();
+      render();
+      await loadLocal();
+      document.getElementById("local-section").scrollIntoView({ behavior: "smooth" });
+    };
+    box.append(fig);
+  });
+  document.getElementById("gallery-section").hidden = false;
+}
 
 opt("mine-button").onclick = () => show();
 opt("seed-button").onclick = () => show(Number(opt("opt-seed").value) || 0);
 opt("random-button").onclick = () => show(Math.floor(Math.random() * 2 ** 31));
-["opt-fog", "opt-names", "opt-paths", "opt-steps", "opt-size"].forEach((id) => opt(id).addEventListener("input", render));
+opt("refill-button").onclick = () => act("/api/wander-lab/refill", {});
+opt("gallery-button").onclick = showGallery;
+["opt-fog", "opt-names", "opt-paths", "opt-steps", "opt-size"].forEach((id) =>
+  opt(id).addEventListener("input", () => {
+    render();
+    renderLocal();
+  }));
 
 show();
