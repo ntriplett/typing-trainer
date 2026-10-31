@@ -50,6 +50,11 @@ def test_trip_walk_and_end():
     assert client.post("/api/wander/trip/end").json()["note"] == "rested"
 
 
+def test_next_day():
+    data = client.post("/api/wander/day").json()
+    assert data["trip"]["energy"] == data["trip"]["max"]
+
+
 def test_lab_world_local_and_gallery():
     seed = _seed()
     mine = client.get("/api/wander-lab/world").json()

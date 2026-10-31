@@ -18,22 +18,25 @@ def _maps():
             yield seed, big, lc.generate(seed, big)
 
 
-def test_zones_split_the_outer_ring():
-    cells = [h for d in range(6) for h in lc.zone(d)]
-    assert len(cells) == len(set(cells)) == len(lc.OUTER) == 30
-    for d in range(6):
-        corner = lc.zone(d)[lc.ZONE_HALF]
-        assert corner == (hx.DIRECTIONS[d][0] * lc.LOCAL_RADIUS, hx.DIRECTIONS[d][1] * lc.LOCAL_RADIUS)
-        # every zone hex looks off the map in its direction
-        assert all(hx.neighbor(h, d) not in lc.CELL_SET for h in lc.zone(d))
+def test_big_hexes_tile_one_world_grid():
+    found = {}
+    for big in hx.spiral((0, 0), 3):
+        for h in lc.CELLS:
+            g = lc.to_world(big, h)
+            assert g not in found
+            found[g] = (big, h)
+            assert lc.owner(g) == (big, h)
+    # no gaps: everything near the middle is owned
+    assert all(g in found for g in hx.spiral((0, 0), 20))
 
 
-def test_mirror_goes_back_and_forth():
+def test_sides_face_their_neighbors():
     for d in range(6):
-        for h in lc.zone(d):
-            m = lc.mirror(h, d)
-            assert m in lc.zone((d + 3) % 6)
-            assert lc.mirror(m, (d + 3) % 6) == h
+        assert len(lc.SIDE_CELLS[d]) == 6
+        for h, f in lc.SIDES[d]:
+            assert lc.owner(lc.to_world((0, 0), h)) == ((0, 0), h)
+            assert lc.owner(hx.add(lc.center(hx.DIRECTIONS[d]), f)) == (hx.DIRECTIONS[d], f)
+            assert hx.distance(lc.to_world((0, 0), h), lc.to_world(hx.DIRECTIONS[d], f)) == 1
 
 
 def test_same_place_same_map():
@@ -50,7 +53,8 @@ def test_every_walkable_hex_reachable_and_exits_line_up():
         assert local.tiles[local.campfire] in ("campfire", "camp")
         for h, d in local.exits.items():
             far = lc.generate(seed, hx.neighbor(big, d))
-            assert far.exits.get(lc.mirror(h, d)) == (d + 3) % 6, (seed, big, h)
+            facing = [f for e, f in lc.SIDES[d] if e == h]
+            assert any(far.exits.get(f) == (d + 3) % 6 for f in facing), (seed, big, h)
 
 
 def test_open_sides_have_exits_and_walled_sides_are_solid():
@@ -58,11 +62,14 @@ def test_open_sides_have_exits_and_walled_sides_are_solid():
         world = wd.generate(seed)
         for d in range(6):
             n = hx.neighbor(big, d)
-            zone = lc.zone(d)
+            side = lc.SIDE_CELLS[d]
             if n in world.hexes and world.is_open(big, n):
-                assert any(local.exits.get(h) == d for h in zone)
+                assert any(local.exits.get(h) == d for h in side)
+            elif n not in world.hexes or lc.wall_side(seed, big, n) == big:
+                assert not any(local.walkable(h) for h in side)  # the wall, one hex thick
             else:
-                assert not any(local.walkable(h) for h in zone)
+                far = lc.generate(seed, n)  # the wall's on their side: no way across
+                assert not any(local.walkable(h) and far.walkable(f) for h, f in lc.SIDES[d])
 
 
 def test_feels_differ():
@@ -113,3 +120,56 @@ def test_pois_and_building_roles():
             assert {"board", "inn", "shop"} <= roles
             assert ("elder" in roles) == any(q.town == big for q in world.quests.values())
         assert ("lost" in local.pois.values()) == any(q.lost == big for q in world.quests.values())
+
+
+def test_beyond_is_the_ring_around():
+    for seed, big, local in _maps():
+        world = wd.generate(seed)
+        past = lc.beyond(seed, big)
+        assert len(past) == 36
+        for b in past:
+            far = tuple(b["big"])
+            if far in world.hexes:
+                assert b["kind"] == lc.generate(seed, far).tiles[tuple(b["at"])]
+            else:
+                assert b["kind"] == lc.EDGE_OF_WORLD
+
+
+def test_nooks_sit_where_they_belong():
+    kinds = defaultdict(int)
+    for seed, big, local in _maps():
+        main = lc.reachable(local.tiles, local.campfire)
+        for h, nook in local.nooks.items():
+            kinds[nook.kind] += 1
+            assert nook.finds in lc.FINDS[nook.kind]
+            assert h not in local.pois and h not in local.exits
+            if nook.kind in lc.IN_WALL:
+                # in a blocker, gone into from walkable doors beside it
+                assert local.tiles[h] in lc.BLOCKED and nook.doors
+                assert all(d in main and hx.distance(d, h) == 1 for d in nook.doors)
+                assert len(nook.doors) == (2 if nook.kind == "tunnel" else 1)
+            else:
+                assert h in main and local.tiles[h] in lc.GROUND and not nook.doors
+            if nook.need:
+                assert nook.need[0] == lc.NOOK_SKILL[nook.kind] and 1 <= nook.need[1] <= 10
+    # every kind turns up somewhere, and caves and glades often
+    assert set(kinds) == set(lc.FINDS)
+    assert kinds["cave"] >= 100 and kinds["glade"] >= 60
+
+
+def test_tunnels_are_shortcuts():
+    for seed, big, local in _maps():
+        for h, nook in local.nooks.items():
+            if nook.kind == "tunnel":
+                assert lc._walk(local.tiles, *nook.doors) >= lc.TUNNEL_DETOUR
+
+
+def test_clues_point_to_open_ground_nearby():
+    for seed, big, local in list(_maps())[:200]:
+        for h, nook in local.nooks.items():
+            if "clue" in nook.finds:
+                far, at = lc.clue_target(seed, big, h)
+                assert hx.distance(far, big) <= 2
+                m = lc.generate(seed, far)
+                assert m.tiles[at] in lc.GROUND and at in lc.reachable(m.tiles, m.campfire)
+                assert at not in m.nooks and at not in m.pois

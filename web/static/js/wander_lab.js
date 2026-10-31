@@ -224,11 +224,12 @@ function renderParty() {
   picks.innerHTML = [0, 1, 2, 3, 4]
     .map((i) => `<select data-slot="${i}"><option value="">-</option>${TYPES.map((t) => `<option ${world.me.party[i] === t ? "selected" : ""}>${t}</option>`).join("")}</select>`)
     .join("");
+  document.getElementById("party-level").value = world.me.party_level;
 }
 
 opt("party-button").onclick = () => {
   const party = [...document.querySelectorAll("#party-picks select")].map((s) => s.value).filter(Boolean);
-  act("/api/wander-lab/party", { party });
+  act("/api/wander-lab/party", { party, level: Number(document.getElementById("party-level").value) || null });
 };
 
 canvas.addEventListener("click", (e) => {
@@ -265,26 +266,29 @@ function here() {
 function localView() {
   const spot = here() ? world.me.spot : null;
   const place = world.hexes.find((h) => h.q === local.big[0] && h.r === local.big[1]);
-  const base = { radius: local.radius, biome: local.biome, campfire: local.campfire, spot, ghosts: [] };
-  if (!opt("opt-fog").checked) return { ...base, tiles: local.tiles.map((t) => ({ ...t, near: true })), place };
-  const seen = new Set((world.me.seen[WanderMap.key(...local.big)] || []).map((h) => WanderMap.key(...h)));
-  const near = new Set(spot ? [WanderMap.key(...spot), ...WanderMap.DIRS.map(([dq, dr]) => WanderMap.key(spot[0] + dq, spot[1] + dr))] : []);
-  const tiles = local.tiles
-    .filter((t) => seen.has(WanderMap.key(t.q, t.r)))
-    .map((t) => ({ ...t, near: near.has(WanderMap.key(t.q, t.r)) }));
-  return { ...base, tiles, place };
+  // Its own hexes, and (faded) the ring around it from the big hexes next door.
+  const big = WanderMap.key(...local.big);
+  const own = local.tiles.map((t) => ({ ...t, big }));
+  const around = local.beyond.map((b) => ({ ...b, big: WanderMap.key(...b.big), faded: true }));
+  const base = { radius: local.radius + 1, biome: local.biome, campfire: local.campfire, spot, place };
+  if (!opt("opt-fog").checked) return { ...base, tiles: [...own, ...around] };
+  const seenIn = (b, h) => (world.me.seen[b] || []).some((s) => s[0] === h[0] && s[1] === h[1]);
+  return {
+    ...base,
+    tiles: [...own.filter((t) => seenIn(big, [t.q, t.r])), ...around.filter((b) => seenIn(b.big, b.at))],
+  };
 }
 
 function renderLocal() {
   if (!local) return;
   const view = localView();
-  WanderMap.drawLocal(localCanvas, view, { size: 34, fog: opt("opt-fog").checked, selected: tile });
+  WanderMap.drawLocal(localCanvas, view, { size: 34, fog: opt("opt-fog").checked, selected: tile, edge: local.radius });
   const counts = {};
   local.tiles.forEach((t) => {
     counts[t.kind] = (counts[t.kind] || 0) + 1;
   });
   const picked = tile && local.tiles.find((t) => t.q === tile[0] && t.r === tile[1]);
-  const walkable = picked && !["tree", "bush", "rock", "cliff", "water"].includes(picked.kind);
+  const walkable = picked && !["tree", "bush", "rock", "cliff", "water", "ocean"].includes(picked.kind);
   localInfo.innerHTML = `
     <h2 class="panel-title">${view.place.name}: small map</h2>
     <dl>
@@ -295,8 +299,9 @@ function renderLocal() {
       <dt>Tiles</dt><dd>${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ")}</dd>
     </dl>
     <p>Places: ${local.tiles.filter((t) => t.poi || t.role).map((t) => t.poi || t.role).join(", ") || "none"}</p>
-    ${picked ? `<p>Small hex ${picked.q}, ${picked.r}: <b>${words(picked.kind)}</b>${picked.exit !== undefined ? " (exit)" : ""}${picked.poi ? `, ${picked.poi}` : ""}${picked.role ? `, ${picked.role}` : ""}</p>` : `<p class="hint">Click a small hex.</p>`}
-    ${picked && walkable && isMine() ? `<button class="button-go" id="spot-button">Put me here</button>` : ""}
+    <p>Nooks: ${local.tiles.filter((t) => t.nook).map((t) => t.nook).join(", ") || "none"}</p>
+    ${picked ? `<p>Small hex ${picked.q}, ${picked.r}: <b>${words(picked.kind)}</b>${picked.exit !== undefined ? " (exit)" : ""}${picked.poi ? `, ${picked.poi}` : ""}${picked.role ? `, ${picked.role}` : ""}${picked.nook ? `, ${picked.nook}` : ""}</p>` : `<p class="hint">Click a small hex.</p>`}
+    ${picked && (walkable || picked.nook) && isMine() ? `<button class="button-go" id="spot-button">Put me here</button>` : ""}
   `;
   const btn = document.getElementById("spot-button");
   if (btn) btn.onclick = () => act("/api/wander-lab/teleport", { q: local.big[0], r: local.big[1], spot: [picked.q, picked.r] });
@@ -322,7 +327,7 @@ async function showGallery() {
   maps.forEach((m) => {
     const fig = document.createElement("figure");
     const c = document.createElement("canvas");
-    WanderMap.drawLocal(c, { ...m, spot: null, ghosts: [], tiles: m.tiles.map((t) => ({ ...t, near: true })) }, { size: 14, fog: false });
+    WanderMap.drawLocal(c, { ...m, spot: null }, { size: 14, fog: false, edge: m.radius });
     fig.append(c);
     const cap = document.createElement("figcaption");
     cap.textContent = `${words(m.biome)} (${words(m.style)}, ${Math.round(m.walkable * 100)}%)`;

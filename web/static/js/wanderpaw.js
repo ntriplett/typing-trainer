@@ -1,24 +1,25 @@
-// Wanderpaw (PLAN.md 11n): walk the small map by typing the word on a hex
-// next to you. You see your hex and the six touching it; what you've seen
-// stays on the map (dimmed). An exit hex (signpost) shows the land past
-// the edge: type its word to cross into the next big hex. Gates (a dark
-// tunnel, a gap, ...) get a word too: typing it uses your party's field
-// skill, if it has one. The campfire's smoke shows from anywhere.
+// Wanderpaw (PLAN.md 11n): walk by typing the word on a hex next to you.
+// You stay in the middle and the world moves around you: the small maps
+// join into one grid (world hexes), so you just walk on into the next big
+// hex wherever the land lets you. You see your hex and the six touching
+// it; what you've seen stays on the map. Gates (a dark tunnel, a gap, ...)
+// get a word too: typing it uses your party's field skill, if it has one.
+// The campfire's smoke shows from anywhere in its big hex.
 //
-// Enter goes in where you stand (a town building, a shrine, a temple, the
-// Heartstone) and shows its screen; Enter again does what it offers, Esc
-// leaves. At a shrine you type the line on the stone for energy. At a
-// campfire, Enter rests and ends the trip.
+// Enter goes in where you stand (a town building, a shrine, a nook, a
+// temple, the Heartstone) and shows its screen; Enter again does what it
+// offers, Esc leaves. At a shrine you type the line on the stone for
+// energy; at a fishing spot, the line reels one in. At a campfire, Enter
+// rests and ends the trip.
 //
 // A trip has energy (steps for now); out of energy you nap and wake at the
 // nearest campfire you've found. The server keeps the fog (GET /api/wander
-// only returns what you've seen) and all the rules.
+// only returns what you've seen) and all the rules, down to where you can
+// step (caves and glades only from their doors).
 
 const REGION_NAMES = {
   camp: "Heartland", ember: "Ember", splash: "Splash", leaf: "Leaf", dream: "Dream", shock: "Shock",
 };
-const WALKABLE = new Set(["grass", "flowers", "path", "sand", "plaza", "bridge", "ford", "building", "campfire", "camp", "temple", "stone"]);
-const GATES = new Set(["dark", "flames", "gap", "old_gate", "guardian", "broken_bridge"]);
 
 const localCanvas = document.getElementById("wander-local");
 const bigCanvas = document.getElementById("wander-map");
@@ -29,8 +30,12 @@ const typer = new Typer();
 let state = null;
 let targets = [];
 let busy = false;
-let mode = "walk"; // walk | screen | shrine | credits
-let shrine = null; // {line, at, slips}
+let mode = "walk"; // walk | screen | line | credits
+let typing = null; // a line to type: {action, line, at, slips, wrong}
+// Where the view is centered (fractional while sliding to a new hex).
+let camera = null;
+let slide = null; // {from, to, start}
+const SLIDE_MS = 220;
 
 const words = (name) => name.replace(/_/g, " ");
 const same = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -45,15 +50,10 @@ function onCampfire() {
   return same(state.local.spot, state.local.campfire);
 }
 
-// The places you can step to: walkable hexes (and gates) touching you, and
-// the land past an exit you're standing on.
+// The places you can step to (the server says): walkable hexes, gates,
+// and a cave or glade if you're at its door.
 function steps() {
-  const [q, r] = state.local.spot;
-  const near = new Set(WanderMap.DIRS.map(([dq, dr]) => WanderMap.key(q + dq, r + dr)));
-  const out = state.local.tiles
-    .filter((t) => near.has(WanderMap.key(t.q, t.r)) && (WALKABLE.has(t.kind) || GATES.has(t.kind)))
-    .map((t) => [t.q, t.r]);
-  return out.concat(state.local.ghosts.map((g) => [g.q, g.r]));
+  return state.local.steps;
 }
 
 // One word per step, each starting with a different letter.
@@ -79,8 +79,8 @@ function render() {
       labels[WanderMap.key(...t.hex)] = { word: t.word, typed: typer.target === t ? t.typed : 0 };
     });
   }
-  WanderMap.drawLocal(localCanvas, state.local, { size: 30, labels });
-  WanderMap.draw(bigCanvas, state.big, { size: 13, trail: true });
+  WanderMap.drawLocal(localCanvas, state.local, { size: 28, labels, focus: state.local.spot, camera });
+  WanderMap.draw(bigCanvas, state.big, { size: 22, trail: true, simple: true, focus: state.big.at, view: 3 });
 
   const here = state.local;
   const chip = document.getElementById("where-chip");
@@ -108,7 +108,6 @@ function renderHelp() {
     if (!state.at_camp) lines.push(`<p><kbd class="keycap">C</kbd> set off from Camp</p>`);
   } else if (mode === "walk") {
     lines.push(`<p>Type a word to walk there.</p>`);
-    if (state.local.ghosts.length) lines.push(`<p>The dotted hex is the way on to the next place.</p>`);
     if (state.screen) lines.push(`<p><kbd class="keycap">Enter</kbd> go in</p>`);
     else if (onCampfire()) lines.push(`<p><kbd class="keycap">Enter</kbd> rest here and head home</p>`);
   }
@@ -129,8 +128,8 @@ function renderBag() {
   document.getElementById("story").innerHTML = `
     <p>Relics: ${state.temples.length} of 5${state.charms ? `, charms: ${state.charms}` : ""}</p>
     ${quests.length ? `<ul>${quests.join("")}</ul>` : `<p class="hint">Visit a town and talk to its elder.</p>`}`;
-  document.getElementById("party").innerHTML = state.party
-    .map((t) => `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[t]}">${REGION_NAMES[t]}</span>`)
+  document.getElementById("party").innerHTML = Object.entries(state.levels)
+    .map(([t, n]) => `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[t]}">${REGION_NAMES[t]} ${n}</span>`)
     .join(" ");
 }
 
@@ -141,7 +140,7 @@ function renderScreen() {
   const text = document.getElementById("screen-text");
   const line = document.getElementById("screen-line");
   const keys = document.getElementById("screen-keys");
-  line.hidden = mode !== "shrine";
+  line.hidden = mode !== "line";
   screenBox.classList.toggle("wander-credits", mode === "credits");
   if (mode === "credits") {
     title.textContent = "The End";
@@ -157,11 +156,11 @@ function renderScreen() {
   }
   title.textContent = s.title;
   text.textContent = s.text;
-  if (mode === "shrine") {
-    const chars = [...shrine.line];
+  if (mode === "line") {
+    const chars = [...typing.line];
     line.innerHTML = chars
       .map((ch, i) => {
-        const cls = i < shrine.at ? "done" : i === shrine.at ? (shrine.wrong ? "wrong" : "next") : "";
+        const cls = i < typing.at ? "done" : i === typing.at ? (typing.wrong ? "wrong" : "next") : "";
         return `<span class="${cls}">${ch === " " ? "&nbsp;" : esc(ch)}</span>`;
       })
       .join("");
@@ -179,11 +178,40 @@ function noteFor(data) {
     texts.push("All tired out! You curl up for a nap by the nearest campfire you've found.");
   }
   if (data.note === "rested" && !data.trip) texts.push("You rest by the campfire. Next time you can set off from here.");
+  if (data.note === "new_day") texts.push("A new day! You're full of energy.");
   return texts.join(" ");
+}
+
+// Glide the view from where it was to your new hex, so the land slides by.
+function slideTo(spot) {
+  const from = camera || spot;
+  camera = from;
+  if (from[0] === spot[0] && from[1] === spot[1]) return;
+  if (Math.abs(from[0] - spot[0]) + Math.abs(from[1] - spot[1]) > 4) {
+    camera = spot; // a nap or a long jump: no slide
+    return;
+  }
+  slide = { from, to: spot, start: performance.now() };
+  requestAnimationFrame(tick);
+}
+
+function tick(now) {
+  if (!slide) return;
+  const t = Math.min(1, (now - slide.start) / SLIDE_MS);
+  const ease = 1 - (1 - t) * (1 - t);
+  camera = slide.from.map((v, i) => v + (slide.to[i] - v) * ease);
+  if (t === 1) {
+    camera = slide.to;
+    slide = null;
+  } else {
+    requestAnimationFrame(tick);
+  }
+  render();
 }
 
 function apply(data) {
   state = data;
+  slideTo(data.local.spot);
   typer.release();
   pickTargets();
   if (data.credits) mode = "credits";
@@ -236,6 +264,16 @@ async function endTrip() {
   if (data) apply(data);
 }
 
+async function nextDay() {
+  const data = await send("/api/wander/day");
+  if (data) apply(data);
+}
+
+document.getElementById("next-day").addEventListener("click", (e) => {
+  e.currentTarget.blur(); // keep Enter for the map
+  if (!busy) nextDay();
+});
+
 async function act(action, accuracy = 1) {
   const data = await send("/api/wander/act", { action, accuracy });
   if (data) apply(data);
@@ -286,16 +324,16 @@ function screenKey(e) {
   if (mode === "credits" || !s || !s.action) {
     mode = "walk";
     render();
-  } else if (s.action === "shrine") {
-    shrine = { line: s.line, at: 0, slips: 0, wrong: false };
-    mode = "shrine";
+  } else if (s.line) {
+    typing = { action: s.action, line: s.line, at: 0, slips: 0, wrong: false };
+    mode = "line";
     render();
   } else {
     act(s.action);
   }
 }
 
-function shrineKey(e) {
+function lineKey(e) {
   if (e.key === "Escape") {
     mode = "screen";
     render();
@@ -303,17 +341,17 @@ function shrineKey(e) {
   }
   if (e.key.length !== 1) return;
   e.preventDefault();
-  if (e.key === shrine.line[shrine.at]) {
-    shrine.at += 1;
-    shrine.wrong = false;
+  if (e.key === typing.line[typing.at]) {
+    typing.at += 1;
+    typing.wrong = false;
   } else {
-    shrine.slips += 1;
-    shrine.wrong = true;
+    typing.slips += 1;
+    typing.wrong = true;
   }
-  if (shrine.at === shrine.line.length) {
-    const accuracy = shrine.line.length / (shrine.line.length + shrine.slips);
+  if (typing.at === typing.line.length) {
+    const accuracy = typing.line.length / (typing.line.length + typing.slips);
     mode = "screen";
-    act("shrine", accuracy);
+    act(typing.action, accuracy);
     return;
   }
   render();
@@ -322,7 +360,7 @@ function shrineKey(e) {
 document.addEventListener("keydown", (e) => {
   if (!state || busy || e.ctrlKey || e.metaKey || e.altKey) return;
   if (mode === "walk") walkKey(e);
-  else if (mode === "shrine") shrineKey(e);
+  else if (mode === "line") lineKey(e);
   else screenKey(e);
 });
 

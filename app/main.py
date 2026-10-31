@@ -804,6 +804,7 @@ class WanderActRequest(BaseModel):
 
 class WanderPartyRequest(BaseModel):
     party: list[str]
+    level: int | None = None
 
 
 class WanderTeleportRequest(BaseModel):
@@ -855,8 +856,8 @@ def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner
 
 @app.post("/api/wander/walk")
 def wander_walk(body: WanderHexRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    """One step on the small map (or out through an exit: the hex past the edge)."""
-    return _wander_act(conn, learner_id, lambda: wander.walk(conn, learner_id, (body.q, body.r)))
+    """One step on the small map: {q, r} is a world hex (local.to_world)."""
+    return _wander_act(conn, learner_id, lambda: wander.walk_world(conn, learner_id, (body.q, body.r)))
 
 
 @app.post("/api/wander/trip/start")
@@ -869,6 +870,12 @@ def wander_trip_end(conn=Depends(get_db), learner_id: int = Depends(current_lear
     return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id))
 
 
+@app.post("/api/wander/day")
+def wander_next_day(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Start the next day: full energy, a fresh trip from where you are."""
+    return _wander_act(conn, learner_id, lambda: wander.new_day(conn, learner_id))
+
+
 @app.post("/api/wander/act")
 def wander_go_in(body: WanderActRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """Do what the place you're standing on offers (save.screen's action)."""
@@ -877,7 +884,8 @@ def wander_go_in(body: WanderActRequest, conn=Depends(get_db), learner_id: int =
 
 def _lab_me(save: dict) -> dict:
     return {"at": save["at"], "spot": save["spot"], "visited": save["visited"], "trip": save["trip"],
-            "seen": wander.seen_all(save), "party": save["party"], "cleared": save["cleared"],
+            "seen": wander.seen_all(save), "party": save["party"], "party_level": save["party_level"],
+            "cleared": save["cleared"],
             "quests": save["quests"], "temples": save["temples"]}
 
 
@@ -896,7 +904,7 @@ def wander_lab_local(seed: int, q: int, r: int) -> dict:
     """One big hex's whole small map."""
     if (q, r) not in wander_world.generate(seed).hexes:
         raise HTTPException(status_code=404, detail="That place isn't on the map.")
-    return wander_local.to_json(wander_local.generate(seed, (q, r)))
+    return {**wander_local.to_json(wander_local.generate(seed, (q, r))), "beyond": wander_local.beyond(seed, (q, r))}
 
 
 @app.get("/api/wander-lab/gallery")
@@ -930,7 +938,7 @@ def wander_lab_refill(conn=Depends(get_db), learner_id: int = Depends(current_le
 @app.post("/api/wander-lab/party")
 def wander_lab_party(body: WanderPartyRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     try:
-        wander.set_party(conn, learner_id, body.party)
+        wander.set_party(conn, learner_id, body.party, body.level)
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return wander_lab_world(None, conn, learner_id)

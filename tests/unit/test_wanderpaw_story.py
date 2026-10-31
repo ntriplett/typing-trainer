@@ -56,23 +56,26 @@ def test_a_field_skill_clears_a_gate_for_good():
     assert after["trip"]["energy"] == save["trip"]["energy"] - st.GATE_ENERGY - 1
     assert "cleared" in [e["kind"] for e in after["events"]]
     # without the type it's a no
-    with pytest.raises(sv.WanderError, match="You need a"):
+    with pytest.raises(sv.WanderError, match="It takes 3 .* levels"):
         sv.apply_walk({**save, "party": [t for t in save["party"] if t != gate.kind]}, h)
 
 
-def test_two_pet_gates_need_two():
+def test_gates_count_type_levels():
     big, local, h, gate = _find_gate(need=2)
     save = _at(_trip(), big, _beside(local, h))
-    with pytest.raises(sv.WanderError, match="two"):
-        sv.apply_walk(save, h)
+    with pytest.raises(sv.WanderError, match="you have 5"):
+        sv.apply_walk(save, h)  # one pet at level 5 isn't enough
     assert sv.apply_walk({**save, "party": [gate.kind, gate.kind]}, h)["spot"] == list(h)
+    assert sv.apply_walk({**save, "party_level": 8}, h)["spot"] == list(h)
 
 
 def test_a_cleared_gate_leads_on():
     big, local, h, gate = _find_gate(need=1)
     save = sv.apply_walk(_at(_trip(), big, _beside(local, h)), h)
     d = local.exits[h]
-    on = sv.apply_walk(save, hx.neighbor(h, d))
+    f = next(f for e, f in lc.SIDES[d] if e == h)
+    g, c = lc.to_world(hx.neighbor(big, d), f), lc.center(big)
+    on = sv.apply_walk(save, (g[0] - c[0], g[1] - c[1]))
     assert on["at"] == list(hx.neighbor(big, d))
     # and from the far side, the same gate is open
     assert sv.standable(on, sv.local_of(on), tuple(on["spot"]))
@@ -166,10 +169,11 @@ def test_a_story_quest_from_ask_to_shortcut():
     assert save["quests"][region] == "asked"
     assert list(q.lost) in sv.big_view(save)["marks"]
     # the shortcut is a quest gate: broken until the quest is done
-    side = lc.generate(SEED, q.shortcut[0])
+    wall = lc.wall_side(SEED, *q.shortcut)  # the gate is in the wall, on one side
+    side = lc.generate(SEED, wall)
     gate = next(h for h, e in side.gates.items() if e == q.shortcut)
     with pytest.raises(sv.WanderError, match="broken"):
-        sv.apply_walk(_at(save, q.shortcut[0], _beside(side, gate)), gate)
+        sv.apply_walk(_at(save, wall, _beside(side, gate)), gate)
     # find the lost thing
     found = sv.apply_walk(_at(save, q.lost, _beside(lost, spot)), spot)
     assert found["items"][tale.lost] == 1
@@ -179,7 +183,7 @@ def test_a_story_quest_from_ask_to_shortcut():
     done = sv.act(home, "give")
     assert done["quests"][region] == "done"
     assert done["items"][tale.key] == 1 and not done["items"][tale.lost]
-    walked = sv.apply_walk(_at(done, q.shortcut[0], _beside(side, gate)), gate)
+    walked = sv.apply_walk(_at(done, wall, _beside(side, gate)), gate)
     assert walked["spot"] == list(gate)
 
 

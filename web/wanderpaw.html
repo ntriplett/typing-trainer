@@ -15,10 +15,13 @@
         <h1>Wanderpaw</h1>
         <p class="wander-where"><span id="where-chip" class="type-chip"></span> <b id="where-name"></b> <span id="where-land"></span></p>
       </div>
-      <div class="wander-energy" id="energy" hidden>
-        <span>Energy</span>
-        <div class="energy-bar"><div class="energy-fill" id="energy-fill"></div></div>
-        <span id="energy-text"></span>
+      <div class="wander-energy">
+        <span id="energy" class="wander-energy" hidden>
+          <span>Energy</span>
+          <span class="energy-bar"><span class="energy-fill" id="energy-fill"></span></span>
+          <span id="energy-text"></span>
+        </span>
+        <button type="button" class="button-go" id="next-day">Start next day</button>
       </div>
     </section>
     <p id="wander-message" class="wander-message" role="status"></p>

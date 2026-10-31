@@ -798,6 +798,28 @@ did: the API pays coins and the page shows them). Lab: gates on the big map, sto
 list), stand-in party editor, steps counted without unrepaired shortcuts.
 Later: wild encounters (phase 5), the shop's stock, waystones.
 
+**Phase 3b (built 2026-10-30): one seamless world, twistier land, nooks.** The small maps tile one
+world grid (big hex b's middle is world hex 11*bq+5*br, -5*bq+6*br; the big map is drawn turned ~27°
+to match), so you walk straight across big edges wherever both sides are walkable and the view stays
+centered on you (radius 7, the outer ring faded, tiles slide 220 ms per step). Walls are one hex
+thick, on one side of the edge (picked per edge); the world's edge is ocean. Land: spines of blocker
+break up big open areas (TWISTS), trails fork and rejoin (FORKS), short one-wide spurs dig to dead
+ends (SPURS). Drawing: water fills its hex as one channel with a current and bank lines (deep water
+blocks; fords are pale shallows costing 2 energy, 1 with a Splash pet; bridges are normal steps);
+cliffs, trees, rocks and bushes draw as ranges (a glyph between neighbors); a dark line marks every
+side you can't walk across. **Type levels** replace pet counts: a party's levels of a type, summed
+(stand-in pets all at `party_level`, default 5; later a pet's first type = its level, a second type
+counts from 1). Gates take 3 levels (x2 gates 8). **Nooks** (local.Nook, ~3-4 a map, own stream):
+caves in cliffs/rock (one door; deep ones need Ember), tunnels through cliffs (two doors, a shortcut
+of 8+ steps; a sleeping creature for now), glades in thick woods (overgrown need Leaf), fishing spots
+(type a line for fish, once a trip), dive spots (Splash), and a treat at dead ends (buried chest,
+lookout, spring, ruin, nest, berries, log, statue, traveler, well, plus the region's: rune stone /
+mushroom ring = Dream, machine = Shock, tangle = Leaf, burrow = Ember). Needs grow 1-2 near Camp to
+8-10 at the edge. Finds: coins, clues and views once ever (`found`), forage, energy and fish once a
+trip; a clue marks a buried cache up to 2 big hexes away (`clues`), dug up by stepping on it. The
+server sends the hexes you can step to. Save v4. Dev: "Start next day" button (refill; tokens later).
+Later: tunnels across big walls (must not skip gates), creatures in nooks (phase 5).
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

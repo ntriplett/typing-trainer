@@ -147,6 +147,11 @@ main.wander {
   font-size: 20px;
 }
 
+.energy-bar,
+.energy-fill {
+  display: block;
+}
+
 .energy-bar {
   width: 180px;
   height: 18px;

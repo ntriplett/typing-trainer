@@ -5,6 +5,7 @@ import pytest
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
 from app.wanderpaw import save as sv
+from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
 
 SEED = 11
@@ -59,27 +60,58 @@ def test_blocked_and_far_hexes_refuse():
         sv.apply_walk(save, next(n for n in hx.neighbors(spot) if n in blocked))
 
 
-def test_leaving_by_an_exit_lands_on_the_matching_exit():
+def _exit_step(local, big=(0, 0)):
+    """An exit hex and the step across it (in this big hex's frame)."""
+    h, d = next((h, d) for h, d in sorted(local.exits.items()) if h not in local.gates)
+    f = next(f for e, f in lc.SIDES[d] if e == h)
+    far = hx.neighbor(big, d)
+    g = lc.to_world(far, f)
+    c = lc.center(big)
+    return h, d, (g[0] - c[0], g[1] - c[1]), f
+
+
+def test_crossing_an_edge_walks_into_the_next_big_hex():
     save = _on_trip()
     local = sv.local_of(save)
-    h, d = next(iter(local.exits.items()))
-    save = {**save, "spot": list(h)}
-    after = sv.apply_walk(save, hx.neighbor(h, d))
+    h, d, step, f = _exit_step(local)
+    after = sv.apply_walk({**save, "spot": list(h)}, step)
     nxt = hx.neighbor((0, 0), d)
-    assert after["at"] == list(nxt)
-    assert after["spot"] == list(lc.mirror(h, d))
+    assert after["at"] == list(nxt) and after["spot"] == list(f)
     assert list(nxt) in after["visited"]
-    # non-exit edge hexes don't lead out
-    edge = next(x for x in lc.OUTER if local.walkable(x) and x not in local.exits)
+    # and back again
+    back = sv.apply_walk(after, hx.add(f, (h[0] - step[0], h[1] - step[1])))
+    assert back["at"] == [0, 0] and back["spot"] == list(h)
+
+
+def test_walls_and_the_edge_of_the_world_refuse():
+    world = wd.generate(SEED)
+    for big in world.hexes:
+        local = lc.generate(SEED, big)
+        for d in range(6):
+            n = hx.neighbor(big, d)
+            if n in world.hexes and world.is_open(big, n) and hx.edge_key(big, n) not in world.gates:
+                continue
+            # a walled edge (or a gate in one) has no way across
+            far = lc.generate(SEED, n) if n in world.hexes else None
+            for h, f in lc.SIDES[d]:
+                assert not (local.walkable(h) and far and far.walkable(f))
+    # stepping off the world
+    edge = next(b for b in world.hexes if any(hx.neighbor(b, d) not in world.hexes for d in range(6)))
+    d = next(d for d in range(6) if hx.neighbor(edge, d) not in world.hexes)
+    local = lc.generate(SEED, edge)
+    inner = next(h for h in lc.CELLS if local.walkable(h))
+    save = {**_on_trip(), "at": list(edge), "spot": list(inner)}
+    h, f = lc.SIDES[d][0]
+    c = lc.center(edge)
+    g = lc.to_world(hx.neighbor(edge, d), f)
     with pytest.raises(sv.WanderError):
-        sv.apply_walk({**save, "spot": list(edge)}, next(n for n in hx.neighbors(edge) if n not in lc.CELL_SET))
+        sv.apply_walk({**save, "spot": list(h)}, (g[0] - c[0], g[1] - c[1]))
 
 
 def test_out_of_energy_naps_at_the_nearest_found_campfire():
     save = _on_trip()
-    local = sv.local_of(save)
-    h, d = next(iter(local.exits.items()))
-    save = sv.apply_walk({**save, "spot": list(h)}, hx.neighbor(h, d))
+    h, d, step, _ = _exit_step(sv.local_of(save))
+    save = sv.apply_walk({**save, "spot": list(h)}, step)
     nxt = tuple(save["at"])
     # walk to the new hex's campfire, then run out of energy there
     for step in _path(sv.local_of(save), tuple(save["spot"]), sv.local_of(save).campfire):
@@ -106,6 +138,15 @@ def test_end_a_trip_only_at_a_campfire_and_start_again_at_camp():
     assert again["at"] == [0, 0] and again["trip"]["energy"] == sv.TRIP_ENERGY
 
 
+def test_next_day_refills_where_you_are():
+    save = _on_trip()
+    to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))
+    tired = {**sv.apply_walk(save, to), "trip": {**save["trip"], "energy": 3, "used": ["x"]}}
+    day = sv.next_day(tired)
+    assert day["spot"] == list(to) and day["trip"]["energy"] == sv.TRIP_ENERGY and day["trip"]["used"] == []
+    assert sv.next_day(sv.new_save(SEED))["trip"]["energy"] == sv.TRIP_ENERGY
+
+
 def test_view_shows_only_what_you_have_seen():
     save = sv.new_save(SEED)
     view = sv.view(save)
@@ -114,15 +155,20 @@ def test_view_shows_only_what_you_have_seen():
     assert all(h["name"] is None for h in view["big"]["hexes"] if not h["visited"])
     tiles = {(t["q"], t["r"]) for t in view["local"]["tiles"]}
     assert tiles == {(0, 0), *hx.neighbors((0, 0))}
-    assert all(t["near"] for t in view["local"]["tiles"])
-    assert view["local"]["campfire"] == [0, 0]
+    assert view["local"]["campfire"] == [0, 0] and view["local"]["spot"] == [0, 0]
 
 
-def test_ghost_past_an_exit():
-    save = sv.new_save(SEED)
-    h, d = next(iter(sv.local_of(save).exits.items()))
-    ghosts = sv.local_view({**save, "spot": list(h)})["ghosts"]
-    assert [(g["q"], g["r"]) for g in ghosts] == [hx.neighbor(h, d)]
+def test_you_see_across_an_edge():
+    save = _on_trip()
+    h, d, step, f = _exit_step(sv.local_of(save))
+    save = sv.apply_walk({**save, "spot": list(h)}, step)
+    save = sv.apply_walk(save, next(n for n in hx.neighbors(f) if lc.owner(lc.to_world(tuple(save["at"]), n))[0] == (0, 0)
+                                    and sv.standable(save, sv.local_of(save, (0, 0)), lc.owner(lc.to_world(tuple(save["at"]), n))[1])))
+    # standing on the edge, what's across it is seen and in the view
+    me = lc.to_world(tuple(save["at"]), tuple(save["spot"]))
+    view = {(t["q"], t["r"]): t for t in sv.local_view(save)["tiles"]}
+    assert all(n in view for n in hx.neighbors(me) if lc.owner(n)[0] in wd.generate(SEED).hexes)
+    assert len({t["big"] for t in view.values()}) >= 2
 
 
 def test_fit_sends_a_lost_player_to_a_campfire():
@@ -131,3 +177,109 @@ def test_fit_sends_a_lost_player_to_a_campfire():
     assert fitted["at"] == [0, 0] and fitted["spot"] == [0, 0]
     assert fitted["visited"] == [[0, 0]]
     assert fitted["version"] == sv.SAVE_VERSION and fitted["trip"] is None
+
+
+# --- nooks, fords, clues ---------------------------------------------------------
+
+
+def _nook(test, seed=SEED):
+    """The first (big, spot, nook) in the world that passes test."""
+    for big in sorted(wd.generate(seed).hexes):
+        local = lc.generate(seed, big)
+        for h, nook in sorted(local.nooks.items()):
+            if test(nook):
+                return big, h, nook
+    raise AssertionError("no such nook")
+
+
+def _standing(big, spot, **extra):
+    save = _on_trip()
+    return sv._see({**save, "at": list(big), "spot": list(spot), **extra}, big, spot)
+
+
+def test_caves_go_in_and_out_by_their_door():
+    big, h, nook = _nook(lambda n: n.kind == "cave")
+    door = nook.doors[0]
+    save = _standing(big, door)
+    assert list(lc.to_world(big, h)) in [list(g) for g in sv.steps(save)]
+    inside = sv.apply_walk(save, h)
+    assert inside["spot"] == list(h)
+    assert [list(g) for g in sv.steps(inside)] == [list(lc.to_world(big, door))]
+    other = next(n for n in hx.neighbors(h) if n != door)
+    with pytest.raises(sv.WanderError):
+        sv.apply_walk(inside, other)
+    assert sv.apply_walk(inside, door)["spot"] == list(door)
+    # not from any other side
+    side = next((n for n in hx.neighbors(h) if n != door and sv.local_of(save, big).walkable(n)), None)
+    if side:
+        with pytest.raises(sv.WanderError, match="in the way"):
+            sv.apply_walk(_standing(big, side), h)
+
+
+def test_a_tunnel_goes_through():
+    big, h, nook = _nook(lambda n: n.kind == "tunnel")
+    a, b = nook.doors
+    save = sv.apply_walk(sv.apply_walk(_standing(big, a), h), b)
+    assert save["spot"] == list(b)
+
+
+def test_searching_a_nook_once_and_once_a_trip():
+    big, h, nook = _nook(lambda n: n.need is None and "coins" in n.finds and "forage" not in n.finds)
+    save = _standing(big, h)
+    shown = sv.screen(save)
+    assert shown["action"] == "search"
+    after = sv.act(save, "search")
+    assert [e["kind"] for e in after["events"]] == ["coins"]
+    assert sv.screen(after)["action"] is None  # coins are once ever
+    assert sv.screen(sv.next_day(after))["action"] is None
+    big, h, nook = _nook(lambda n: n.need is None and n.finds == ("forage",))
+    save = sv.act(_standing(big, h), "search")
+    assert sum(save["items"].values()) == 1 and sv.screen(save)["action"] is None
+    assert sv.screen(sv.next_day(save))["action"] == "search"  # forage grows back
+
+
+def test_nooks_need_type_levels():
+    big, h, nook = _nook(lambda n: n.need is not None and n.need[1] >= 3 and n.kind not in lc.IN_WALL)
+    kind, need = nook.need
+    weak = _standing(big, h, party=[kind], party_level=need - 1)
+    assert sv.screen(weak)["action"] is None and "levels" in sv.screen(weak)["text"]
+    with pytest.raises(sv.WanderError):
+        sv.act(weak, "search")
+    # two pets of the type add up
+    assert sv.screen({**weak, "party": [kind, kind]})["action"] is not None
+
+
+def test_fishing_takes_typing():
+    big, h, nook = _nook(lambda n: n.kind == "fishing")
+    save = _standing(big, h)
+    shown = sv.screen(save)
+    assert shown["action"] == "fish" and shown["line"]
+    assert sum(sv.act(save, "fish", accuracy=1.0)["items"].values()) == 2
+    missed = sv.act(save, "fish", accuracy=0.3)
+    assert not any(missed["items"].values()) and sv.screen(missed)["action"] is None
+
+
+def test_a_clue_leads_to_a_cache():
+    big, h, nook = _nook(lambda n: n.need is None and "clue" in n.finds)
+    save = sv.act(_standing(big, h), "search")
+    far, at = lc.clue_target(SEED, big, h)
+    assert list(far) in sv.big_view(save)["marks"]
+    there = sv._see({**save, "at": list(far), "spot": list(next(n for n in hx.neighbors(at) if lc.generate(SEED, far).walkable(n)))}, far, at)
+    assert any(t.get("poi") == "cache" for t in sv.local_view(there)["tiles"])
+    dug = sv.apply_walk(there, at)
+    assert [e["kind"] for e in dug["events"]] == ["coins"]
+    assert list(far) not in sv.big_view(dug)["marks"]
+
+
+def test_wading_costs_more_without_a_swimmer():
+    for big in sorted(wd.generate(SEED).hexes):
+        local = lc.generate(SEED, big)
+        ford = next((h for h in lc.CELLS if local.tiles[h] == "ford"), None)
+        if ford:
+            break
+    start = next(n for n in hx.neighbors(ford) if local.walkable(n) and n in lc.CELL_SET)
+    save = _standing(big, start)
+    swim = sv.apply_walk(save, ford)["trip"]["energy"]
+    wade = sv.apply_walk({**save, "party": ["leaf"]}, ford)["trip"]["energy"]
+    assert save["trip"]["energy"] - swim == st.FORD_ENERGY_SWIM
+    assert save["trip"]["energy"] - wade == st.FORD_ENERGY
