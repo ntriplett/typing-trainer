@@ -820,6 +820,58 @@ trip; a clue marks a buried cache up to 2 big hexes away (`clues`), dug up by st
 server sends the hexes you can step to. Save v4. Dev: "Start next day" button (refill; tokens later).
 Later: tunnels across big walls (must not skip gates), creatures in nooks (phase 5).
 
+**Phase 4 (built 2026-10-31): pets.** Types live in the game (`app/wanderpaw/pets.py`;
+the old genes `element` is gone, Pet Battles keeps its own 3-type map until it's retired). Two
+farm/household species per type: Splash dog, turtle; Ember fox, lizard; Leaf bunny, goat; Dream llama,
+sheep; Shock cat, snake. Mythicals are born with both types, equal from level 1, each pair unique:
+dragon Shock/Ember, phoenix Ember/Dream, unicorn Dream/Leaf, mermaid Splash/Shock, flower fairy
+Leaf/Splash (mermaid and flower fairy are stubs until their art is designed). Fish stay home. Type
+levels: first type = level; at level 5 a pet picks a second type from two (the type it has fought
+beside most, from `partners`, a per-type count bumped each battle; random until battles) which counts
+from 1 (picked with left/right in the party list). 500 XP a level; XP for now from quests (150), temples (300), caches (25), and the first search
+of a nook that needed levels (20); the lab gives XP. Stats from the genes' strength/speed/stamina +
+level: energy 14+stamina+2*level, power, speed, mana (battles). Trip energy: your own 50 for walking
+(WALK_ENERGY, spent first) then each pet's (spent evenly; battles will take theirs); food tops up yours
+first. Party: up to 5 pets picked between trips (arrows, Space, S star, Enter), starred first, remembered;
+empty slots get level-1 starters of the missing types (they don't level). Table `wander_pet` (one
+Record JSON per pet). Save v5: `party` (ids, None = your first pets) and `team` (the trip's members).
+Later: one befriendable mythical per type region via a hard quest; Camp roster (phase 5).
+
+**World gen v2 (built 2026-10-31): gated zones.** Map radius 6 (~110-120 big hexes; land types
+stretched to ring 6 until they're redone). Each region is a maze (tree) from one way in off the
+heartland; regions only meet through broken shortcuts; loops only inside a zone. Gates carry a level:
+the heartland (7 hexes) is free; entering a region takes 2 of its type; its temple is its farthest
+leaf (7+ steps from Camp, one neighbor) behind 8 of its type; about half the region (the temple's
+side) is behind 3 of the type it's very strong against; its one town (3-5 out, outside that half)
+behind 3 of its own type; maybe a 1-2 hex pocket behind 3 of the type it's weak against. Each
+region's shortcut joins two zones that both take 3 of its type. Rules hold with shortcuts open too
+(checked). A broken layout rerolls the seed (World.rerolls); a region retries up to 40 mazes and up
+to 10 towns before that. Lab: gate levels map (shortcuts broken/open). Shortcuts (revised): each sits
+on the border to the next region around the ring, each side taking exactly one 3 (any type) and no 8;
+its quest checks both 3s (Gate.types), so opening one only ever skips 2s. 100 seeds: mean ~0.8
+rerolls, median 0, max 7. Showcase seed: 102.
+
+**Quests v2 (built 2026-10-31).** `app/wanderpaw/quests.py` plans them from the seed. Each town has two
+quest-givers (story.NPCS: the region's animals, each with a lost thing, a pitch, their own repair line,
+a training style), one per shortcut on its borders. The first of a shortcut's pair you take on mends
+it: bring their lost thing plus the part waiting on each side (bump the broken shortcut to pick up your
+side's; a pet with 3 of the far side's type brings the other across, or walk round); the other trains
+a pet one level (you pick). Shortcuts are a ferry, a cave-in tunnel, a footbridge, a vine ladder and a
+lift (story.SHORTCUTS). Lost things hide in the region's pocket or in a nook that takes 3 of its type:
+cave Ember, glade Leaf, dive Splash, grotto Dream, mine Shock (one entrance per type). Finishing either
+quest in a town gets the rumor of the region's temple key (hidden in another such nook). Screens can
+offer numbered options. Towns: houses of the region's animals plus a mythical neighbor, named inns and
+shops.
+
+**Play polish (2026-10-31).** Words to step by terrain: a letter for paths and paving, short for
+grass, medium for fords and nook doors, long for gates. Top box shows what happened; keys in the map's
+corner (Enter glows when new); Go home asks (end the day / come back later / keep playing); books 1-5:
+Bag (what things are for), Journal (quests lit on a map), Party (stats), Log (last 10), Map (everything
+you've visited, gray where land is unfound, legend in the margin, click for details). The big map only
+shows places you've been. Great halls: the Heartstone (5 relic pillars that light up, colonnade, door
+toward Camp) and temples (features per type) are 7 hexes across, with moving glows and sparkles.
+
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

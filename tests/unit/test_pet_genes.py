@@ -87,7 +87,7 @@ def test_rolls_include_personality_and_battle_hooks():
     assert p["favorite"] in g.VEGGIES
     b = genes["battle"]
     assert all(1 <= b[k] <= 10 for k in ("strength", "speed", "stamina"))
-    assert b["element"] == "splash" and b["level"] == 1
+    assert "element" not in b and b["level"] == 1
 
 
 def test_playful_is_drawn_last_and_filled_in_for_older_pets():

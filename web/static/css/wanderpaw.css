@@ -115,6 +115,7 @@ main.wander {
 }
 
 .wander-play {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 1rem;
@@ -147,12 +148,12 @@ main.wander {
   font-size: 20px;
 }
 
-.energy-bar,
 .energy-fill {
   display: block;
 }
 
 .energy-bar {
+  display: flex;
   width: 180px;
   height: 18px;
   border: 3px solid var(--outline);
@@ -163,6 +164,10 @@ main.wander {
   height: 100%;
   background: var(--leaf-gold);
   transition: width 0.2s;
+}
+
+.energy-fill.energy-pets {
+  background: #6fae3e;
 }
 
 .wander-message.good {
@@ -245,4 +250,323 @@ main.wander {
 .wander-bag ul {
   margin: 0.2rem 0;
   padding-left: 1.2rem;
+}
+
+/* The party picker (between trips). */
+.wander-picker {
+  width: min(640px, 94%);
+  font-size: 17px;
+}
+
+.wander-pets {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.wander-pets li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.25rem 0.5rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+.wander-pets li.going {
+  opacity: 1;
+  background: var(--surface);
+}
+
+.wander-pets li.on {
+  border-color: var(--gold, #e8b33e);
+}
+
+.wander-pet-name {
+  min-width: 9rem;
+  font-weight: bold;
+}
+
+.wander-pick {
+  flex-basis: 100%;
+  padding-left: 64px;
+  color: var(--ink-soft);
+}
+
+.wander-bag ul {
+  padding-left: 1rem;
+}
+
+/* What just happened: big, in the top box. */
+.wander-hero .wander-message {
+  flex: 1 1 260px;
+  margin: 0;
+  font-size: 30px;
+  font-weight: bold;
+}
+
+.wander-message.pop {
+  animation: wander-pop 0.5s ease-out;
+}
+
+@keyframes wander-pop {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.3;
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* The keys you can use now, in the map's top-right corner. */
+.wander-keys {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 1;
+  text-align: right;
+  font-size: 20px;
+}
+
+.wander-keys p {
+  margin: 0 0 0.35rem;
+}
+
+.wander-ready {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  background: var(--surface);
+  border: 3px solid var(--leaf-gold);
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.wander-ready.fresh {
+  animation: wander-glow 1.2s ease-in-out 3;
+}
+
+@keyframes wander-glow {
+  50% {
+    box-shadow: 0 0 0 6px rgba(232, 179, 62, 0.55);
+  }
+}
+
+/* Books: the bag, journal, party and log. */
+.wander-books {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.wander-books button {
+  --book: #8b5a2b;
+  font: inherit;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.02em;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  background: var(--book);
+  border: 3px solid var(--outline);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.25), 0 3px 0 var(--outline);
+  color: #fffaf0;
+  text-align: left;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s;
+}
+
+.wander-books button:hover,
+.wander-books button:focus-visible {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.wander-books button:active {
+  transform: translateY(1px);
+}
+
+.wander-books .keycap {
+  color: var(--ink);
+  text-shadow: none;
+  margin-right: 0.3rem;
+}
+
+.wander-books [data-menu="bag"] {
+  --book: #c98a2e;
+}
+
+.wander-books [data-menu="journal"] {
+  --book: #4f8f2a;
+}
+
+.wander-books [data-menu="party"] {
+  --book: #3a7fc8;
+}
+
+.wander-books [data-menu="log"] {
+  --book: #8a4fb8;
+}
+
+.wander-books [data-menu="map"] {
+  --book: #b8432f;
+}
+
+.wander-book-wide {
+  grid-column: 1 / -1;
+}
+
+.wander-menu {
+  width: min(820px, 96%);
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  font-size: 18px;
+}
+
+.wander-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.wander-menu-list li {
+  padding: 0.25rem 0.5rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.wander-menu-list li.on {
+  border-color: var(--leaf-gold);
+  background: var(--surface);
+}
+
+.wander-menu-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.wander-menu-detail {
+  margin: 0;
+}
+
+.wander-stats-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.8rem;
+}
+
+.wander-stats-list dt {
+  color: var(--ink-soft);
+}
+
+.wander-stats-list dd {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .wander-menu-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The map window: over the whole play area. */
+.wander-atlas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: 560px;
+}
+
+.wander-atlas-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.wander-atlas-head .panel-title {
+  margin: 0;
+}
+
+.wander-atlas-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 3px solid var(--outline);
+  background: #efe0bf;
+}
+
+.wander-atlas-scroll canvas {
+  max-width: none;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.wander-atlas-info {
+  position: absolute;
+  top: 70px;
+  right: 34px;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  border: 3px solid var(--leaf-gold);
+  font-size: 17px;
+  box-shadow: 3px 3px 0 var(--outline);
+}
+
+.wander-atlas-info dl {
+  margin: 0.3rem 0 0;
+}
+
+/* Scrollbars that look like the rest of the game (Firefox has only two
+   colors; Chrome and Safari get the chunky pixel thumb). */
+@supports not selector(::-webkit-scrollbar) {
+  .wander-atlas-scroll,
+  .wander-menu,
+  .wander-menu-list,
+  .wander-pets {
+    scrollbar-color: var(--leaf-gold) var(--surface-shadow);
+  }
+}
+
+.wander-atlas-scroll::-webkit-scrollbar,
+.wander-menu::-webkit-scrollbar,
+.wander-menu-list::-webkit-scrollbar,
+.wander-pets::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.wander-atlas-scroll::-webkit-scrollbar-track,
+.wander-menu::-webkit-scrollbar-track,
+.wander-menu-list::-webkit-scrollbar-track,
+.wander-pets::-webkit-scrollbar-track {
+  background: var(--surface-shadow);
+}
+
+.wander-atlas-scroll::-webkit-scrollbar-thumb,
+.wander-menu::-webkit-scrollbar-thumb,
+.wander-menu-list::-webkit-scrollbar-thumb,
+.wander-pets::-webkit-scrollbar-thumb {
+  background: var(--leaf-gold);
+  border: 3px solid var(--outline);
+}
+
+.wander-atlas-scroll::-webkit-scrollbar-corner {
+  background: var(--surface-shadow);
 }

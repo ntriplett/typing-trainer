@@ -33,6 +33,7 @@ from app.activities.teach_curriculum import known_before, lessons as teach_lesso
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
 from app.wanderpaw import local as wander_local
+from app.wanderpaw import quests as wander_quests
 from app.wanderpaw import save as wander
 from app.wanderpaw import world as wander_world
 
@@ -800,11 +801,24 @@ class WanderTripRequest(BaseModel):
 class WanderActRequest(BaseModel):
     action: str
     accuracy: float = Field(default=1.0, ge=0, le=1)
+    arg: int | str | None = None  # which option (a pet to train, a lost thing to fetch)
 
 
 class WanderPartyRequest(BaseModel):
-    party: list[str]
-    level: int | None = None
+    pets: list[int]
+
+
+class WanderEndRequest(BaseModel):
+    anywhere: bool = False
+
+
+class WanderSecondRequest(BaseModel):
+    type: str
+
+
+class WanderXpRequest(BaseModel):
+    pet_id: int
+    xp: int = Field(ge=0, le=50_000)
 
 
 class WanderTeleportRequest(BaseModel):
@@ -817,15 +831,16 @@ class WanderResetRequest(BaseModel):
     seed: int | None = Field(default=None, ge=0, lt=2**31)
 
 
-def _wander_words(conn, learner_id: int) -> list[str]:
-    """Words to label the places you can walk to: short and medium ones from
-    the letters you've learned (home row until there are enough)."""
+def _wander_words(conn, learner_id: int) -> dict[str, list[str]]:
+    """Words to label the places you can walk to, from the letters you've
+    learned (home row until there are enough), by length: single letters
+    for paths, longer words for harder ground (save.STEP_WORDS)."""
     _, allowed, key_stats = _lab_letters(conn, learner_id, "mine", "")
     if len(allowed) - 1 < MIN_LETTERS:
         allowed = [" ", *PRACTICE_KEY_SETS["home"]]
     skill = snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id))
     groups = word_groups([], allowed, 0.3, skill, random.Random(), count=WANDER_WORDS)
-    return groups["short"] + groups["medium"]
+    return {"letter": sorted(set(allowed) - {" "}), **groups}
 
 
 def _wander_state(conn, learner_id: int, save: dict) -> dict:
@@ -851,7 +866,7 @@ def wander_lab_page() -> FileResponse:
 
 @app.get("/api/wander")
 def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _wander_state(conn, learner_id, wander.load(conn, learner_id))
+    return _wander_state(conn, learner_id, wander.current(conn, learner_id))
 
 
 @app.post("/api/wander/walk")
@@ -866,8 +881,10 @@ def wander_trip_start(body: WanderTripRequest, conn=Depends(get_db), learner_id:
 
 
 @app.post("/api/wander/trip/end")
-def wander_trip_end(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id))
+def wander_trip_end(body: WanderEndRequest | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Rest at a campfire and end the trip (anywhere: head home from wherever you are)."""
+    anywhere = bool(body and body.anywhere)
+    return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id, anywhere))
 
 
 @app.post("/api/wander/day")
@@ -879,21 +896,52 @@ def wander_next_day(conn=Depends(get_db), learner_id: int = Depends(current_lear
 @app.post("/api/wander/act")
 def wander_go_in(body: WanderActRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """Do what the place you're standing on offers (save.screen's action)."""
-    return _wander_act(conn, learner_id, lambda: wander.go_in(conn, learner_id, body.action, body.accuracy))
+    return _wander_act(conn, learner_id, lambda: wander.go_in(conn, learner_id, body.action, body.accuracy, body.arg))
+
+
+@app.get("/api/wander/pets")
+def wander_pets(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Your pets that can go adventuring, for the party picker."""
+    save = wander.current(conn, learner_id)
+    return {"pets": wander.pets_view(conn, learner_id), "party": save["party"], "team": save["team"]}
+
+
+@app.post("/api/wander/party")
+def wander_party(body: WanderPartyRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.set_party(conn, learner_id, body.pets))
+
+
+@app.post("/api/wander/pets/{pet_id}/second")
+def wander_pet_second(pet_id: int, body: WanderSecondRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """A level 5 pet picks its second type (one of the two offered)."""
+    try:
+        wander.pick_second(conn, learner_id, pet_id, body.type)
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_pets(conn, learner_id)
+
+
+@app.post("/api/wander/pets/{pet_id}/star")
+def wander_pet_star(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    try:
+        wander.star(conn, learner_id, pet_id)
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_pets(conn, learner_id)
 
 
 def _lab_me(save: dict) -> dict:
     return {"at": save["at"], "spot": save["spot"], "visited": save["visited"], "trip": save["trip"],
-            "seen": wander.seen_all(save), "party": save["party"], "party_level": save["party_level"],
-            "cleared": save["cleared"],
+            "seen": wander.seen_all(save), "team": save["team"], "cleared": save["cleared"],
             "quests": save["quests"], "temples": save["temples"]}
 
 
 @app.get("/api/wander-lab/world")
 def wander_lab_world(seed: int | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """A whole world, fog off: yours (with where you are and what you've seen), or any seed's."""
-    save = wander.load(conn, learner_id)
+    save = wander.current(conn, learner_id)
     out = wander_world.to_json(wander_world.generate(save["seed"] if seed is None else seed))
+    out["plan"] = wander_quests.plan_json(wander_quests.plan(out["seed"]))
     if seed is None or seed == save["seed"]:
         out["me"] = _lab_me(save)
     return out
@@ -905,6 +953,15 @@ def wander_lab_local(seed: int, q: int, r: int) -> dict:
     if (q, r) not in wander_world.generate(seed).hexes:
         raise HTTPException(status_code=404, detail="That place isn't on the map.")
     return {**wander_local.to_json(wander_local.generate(seed, (q, r))), "beyond": wander_local.beyond(seed, (q, r))}
+
+
+@app.get("/api/wander-lab/needs")
+def wander_lab_needs(seed: int, shortcuts: bool = False) -> dict:
+    """The type levels needed to reach each big hex from Camp (every way no
+    other way beats), with broken shortcuts shut or open."""
+    world = wander_world.generate(seed)
+    needs = wander_world.gate_needs(world, (0, 0), shortcuts)
+    return {"needs": {f"{q},{r}": v for (q, r), v in needs.items()}}
 
 
 @app.get("/api/wander-lab/gallery")
@@ -935,13 +992,14 @@ def wander_lab_refill(conn=Depends(get_db), learner_id: int = Depends(current_le
     return wander_lab_world(None, conn, learner_id)
 
 
-@app.post("/api/wander-lab/party")
-def wander_lab_party(body: WanderPartyRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+@app.post("/api/wander-lab/xp")
+def wander_lab_xp(body: WanderXpRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Give one pet XP (to test levels and second types)."""
     try:
-        wander.set_party(conn, learner_id, body.party, body.level)
+        wander.give_xp(conn, learner_id, body.pet_id, body.xp)
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return wander_lab_world(None, conn, learner_id)
+    return wander_pets(conn, learner_id)
 
 
 @app.post("/api/wander-lab/reset")

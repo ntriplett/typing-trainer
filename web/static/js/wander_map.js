@@ -12,6 +12,7 @@
 // opts: size (hex corner radius, px), fog (true: only what's in map.hexes
 // is known, unvisited ones dimmed; the lab passes false), labels
 // ({"q,r": {word, typed}}), names (draw place names), selected ([q, r]),
+// bare (no land pictures, just special places), fill ({"q,r": color}),
 // trail (draw known open paths between visited hexes).
 
 const WanderMap = (() => {
@@ -142,9 +143,11 @@ const WanderMap = (() => {
   const TILT = Math.atan2(-SPAN_Y, SPAN_X); // where big direction 0 points (ccw)
 
   // Small maps (big: false): pointy-top, size = corner radius. Big maps
-  // (big: true): size = a big hex's corner radius. focus centers the
-  // canvas on a hex, showing `view` hexes around it; camera (fractional
-  // q, r) overrides where the middle is, for sliding between hexes.
+  // (big: true): size = a big hex's corner radius, turned TILT to match the
+  // small grid, or not (opts.straight: pointy-top, the way you'd draw a
+  // map by itself). focus centers the canvas on a hex, showing `view`
+  // hexes around it; camera (fractional q, r) overrides where the middle
+  // is, for sliding between hexes.
   function geometry(canvas, map, opts, big = false) {
     const size = opts.size || 34;
     const r = opts.focus ? opts.view : opts.radius ?? map.radius;
@@ -158,7 +161,17 @@ const WanderMap = (() => {
       width = Math.ceil(SQRT3 * size * (2 * r + 1)) + 8;
       height = Math.ceil(size * (3 * r + 2)) + 8;
     }
-    const g = { size, width, height, big, cx: width / 2, cy: height / 2 };
+    const g = { size, width, height, big, cx: width / 2, cy: height / 2, turn: big && opts.straight ? TILT : 0 };
+    if (opts.legend && map.shape) {
+      // A paper map: just the land, with the legend in the right margin.
+      const pts = map.shape.map(([q, r]) => center({ ...g, cx: 0, cy: 0 }, q, r));
+      const xs = pts.map((p) => p[0]);
+      const ys = pts.map((p) => p[1]);
+      g.cx = -Math.min(...xs) + size + 12;
+      g.cy = -Math.min(...ys) + size + 12;
+      g.width = Math.ceil(g.cx + Math.max(...xs) + size + LEGEND_WIDTH);
+      g.height = Math.ceil(g.cy + Math.max(...ys) + size + 12);
+    }
     if (opts.focus) {
       const [x, y] = center(g, ...(opts.camera || opts.focus));
       g.cx += width / 2 - x;
@@ -171,7 +184,7 @@ const WanderMap = (() => {
 
   function center(g, q, r) {
     if (g.big) {
-      const [x, y] = smallXY(...span(q, r));
+      const [x, y] = turned(smallXY(...span(q, r)), g.turn);
       const k = g.size / BIG_CORNER;
       return [g.cx + x * k, g.cy + y * k];
     }
@@ -179,11 +192,14 @@ const WanderMap = (() => {
     return [g.cx + g.size * x, g.cy + g.size * y];
   }
 
+  // Turn a screen point (y down) clockwise by a.
+  const turned = ([x, y], a) => (a ? [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)] : [x, y]);
+
   // Corner i of a hex, on screen (y down). Small hexes: corner i at 60i - 30
   // degrees clockwise. Big hexes: at TILT + 30 + 60i counter-clockwise.
   function cornerAt(g, x, y, i, s = g.size) {
     if (g.big) {
-      const a = TILT + (Math.PI / 180) * (30 + 60 * i);
+      const a = TILT - g.turn + (Math.PI / 180) * (30 + 60 * i);
       return [x + s * Math.cos(a), y - s * Math.sin(a)];
     }
     const a = (Math.PI / 180) * (60 * i - 30);
@@ -297,33 +313,37 @@ const WanderMap = (() => {
     ctx.restore();
   }
 
-  // A gate on a big edge: a diamond in its type's color (two for a
-  // two-pet gate), planks for a broken shortcut; faded once cleared.
+  // A gate on a big edge: a diamond in its type's color with the levels it
+  // takes, planks for a broken shortcut; faded once cleared.
   function drawGate(ctx, g, e) {
     const [x0, y0] = center(g, ...e.a);
     const [x1, y1] = center(g, ...e.b);
     const x = (x0 + x1) / 2;
     const y = (y0 + y1) / 2;
-    const s = Math.max(4, g.size * 0.2);
+    const s = Math.max(5, g.size * 0.22);
     ctx.save();
     ctx.globalAlpha = e.gate.cleared ? 0.35 : 1;
     if (e.gate.kind === "quest") {
       glyph(ctx, GLYPHS.broken_bridge, x, y, Math.max(2, Math.round(g.size / 9)));
     } else {
-      const offsets = e.gate.need === 2 ? [-s * 0.7, s * 0.7] : [0];
-      offsets.forEach((dx) => {
-        ctx.beginPath();
-        ctx.moveTo(x + dx, y - s);
-        ctx.lineTo(x + dx + s, y);
-        ctx.lineTo(x + dx, y + s);
-        ctx.lineTo(x + dx - s, y);
-        ctx.closePath();
-        ctx.fillStyle = TYPE_COLORS[e.gate.kind];
-        ctx.fill();
-        ctx.strokeStyle = "#3b2417";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      });
+      ctx.beginPath();
+      ctx.moveTo(x, y - s);
+      ctx.lineTo(x + s, y);
+      ctx.lineTo(x, y + s);
+      ctx.lineTo(x - s, y);
+      ctx.closePath();
+      ctx.fillStyle = TYPE_COLORS[e.gate.kind];
+      ctx.fill();
+      ctx.strokeStyle = "#3b2417";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      if (s >= 7 && e.gate.level) {
+        ctx.fillStyle = "#fffaf0";
+        ctx.font = `bold ${Math.round(s * 1.05)}px "Atkinson Hyperlegible Mono", monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(e.gate.level), x, y + 1);
+      }
     }
     ctx.restore();
   }
@@ -382,11 +402,25 @@ const WanderMap = (() => {
       map = { ...map, hexes: map.hexes.filter((h) => distance(h.q - fq, h.r - fr) <= opts.view + 1) };
     }
 
+    if (opts.paper) drawPaper(ctx, g);
+    // Where land is that you haven't found yet: light gray.
+    if (opts.shape) {
+      (map.shape || []).forEach(([q, r]) => {
+        if (byKey.has(key(q, r))) return;
+        const [x, y] = center(g, q, r);
+        hexPath(ctx, g, x, y);
+        ctx.fillStyle = "#e4dfd6";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(59, 36, 23, 0.18)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    }
     // Land, then region borders, then decorations, then walls on top.
     map.hexes.forEach((h) => {
       const [x, y] = center(g, h.q, h.r);
       hexPath(ctx, g, x, y);
-      ctx.fillStyle = BIOME_COLORS[h.biome] || "#d8c7a0";
+      ctx.fillStyle = (opts.fill && opts.fill[key(h.q, h.r)]) || BIOME_COLORS[h.biome] || "#d8c7a0";
       ctx.fill();
     });
     map.hexes.forEach((h) => {
@@ -406,7 +440,7 @@ const WanderMap = (() => {
         ctx.stroke();
         ctx.setLineDash([]);
       });
-      decorate(ctx, g, h, x, y, opts.simple);
+      if (!opts.bare || h.special) decorate(ctx, g, h, x, y, opts.simple);
     });
     if (opts.trail) {
       map.edges.forEach((e) => {
@@ -449,6 +483,14 @@ const WanderMap = (() => {
       ctx.lineWidth = 4;
       ctx.stroke();
     }
+    // Highlights: places the journal points at.
+    (opts.highlight || []).forEach(([q, r]) => {
+      const [x, y] = center(g, q, r);
+      hexPath(ctx, g, x, y, 2);
+      ctx.strokeStyle = "#e8b33e";
+      ctx.lineWidth = Math.max(3, g.size * 0.18);
+      ctx.stroke();
+    });
     // Marks: places an elder told you about (a star, even in the fog).
     [...(opts.marks || []), ...(map.marks || [])].forEach(([q, r]) => {
       const [x, y] = center(g, q, r);
@@ -465,6 +507,7 @@ const WanderMap = (() => {
       ctx.stroke();
       glyph(ctx, SPECIALS.paw, x, y, Math.max(3, Math.round(g.size / 10)));
     }
+    if (opts.legend) drawLegend(ctx, g, map, opts.legend);
     Object.entries(opts.labels || {}).forEach(([k, label]) => {
       const [q, r] = k.split(",").map(Number);
       const [x, y] = center(g, q, r);
@@ -478,14 +521,15 @@ const WanderMap = (() => {
   const TILE_FILL = {
     dark: "#3b3448", flames: "#d9a066", gap: "#5c4430", old_gate: "#b8ae9c", guardian: "#b8ae9c", broken_bridge: "#6fa8d6",
     path: "#dcc08e", sand: "#ecd9a0", plaza: "#d6c6a6", water: "#6fa8d6", bridge: "#6fa8d6", ocean: "#2c5f9a",
-    ford: "#9fd0e0", cliff: "#8a6446", building: "#d6c6a6", temple: "#d6c6a6", stone: "#d6c6a6",
+    ford: "#9fd0e0", cliff: "#8a6446", building: "#d6c6a6", temple: "#e8dcc0", stone: "#e8dcc0",
+    court: "#e8dcc0", colonnade: "#b5a98f",
   };
   const TREE_GLYPH = {
     deepwood: "pine", ridge: "pine", storm_peaks: "pine", ember_peaks: "pine", orchard: "apple",
     mushroom_grove: "shroom", crystal_hollow: "crystal",
   };
 
-  const WALKABLE = new Set(["grass", "flowers", "path", "sand", "plaza", "bridge", "ford", "building", "campfire", "camp", "temple", "stone"]);
+  const WALKABLE = new Set(["grass", "flowers", "path", "sand", "plaza", "court", "bridge", "ford", "building", "campfire", "camp", "temple", "stone"]);
   const GATES = new Set(["dark", "flames", "gap", "old_gate", "guardian", "broken_bridge"]);
   const passable = (kind) => WALKABLE.has(kind) || GATES.has(kind);
 
@@ -524,13 +568,218 @@ const WanderMap = (() => {
   // Watery biomes are blue on the big map; up close their land is green.
   const LAND_COLORS = { lakeshore: "#a8cf8c", isles: "#b9d68e", brookside: "#a9d4b4" };
 
+  // The great halls: mosaic paving, colonnades, relic pillars (lit once
+  // their relic is home), the temples' features, and the magic at their
+  // hearts (it moves: drawLocal's opts.time, in ms).
+  const HALL_GLYPHS = {
+    brazier: ["o.y.o", ".omo.", "..n..", ".nnn.", "sssss"],
+    fountain: ["..B..", ".BbB.", "B.b.B", "sssss", ".sss."],
+    topiary: [".GgG.", "GgGgG", ".GgG.", "..n..", ".sss."],
+    crystal: ["..P..", ".PpP.", ".PpP.", "PpPpP", ".sss."],
+    coil: [".yyy.", "..s..", ".sys.", "..s..", ".sss."],
+  };
+  const FEATURE = { ember: "brazier", splash: "fountain", leaf: "topiary", dream: "crystal", shock: "coil" };
+  const HALL_GOLD = "#e8b33e";
+  const isHall = (kind) => kind === "court" || kind === "colonnade" || kind.startsWith("pillar_") || kind.startsWith("feature_");
+  const accentOf = (t) => (t.accent && t.accent !== "camp" ? TYPE_COLORS[t.accent] : HALL_GOLD);
+  let hallTime = 0; // set by drawLocal
+
+  function rgba(hex, a) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
+  // Mosaic paving: an inlaid border and one of four patterns, picked per tile.
+  function drawCourt(ctx, g, t, x, y) {
+    const s = g.size;
+    const accent = accentOf(t);
+    ctx.save();
+    hexPath(ctx, g, x, y, s * 0.16);
+    ctx.strokeStyle = "rgba(139, 110, 70, 0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.strokeStyle = rgba(accent, 0.55);
+    ctx.fillStyle = rgba(accent, 0.22);
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    const k = Math.floor(hashRand(t.q * 7, t.r * 13)() * 4);
+    ctx.beginPath();
+    if (k === 0) {
+      // a diamond
+      ctx.moveTo(x, y - s * 0.38);
+      ctx.lineTo(x + s * 0.3, y);
+      ctx.lineTo(x, y + s * 0.38);
+      ctx.lineTo(x - s * 0.3, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (k === 1) {
+      // rings
+      ctx.arc(x, y, s * 0.32, 0, 7);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, s * 0.12, 0, 7);
+      ctx.fill();
+      ctx.stroke();
+    } else if (k === 2) {
+      // four petals
+      for (let i = 0; i < 4; i++) {
+        const a = (Math.PI / 2) * i + Math.PI / 4;
+        ctx.beginPath();
+        ctx.ellipse(x + Math.cos(a) * s * 0.17, y + Math.sin(a) * s * 0.17, s * 0.15, s * 0.08, a, 0, 7);
+        ctx.fill();
+        ctx.stroke();
+      }
+    } else {
+      // a six-point star
+      for (let i = 0; i < 12; i++) {
+        const a = (Math.PI / 6) * i - Math.PI / 2;
+        const r = i % 2 ? s * 0.15 : s * 0.36;
+        i ? ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r) : ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // A colonnade: three slender columns under a lintel, a banner in the hall's color.
+  function drawColonnade(ctx, g, t, x, y) {
+    const s = g.size;
+    ctx.save();
+    // shadow behind the columns
+    ctx.fillStyle = "rgba(59, 36, 23, 0.25)";
+    ctx.fillRect(x - s * 0.62, y - s * 0.38, s * 1.24, s * 0.8);
+    const stone = "#efe6d2";
+    const shade_ = "#b5a98f";
+    [-0.42, 0, 0.42].forEach((dx) => {
+      const cx = x + dx * s;
+      ctx.fillStyle = stone;
+      ctx.fillRect(cx - s * 0.08, y - s * 0.4, s * 0.16, s * 0.76); // shaft
+      ctx.fillStyle = shade_;
+      ctx.fillRect(cx + s * 0.03, y - s * 0.4, s * 0.05, s * 0.76); // its shaded side
+      ctx.fillStyle = stone;
+      ctx.fillRect(cx - s * 0.13, y + s * 0.32, s * 0.26, s * 0.1); // base
+      ctx.fillRect(cx - s * 0.13, y - s * 0.46, s * 0.26, s * 0.08); // capital
+    });
+    // the lintel
+    ctx.fillStyle = stone;
+    ctx.fillRect(x - s * 0.66, y - s * 0.58, s * 1.32, s * 0.14);
+    ctx.strokeStyle = "#8b7a5c";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - s * 0.66, y - s * 0.58, s * 1.32, s * 0.14);
+    // a little banner
+    ctx.fillStyle = accentOf(t);
+    ctx.beginPath();
+    ctx.moveTo(x - s * 0.1, y - s * 0.44);
+    ctx.lineTo(x + s * 0.1, y - s * 0.44);
+    ctx.lineTo(x + s * 0.1, y - s * 0.12);
+    ctx.lineTo(x, y - s * 0.2);
+    ctx.lineTo(x - s * 0.1, y - s * 0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Twinkling sparkles round a point: n of them, `spread` out, moving with time.
+  function sparkles(ctx, x, y, n, spread, color, seed) {
+    const r = hashRand(seed, n);
+    for (let i = 0; i < n; i++) {
+      const a = r() * Math.PI * 2 + hallTime / (1400 + r() * 1600);
+      const d = spread * (0.4 + r() * 0.6);
+      const twinkle = 0.5 + 0.5 * Math.sin(hallTime / 220 + r() * 10);
+      const size = 1.5 + twinkle * 2.5;
+      ctx.fillStyle = rgba(color, 0.4 + 0.6 * twinkle);
+      ctx.fillRect(x + Math.cos(a) * d - size / 2, y + Math.sin(a) * d - size / 2, size, size);
+      ctx.fillStyle = `rgba(255, 250, 240, ${twinkle})`;
+      ctx.fillRect(x + Math.cos(a) * d - 1, y + Math.sin(a) * d - 1, 2, 2);
+    }
+  }
+
+  // The glow at a temple's or the Heartstone's heart: a pulse, rising
+  // motes, and sparkles circling.
+  function drawHeart(ctx, g, t, x, y) {
+    const s = g.size;
+    const color = accentOf(t);
+    const pulse = 0.5 + 0.5 * Math.sin(hallTime / 600);
+    ctx.save();
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, s * (1.3 + pulse * 0.4));
+    glow.addColorStop(0, rgba("#fffaf0", 0.55 + pulse * 0.3));
+    glow.addColorStop(0.35, rgba(color, 0.45 + pulse * 0.25));
+    glow.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, s * (1.3 + pulse * 0.4), 0, 7);
+    ctx.fill();
+    // motes drifting up
+    const r = hashRand(t.q + 3, t.r + 5);
+    for (let i = 0; i < 7; i++) {
+      const speed = 1800 + r() * 1400;
+      const phase = ((hallTime + r() * speed) % speed) / speed;
+      const mx = x + (r() - 0.5) * s * 1.1 + Math.sin(hallTime / 500 + i) * s * 0.08;
+      const my = y + s * 0.4 - phase * s * 1.4;
+      ctx.fillStyle = rgba(i % 2 ? color : "#fffaf0", 1 - phase);
+      ctx.fillRect(mx - 1.5, my - 1.5, 3, 3);
+    }
+    sparkles(ctx, x, y - s * 0.1, 8, s * 0.95, color, t.q * 31 + t.r);
+    ctx.restore();
+  }
+
+  function drawHall(ctx, g, t, x, y) {
+    const px = Math.max(2, Math.round(g.size / 6));
+    if (t.kind === "court") {
+      drawCourt(ctx, g, t, x, y);
+    } else if (t.kind === "colonnade") {
+      drawColonnade(ctx, g, t, x, y);
+    } else if (t.kind.startsWith("feature_")) {
+      drawCourt(ctx, g, t, x, y);
+      glyph(ctx, HALL_GLYPHS[FEATURE[t.kind.slice(8)]], x, y, px);
+      sparkles(ctx, x, y - g.size * 0.2, 3, g.size * 0.45, accentOf(t), t.q * 17 + t.r);
+    } else if (t.kind.startsWith("pillar_")) {
+      const color = TYPE_COLORS[t.kind.slice(7)];
+      drawCourt(ctx, g, { ...t, accent: t.kind.slice(7) }, x, y);
+      const top = y - g.size * 0.5;
+      if (t.lit) {
+        // its relic is home: a bright, pulsing glow in its color
+        const pulse = 0.5 + 0.5 * Math.sin(hallTime / 500 + t.q);
+        const glow = ctx.createRadialGradient(x, top, 0, x, top, g.size * (1 + pulse * 0.3));
+        glow.addColorStop(0, "#fffaf0");
+        glow.addColorStop(0.25, color);
+        glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, top, g.size * (1 + pulse * 0.3), 0, 7);
+        ctx.fill();
+      }
+      // the pillar: a fluted column
+      const s = g.size;
+      ctx.fillStyle = "#efe6d2";
+      ctx.fillRect(x - s * 0.13, top + s * 0.15, s * 0.26, s * 0.75);
+      ctx.fillStyle = "#b5a98f";
+      ctx.fillRect(x + s * 0.04, top + s * 0.15, s * 0.07, s * 0.75);
+      ctx.fillStyle = "#efe6d2";
+      ctx.fillRect(x - s * 0.22, top + s * 0.85, s * 0.44, s * 0.12);
+      ctx.fillRect(x - s * 0.2, top + s * 0.08, s * 0.4, s * 0.1);
+      // the orb on top
+      ctx.fillStyle = t.lit ? "#fffaf0" : color;
+      ctx.strokeStyle = "#3b2417";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, top, s * 0.22, 0, 7);
+      ctx.fill();
+      ctx.stroke();
+      if (t.lit) sparkles(ctx, x, top, 9, s * 0.9, color, t.q * 11 + t.r);
+    }
+  }
+
   function drawTile(ctx, g, t, biome, x, y) {
     const base = LAND_COLORS[biome] || BIOME_COLORS[biome] || "#d8c7a0";
     hexPath(ctx, g, x, y);
     const dark = { tree: 0.3, bush: 0.12, rock: 0.12 }[t.kind];
     // Water (and the bridges and fords on it) is land here: the river is
     // painted over it as one channel (connect()).
-    const fill = WATERY.has(t.kind) ? base : TILE_FILL[t.kind] || base;
+    const hall = isHall(t.kind);
+    const fill = WATERY.has(t.kind) ? base : hall ? TILE_FILL.court : TILE_FILL[t.kind] || base;
     ctx.fillStyle = shade(fill, TILE_FILL[t.kind] && !WATERY.has(t.kind) ? 0 : dark || 0);
     ctx.fill();
     ctx.strokeStyle = "rgba(59, 36, 23, 0.15)";
@@ -540,16 +789,24 @@ const WanderMap = (() => {
     const big = ["camp", "temple", "stone"].includes(t.kind);
     const blocker = ["tree", "bush", "rock", "cliff"].includes(t.kind);
     const rows = t.linked || WATERY.has(t.kind) ? null : tileGlyph(t.kind, biome);
-    if (rows) glyph(ctx, rows, x, y, big ? Math.max(2, Math.round(g.size / 10)) : blocker ? Math.max(2, Math.round(g.size / 5.5)) : px);
+    if (rows) glyph(ctx, rows, x, y, big ? Math.max(2, Math.round(g.size / (t.kind === "camp" ? 10 : 7))) : blocker ? Math.max(2, Math.round(g.size / 5.5)) : px);
     else if (t.kind === "grass" && hashRand(t.q, t.r)() < 0.3) glyph(ctx, GLYPHS.tuft, x, y, px);
-    if (t.role && GLYPHS[t.role]) glyph(ctx, GLYPHS[t.role], x, y, px + 1);
+    if (hall) drawHall(ctx, g, t, x, y);
+    if ((t.kind === "temple" || t.kind === "stone") && t.accent) {
+      drawCourt(ctx, g, t, x, y);
+      drawHeart(ctx, g, t, x, y);
+      if (rows) glyph(ctx, rows, x, y, Math.max(2, Math.round(g.size / 7)));
+    }
+    const role = t.role && t.role.startsWith("quest:") ? "elder" : t.role; // quest-givers: a house with a star
+    if (role && GLYPHS[role]) glyph(ctx, GLYPHS[role], x, y, px + 1);
     if (t.poi) glyph(ctx, GLYPHS[t.poi], x, y, px);
     else if (t.nook && !t.doors && GLYPHS[t.nook]) glyph(ctx, GLYPHS[t.nook], x, y, px);
     if (t.exit !== undefined) glyph(ctx, GLYPHS.sign, x + g.size * 0.35, y - g.size * 0.3, Math.max(2, px - 1));
   }
 
   // view: {radius, tiles: [{q, r, kind, biome?, big?, faded?, poi?, role?,
-  // exit?, nook?, doors?}], spot, campfire, biome}. opts: size, focus (center on this hex,
+  // exit?, nook?, doors?, accent?, lit?}], spot, campfire, biome}. opts.time
+  // (ms) moves the magic in the great halls. opts: size, focus (center on this hex,
   // showing view.radius around it, the farthest ring faded into the
   // distance; else the map is centered on (0, 0)), camera (see geometry), fog
   // (show the campfire's smoke before it's seen), labels ({"q,r": {word,
@@ -560,6 +817,7 @@ const WanderMap = (() => {
   // along every side you can't walk across, so blocked ways read at a
   // glance; a faint dash marks where one big hex meets the next.
   function drawLocal(canvas, view, opts = {}) {
+    hallTime = opts.time || 0;
     const focus = opts.focus;
     const g = geometry(canvas, view, focus ? { ...opts, view: view.radius } : { ...opts, radius: view.radius });
     canvas.width = g.width;
@@ -835,13 +1093,15 @@ const WanderMap = (() => {
         ctx.stroke();
         glyph(ctx, GLYPHS.flower, mx, my, Math.max(2, Math.round(g.size / 9)));
       } else {
+        // caves dark, grottos misty purple, mines framed in timber
+        const look = { grotto: ["#4a2f6e", "#d6b8ee"], mine: ["#2a1a10", "#8b5a2b"] }[t.nook] || ["#2a1a10", "#b89a78"];
         t.doors.forEach((d) => {
           const [dq, dr] = DIRS[d];
           const [x1, y1] = center(g, t.q + dq, t.r + dr);
           const [mx, my] = [x + (x1 - x) * 0.28, y + (y1 - y) * 0.28];
           const w = g.size * 0.6;
-          ctx.fillStyle = "#2a1a10";
-          ctx.strokeStyle = "#b89a78";
+          ctx.fillStyle = look[0];
+          ctx.strokeStyle = look[1];
           ctx.lineWidth = Math.max(2, g.size * 0.07);
           ctx.beginPath();
           ctx.ellipse(mx, my + w * 0.15, w * 0.62, w * 0.55, 0, Math.PI, 0);
@@ -850,6 +1110,13 @@ const WanderMap = (() => {
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          if (t.nook === "mine") {
+            // a timber lintel and posts
+            ctx.fillStyle = "#8b5a2b";
+            ctx.fillRect(mx - w * 0.75, my - w * 0.45, w * 1.5, w * 0.18);
+            ctx.fillRect(mx - w * 0.72, my - w * 0.4, w * 0.16, w * 0.85);
+            ctx.fillRect(mx + w * 0.56, my - w * 0.4, w * 0.16, w * 0.85);
+          }
         });
       }
       ctx.restore();
@@ -877,9 +1144,14 @@ const WanderMap = (() => {
   function hexAt(canvas, map, opts, x, y) {
     const g = geometry(canvas, map, opts, true);
     const k = g.size / BIG_CORNER;
-    const [q, r] = toAxial((x - g.cx) / k, (y - g.cy) / k);
+    const [q, r] = toAxial(...turned([(x - g.cx) / k, (y - g.cy) / k], -g.turn));
     // small (q, r) -> big, through the inverse of the spans
     return cubeRound((SPAN_B[1] * q - SPAN_B[0] * r) / AREA, (-SPAN_A[1] * q + SPAN_A[0] * r) / AREA);
+  }
+
+  // Where a big hex's middle is on a big map's canvas.
+  function pointAt(canvas, map, opts, q, r) {
+    return center(geometry(canvas, map, opts, true), q, r);
   }
 
   const toAxial = (px, py) => [(SQRT3 / 3) * px - py / 3, (2 / 3) * py];
@@ -896,5 +1168,128 @@ const WanderMap = (() => {
     return [rq, rr];
   }
 
-  return { draw, drawLocal, hexAt, hexAtLocal, TYPE_COLORS, BIOME_COLORS, DIRS, key, span };
+  // A legend sample in a w x h box at (ox, oy): a special place, you, a
+  // quest mark, a wall kind, a trail, or a gate.
+  function sampleAt(ctx, kind, ox, oy, w, h) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    const mid = [w / 2, h / 2];
+    if (SPECIALS[kind]) {
+      glyph(ctx, SPECIALS[kind], ...mid, 3);
+    } else if (kind === "you") {
+      ctx.fillStyle = "#fffaf0";
+      ctx.beginPath();
+      ctx.arc(...mid, w * 0.32, 0, 7);
+      ctx.fill();
+      ctx.strokeStyle = "#3b2417";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      glyph(ctx, SPECIALS.paw, ...mid, 2);
+    } else if (kind === "mark") {
+      glyph(ctx, GLYPHS.lost, ...mid, 4);
+    } else if (WALLS[kind]) {
+      const style = WALLS[kind];
+      ctx.strokeStyle = ctx.fillStyle = style.color;
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      if (kind === "thicket" || kind === "rocks") {
+        for (let i = 0; i < 4; i++) {
+          const x = 6 + i * ((w - 12) / 3);
+          kind === "rocks" ? ctx.fillRect(x - 3, h / 2 - 3, 6, 6) : (ctx.beginPath(), ctx.arc(x, h / 2, 3.5, 0, 7), ctx.fill());
+        }
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(4, h / 2);
+        ctx.quadraticCurveTo(w / 2, kind === "river" ? h / 2 + 8 : h / 2, w - 4, h / 2);
+        ctx.stroke();
+      }
+    } else if (kind === "trail") {
+      ctx.strokeStyle = "rgba(92, 58, 26, 0.55)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(4, h / 2);
+      ctx.lineTo(w - 4, h / 2);
+      ctx.stroke();
+    } else if (kind === "gate" || kind === "shortcut") {
+      if (kind === "shortcut") glyph(ctx, GLYPHS.broken_bridge, ...mid, 4);
+      else {
+        const s = 10;
+        ctx.beginPath();
+        ctx.moveTo(w / 2, h / 2 - s);
+        ctx.lineTo(w / 2 + s, h / 2);
+        ctx.lineTo(w / 2, h / 2 + s);
+        ctx.lineTo(w / 2 - s, h / 2);
+        ctx.closePath();
+        ctx.fillStyle = TYPE_COLORS.ember;
+        ctx.fill();
+        ctx.strokeStyle = "#3b2417";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // Old paper under the map: warm parchment, flecks and fibers, darker
+  // toward the edges.
+  function drawPaper(ctx, g) {
+    const { width: w, height: h } = g;
+    ctx.save();
+    ctx.fillStyle = "#efe0bf";
+    ctx.fillRect(0, 0, w, h);
+    const rand = hashRand(17, 29);
+    for (let i = 0; i < (w * h) / 180; i++) {
+      ctx.fillStyle = rand() < 0.5 ? "rgba(139, 90, 43, 0.10)" : "rgba(255, 250, 235, 0.35)";
+      ctx.fillRect(Math.floor(rand() * w), Math.floor(rand() * h), 2, 2);
+    }
+    ctx.strokeStyle = "rgba(139, 90, 43, 0.07)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < (w * h) / 6000; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      const a = rand() * Math.PI;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18);
+      ctx.stroke();
+    }
+    const edge = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+    edge.addColorStop(0, "rgba(120, 72, 30, 0)");
+    edge.addColorStop(1, "rgba(120, 72, 30, 0.22)");
+    ctx.fillStyle = edge;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+
+  // The legend, like on a paper map: to the right of the farthest-right
+  // land, down in the bottom corner. items: [[kind, label], ...].
+  const LEGEND_WIDTH = 210;
+  function drawLegend(ctx, g, map, items) {
+    const points = (map.shape || map.hexes.map((h) => [h.q, h.r])).map(([q, r]) => center(g, q, r));
+    const row = 27;
+    const left = Math.max(...points.map((p) => p[0])) + g.size * 0.95 + 14;
+    const bottom = Math.max(...points.map((p) => p[1])) + g.size;
+    const top = Math.max(8, bottom - (items.length * row + 40));
+    ctx.save();
+    ctx.fillStyle = "rgba(250, 240, 214, 0.95)";
+    ctx.strokeStyle = "#3b2417";
+    ctx.lineWidth = 3;
+    ctx.fillRect(left, top, LEGEND_WIDTH - 24, items.length * row + 40);
+    ctx.strokeRect(left, top, LEGEND_WIDTH - 24, items.length * row + 40);
+    ctx.fillStyle = "#3b2417";
+    ctx.font = `bold 16px "Atkinson Hyperlegible Mono", monospace`;
+    ctx.textBaseline = "middle";
+    ctx.fillText("Legend", left + 12, top + 18);
+    ctx.font = `13px "Atkinson Hyperlegible Mono", monospace`;
+    items.forEach(([kind, label], i) => {
+      const y = top + 36 + i * row;
+      sampleAt(ctx, kind, left + 8, y, 40, row - 4);
+      ctx.fillStyle = "#3b2417";
+      ctx.fillText(label, left + 54, y + (row - 4) / 2);
+    });
+    ctx.restore();
+  }
+
+  return { draw, drawLocal, hexAt, hexAtLocal, pointAt, TYPE_COLORS, BIOME_COLORS, DIRS, key, span };
 })();

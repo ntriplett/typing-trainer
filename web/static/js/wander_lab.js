@@ -38,7 +38,93 @@ async function show(seed) {
   renderStats();
   render();
   loadLocal();
+  loadNeeds();
 }
+
+// --- gate levels: what it takes to reach each place --------------------------------------
+
+const needsCanvas = document.getElementById("needs-map");
+let needs = null;
+let shortcutsOpen = false;
+let needsPicked = null;
+const NEED_FILL = { 0: "#e6efcf", 2: "#eef0b8", 3: "#f2dc94", 8: "#eea867" };
+const TYPE_ORDER = ["splash", "ember", "dream", "leaf", "shock"];
+
+async function loadNeeds() {
+  needs = (await fetchJson(`/api/wander-lab/needs?seed=${world.seed}&shortcuts=${shortcutsOpen}`)).needs;
+  renderNeeds();
+}
+
+function needsOpts() {
+  const fill = {};
+  world.hexes.forEach((h) => {
+    const k = WanderMap.key(h.q, h.r);
+    const best = needs[k] && needs[k][0];
+    fill[k] = best ? NEED_FILL[Math.max(0, ...Object.values(best))] : "#8f8a80";
+  });
+  return { size: Number(opt("opt-size").value), bare: true, trail: false, fog: false, fill, selected: needsPicked };
+}
+
+function renderNeeds() {
+  opt("needs-button").textContent = shortcutsOpen ? "Shortcuts: open (fixed)" : "Shortcuts: broken";
+  const map = { radius: world.radius, hexes: world.hexes.map((h) => ({ ...h, visited: true })), edges: world.edges, marks: [] };
+  const opts = needsOpts();
+  WanderMap.draw(needsCanvas, map, opts);
+  const ctx = needsCanvas.getContext("2d");
+  const s = opts.size;
+  ctx.font = `bold ${Math.max(11, Math.round(s * 0.3))}px "Atkinson Hyperlegible Mono", monospace`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  world.hexes.forEach((h) => {
+    const k = WanderMap.key(h.q, h.r);
+    const [x, y] = WanderMap.pointAt(needsCanvas, map, opts, h.q, h.r);
+    const all = needs[k];
+    if (!all) {
+      ctx.fillStyle = "#fffaf0";
+      ctx.fillText("no way", x, y + s * 0.35);
+      return;
+    }
+    const chips = TYPE_ORDER.filter((t) => all[0][t]).map((t) => [t, all[0][t]]);
+    const w = s * 0.42;
+    const y1 = h.special ? y + s * 0.42 : y;
+    chips.forEach(([t, n], i) => {
+      const cx = x + (i - (chips.length - 1) / 2) * (w + 3);
+      ctx.fillStyle = WanderMap.TYPE_COLORS[t];
+      ctx.fillRect(cx - w / 2, y1 - w / 2, w, w);
+      ctx.strokeStyle = "#3b2417";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx - w / 2, y1 - w / 2, w, w);
+      ctx.fillStyle = "#fffaf0";
+      ctx.fillText(String(n), cx, y1 + 1);
+    });
+    if (all.length > 1) {
+      ctx.fillStyle = "#3b2417";
+      ctx.fillText(`+${all.length - 1} way${all.length > 2 ? "s" : ""}`, x, y1 + w * 0.9);
+    }
+  });
+  const h = needsPicked && world.hexes.find((x) => x.q === needsPicked[0] && x.r === needsPicked[1]);
+  const all = h && needs[WanderMap.key(h.q, h.r)];
+  const say = (n) => (Object.keys(n).length ? TYPE_ORDER.filter((t) => n[t]).map((t) => `${t} ${n[t]}`).join(" + ") : "nothing (free)");
+  document.getElementById("needs-detail").innerHTML = h
+    ? `<p><b>${h.name}</b> (${h.region})</p>${all ? `<ul>${all.map((n) => `<li>${say(n)}</li>`).join("")}</ul>` : "<p>No way in with shortcuts broken.</p>"}`
+    : `<p class="hint">Click a place.</p>`;
+}
+
+opt("needs-button").onclick = () => {
+  shortcutsOpen = !shortcutsOpen;
+  loadNeeds();
+};
+
+needsCanvas.addEventListener("click", (e) => {
+  if (!needs) return;
+  const rect = needsCanvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) * needsCanvas.width) / rect.width;
+  const y = ((e.clientY - rect.top) * needsCanvas.height) / rect.height;
+  const map = { radius: world.radius, hexes: world.hexes, edges: world.edges };
+  const hex = WanderMap.hexAt(needsCanvas, map, needsOpts(), x, y);
+  needsPicked = world.hexes.some((h) => h.q === hex[0] && h.r === hex[1]) ? hex : null;
+  renderNeeds();
+});
 
 // Walking steps from Camp along open edges (field-skill gates count as open).
 function stepsFrom(start) {
@@ -72,7 +158,7 @@ function mapView() {
   const at = isMine() ? world.me.at : null;
   const cleared = new Set(isMine() ? world.me.cleared : []);
   const edgeView = (e) => (e.gate ? { ...e, gate: { ...e.gate, cleared: cleared.has(`${e.a.join(",")}|${e.b.join(",")}`) } } : e);
-  const marks = opt("opt-story").checked ? world.quests.flatMap((q) => [q.lost]) : [];
+  const marks = opt("opt-story").checked ? [...world.plan.givers.map((g) => g.lost.big), ...Object.values(world.plan.keys).map((k) => k.big)] : [];
   if (!opt("opt-fog").checked) {
     return { radius: world.radius, at, marks, hexes: world.hexes.map((h) => ({ ...h, visited: true })), edges: world.edges.map(edgeView) };
   }
@@ -111,8 +197,8 @@ function render() {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     map.hexes.forEach((h) => {
-      const x = canvas.width / 2 + size * Math.sqrt(3) * (h.q + h.r / 2);
-      const y = canvas.height / 2 + size * 1.5 * h.r - size * 0.45;
+      const [x, y0] = WanderMap.pointAt(canvas, map, opts, h.q, h.r);
+      const y = y0 - size * 0.45;
       ctx.fillStyle = "#fffaf0";
       ctx.fillRect(x - size * 0.22, y - size * 0.2, size * 0.44, size * 0.4);
       ctx.fillStyle = "#3b2417";
@@ -192,12 +278,16 @@ function renderStats() {
       .join(" ")}</p>
     <p>Edges: ${Object.entries(walls).map(([k, v]) => `${k} ${v}`).join(", ")}</p>
     <p>Gates: ${gateSummary()}</p>
-    <p>Story (elder's town / lost thing, star on the map):<br>${world.quests
-      .map((q) => {
+    <p>Quests (star: where each lost thing hides; check):<br>${world.plan.givers
+      .map((g) => {
         const name = (h) => world.hexes.find((x) => x.q === h[0] && x.r === h[1]).name;
-        const state = isMine() ? world.me.quests[q.region] || "-" : "";
-        return `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[q.region]}">${q.region}</span> ${name(q.town)} / ${name(q.lost)} ${state}`;
+        const check = g.lost.check ? ` (${g.lost.check[0]} ${g.lost.check[1]})` : "";
+        const state = isMine() ? world.me.quests[g.id] || "-" : "";
+        return `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[g.region]}">${g.region}</span> about ${g.shortcut}'s bridge: ${g.lost.kind} in ${name(g.lost.big)}${check} ${state}`;
       })
+      .join("<br>")}</p>
+    <p>Temple keys:<br>${Object.entries(world.plan.keys)
+      .map(([r, k]) => `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[r]}">${r}</span> ${k.kind} in ${world.hexes.find((x) => x.q === k.big[0] && x.r === k.big[1]).name}`)
       .join("<br>")}</p>
     ${isMine() ? `<p>Visited ${world.me.visited.length} places. Temples open: ${world.me.temples.join(", ") || "none"}. Gates cleared: ${world.me.cleared.length}.</p>` : ""}
   `;
@@ -208,29 +298,41 @@ function gateSummary() {
   const counts = {};
   world.edges.forEach((e) => {
     if (!e.gate) return;
-    const k = e.gate.kind === "quest" ? "shortcut" : `${e.gate.kind}${e.gate.need === 2 ? " x2" : ""}`;
+    const k = e.gate.kind === "quest" ? "shortcut" : `${e.gate.kind} ${e.gate.level}`;
     counts[k] = (counts[k] || 0) + 1;
   });
   return Object.entries(counts).sort().map(([k, v]) => `${k} ${v}`).join(", ");
 }
 
-const TYPES = ["ember", "splash", "leaf", "dream", "shock"];
-
-function renderParty() {
+// Your pets: level, type levels, and buttons to give XP.
+async function renderParty() {
   const box = document.getElementById("party-box");
   box.hidden = !isMine();
   if (!isMine()) return;
-  const picks = document.getElementById("party-picks");
-  picks.innerHTML = [0, 1, 2, 3, 4]
-    .map((i) => `<select data-slot="${i}"><option value="">-</option>${TYPES.map((t) => `<option ${world.me.party[i] === t ? "selected" : ""}>${t}</option>`).join("")}</select>`)
-    .join("");
-  document.getElementById("party-level").value = world.me.party_level;
+  const res = await fetch("/api/wander/pets");
+  if (res.ok) showPets(await res.json());
 }
 
-opt("party-button").onclick = () => {
-  const party = [...document.querySelectorAll("#party-picks select")].map((s) => s.value).filter(Boolean);
-  act("/api/wander-lab/party", { party, level: Number(document.getElementById("party-level").value) || null });
-};
+function showPets(data) {
+  const types = (t) => Object.entries(t).map(([k, n]) => `${k} ${n}`).join(", ");
+  document.getElementById("lab-pets").innerHTML = data.pets.length
+    ? data.pets
+        .map((p) => `<li><b>${p.name}</b> (${p.species}) lv ${p.level}, ${types(p.types)}, ${p.xp} xp
+          <button class="button-go" data-xp="${p.id}" data-n="500">+1 level</button>
+          <button class="button-go" data-xp="${p.id}" data-n="2000">+4 levels</button></li>`)
+        .join("")
+    : `<li class="hint">No pets that can adventure yet (fish stay home).</li>`;
+  document.querySelectorAll("#lab-pets [data-xp]").forEach((b) => {
+    b.onclick = async () => {
+      const res = await fetch("/api/wander-lab/xp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pet_id: Number(b.dataset.xp), xp: Number(b.dataset.n) }),
+      });
+      if (res.ok) showPets(await res.json());
+    };
+  });
+}
 
 canvas.addEventListener("click", (e) => {
   if (!world) return;
@@ -354,6 +456,7 @@ opt("gallery-button").onclick = showGallery;
   opt(id).addEventListener("input", () => {
     render();
     renderLocal();
+    if (needs) renderNeeds();
   }));
 
 show();

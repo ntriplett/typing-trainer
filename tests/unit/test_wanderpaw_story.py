@@ -4,6 +4,7 @@ import pytest
 
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import pets as wp
 from app.wanderpaw import save as sv
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
@@ -12,8 +13,13 @@ SEED = 11
 WORLD = wd.generate(SEED)
 
 
+def _team(*kinds, lv=5):
+    """Starters of these types at a level (all five by default)."""
+    return [wp.starter(k, lv) for k in kinds or wd.REGIONS]
+
+
 def _trip(**changes):
-    return {**sv.start_trip(sv.new_save(SEED)), **changes}
+    return {**sv.start_trip({**sv.new_save(SEED), "team": _team()}), **changes}
 
 
 def _at(save, big, spot):
@@ -25,12 +31,12 @@ def _beside(local, h):
     return next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n))
 
 
-def _find_gate(kind=None, need=None):
+def _find_gate(kind=None, level=None):
     for big in WORLD.hexes:
         local = lc.generate(SEED, big)
         for h, edge in sorted(local.gates.items()):
             gate = WORLD.gates[edge]
-            if gate.kind != "quest" and (kind is None or gate.kind == kind) and (need is None or gate.need == need):
+            if gate.kind != "quest" and (kind is None or gate.kind == kind) and (level is None or gate.level == level):
                 return big, local, h, gate
     raise LookupError
 
@@ -48,7 +54,7 @@ def _find_poi(kind):
 
 
 def test_a_field_skill_clears_a_gate_for_good():
-    big, local, h, gate = _find_gate(need=1)
+    big, local, h, gate = _find_gate(level=3)
     save = _at(_trip(), big, _beside(local, h))
     after = sv.apply_walk(save, h)
     assert after["spot"] == list(h)
@@ -57,23 +63,23 @@ def test_a_field_skill_clears_a_gate_for_good():
     assert "cleared" in [e["kind"] for e in after["events"]]
     # without the type it's a no
     with pytest.raises(sv.WanderError, match="It takes 3 .* levels"):
-        sv.apply_walk({**save, "party": [t for t in save["party"] if t != gate.kind]}, h)
+        sv.apply_walk({**save, "team": _team(*(t for t in wd.REGIONS if t != gate.kind))}, h)
 
 
 def test_gates_count_type_levels():
-    big, local, h, gate = _find_gate(need=2)
+    big, local, h, gate = _find_gate(level=8)
     save = _at(_trip(), big, _beside(local, h))
     with pytest.raises(sv.WanderError, match="you have 5"):
         sv.apply_walk(save, h)  # one pet at level 5 isn't enough
-    assert sv.apply_walk({**save, "party": [gate.kind, gate.kind]}, h)["spot"] == list(h)
-    assert sv.apply_walk({**save, "party_level": 8}, h)["spot"] == list(h)
+    assert sv.apply_walk({**save, "team": _team(gate.kind, gate.kind)}, h)["spot"] == list(h)
+    assert sv.apply_walk({**save, "team": _team(gate.kind, lv=8)}, h)["spot"] == list(h)
 
 
 def test_a_cleared_gate_leads_on():
-    big, local, h, gate = _find_gate(need=1)
+    big, local, h, gate = _find_gate(level=3)
     save = sv.apply_walk(_at(_trip(), big, _beside(local, h)), h)
     d = local.exits[h]
-    f = next(f for e, f in lc.SIDES[d] if e == h)
+    f = next(f for e, f in lc.exit_pairs(SEED, big, hx.neighbor(big, d), 1) if e == h)
     g, c = lc.to_world(hx.neighbor(big, d), f), lc.center(big)
     on = sv.apply_walk(save, (g[0] - c[0], g[1] - c[1]))
     assert on["at"] == list(hx.neighbor(big, d))
@@ -114,18 +120,18 @@ def test_inn_and_shrine_give_energy_once_per_trip():
         if inn:
             break
     save = _at(_trip(), big, inn)
-    save = {**save, "trip": {**save["trip"], "energy": 50}}
+    save = sv._spend(save, 60)
     fed = sv.act(save, "inn")
-    assert fed["trip"]["energy"] == 50 + st.INN_ENERGY
+    assert fed["trip"]["energy"] == save["trip"]["energy"] + st.INN_ENERGY
     with pytest.raises(sv.WanderError):
         sv.act(fed, "inn")
 
     big, local, h = _find_poi("shrine")
     save = _at(_trip(), big, h)
-    save = {**save, "trip": {**save["trip"], "energy": 50}}
+    save = sv._spend(save, 60)
     assert sv.screen(save)["line"]
     prayed = sv.act(save, "shrine", accuracy=0.6)
-    assert prayed["trip"]["energy"] == 50 + round(st.SHRINE_ENERGY * 0.6)
+    assert prayed["trip"]["energy"] == save["trip"]["energy"] + round(st.SHRINE_ENERGY * 0.6)
 
 
 def test_side_quest_at_the_board_resets_each_trip():
@@ -150,43 +156,6 @@ def test_side_quest_at_the_board_resets_each_trip():
 # --- the story -------------------------------------------------------------------
 
 
-def _quest_places(region):
-    q = WORLD.quests[region]
-    town = lc.generate(SEED, q.town)
-    elder = next(h for h, role in town.buildings.items() if role == "elder")
-    lost = lc.generate(SEED, q.lost)
-    spot = next(h for h, poi in lost.pois.items() if poi == "lost")
-    return q, elder, lost, spot
-
-
-def test_a_story_quest_from_ask_to_shortcut():
-    region = "leaf"
-    tale = st.STORIES[region]
-    q, elder, lost, spot = _quest_places(region)
-    save = _at(_trip(), q.town, elder)
-    assert sv.screen(save)["action"] == "ask"
-    save = sv.act(save, "ask")
-    assert save["quests"][region] == "asked"
-    assert list(q.lost) in sv.big_view(save)["marks"]
-    # the shortcut is a quest gate: broken until the quest is done
-    wall = lc.wall_side(SEED, *q.shortcut)  # the gate is in the wall, on one side
-    side = lc.generate(SEED, wall)
-    gate = next(h for h, e in side.gates.items() if e == q.shortcut)
-    with pytest.raises(sv.WanderError, match="broken"):
-        sv.apply_walk(_at(save, wall, _beside(side, gate)), gate)
-    # find the lost thing
-    found = sv.apply_walk(_at(save, q.lost, _beside(lost, spot)), spot)
-    assert found["items"][tale.lost] == 1
-    # bring it back
-    home = _at(found, q.town, elder)
-    assert sv.screen(home)["action"] == "give"
-    done = sv.act(home, "give")
-    assert done["quests"][region] == "done"
-    assert done["items"][tale.key] == 1 and not done["items"][tale.lost]
-    walked = sv.apply_walk(_at(done, wall, _beside(side, gate)), gate)
-    assert walked["spot"] == list(gate)
-
-
 def test_temples_want_the_key_and_a_pet_of_their_type():
     region = "splash"
     tale = st.STORIES[region]
@@ -196,7 +165,7 @@ def test_temples_want_the_key_and_a_pet_of_their_type():
     save = _at(_trip(), temple, door)
     assert sv.screen(save)["action"] is None  # no key
     keyed = {**save, "items": {tale.key: 1}}
-    assert sv.screen({**keyed, "party": ["leaf"]})["action"] is None  # no splash pet
+    assert sv.screen({**keyed, "team": _team("leaf")})["action"] is None  # no splash pet
     opened = sv.act(keyed, "temple")
     assert region in opened["temples"]
     assert opened["items"][tale.relic] == 1
@@ -221,4 +190,4 @@ def test_old_saves_fit():
     old = {"version": 2, "world_version": wd.WORLD_VERSION, "seed": SEED, "at": [0, 0], "spot": [0, 0],
            "visited": [[0, 0]], "seen": {}, "trip": None, "note": None}
     fitted = sv.fit(old)
-    assert fitted["party"] == sv.STAND_IN_PARTY and fitted["items"] == {} and fitted["version"] == sv.SAVE_VERSION
+    assert fitted["party"] is None and len(fitted["team"]) == 5 and fitted["items"] == {} and fitted["version"] == sv.SAVE_VERSION

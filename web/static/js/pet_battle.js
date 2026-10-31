@@ -31,8 +31,14 @@ const TYPES = {
   splash: { name: "Splash", beats: "ember" },
   ember: { name: "Ember", beats: "leaf" },
 };
-// A pet's type is its v3 genes' battle element (app/pet_genes.py ELEMENTS).
-const typeOf = (pet) => pet.genes.battle.element;
+// Each species' type here (only three; Wanderpaw, which replaces this game,
+// has its own five in app/wanderpaw/pets.py).
+const SPECIES_TYPE = {
+  bunny: "leaf", goat: "leaf", sheep: "leaf", snake: "leaf",
+  fox: "ember", cat: "ember", lizard: "ember", dragon: "ember", phoenix: "ember",
+  dog: "splash", llama: "splash", turtle: "splash", unicorn: "splash", fish: "splash",
+};
+const typeOf = (pet) => SPECIES_TYPE[pet.genes.species];
 // Pets are v3 pets (pet_render.js), fit into this box in the arena.
 const FIGHTER_BOX = { w: 64, h: 56 };
 

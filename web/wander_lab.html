@@ -41,11 +41,22 @@
         </section>
         <section class="panel wander-stats" id="stats"></section>
         <section class="panel wander-stats" id="party-box">
-          <h2 class="panel-title">Stand-in party</h2>
-          <p class="hint">Types your party has until real pets join, all at one level. Gates, temples and nooks check the levels of each type, added up.</p>
-          <div id="party-picks" class="lab-options"></div>
-          <label class="lab-options">Level <input id="party-level" type="number" min="1" max="20"></label>
-          <button id="party-button" class="button-go">Set party</button>
+          <h2 class="panel-title">Pets</h2>
+          <p class="hint">Your pets that can adventure. Give XP to test levels and second types (picked in the game's party list). Gates, temples and nooks add up the team's type levels.</p>
+          <ul id="lab-pets"></ul>
+        </section>
+      </aside>
+    </div>
+    <div class="wander-lab-grid">
+      <section class="panel wander-board">
+        <canvas id="needs-map" class="wander-map" aria-label="Gate levels map"></canvas>
+      </section>
+      <aside>
+        <section class="panel wander-info" id="needs-info">
+          <h2 class="panel-title">Gate levels</h2>
+          <p class="hint">The type levels a party needs for the gates between Camp and each place (each gate wants its number in levels of its type). When different ways need different types, the map shows the cheapest; click a place for all of them.</p>
+          <button id="needs-button" class="button-go"></button>
+          <div id="needs-detail"></div>
         </section>
       </aside>
     </div>

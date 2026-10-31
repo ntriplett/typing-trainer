@@ -50,7 +50,7 @@ def test_same_seed_same_world():
 @pytest.mark.parametrize("seed", SEEDS)
 def test_world_shape(seed):
     world = wd.generate(seed)
-    assert 60 <= len(world.hexes) <= 90
+    assert 95 <= len(world.hexes) <= 127
     assert world.hexes[(0, 0)].special == "camp"
     assert sum(b.special == "final" for b in world.hexes.values()) == 1
     assert all(b.region == wd.HEARTLAND for b in world.hexes.values() if b.ring <= wd.HEARTLAND_RADIUS)
@@ -58,23 +58,12 @@ def test_world_shape(seed):
 
 
 @pytest.mark.parametrize("seed", SEEDS)
-def test_one_temple_per_region_on_the_outer_edge(seed):
-    world = wd.generate(seed)
-    temples = world.temples()
-    assert set(temples) == set(wd.REGIONS)
-    for region, h in temples.items():
-        assert world.hexes[h].region == region
-        assert world.hexes[h].ring == wd.MAP_RADIUS
-        assert any(n not in world.hexes for n in hx.neighbors(h))
-
-
-@pytest.mark.parametrize("seed", SEEDS)
-def test_regions_are_one_piece_with_towns(seed):
+def test_regions_are_one_piece_with_one_town(seed):
     world = wd.generate(seed)
     for region in wd.REGIONS:
         cells = [h for h, b in world.hexes.items() if b.region == region]
         assert len(wd._components(cells)) == 1
-        assert any(world.hexes[h].special == "town" for h in cells)
+        assert sum(world.hexes[h].special == "town" for h in cells) == 1
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -91,47 +80,98 @@ def _before_shortcuts(key, gate):
     return gate.kind != "quest"
 
 
-def test_temples_take_weaving_to_reach_until_the_shortcuts_open():
-    walks, cut = [], []
-    for seed in SEEDS:
-        w = wd.generate(seed)
-        before = wd.distances_from(w, (0, 0), _before_shortcuts)
-        after = wd.distances_from(w, (0, 0))
-        walks += [before[h] for h in w.temples().values()]
-        cut += [before[h] - after[h] for h in w.temples().values()]
-    assert sum(walks) / len(walks) >= 8  # a straight line is 5
-    assert sum(cut) / len(cut) >= 1.5  # the quest shortcuts help
+def _gate(world, a, b):
+    return world.gates.get(hx.edge_key(a, b))
+
+
+def _has(needs, kind, level):
+    """Every way in takes at least `level` of `kind`."""
+    return all(n.get(kind, 0) >= level for n in needs)
 
 
 @pytest.mark.parametrize("seed", SEEDS)
-def test_quests_and_gates(seed):
+def test_the_gate_rules(seed):
+    world = wd.generate(seed)
+    shut = wd.gate_needs(world, (0, 0), False)
+    both = wd.gate_needs(world, (0, 0), True)
+    steps = wd.distances_from(world, (0, 0))
+    # 1. the heartland is free
+    assert all(shut[h] == [{}] for h, b in world.hexes.items() if b.region == wd.HEARTLAND)
+    for region in wd.REGIONS:
+        strong, weak = wd.strong_against(region), wd.weak_against(region)
+        cells = [h for h, b in world.hexes.items() if b.region == region]
+        # 2. one way in from the heartland, behind 2 of the region's type
+        ways_in = [(a, b) for a in cells for b in world.exits(a) if world.hexes[b].region == wd.HEARTLAND]
+        assert len(ways_in) == 1 and _gate(world, *ways_in[0]) == wd.Gate(region, wd.ENTRY_LEVEL)
+        assert all(_has(shut[h], region, wd.ENTRY_LEVEL) for h in cells)
+        # 3-5. the temple: one neighbor, behind 8 of its own type there, and 3
+        # of the type it's strong against, even with every shortcut open
+        temple = world.temples()[region]
+        assert world.hexes[temple].region == region
+        assert len(world.exits(temple)) == 1
+        assert _gate(world, temple, world.exits(temple)[0]) == wd.Gate(region, wd.TEMPLE_LEVEL)
+        assert _has(both[temple], region, wd.TEMPLE_LEVEL) and _has(both[temple], strong, wd.SPLIT_LEVEL)
+        assert steps[temple] >= wd.TEMPLE_MIN_STEPS
+        # 6. the town: 3-5 out, behind 3 of the region's type, not behind the split
+        town = world.quests[region].town
+        assert wd.TOWN_RINGS[0] <= world.hexes[town].ring <= wd.TOWN_RINGS[1]
+        assert any(_gate(world, town, n) == wd.Gate(region, wd.TOWN_LEVEL) for n in world.exits(town))
+        assert any(strong not in n for n in shut[town])
+        # 7. about half the region (the temple's side) behind 3 of the strong-against type
+        split = [h for h in cells if _has(shut[h], strong, wd.SPLIT_LEVEL)]
+        assert wd.SPLIT_SHARE[0] * len(cells) <= len(split) <= wd.SPLIT_SHARE[1] * len(cells)
+        # 8. maybe a pocket of 1-2 behind 3 of the weak-against type
+        pocket = [h for h in cells if _has(shut[h], weak, wd.POCKET_LEVEL)]
+        assert len(pocket) <= wd.POCKET_SIZE[1]
+        # 9. the shortcut cuts the border to the next region, between two
+        # places that each take exactly one 3 and no 8; its quest checks both 3s
+        a, b = world.quests[region].shortcut
+        assert {world.hexes[a].region, world.hexes[b].region} == {region, strong}
+        gate = world.gates[(a, b)]
+        assert gate.kind == "quest" and gate.region == region and gate.level == 3
+        for h, t in zip((a, b), gate.types):
+            (need,) = shut[h]
+            assert list(need.values()).count(3) == 1 and need[t] == 3 and 8 not in need.values()
+    for key in world.gates:
+        assert world.edges[key] == "open"
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_quests(seed):
     world = wd.generate(seed)
     before = wd.distances_from(world, (0, 0), _before_shortcuts)
     assert set(world.quests) == set(wd.REGIONS)
     for region, q in world.quests.items():
         assert world.hexes[q.town].special == "town" and world.hexes[q.town].region == region
-        assert world.hexes[q.lost].region == region and not world.hexes[q.lost].special
-        assert q.town in before and q.lost in before  # reachable before the shortcut
-        assert world.gates[q.shortcut] == wd.Gate("quest", 1, region)
-        # the region's own type guards the way to its temple
-        assert any(g.kind == region and g.need == 1 for g in world.gates.values())
-    for key, gate in world.gates.items():
-        assert world.edges[key] == "open"
-        assert world.hexes[key[0]].region != wd.HEARTLAND or world.hexes[key[1]].region != wd.HEARTLAND
+        assert q.town in before  # reachable before the shortcut
+        assert all(world.hexes[h].region == region and not world.hexes[h].special for h in q.pocket)
 
 
-@pytest.mark.parametrize("seed", SEEDS)
-def test_each_region_opens_onto_the_heartland_once(seed):
-    world = wd.generate(seed)
-    for region in wd.REGIONS:
-        gates = [
-            k for k, v in world.edges.items()
-            if v == "open" and {world.hexes[k[0]].region, world.hexes[k[1]].region} == {wd.HEARTLAND, region}
-        ]
-        assert len(gates) == 1
+def test_rerolls_stay_rare():
+    counts = [len(wd.generate(seed).rerolls) for seed in SEEDS]
+    assert sum(counts) / len(counts) < 5
 
 
 def test_biomes_belong_to_their_region_and_ring():
     world = wd.generate(3)
     for b in world.hexes.values():
         assert any(name == b.biome and lo <= b.ring <= hi for name, lo, hi in wd.BIOMES[b.region])
+
+
+def test_gate_needs_track_type_levels_to_each_place():
+    for seed in range(5):
+        world = wd.generate(seed)
+        shut = wd.gate_needs(world, (0, 0), False)
+        both = wd.gate_needs(world, (0, 0), True)
+        assert shut[(0, 0)] == [{}]
+        # everything is reachable with enough levels, shortcuts or not
+        assert set(shut) == set(both) == set(world.hexes)
+        levels = {g.level for g in world.gates.values() if g.kind != "quest"}
+        for h, needs in shut.items():
+            # no need beats another on every type
+            for a in needs:
+                assert all(v in levels for v in a.values())
+                assert not any(b != a and all(b.get(t, 0) <= a.get(t, 0) for t in wd.REGIONS) for b in needs)
+            # open shortcuts never make a place harder
+            best = min(sum(n.values()) for n in needs)
+            assert min(sum(n.values()) for n in both[h]) <= best

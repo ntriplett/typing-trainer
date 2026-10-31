@@ -3,9 +3,13 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app import db, main
+from app import pet_genes as g
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import pets as wp
+from app.wanderpaw import quests as qs
+from app.wanderpaw import save as sv
 from app.wanderpaw import world as wd
 
 client = TestClient(main.app)
@@ -33,7 +37,8 @@ def test_new_player_starts_at_camp_with_words():
     assert data["local"]["big"] == [0, 0] and data["local"]["spot"] == [0, 0]
     assert len(data["local"]["tiles"]) == 7
     assert data["trip"] is None
-    assert len(data["words"]) >= 6
+    assert set(data["words"]) == {"letter", "short", "medium", "long"} and len(data["words"]["short"]) >= 6
+    assert all(len(s) == 3 and s[2] in ("letter", "short", "medium", "long") for s in data["local"]["steps"])
     assert client.get("/api/wander").json()["local"] == data["local"]
 
 
@@ -85,15 +90,70 @@ def test_lab_teleport_refill_and_reset():
 def test_going_in_and_party():
     seed = _seed()
     world = wd.generate(seed)
-    q = world.quests["leaf"]
-    town = lc.generate(seed, q.town)
-    elder = next(h for h, role in town.buildings.items() if role == "elder")
+    g = qs.plan(seed).givers["leaf:leaf"]
     client.post("/api/wander/trip/start", json={})
-    client.post("/api/wander-lab/teleport", json={"q": q.town[0], "r": q.town[1], "spot": list(elder)})
+    client.post("/api/wander-lab/teleport", json={"q": g.town[0], "r": g.town[1], "spot": list(g.house)})
     data = client.get("/api/wander").json()
     assert data["screen"]["action"] == "ask"
     data = client.post("/api/wander/act", json={"action": "ask"}).json()
-    assert data["quests"][0]["state"] == "asked"
+    assert data["quests"][0]["title"].startswith("Mend")
     assert client.post("/api/wander/act", json={"action": "ask"}).status_code == 400
-    assert client.post("/api/wander-lab/party", json={"party": ["leaf", "leaf"]}).json()["me"]["party"] == ["leaf", "leaf"]
-    assert client.post("/api/wander-lab/party", json={"party": ["fire"]}).status_code == 400
+
+
+# --- pets (phase 4) -------------------------------------------------------------------
+
+
+def _add_pet(species, seed=1):
+    with db.open_db(main.DB_PATH) as conn:
+        return db.add_v3_pet(conn, 1, g.roll(species, None, None, seed), species.capitalize(), "shop")
+
+
+def test_your_pets_make_the_team():
+    fox, bunny = _add_pet("fox"), _add_pet("bunny", 2)
+    _add_pet("fish", 3)  # fish stay home
+    data = client.get("/api/wander/pets").json()
+    assert [p["id"] for p in data["pets"]] == [fox, bunny]
+    assert data["pets"][0]["types"] == {"ember": 1} and data["pets"][0]["level"] == 1
+    # never picked: your first pets go, starters fill the missing types
+    assert [m["id"] for m in data["team"]] == [fox, bunny, None, None, None]
+    assert {t for m in data["team"] for t in m["types"]} == set(wd.REGIONS)
+    picked = client.post("/api/wander/party", json={"pets": [bunny]}).json()
+    assert [m["id"] for m in picked["team"]][:1] == [bunny] and picked["team"][1]["id"] is None
+    assert client.post("/api/wander/party", json={"pets": [999]}).status_code == 400
+    data = client.post("/api/wander/trip/start", json={}).json()
+    assert data["trip"]["energy"] == sv.WALK_ENERGY + wp.team_energy(data["team"])
+    assert client.post("/api/wander/party", json={"pets": [fox]}).status_code == 400  # not mid-trip
+
+
+def test_levels_second_types_and_stars():
+    fox = _add_pet("fox")
+    unicorn = _add_pet("unicorn", 5)
+    pets = client.post("/api/wander-lab/xp", json={"pet_id": fox, "xp": 4 * wp.XP_PER_LEVEL}).json()["pets"]
+    me = next(p for p in pets if p["id"] == fox)
+    assert me["level"] == 5 and len(me["choices"]) == 2
+    assert client.post(f"/api/wander/pets/{fox}/second", json={"type": "ember"}).status_code == 400
+    second = me["choices"][1]
+    pets = client.post(f"/api/wander/pets/{fox}/second", json={"type": second}).json()["pets"]
+    me = next(p for p in pets if p["id"] == fox)
+    assert me["types"] == {"ember": 5, second: 1} and me["choices"] is None
+    assert next(p for p in pets if p["id"] == unicorn)["types"] == {"dream": 1, "leaf": 1}
+    pets = client.post(f"/api/wander/pets/{unicorn}/star").json()["pets"]
+    assert pets[0]["id"] == unicorn and pets[0]["starred"]
+
+
+def test_quests_give_the_team_xp():
+    fox = _add_pet("fox")
+    seed = _seed()
+    world = wd.generate(seed)
+    g = qs.plan(seed).givers["leaf:leaf"]
+    client.post("/api/wander/trip/start", json={})
+    client.post("/api/wander-lab/teleport", json={"q": g.town[0], "r": g.town[1], "spot": list(g.house)})
+    client.post("/api/wander/act", json={"action": "ask"})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        have = [sv.st.NPCS[("leaf", "leaf")].lost, *sv._parts(save, "leaf", "leaf")]
+        db.save_wander(conn, 1, {**save, "items": {x: 1 for x in have}})
+    data = client.post("/api/wander/act", json={"action": "mend"}).json()
+    assert data["team"][0]["id"] == fox
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.get_wander_pets(conn, 1)[fox]["xp"] == sv.st.XP_QUEST

@@ -77,4 +77,4 @@ def test_pet_battles_get_v3_critters_and_starters():
     assert [lv["foe"] for lv in game["levels"]] == ["bunny", "lizard", "goat", "fox", "llama"]
     assert all(lv["foe_genes"]["species"] == lv["foe"] and lv["foe_genes"]["hex"][0] for lv in game["levels"])
     assert [s["name"] for s in game["starters"]] == ["Clover", "Pip", "Puddle"]
-    assert {s["genes"]["battle"]["element"] for s in game["starters"]} == {"leaf", "ember", "splash"}
+    assert {s["genes"]["species"] for s in game["starters"]} == {"bunny", "fox", "dog"}

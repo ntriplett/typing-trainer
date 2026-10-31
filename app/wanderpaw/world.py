@@ -7,11 +7,28 @@ type; the rest is five type regions, wedges in the order of the type ring
 with distance from Camp, and every hex gets a made-up name.
 
 Edges: you can't walk any direction. Neighboring big hexes are either
-joined ("open") or walled off by a river, cliff, thicket or rocks. The
-open edges are a random spanning tree (so everything is reachable) plus a
-few extra loops, built region by region: each region opens onto the
-heartland in one place and onto its neighbors only rarely, so getting
-somewhere means weaving around.
+joined ("open") or walled off by a river, cliff, thicket or rocks. Each
+region is a maze (a tree) grown from its one way in off the heartland,
+plus loops that never join two zones (see gates), so getting somewhere
+means weaving around. Regions only meet through broken shortcuts.
+
+Gates (a level of a type, cleared once for good; _plan_region):
+- the heartland (Camp and its ring) is free;
+- entering a region: ENTRY_LEVEL of its own type;
+- its temple: the region's farthest hex (in steps from Camp, at least
+  TEMPLE_MIN_STEPS) with one neighbor, behind TEMPLE_LEVEL of its own type;
+- about half the region, temple side, behind SPLIT_LEVEL of the type it's
+  very strong against (strong_against);
+- its town (TOWN_RINGS from Camp, outside that half) behind TOWN_LEVEL of
+  its own type;
+- maybe a pocket of 1-2 hexes behind POCKET_LEVEL of the type it's weak
+  against (weak_against).
+A zone is the hexes behind the same gates. Each region's broken shortcut
+(a quest gate its elder repairs) cuts through the border to the next
+region around the ring, between two places that each take exactly one 3
+(of any type) and no 8; the quest checks both of those 3s, so opening it
+never skips anything above a 2. A layout that breaks a rule is thrown out and the seed tried
+again (World.rerolls says why).
 
 The same seed always builds the same world (generate() is cached), so a
 save only keeps the seed and what the player found. Bump WORLD_VERSION when
@@ -27,19 +44,27 @@ from functools import lru_cache
 from app.wanderpaw import hexes as hx
 from app.wanderpaw.hexes import Hex
 
-WORLD_VERSION = 1
-STORY_VERSION = 1  # gates and quests (they don't move the land)
-MAP_RADIUS = 5
+WORLD_VERSION = 2
+STORY_VERSION = 2  # places of interest in small maps
+MAP_RADIUS = 6
 HEARTLAND_RADIUS = 1
 TRIM_CHANCE = 0.35  # outer-ring hexes dropped for a ragged coast
 REGION_JITTER = 9  # degrees: wobbles the wedge borders
 MAZE_WINDING = 0.7  # how often the maze keeps digging from its newest hex
 LOOP_CHANCE = 0.12  # extra open edges inside a region
-MAZE_TRIES = 16  # mazes tried per region; the one whose temple walk is nearest TEMPLE_WALK wins
-TEMPLE_WALK = 10  # big-hex steps from the region's gate to its temple
-BORDER_LOOP_CHANCE = 0.06  # ... between two type regions
-TOWNS_PER_REGION = (1, 2)
-LOOP_GATE_CHANCE = 0.2  # loops in a region that need two pets of a type
+MAZE_TRIES = 40  # mazes tried per region; the first that fits the rules wins
+MAX_TRIES = 300  # layouts tried for a seed before giving up
+ENTRY_LEVEL = 2
+TOWN_LEVEL = 3
+SPLIT_LEVEL = 3
+POCKET_LEVEL = 3
+TEMPLE_LEVEL = 8
+TEMPLE_MIN_STEPS = 7
+TOWN_RINGS = (3, 5)
+SPLIT_SHARE = (0.3, 0.7)  # of the region behind the split gate
+POCKET_SIZE = (1, 2)
+TOWN_TRIES = 10  # towns tried per region to find its shortcut a place
+SHORTCUT_LEVEL = 3  # each side of a shortcut takes exactly one gate this high
 
 # The type ring, in order around the map (each beats the next two).
 REGIONS = ("splash", "ember", "dream", "leaf", "shock")
@@ -48,11 +73,11 @@ HEARTLAND = "camp"
 # region -> [(biome, nearest ring, farthest ring)]
 BIOMES: dict[str, list[tuple[str, int, int]]] = {
     HEARTLAND: [("fields", 0, 1), ("orchard", 0, 1)],
-    "leaf": [("meadow", 2, 3), ("woods", 2, 5), ("fern_hollow", 3, 5), ("deepwood", 4, 5)],
-    "splash": [("brookside", 2, 3), ("marsh", 2, 5), ("lakeshore", 3, 5), ("isles", 4, 5)],
-    "ember": [("heath", 2, 3), ("red_rocks", 2, 5), ("hot_springs", 3, 5), ("ember_peaks", 4, 5)],
-    "shock": [("windy_hills", 2, 3), ("mesa", 2, 5), ("ridge", 3, 5), ("storm_peaks", 4, 5)],
-    "dream": [("glade", 2, 3), ("mushroom_grove", 2, 5), ("mist_vale", 3, 5), ("crystal_hollow", 4, 5)],
+    "leaf": [("meadow", 2, 3), ("woods", 2, 6), ("fern_hollow", 3, 6), ("deepwood", 4, 6)],
+    "splash": [("brookside", 2, 3), ("marsh", 2, 6), ("lakeshore", 3, 6), ("isles", 4, 6)],
+    "ember": [("heath", 2, 3), ("red_rocks", 2, 6), ("hot_springs", 3, 6), ("ember_peaks", 4, 6)],
+    "shock": [("windy_hills", 2, 3), ("mesa", 2, 6), ("ridge", 3, 6), ("storm_peaks", 4, 6)],
+    "dream": [("glade", 2, 3), ("mushroom_grove", 2, 6), ("mist_vale", 3, 6), ("crystal_hollow", 4, 6)],
 }
 
 # What walls off a blocked edge, by the biomes on either side (first match wins).
@@ -100,23 +125,26 @@ class BigHex:
 @dataclass(frozen=True, slots=True)
 class Gate:
     """Something in the way on an open big edge: a field skill clears it
-    (`kind` a type, `need` pets of that type), or, for kind "quest", the
-    story quest of `region` repairs it (a shortcut)."""
+    (`kind` a type, `level` the party's levels of it), or, for kind
+    "quest", the story quest of `region` repairs it (a shortcut); the
+    quest takes `level` of each type in `types` (the 3 on each side)."""
 
     kind: str
-    need: int = 1
+    level: int = 0
     region: str | None = None
+    types: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class Quest:
-    """A region's story: its elder lives in `town`, lost something in
-    `lost`; bringing it back repairs the `shortcut` edge."""
+    """A region's places for its quests (quests.py): its `town`, its broken
+    `shortcut` (to the next region around the ring), and its `pocket` (the
+    1-2 hexes behind the weak-against gate; maybe none)."""
 
     region: str
     town: Hex
-    lost: Hex
     shortcut: tuple[Hex, Hex]
+    pocket: tuple[Hex, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +154,8 @@ class World:
     edges: dict[tuple[Hex, Hex], str]  # edge_key -> "open" or a wall kind
     gates: dict[tuple[Hex, Hex], Gate]  # on open edges
     quests: dict[str, Quest]
+    rerolls: tuple[str, ...] = ()  # why earlier layouts of this seed were thrown out
+    mazes: int = 0  # mazes tried for the regions of the layout that worked
 
     def is_open(self, a: Hex, b: Hex) -> bool:
         return self.edges.get(hx.edge_key(a, b)) == "open"
@@ -138,28 +168,269 @@ class World:
         return {b.region: b.coord for b in self.hexes.values() if b.special == "temple"}
 
 
+class Reroll(Exception):
+    """This layout breaks a rule: try the seed again."""
+
+
+def strong_against(region: str) -> str:
+    """The type `region` is very strong against (the next in the ring)."""
+    return REGIONS[(REGIONS.index(region) + 1) % len(REGIONS)]
+
+
+def weak_against(region: str) -> str:
+    """The type that's very strong against `region` (the one before it)."""
+    return REGIONS[(REGIONS.index(region) - 1) % len(REGIONS)]
+
+
 @lru_cache(maxsize=32)
 def generate(seed: int) -> World:
-    rng = random.Random(f"wanderpaw:{WORLD_VERSION}:{seed}")
+    reasons: list[str] = []
+    for attempt in range(MAX_TRIES):
+        rng = random.Random(f"wanderpaw:{WORLD_VERSION}:{seed}:{attempt}")
+        try:
+            return _build(seed, rng, tuple(reasons))
+        except Reroll as why:
+            reasons.append(str(why))
+    raise RuntimeError(f"no world for seed {seed} after {MAX_TRIES} tries: {reasons[-3:]}")
+
+
+def _build(seed: int, rng: random.Random, rerolls: tuple[str, ...]) -> World:
     rotation = rng.uniform(0, 360)
     regions = _assign_regions(rng, rotation)
-    temples = _pick_temples(regions, rotation)
-    coords = _trim(rng, regions, set(temples.values()))
+    coords = _trim(rng, regions, set())
     regions = {h: regions[h] for h in coords}
-    _make_contiguous(regions, keep=set(temples.values()))
+    _make_contiguous(regions)
     biomes = _assign_biomes(rng, regions)
-    specials = _place_specials(rng, regions, temples)
-    edges = _build_edges(rng, regions, biomes, temples)
+    pairs = sorted({hx.edge_key(h, n) for h in regions for n in hx.neighbors(h) if n in regions})
+    open_ = {(a, b) for a, b in pairs if regions[a] == regions[b] == HEARTLAND}
+    gates: dict[tuple[Hex, Hex], Gate] = {}
+    specials = {(0, 0): "camp", rng.choice([h for h in hx.ring((0, 0), 1) if h in regions]): "final"}
+    zones: dict[Hex, tuple] = {h: () for h, r in regions.items() if r == HEARTLAND}
+    tries = [0]
+    plans = {region: _plan_region(rng, region, regions, pairs, tries) for region in REGIONS}
+    for plan in plans.values():
+        open_ |= {plan.entry, *plan.maze}
+        specials[plan.temple] = "temple"
+    towns = {region: plan.towns[0] for region, plan in plans.items()}
+
+    def settle(region: str) -> None:
+        gates_, zone_of = _settle(plans[region], towns[region])
+        gates.update(gates_)
+        zones.update(zone_of)
+
+    for region in REGIONS:
+        settle(region)
+    shortcuts = {}
+    for region in REGIONS:
+        # Move the town (a few times) if its shortcut has nowhere to go.
+        for town in plans[region].towns[:TOWN_TRIES]:
+            for e in _settle(plans[region], towns[region])[0]:
+                gates.pop(e, None)
+            towns[region] = town
+            settle(region)
+            needs = {h: _zone_needs(zone, gates) for h, zone in zones.items()}
+            # (a town that moves can't take the 3 from under a shortcut already placed)
+            if any(not _shortcut_side(needs[h]) for e in shortcuts.values() for h in e):
+                continue
+            try:
+                shortcuts[region] = _pick_shortcut(rng, region, regions, pairs, open_, specials, zones, needs)
+                break
+            except Reroll:
+                continue
+        else:
+            raise Reroll(f"{region}: no place for a shortcut")
+        open_.add(shortcuts[region])
+        threes = tuple(next(t for t, v in needs[h].items() if v == SHORTCUT_LEVEL) for h in shortcuts[region])
+        gates[shortcuts[region]] = Gate("quest", SHORTCUT_LEVEL, region, threes)
+    quests = {}
+    for region in REGIONS:
+        specials[towns[region]] = "town"
+        quests[region] = Quest(region, towns[region], shortcuts[region], plans[region].pocket)
+    # Loops, only inside a zone (never to a temple, which keeps one neighbor).
+    temples = {plan.temple for plan in plans.values()}
+    for a, b in pairs:
+        if regions[a] == regions[b] != HEARTLAND and not {a, b} & temples \
+                and zones[a] == zones[b] and (a, b) not in open_ and rng.random() < LOOP_CHANCE:
+            open_.add((a, b))
+    edges = {e: "open" if e in open_ else _wall(biomes[e[0]], biomes[e[1]]) for e in pairs}
     names = _name_hexes(rng, regions, biomes, specials)
     big = {
         h: BigHex(h, regions[h], hx.distance(h, (0, 0)), biomes[h], names[h], specials.get(h))
         for h in sorted(coords)
     }
-    # The story has its own random stream, so it can change without moving the land.
-    story = random.Random(f"wanderpaw-story:{STORY_VERSION}:{seed}")
-    quests = _plan_quests(story, big, edges, temples)
-    gates = _place_gates(story, big, edges, temples, quests)
-    return World(seed, big, edges, gates, quests)
+    world = World(seed, big, edges, gates, quests, rerolls, tries[0])
+    _check(world)
+    return world
+
+
+def _tree(open_: set, start: Hex, cells: set[Hex]) -> tuple[dict[Hex, Hex | None], dict[Hex, int]]:
+    """Parents and depths of a maze (a tree over cells) from start."""
+    parent, depth, todo = {start: None}, {start: 0}, [start]
+    for h in todo:
+        for n in hx.neighbors(h):
+            if n in cells and n not in parent and hx.edge_key(h, n) in open_:
+                parent[n] = h
+                depth[n] = depth[h] + 1
+                todo.append(n)
+    return parent, depth
+
+
+@dataclass(slots=True)
+class RegionPlan:
+    """One region's maze and where its temple, gates and town can go."""
+
+    cells: set[Hex]
+    entry: tuple[Hex, Hex]
+    start: Hex
+    maze: set[tuple[Hex, Hex]]
+    parent: dict[Hex, Hex | None]
+    depth: dict[Hex, int]
+    temple: Hex
+    gates: dict[tuple[Hex, Hex], Gate]  # all but the town's
+    towns: list[Hex]  # best first
+    pocket: tuple[Hex, ...] = ()
+
+
+def _plan_region(rng, region, regions, pairs, tries) -> RegionPlan:
+    """One region's maze, temple, gates and town spots (see the module's
+    rules): up to MAZE_TRIES mazes, the first that fits. tries counts
+    mazes tried."""
+    cells = {h for h, r in regions.items() if r == region}
+    entries = [(a, b) for a, b in pairs if {regions[a], regions[b]} == {HEARTLAND, region}]
+    if not cells or not entries:
+        raise Reroll(f"{region}: no way in")
+    why = ""
+    for _ in range(MAZE_TRIES):
+        tries[0] += 1
+        entry = rng.choice(entries)
+        start = next(h for h in entry if h in cells)
+        try:
+            return _lay_out(rng, region, regions, cells, entry, start, _maze(rng, start, cells))
+        except Reroll as no:
+            why = str(no)
+    raise Reroll(f"{region}: {why}")
+
+
+def _lay_out(rng, region, regions, cells, entry, start, maze) -> RegionPlan:
+    """The temple, gates and town spots for one maze, or Reroll if it can't
+    follow the rules."""
+    parent, depth = _tree(maze, start, cells)
+    steps = {h: d + 2 for h, d in depth.items()}  # Camp -> its ring -> start
+    children: dict[Hex, list[Hex]] = {}
+    for h, p in parent.items():
+        if p:
+            children.setdefault(p, []).append(h)
+
+    def below(h: Hex) -> set[Hex]:
+        out, todo = {h}, [h]
+        for x in todo:
+            todo += children.get(x, [])
+            out.update(children.get(x, []))
+        return out
+
+    # The temple: as far as it gets, at the end of a branch.
+    leaves = [h for h in cells if h not in children]
+    temple = max(sorted(leaves), key=lambda h: (steps[h], rng.random()))
+    if steps[temple] < TEMPLE_MIN_STEPS:
+        raise Reroll(f"temple only {steps[temple]} steps out")
+    path = [temple]
+    while parent[path[-1]]:
+        path.append(parent[path[-1]])
+    path.reverse()  # start .. temple
+    # The split: an edge on the way to the temple with about half the region behind it ...
+    lo, hi = (len(cells) * f for f in SPLIT_SHARE)
+    splits = sorted(path[1:-1], key=lambda h: (abs(len(below(h)) - len(cells) / 2), h))
+    splits = [h for h in splits if lo <= len(below(h)) <= hi]
+    if not splits:
+        raise Reroll("no even split")
+    for split in splits:
+        behind = below(split)
+        # ... and towns on this side of it, off the way to the temple.
+        towns = [h for h in sorted(cells - behind) if h not in path and TOWN_RINGS[0] <= hx.distance(h, (0, 0)) <= TOWN_RINGS[1]]
+        if towns:
+            break
+    else:
+        raise Reroll("no split with a town outside it")
+    gates = {
+        entry: Gate(region, ENTRY_LEVEL),
+        hx.edge_key(parent[temple], temple): Gate(region, TEMPLE_LEVEL),
+        hx.edge_key(parent[split], split): Gate(strong_against(region), SPLIT_LEVEL),
+    }
+    # A little pocket behind the type it's weak against, if there's room.
+    pockets = [h for h in sorted(cells - behind) if h != start and h not in path and POCKET_SIZE[0] <= len(below(h)) <= POCKET_SIZE[1]]
+    pocket_cells: set[Hex] = set()
+    if pockets:
+        pocket = rng.choice(pockets)
+        pocket_cells = below(pocket)
+        pocket_cells = {pocket, *pocket_cells}
+        gates[hx.edge_key(parent[pocket], pocket)] = Gate(weak_against(region), POCKET_LEVEL)
+    # Towns whose zone (what's behind them) runs along the region before
+    # this one (whose temple half is behind this region's type), then any
+    # neighbor, so the region's shortcut has somewhere to go.
+    before = weak_against(region)
+
+    def touches(h: Hex, other) -> int:
+        return sum(1 for c in below(h) for n in hx.neighbors(c) if regions.get(n) in other)
+
+    towns = [h for h in towns if h not in pocket_cells]
+    if not towns:
+        raise Reroll("no split with a town outside it")
+    towns.sort(key=lambda h: (-touches(h, {before}), -touches(h, set(REGIONS) - {region}), rng.random()))
+    return RegionPlan(cells, entry, start, maze, parent, depth, temple, gates, towns, tuple(sorted(pocket_cells)))
+
+
+def _settle(plan: RegionPlan, town: Hex) -> tuple[dict, dict[Hex, tuple]]:
+    """The region's gates with its town in place, and each hex's zone (the
+    gates on the way in from the heartland)."""
+    gates = {**plan.gates, hx.edge_key(plan.parent[town], town): Gate(plan.gates[plan.entry].kind, TOWN_LEVEL)}
+    zone_of: dict[Hex, tuple] = {}
+    for h in sorted(plan.cells, key=lambda x: plan.depth[x]):
+        p = plan.parent[h]
+        edge = plan.entry if p is None else hx.edge_key(p, h)
+        zone_of[h] = (zone_of[p] if p else ()) + ((edge,) if edge in gates else ())
+    return gates, zone_of
+
+
+def _zone_needs(zone: tuple, gates: dict) -> dict[str, int]:
+    need: dict[str, int] = {}
+    for e in zone:
+        g = gates[e]
+        need[g.kind] = max(need.get(g.kind, 0), g.level)
+    return need
+
+
+def _shortcut_side(need: dict[str, int]) -> bool:
+    """Exactly one 3 and no 8."""
+    levels = list(need.values())
+    return levels.count(SHORTCUT_LEVEL) == 1 and TEMPLE_LEVEL not in levels
+
+
+def _pick_shortcut(rng, region, regions, pairs, open_, specials, zones, needs) -> tuple[Hex, Hex]:
+    """A wall on the border between the region and the next one around the
+    ring, where each side takes exactly one 3 (of any type) and no 8."""
+    other = strong_against(region)
+    fits = lambda h: _shortcut_side(needs[h])  # noqa: E731
+    ok = [(a, b) for a, b in pairs
+          if (a, b) not in open_ and {regions[a], regions[b]} == {region, other}
+          and specials.get(a) != "temple" and specials.get(b) != "temple"
+          and fits(a) and fits(b)]
+    if not ok:
+        raise Reroll(f"{region}: no place for a shortcut")
+    return rng.choice(ok)
+
+
+def _check(world: World) -> None:
+    """With every shortcut open, each temple still wants its own type at
+    TEMPLE_LEVEL and its strong-against type at SPLIT_LEVEL, and stays
+    TEMPLE_MIN_STEPS out."""
+    needs = gate_needs(world, (0, 0), shortcuts_open=True)
+    steps = distances_from(world, (0, 0))
+    for region, temple in world.temples().items():
+        for need in needs[temple]:
+            if need.get(region, 0) < TEMPLE_LEVEL or need.get(strong_against(region), 0) < SPLIT_LEVEL:
+                raise Reroll(f"{region}: a shortcut skips a temple gate")
+        if steps[temple] < TEMPLE_MIN_STEPS:
+            raise Reroll(f"{region}: a shortcut brings the temple too close")
 
 
 def _wedge(h: Hex, rotation: float, jitter: float) -> str:
@@ -206,17 +477,6 @@ def _components(cells: list[Hex]) -> list[set[Hex]]:
     return parts
 
 
-def _pick_temples(regions: dict[Hex, str], rotation: float) -> dict[str, Hex]:
-    """Each region's temple: the outer-ring hex nearest the middle of its wedge."""
-    temples = {}
-    width = 360 / len(REGIONS)
-    for i, region in enumerate(REGIONS):
-        middle = (rotation + (i + 0.5) * width) % 360
-        outer = [h for h in hx.ring((0, 0), MAP_RADIUS) if regions[h] == region]
-        temples[region] = min(outer, key=lambda h: (_angle_gap(hx.angle(h), middle), h))
-    return temples
-
-
 def _angle_gap(a: float, b: float) -> float:
     return abs((a - b + 180) % 360 - 180)
 
@@ -243,42 +503,6 @@ def _assign_biomes(rng: random.Random, regions: dict[Hex, str]) -> dict[Hex, str
         best = max(sorted(set(near) & set(allowed)), key=near.count)
         smoothed[h] = best if near.count(best) >= 3 else biomes[h]
     return smoothed
-
-
-def _place_specials(rng: random.Random, regions: dict[Hex, str], temples: dict[str, Hex]) -> dict[Hex, str]:
-    specials = {(0, 0): "camp", rng.choice(hx.ring((0, 0), 1)): "final"}
-    specials.update({h: "temple" for h in temples.values()})
-    for region in REGIONS:
-        for ring in (3, 4)[: rng.randint(*TOWNS_PER_REGION)]:
-            spots = [
-                h for h in sorted(regions)
-                if regions[h] == region and hx.distance(h, (0, 0)) == ring
-                and not any(n in specials for n in [h, *hx.neighbors(h)])
-            ]
-            if spots:
-                specials[rng.choice(spots)] = "town"
-    return specials
-
-
-def _build_edges(rng: random.Random, regions: dict[Hex, str], biomes: dict[Hex, str], temples: dict[str, Hex]) -> dict[tuple[Hex, Hex], str]:
-    pairs = sorted({hx.edge_key(h, n) for h in regions for n in hx.neighbors(h) if n in regions})
-    open_ = {(a, b) for a, b in pairs if regions[a] == regions[b] == HEARTLAND}
-    for region in REGIONS:
-        cells = {h for h, r in regions.items() if r == region}
-        inner = [(a, b) for a, b in pairs if a in cells and b in cells]
-        gate = rng.choice([(a, b) for a, b in pairs if {regions[a], regions[b]} == {HEARTLAND, region}])
-        inside = next(h for h in gate if h in cells)
-        tries = []
-        for _ in range(MAZE_TRIES):
-            maze = _maze(rng, inside, cells)
-            maze |= {e for e in inner if e not in maze and rng.random() < LOOP_CHANCE}
-            tries.append((abs(_walk(maze, inside, temples[region]) - TEMPLE_WALK), maze))
-        open_ |= {gate, *min(tries, key=lambda t: t[0])[1]}
-    # Rare crossings between neighboring regions.
-    for a, b in pairs:
-        if regions[a] != regions[b] and HEARTLAND not in (regions[a], regions[b]) and rng.random() < BORDER_LOOP_CHANCE:
-            open_.add((a, b))
-    return {e: "open" if e in open_ else _wall(biomes[e[0]], biomes[e[1]]) for e in pairs}
 
 
 def _walk(open_: set[tuple[Hex, Hex]], start: Hex, goal: Hex) -> int:
@@ -370,49 +594,36 @@ def _path(edges: dict, start: Hex, goal: Hex) -> list[Hex]:
     return path
 
 
-def _plan_quests(rng: random.Random, big: dict[Hex, BigHex], edges: dict, temples: dict[str, Hex]) -> dict[str, Quest]:
-    """Each region's elder (its town nearest Camp), the far place where the
-    lost thing is, and the wall the reward turns into a shortcut: the one
-    whose opening saves the most steps from Camp to the temple."""
-    quests = {}
-    for region in REGIONS:
-        cells = [h for h, b in big.items() if b.region == region]
-        town = min((h for h in cells if big[h].special == "town"), key=lambda h: (big[h].ring, h))
-        far = [h for h in cells if not big[h].special and big[h].ring >= 4] or [h for h in cells if not big[h].special]
-        lost = rng.choice(sorted(far))
-        base = _steps(edges, (0, 0))[temples[region]]
-        walls = [e for e, kind in edges.items() if kind != "open" and big[e[0]].region == big[e[1]].region == region]
-        shortcut = max(walls, key=lambda e: (base - _steps(edges, (0, 0), e)[temples[region]], e))
-        edges[shortcut] = "open"
-        quests[region] = Quest(region, town, lost, shortcut)
-    return quests
-
-
-def _place_gates(rng, big: dict[Hex, BigHex], edges: dict, temples: dict[str, Hex], quests: dict[str, Quest]) -> dict:
-    """On each region's way to its temple: a gate of the region's own type
-    (deep) and one of another type (on the way). Some loops get a gate
-    that needs two pets of a type. Shortcuts are quest gates."""
-    gates = {q.shortcut: Gate("quest", 1, q.region) for q in quests.values()}
-    before = {e: ("wall" if e in gates else kind) for e, kind in edges.items()}  # the way before any shortcut
-    for region in REGIONS:
-        path = _path(before, (0, 0), temples[region])
-        steps = [hx.edge_key(a, b) for a, b in zip(path, path[1:])
-                 if big[a].region == big[b].region == region and hx.edge_key(a, b) not in gates]
-        if not steps:
-            continue
-        deep = steps[-1] if len(steps) < 3 else steps[-2]
-        gates[deep] = Gate(region)
-        early = [e for e in steps[: max(1, len(steps) // 2)] if e != deep]
-        if early:
-            gates[rng.choice(early)] = Gate(rng.choice([r for r in REGIONS if r != region]))
-        on_path = {hx.edge_key(a, b) for a, b in zip(path, path[1:])}
-        loops = [e for e, kind in edges.items()
-                 if kind == "open" and e not in gates and e not in on_path
-                 and big[e[0]].region == big[e[1]].region == region]
-        for e in sorted(loops):
-            if rng.random() < LOOP_GATE_CHANCE:
-                gates[e] = Gate(rng.choice(REGIONS), 2)
-    return gates
+def gate_needs(world: World, start: Hex, shortcuts_open: bool) -> dict[Hex, list[dict[str, int]]]:
+    """What it takes to reach each big hex from start: the type levels a
+    party needs for the gates on the way. Different ways can need different types, so each hex gets
+    every need that no other way beats on all types (cheapest first);
+    {} means free. Broken shortcuts are open or shut by shortcuts_open."""
+    best: dict[Hex, list[tuple[int, ...]]] = {start: [(0,) * len(REGIONS)]}
+    todo = [(start, best[start][0])]
+    while todo:
+        h, need = todo.pop()
+        if need not in best.get(h, []):
+            continue  # beaten since it was queued
+        for n in world.exits(h):
+            gate = world.gates.get(hx.edge_key(h, n))
+            nxt = need
+            if gate and gate.kind == "quest":
+                if not shortcuts_open:
+                    continue
+                for t in gate.types:  # the quest checks the 3 on each side
+                    i = REGIONS.index(t)
+                    nxt = nxt[:i] + (max(nxt[i], gate.level),) + nxt[i + 1:]
+            elif gate:
+                i = REGIONS.index(gate.kind)
+                nxt = need[:i] + (max(need[i], gate.level),) + need[i + 1:]
+            have = best.get(n, [])
+            if any(all(a <= b for a, b in zip(o, nxt)) for o in have):
+                continue
+            best[n] = [o for o in have if not all(a <= b for a, b in zip(nxt, o))] + [nxt]
+            todo.append((n, nxt))
+    return {h: [{t: v for t, v in zip(REGIONS, need) if v} for need in sorted(needs, key=lambda x: (sum(x), x))]
+            for h, needs in best.items()}
 
 
 def distances_from(world: World, start: Hex, passable=None) -> dict[Hex, int]:
@@ -437,12 +648,13 @@ def hex_json(b: BigHex) -> dict:
 def edge_json(key: tuple[Hex, Hex], kind: str, gate: Gate | None = None) -> dict:
     out = {"a": list(key[0]), "b": list(key[1]), "kind": kind}
     if gate:
-        out["gate"] = {"kind": gate.kind, "need": gate.need, "region": gate.region}
+        out["gate"] = {"kind": gate.kind, "level": gate.level, "region": gate.region, "types": list(gate.types)}
     return out
 
 
 def quest_json(q: Quest) -> dict:
-    return {"region": q.region, "town": list(q.town), "lost": list(q.lost), "shortcut": [list(q.shortcut[0]), list(q.shortcut[1])]}
+    return {"region": q.region, "town": list(q.town), "shortcut": [list(q.shortcut[0]), list(q.shortcut[1])],
+            "pocket": [list(h) for h in q.pocket]}
 
 
 def to_json(world: World) -> dict:
@@ -454,4 +666,5 @@ def to_json(world: World) -> dict:
         "hexes": [hex_json(b) for b in world.hexes.values()],
         "edges": [edge_json(k, v, world.gates.get(k)) for k, v in world.edges.items()],
         "quests": [quest_json(q) for q in world.quests.values()],
+        "rerolls": list(world.rerolls),
     }

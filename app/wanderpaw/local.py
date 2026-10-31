@@ -60,16 +60,22 @@ INDEX = {h: i for i, h in enumerate(CELLS)}
 CELL_SET = frozenset(CELLS)
 OUTER: tuple[Hex, ...] = tuple(hx.ring((0, 0), LOCAL_RADIUS))
 
-WALKABLE = frozenset({"grass", "flowers", "path", "sand", "plaza", "bridge", "ford", "building", "campfire", "camp", "temple", "stone"})
-BLOCKED = frozenset({"tree", "bush", "rock", "cliff", "water", "ocean"})
+WALKABLE = frozenset({"grass", "flowers", "path", "sand", "plaza", "court", "bridge", "ford", "building", "campfire",
+                      "camp", "temple", "stone"})
+# The great halls (_hall): colonnade walls, a relic pillar per type at the
+# Heartstone, a feature per type at the temples (brazier, fountain, ...).
+HALL_BLOCKS = frozenset({"colonnade", *(f"pillar_{t}" for t in wd.REGIONS), *(f"feature_{t}" for t in wd.REGIONS)})
+BLOCKED = frozenset({"tree", "bush", "rock", "cliff", "water", "ocean", *HALL_BLOCKS})
 WALL_TILES = {"river": "water", "cliff": "cliff", "thicket": "tree", "rocks": "rock"}
 # What stands in a gated exit until it's cleared (by a field skill, or for
 # "quest", by finishing the region's story quest). Blocked until then.
 GATE_TILES = {"ember": "dark", "splash": "flames", "leaf": "gap", "shock": "old_gate", "dream": "guardian", "quest": "broken_bridge"}
 CLEARED_TILES = {"gap": "bridge", "broken_bridge": "bridge"}  # else path
-POI_KINDS = ("forage", "chest", "shrine", "lost")
-# Town buildings: the region's quest town has the elder.
+POI_KINDS = ("forage", "chest", "shrine")
+# Town buildings: two quest-givers (QUEST_ROLE, one per broken shortcut on
+# the region's borders: quests.py), then these, then houses.
 BUILDING_ROLES = ("board", "inn", "shop")
+QUEST_ROLE = "quest:{}"  # .format(the shortcut's region)
 FORAGE_SPOTS = (1, 3)
 CHEST_CHANCE = (0.15, 0.07)  # + per ring from Camp
 SHRINE_CHANCE = 0.12
@@ -123,6 +129,8 @@ SPURS = (1, 3)  # one-wide dead ends dug into the blockers (each gets a treat)
 # the land around; lore, tip, creature: just words (creatures fight later).
 FINDS = {
     "cave": (("coins",), ("coins", "creature"), ("clue",), ("forage", "lore"), ("creature", "lore")),
+    "grotto": (("coins",), ("clue",), ("lore", "energy"), ("creature", "lore")),
+    "mine": (("coins",), ("coins", "creature"), ("clue",), ("view",)),
     "tunnel": (("creature",),),
     "glade": (("forage", "energy"), ("coins",), ("clue",), ("lore", "forage")),
     "fishing": (("fish",),),
@@ -145,14 +153,17 @@ FINDS = {
 }
 # Nooks that need a type's levels (caves only when deep, glades only when overgrown).
 NOOK_SKILL = {"rune": "dream", "ring": "dream", "machine": "shock", "tangle": "leaf", "hole": "ember",
-              "dive": "splash", "cave": "ember", "glade": "leaf"}
+              "dive": "splash", "cave": "ember", "glade": "leaf", "grotto": "dream", "mine": "shock"}
+# The way into the rock, by region: a cave (Ember), a misty grotto (Dream)
+# or an old mine (Shock).
+ROCK_NOOK = {"dream": "grotto", "shock": "mine"}
 DEEP_CHANCE = 0.4  # a cave that's deep / a glade that's overgrown
 # Dead-end treats: these anywhere, plus the region's own (twice as likely).
 TREATS = ("buried", "lookout", "spring", "ruin", "nest", "berries", "log", "statue", "traveler", "well")
 REGION_TREATS = {"ember": ("hole", "spring"), "splash": ("well", "nest"), "leaf": ("tangle", "berries"),
                  "dream": ("rune", "ring"), "shock": ("machine", "lookout"), "camp": ("berries", "traveler")}
 GROUND = ("grass", "flowers", "path", "sand")  # where nooks on open ground go
-IN_WALL = ("cave", "tunnel", "glade")  # nooks inside a blocker, gone into from their doors
+IN_WALL = ("cave", "grotto", "mine", "tunnel", "glade")  # nooks inside a blocker, gone into from their doors
 CAVES = {"mountain": 1.5, "canyon": 1.2}  # caves per map (the fraction: a chance of one more)
 GLADES = {"deep_forest": 1.5, "forest": 1.2, "orchard": 0.3}
 OTHER_CAVE = 0.3  # a cave in any other land with cliffs or rocks
@@ -183,6 +194,7 @@ class LocalMap:
     gates: dict[Hex, tuple[Hex, Hex]]  # gate tile -> the big edge it guards
     pois: dict[Hex, str]  # places of interest on walkable hexes: POI_KINDS
     nooks: dict[Hex, Nook]
+    region: str = wd.HEARTLAND
 
     def walkable(self, h: Hex) -> bool:
         return self.tiles.get(h) in WALKABLE
@@ -334,22 +346,23 @@ def generate(seed: int, big: Hex) -> LocalMap:
 
     # Places of interest have their own random stream (the land stays put).
     story = random.Random(f"wanderpaw-poi:{wd.STORY_VERSION}:{seed}:{big[0]}:{big[1]}")
-    roles = _building_roles(story, buildings, any(q.town == big for q in world.quests.values()))
-    pois = _place_pois(story, tiles, exits, campfire, here, any(q.lost == big for q in world.quests.values()))
+    givers = [QUEST_ROLE.format(r) for r in (here.region, wd.weak_against(here.region))] if here.special == "town" else []
+    roles = _building_roles(story, buildings, givers)
+    pois = _place_pois(story, tiles, exits, campfire, here)
     nooks = _place_nooks(story, tiles, exits, campfire, here, style, pois, set(roles))
-    return LocalMap(big, here.biome, style.name, tiles, exits, campfire, roles, gates, pois, nooks)
+    return LocalMap(big, here.biome, style.name, tiles, exits, campfire, roles, gates, pois, nooks, here.region)
 
 
-def _building_roles(rng: random.Random, buildings: list[Hex], quest_town: bool) -> dict[Hex, str]:
-    roles = (["elder"] if quest_town else []) + list(BUILDING_ROLES)
+def _building_roles(rng: random.Random, buildings: list[Hex], givers: list[str]) -> dict[Hex, str]:
+    roles = givers + list(BUILDING_ROLES)
     order = sorted(buildings)
     rng.shuffle(order)
     return {h: roles[i] if i < len(roles) else "house" for i, h in enumerate(order)}
 
 
-def _place_pois(rng: random.Random, tiles, exits, campfire: Hex, here: wd.BigHex, lost: bool) -> dict[Hex, str]:
-    """Forage spots, maybe a chest or a shrine, and the lost thing of a
-    region's story, on open ground away from the campfire and exits."""
+def _place_pois(rng: random.Random, tiles, exits, campfire: Hex, here: wd.BigHex) -> dict[Hex, str]:
+    """Forage spots, and maybe a chest or a shrine, on open ground away
+    from the campfire and exits."""
     ground = [h for h in CELLS if tiles[h] in ("grass", "flowers", "path", "sand")
               and h not in exits and hx.distance(h, campfire) >= 2]
     rng.shuffle(ground)
@@ -360,8 +373,6 @@ def _place_pois(rng: random.Random, tiles, exits, campfire: Hex, here: wd.BigHex
         if free:
             pois[free[0]] = kind
 
-    if lost:  # as far from the campfire as it gets
-        put("lost", sorted(ground, key=lambda h: (-hx.distance(h, campfire), h)))
     if here.special in ("camp", "town", "temple", "final"):
         return pois
     for _ in range(rng.randint(*FORAGE_SPOTS)):
@@ -423,7 +434,7 @@ def _place_nooks(rng: random.Random, tiles, exits, campfire: Hex, here: wd.BigHe
     # caves: one way in, deep in the rock
     caves = [h for h in rocky if len(doors_of(h)) == 1 and walled(h) >= 4]
     want = _count(rng, CAVES[style.name]) if style.name in CAVES else int(rng.random() < OTHER_CAVE)
-    pick(caves, want, "cave", DEEP_CHANCE)
+    pick(caves, want, ROCK_NOOK.get(here.region, "cave"), DEEP_CHANCE)
     # tunnels: through a cliff, between two sides far apart the long way round
     if style.name in CAVES and rng.random() < TUNNEL_CHANCE:
         ends = []
@@ -659,22 +670,59 @@ def _place_specials(rng, tiles, locked, here: wd.BigHex, world: wd.World, big: H
         locked.add(town)
         return town, buildings, buildings
     if here.special in ("temple", "final"):
-        if here.special == "temple":
-            outward = [d for d in range(6) if hx.neighbor(big, d) not in world.hexes]
-            toward = hx.angle(center(hx.DIRECTIONS[rng.choice(outward)]))
-            spot = min(hx.ring((0, 0), 3), key=lambda h: (min(abs(hx.angle(h) - toward), 360 - abs(hx.angle(h) - toward)), h))
+        # The doorway faces the way you come: Camp for the Heartstone, the
+        # temple's one way in for a temple.
+        if here.special == "final":
+            way = (-big[0], -big[1])
         else:
-            spot = (0, 0)
-        _clear(tiles, locked, hx.spiral(spot, 1), "plaza")
-        tiles[spot] = "temple" if here.special == "temple" else "stone"
-        locked.add(spot)
-        fires = [h for h in inner if hx.distance(h, spot) >= 2 and hx.distance(h, (0, 0)) <= 3]
-        campfire = rng.choice(fires)
-        _clear(tiles, locked, hx.ring(campfire, 1), "grass")
-        return campfire, [], [spot]
+            way = next(hx.DIRECTIONS[d] for d in range(6) if world.is_open(big, hx.neighbor(big, d)))
+        toward = hx.angle(center(way))
+        door = min(range(6), key=lambda d: (min(abs(hx.angle(hx.DIRECTIONS[d]) - toward), 360 - abs(hx.angle(hx.DIRECTIONS[d]) - toward)), d))
+        entrance = _hall(tiles, locked, here, door)
+        fires = [h for h in CELLS if hx.distance(h, (0, 0)) == HALL_RADIUS + 1 and h not in locked]
+        campfire = min(fires, key=lambda h: (hx.distance(h, hx.add(entrance, hx.DIRECTIONS[door])), h))
+        _clear(tiles, locked, [n for n in hx.ring(campfire, 1) if tiles.get(n) != "court"], "grass")
+        return campfire, [], [entrance]
     campfire = rng.choice([h for h in CELLS if hx.distance(h, (0, 0)) <= 2])
     _clear(tiles, locked, hx.ring(campfire, 1), "grass")
     return campfire, [], []
+
+
+HALL_RADIUS = 3  # the great halls: the heart, a paved ring, a walled ring, a courtyard
+TEMPLE_FEATURE = {"ember": "brazier", "splash": "fountain", "leaf": "topiary", "dream": "crystal", "shock": "coil"}
+
+
+def _hall(tiles, locked, here: wd.BigHex, door: int) -> Hex:
+    """A great hall in the middle of the map, its doorway toward direction
+    `door`: the Heartstone (or temple) at the heart; a paved ring (a temple
+    has two of its type's features in it); a ring of colonnade walls whose
+    corners hold the five relic pillars (a temple: more features) and, on
+    the door side, the doorway; then a paved courtyard. Returns the doorway."""
+    final = here.special == "final"
+    corners = [(2 * dq, 2 * dr) for dq, dr in hx.DIRECTIONS]
+    entrance = corners[door]
+    for h in hx.spiral((0, 0), HALL_RADIUS):
+        ring = hx.distance(h, (0, 0))
+        if ring == 0:
+            kind = "stone" if final else "temple"
+        elif ring == 1:
+            d = hx.DIRECTIONS.index(h)
+            kind = f"feature_{here.region}" if not final and (d - door) % 6 in (2, 4) else "court"
+        elif ring == 2:
+            if h == entrance:
+                kind = "court"
+            elif h in corners:
+                # the relic pillars go round from the door, in ring order
+                k = (corners.index(h) - door - 1) % 6
+                kind = f"pillar_{wd.REGIONS[k]}" if final else f"feature_{here.region}"
+            else:
+                kind = "colonnade"
+        else:
+            kind = "court"
+        tiles[h] = kind
+        if ring <= 2:
+            locked.add(h)
+    return entrance
 
 
 # --- trails and joining up -------------------------------------------------------
@@ -792,6 +840,8 @@ def tile_json(local: LocalMap, h: Hex) -> dict:
         out["poi"] = local.pois[h]
     if h in local.buildings:
         out["role"] = local.buildings[h]
+    if out["kind"] in HALL_BLOCKS or out["kind"] in ("court", "temple", "stone"):
+        out["accent"] = local.region  # the hall's color
     if h in local.nooks:
         nook = local.nooks[h]
         out["nook"] = nook.kind

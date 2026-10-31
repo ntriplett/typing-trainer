@@ -245,13 +245,6 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "fish": ("orange", "sky", "silver"),
 }
 
-# Pet Battles' element per species (web/static/js/pet_battle.js SPECIES_TYPE).
-ELEMENTS = {
-    "bunny": "leaf", "goat": "leaf", "sheep": "leaf", "snake": "leaf",
-    "fox": "ember", "cat": "ember", "lizard": "ember", "dragon": "ember", "unicorn": "splash", "phoenix": "ember", "fish": "splash",
-    "dog": "splash", "llama": "splash", "turtle": "splash",
-}
-
 # How the coat splits: mostly one color with a highlight, sometimes a mix,
 # rarely a third accent color.
 COAT_STYLES = {"highlight": 0.65, "mix": 0.27, "accent": 0.08}
@@ -613,10 +606,10 @@ def _roll_personality(seed: int, species: str, ctx: dict) -> dict:
 
 
 def _roll_battle(seed: int, species: str, ctx: dict) -> dict:
-    """Not used yet: hooks for Pet Battles and other games."""
+    """Base stats for games (Wanderpaw builds on them; types live in the game: wanderpaw/pets.py)."""
     rng = _rng(seed, "battle")
     stat = lambda: sum(rng.randint(1, 4) for _ in range(3)) - 2  # noqa: E731  1..10, mostly 4-7
-    return {"strength": stat(), "speed": stat(), "stamina": stat(), "element": ELEMENTS[species], "level": 1, "xp": 0}
+    return {"strength": stat(), "speed": stat(), "stamina": stat(), "level": 1, "xp": 0}
 
 
 # Where each fish head's mouth points, as a preferred height (1 the top of the

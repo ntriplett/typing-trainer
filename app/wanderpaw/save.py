@@ -10,18 +10,25 @@ you've seen stays on your map (`seen`: per big hex, a bitmask over
 local.CELLS). Every big hex's campfire can be spotted from anywhere
 inside it; one you've seen counts as found.
 
-Trips: walking needs a trip. A trip has energy (for now just steps,
-TRIP_ENERGY; pets' energy replaces it later). Out of energy, you nap and
+Trips: walking needs a trip. A trip has energy: your own WALK_ENERGY for
+walking (`walk`), then each pet's (`pets`, by place in the team). Steps
+come out of your own first, then the pets' (from whoever has the most, so
+it's shared evenly); later, battles take theirs. `energy` / `max` are the
+totals. Food and springs top up your own first, then the pets'. Out of energy, you nap and
 wake at the nearest campfire you've found; at a campfire you can end a
 trip early. The next trip starts where you are, or at Camp.
 
-Type levels: what a party can do is counted in levels of a type, summed
-over its pets (levels()). For now the party is a stand-in list of types
-(`party`), each pet at `party_level`, until pets join in phase 4; then a
-pet's first type has its level and a second type counts up from 1.
+The party: `party` is the pet ids you picked (None until you pick: then
+your first pets, starred first); `team` is what goes on the trip
+(pets.member: name, types, levels, energy), empty slots filled with
+temporary starters. The team is rebuilt from the pets between trips and
+when they level up. What a party can do is counted in levels of a type,
+summed over its pets (levels()). XP (quests, temples, caches, the harder
+nooks) goes to the team's real pets as `xp` events, which the writer
+applies to their records (the wander_pet table).
 
 Gates: walking into a gated exit uses the party's field skill if it has
-enough levels of the gate's type (st.GATE_LEVELS); a cleared gate stays
+enough levels of the gate's type (its `level`); a cleared gate stays
 cleared. Wading a ford costs st.FORD_ENERGY (less with a swimmer). Quest gates (broken
 shortcuts) are repaired by finishing the region's story quest.
 
@@ -51,22 +58,21 @@ from __future__ import annotations
 
 import random
 
-from app import db
+from app import db, pet_genes
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import pets as wp
+from app.wanderpaw import quests as qs
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
 from app.wanderpaw.hexes import Hex
 
-SAVE_VERSION = 4
+SAVE_VERSION = 5
 CAMP: Hex = (0, 0)
-TRIP_ENERGY = 120  # steps, until pets bring their own energy
-STAND_IN_PARTY = ["leaf", "splash", "ember", "dream", "shock"]
-STAND_IN_LEVEL = 5
-PARTY_SIZE = 5
+PARTY_SIZE = wp.PARTY_SIZE
 DEFAULTS = {
-    "trip": None, "note": None, "seen": {}, "visited": [], "party": STAND_IN_PARTY, "party_level": STAND_IN_LEVEL, "items": {},
-    "found": [], "clues": {},
+    "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
+    "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
     "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
@@ -160,6 +166,8 @@ def load(conn, learner_id: int, rng: random.Random | None = None) -> dict:
     elif save.get("world_version") != wd.WORLD_VERSION or save.get("version") != SAVE_VERSION:
         save = fit(save)
         db.save_wander(conn, learner_id, save)
+    elif DEFAULTS.keys() - save.keys():  # a field added since it was saved
+        save = {**DEFAULTS, **save}
     return save
 
 
@@ -192,31 +200,169 @@ def standable(save: dict, local: lc.LocalMap, h: Hex) -> bool:
 
 def levels(save: dict, kind: str) -> int:
     """The party's levels of a type, all its pets together."""
-    return save["party"].count(kind) * save["party_level"]
+    return wp.team_levels(save["team"], kind)
 
 
 def has_levels(save: dict, need: tuple[str, int] | None) -> bool:
     return need is None or levels(save, need[0]) >= need[1]
 
 
+def _cap(s: str) -> str:
+    return s[0].upper() + s[1:]
+
+
+# --- quests: quest-givers, bridges, lost things, keys (quests.py) ------------------------
+
+
+def _plan(save: dict) -> qs.Plan:
+    return qs.plan(save["seed"])
+
+
+def _npc(g: qs.Giver) -> st.Npc:
+    return st.NPCS[(g.region, g.shortcut)]
+
+
+def _bridge_name(shortcut: str) -> str:
+    return st.SHORTCUTS[shortcut].name
+
+
+def _part(save: dict, shortcut: str, side: Hex) -> str:
+    """The bag name of the part waiting by a bridge on one side."""
+    parts = st.SHORTCUTS[shortcut].parts
+    return f"{parts[0] if world_of(save).hexes[side].region == shortcut else parts[1]} for {_bridge_name(shortcut)}"
+
+
+def _parts(save: dict, shortcut: str, near: str) -> list[str]:
+    """A bridge's two parts, the one on `near`'s side first."""
+    sides = list(qs.bridge_sides(world_of(save), shortcut))
+    sides.sort(key=lambda b: world_of(save).hexes[b].region != near)
+    return [_part(save, shortcut, b) for b in sides]
+
+
+def _partner(save: dict, g: qs.Giver) -> qs.Giver:
+    """The quest-giver about the same bridge, in the town on its other side."""
+    return next(o for o in _plan(save).givers.values() if o.shortcut == g.shortcut and o.id != g.id)
+
+
+def _mends(save: dict, g: qs.Giver) -> bool:
+    """g will mend the bridge (the first of the pair you took on), or
+    could still (neither yet)."""
+    return save["menders"].get(g.shortcut) in (None, g.id)
+
+
+def _has_lost(save: dict, g: qs.Giver) -> bool:
+    return bool(save["items"].get(_npc(g).lost))
+
+
+def _lost_gone(save: dict, g: qs.Giver) -> bool:
+    """Picked up already (or brought back)."""
+    return _has_lost(save, g) or save["quests"].get(g.id) == "done"
+
+
+def _and(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} and {words[-1]}"
+
+
+def _place_name(save: dict, big: Hex) -> str:
+    return world_of(save).hexes[big].name
+
+
+def _hint(save: dict, g: qs.Giver) -> str:
+    spot = g.lost
+    return st.FETCH_HINTS[spot.kind].format(item=_npc(g).lost, place=_place_name(save, spot.big))
+
+
+def _bump_bridge(save: dict, shortcut: str) -> dict:
+    """Walking into a broken shortcut: you can't cross, but you pick up the
+    part on your side, and with 3 levels of the far side's type a pet
+    brings that side's part across too. Now it's in the journal."""
+    world = world_of(save)
+    big = tuple(save["at"])
+    sides = qs.bridge_sides(world, shortcut)
+    far = next(b for b in sides if b != big)
+    towns = " or ".join(_place_name(save, world.quests[world.hexes[b].region].town) for b in sides)
+    save = {**save, "bridges": {**save["bridges"], shortcut: "found"}}
+    texts = [f"{st.SHORTCUTS[shortcut].broken} Someone in {towns} might know how to fix it."]
+    if save["quests"].get(save["menders"].get(shortcut)) != "done":
+        mine, theirs = _part(save, shortcut, big), _part(save, shortcut, far)
+        if not save["items"].get(mine):
+            save = _give(save, mine)
+            texts.append(f"You pick up the {mine.split(' for ')[0]} on this side.")
+        kind = sides[far]
+        if not save["items"].get(theirs):
+            if has_levels(save, (kind, qs.FETCH_LEVEL)):
+                save = _give(save, theirs)
+                texts.append(f"Your {st.TYPE_NAMES[kind]} pet {st.CARRY[kind]} the {theirs.split(' for ')[0]} across from the far side!")
+            else:
+                texts.append(f"The {theirs.split(' for ')[0]} is on the far side. A pet with {qs.FETCH_LEVEL} {st.TYPE_NAMES[kind]} levels could bring it across, or walk around.")
+    return _event(save, kind="bridge", text=" ".join(texts))
+
+
+def _giver_screen(save: dict, g: qs.Giver) -> dict:
+    npc, state = _npc(g), save["quests"].get(g.id)
+    bridge = _bridge_name(g.shortcut)
+    title = npc.name
+    if state == "done":
+        if g.region not in save["rumors"]:
+            return {"title": title, "text": f"{npc.thanks} Oh, and one more thing...", "action": "rumor", "label": "What is it?"}
+        key = st.STORIES[g.region].key
+        found = save["items"].get(key) or g.region in save["temples"]
+        return {"title": title, "text": npc.thanks + ("" if found else f" Good luck finding the {key}."), "action": None}
+    if _mends(save, g):
+        near, far = _parts(save, g.shortcut, g.region)
+        if state != "asked":
+            return {"title": title, "action": "ask", "label": "I'll help",
+                    "text": f"{npc.hello} {npc.mend} I could {npc.fix}, but I need a favor first. "
+                            f"{_hint(save, g)} Bring that back, plus the {near.split(' for ')[0]} from this side of "
+                            f"{bridge} and the {far.split(' for ')[0]} from the far side, and it's as good as done."}
+        missing = [x for x in (npc.lost, near, far) if not save["items"].get(x)]
+        if not missing:
+            return {"title": title, "text": f"My {npc.lost}! And everything we need! Let's get to work!", "action": "mend", "label": "Here you go"}
+        return {"title": title, "action": None,
+                "text": f"I still need the {_and([m.split(' for ')[0] for m in missing])}. " + ("" if _has_lost(save, g) else _hint(save, g))}
+    # The partner is mending the bridge: this one trains a pet.
+    if state != "asked":
+        return {"title": title, "action": "ask", "label": "I'll look",
+                "text": f"{npc.hello} Could you help me? {_hint(save, g)} Find it, and {npc.train} A whole level's worth!"}
+    if not _has_lost(save, g):
+        return {"title": title, "text": f"Any luck finding my {npc.lost}? {_hint(save, g)}", "action": None}
+    pets = [m for m in save["team"] if m["id"]]
+    if not pets:
+        return {"title": title, "text": f"My {npc.lost}! Bring one of your own pets along and I'll train it.", "action": None}
+    options = [{"action": "train", "arg": m["id"], "label": f"Train {m['name']} (level {m['level']})"} for m in pets]
+    return {"title": title, "text": f"My {npc.lost}! Thank you! Which pet should I train?", "options": options,
+            "action": "train", "label": options[0]["label"]}
+
+
+def _quest_finds_here(save: dict) -> list[dict]:
+    """Lost things and keys hidden right here, still to take: options."""
+    big, spot = tuple(save["at"]), tuple(save["spot"])
+    out = []
+    for g in _plan(save).givers.values():
+        if (g.lost.big, g.lost.at) == (big, spot) and g.lost.check and not _lost_gone(save, g):
+            out.append({"action": "fetch", "arg": g.id, "label": f"Get the {_npc(g).lost}", "check": g.lost.check})
+    for region, key in _plan(save).keys.items():
+        name = st.STORIES[region].key
+        if (key.big, key.at) == (big, spot) and not save["items"].get(name) and region not in save["temples"]:
+            out.append({"action": "fetch", "arg": f"key:{region}", "label": f"Get the {name}", "check": key.check})
+    return out
+
+
 def _try_gate(save: dict, local: lc.LocalMap, h: Hex) -> dict:
     """Walking into a gate: clear it with a field skill, or say why not."""
     edge = local.gates[h]
     gate = world_of(save).gates[edge]
-    if gate.kind == "quest":
-        tale = st.STORIES[gate.region]
-        raise WanderError(f"This is {tale.shortcut}, and it's broken. Maybe someone in town can fix it.")
     what, does = st.FIELD_SKILLS[gate.kind]
     name = st.TYPE_NAMES[gate.kind]
-    need = st.GATE_LEVELS[gate.need]
+    need = gate.level
     if not has_levels(save, (gate.kind, need)):
         raise WanderError(f"{what} is in the way. It takes {need} {name} levels to get past (you have {levels(save, gate.kind)}).")
-    energy = save["trip"]["energy"] - st.GATE_ENERGY
-    who = "Your " + name + " pets work together and" if save["party"].count(gate.kind) > 1 else "Your " + name + " pet"
+    save = _spend(save, st.GATE_ENERGY)
+    helpers = [m["name"] for m in save["team"] if gate.kind in m["types"]]
+    who = " and ".join(helpers[:2]) + (" work together and" if len(helpers) > 1 else "")
     return {
         **save,
         "cleared": [*save["cleared"], _edge_id(edge)],
-        "trip": {**save["trip"], "energy": energy},
         "events": [*save["events"], {"kind": "cleared", "text": f"{who} {does}!"}],
     }
 
@@ -224,8 +370,42 @@ def _try_gate(save: dict, local: lc.LocalMap, h: Hex) -> dict:
 # --- trips ----------------------------------------------------------------------
 
 
-def _trip(energy: int = TRIP_ENERGY) -> dict:
-    return {"energy": energy, "max": TRIP_ENERGY, "used": [], "side": {}}
+WALK_ENERGY = 50  # your own, just for walking: used before the pets'
+
+
+def _trip(team: list[dict] | None = None) -> dict:
+    pets = [m["energy"] for m in team or []]
+    walk = WALK_ENERGY if team is not None else 0
+    return {"walk": walk, "pets": pets, "energy": walk + sum(pets), "max": walk + sum(pets), "used": [], "side": {}}
+
+
+def _spend(save: dict, n: int) -> dict:
+    """Energy for walking: your own first, then the pets', from whoever has the most."""
+    trip = save["trip"]
+    walk, pets = trip.get("walk", trip["energy"]), list(trip.get("pets", []))
+    take = min(walk, n)
+    walk -= take
+    for _ in range(n - take):
+        if pets and max(pets) > 0:
+            i = pets.index(max(pets))
+            pets[i] -= 1
+    return {**save, "trip": {**trip, "walk": walk, "pets": pets, "energy": walk + sum(pets)}}
+
+
+def _restore(save: dict, n: int) -> dict:
+    """Energy back: your own first (up to WALK_ENERGY), then the pets' (the lowest first)."""
+    trip = save["trip"]
+    walk, pets = trip.get("walk", trip["energy"]), list(trip.get("pets", []))
+    most = [m["energy"] for m in save["team"]][: len(pets)]
+    add = min(n, max(0, WALK_ENERGY - walk)) if "walk" in trip else n
+    walk += add
+    for _ in range(n - add):
+        room = [i for i, e in enumerate(pets) if e < most[i]]
+        if not room:
+            break
+        i = min(room, key=lambda i: pets[i])
+        pets[i] += 1
+    return {**save, "trip": {**trip, "walk": walk, "pets": pets, "energy": walk + sum(pets)}}
 
 
 def start_trip(save: dict, from_camp: bool = False) -> dict:
@@ -234,16 +414,20 @@ def start_trip(save: dict, from_camp: bool = False) -> dict:
     if from_camp:
         save = {**save, "at": list(CAMP), "spot": [0, 0]}
     stats = {**save["stats"], "trips": save["stats"]["trips"] + 1}
-    save = {**save, "trip": _trip(), "note": None, "events": [], "stats": stats}
+    save = {**save, "trip": _trip(save["team"]), "note": None, "events": [], "stats": stats}
     return _see(save, tuple(save["at"]), tuple(save["spot"]))
 
 
-def end_trip(save: dict) -> dict:
-    """Head home from a campfire."""
+def end_trip(save: dict, anywhere: bool = False) -> dict:
+    """Head home from a campfire (or from `anywhere`: you'll start the next
+    trip at the nearest campfire you've found)."""
     if not save["trip"]:
         raise WanderError("You're not on a trip.")
     if tuple(save["spot"]) != local_of(save).campfire:
-        raise WanderError("Find a campfire to rest at first.")
+        if not anywhere:
+            raise WanderError("Find a campfire to rest at first.")
+        big = nearest_campfire(save, tuple(save["at"]))
+        save = _see({**save, "at": list(big), "spot": list(local_of(save, big).campfire)}, big, local_of(save, big).campfire)
     return {**save, "trip": None, "note": "rested", "events": []}
 
 
@@ -251,7 +435,7 @@ def nap(save: dict) -> dict:
     """Out of energy: wake at the nearest campfire you've found."""
     big = nearest_campfire(save, tuple(save["at"]))
     save = {**save, "at": list(big), "spot": list(local_of(save, big).campfire), "trip": None, "note": "napped",
-            "events": [*save["events"], {"kind": "nap"}]}
+            "events": [*save["events"], {"kind": "nap", "text": "All tired out! You napped by the nearest campfire you've found."}]}
     return _see(save, big, tuple(save["spot"]))
 
 
@@ -275,6 +459,8 @@ def apply_walk(save: dict, to: Hex) -> dict:
         raise WanderError("That's the edge of the world.")
     local = local_of(save, nbig)
     why = _blocked(save, big, spot, nbig, h)
+    if why == "gate" and world_of(save).gates[local.gates[h]].kind == "quest":
+        return _bump_bridge(save, world_of(save).gates[local.gates[h]].region)
     if why == "gate":
         save = _try_gate(save, local, h)
     elif why:
@@ -285,10 +471,9 @@ def apply_walk(save: dict, to: Hex) -> dict:
     cost = 1
     if local.tiles[h] == "ford":
         cost = st.FORD_ENERGY_SWIM if levels(save, "splash") >= st.SWIM_LEVELS else st.FORD_ENERGY
-    energy = save["trip"]["energy"] - cost
-    stats = {**save["stats"], "steps": save["stats"]["steps"] + 1}
-    save = {**save, "trip": {**save["trip"], "energy": energy}, "stats": stats}
-    return nap(save) if energy <= 0 else save
+    save = _spend(save, cost)
+    save = {**save, "stats": {**save["stats"], "steps": save["stats"]["steps"] + 1}}
+    return nap(save) if save["trip"]["energy"] <= 0 else save
 
 
 def _blocked(save: dict, big: Hex, spot: Hex, nbig: Hex, h: Hex) -> str | None:
@@ -308,6 +493,15 @@ def _blocked(save: dict, big: Hex, spot: Hex, nbig: Hex, h: Hex) -> str | None:
     return None
 
 
+# How long the word to step onto a hex is, by what's there: a letter for
+# paths and the like, longer for rougher going.
+STEP_WORDS = {"path": "letter", "plaza": "letter", "court": "letter", "bridge": "letter", "building": "letter", "campfire": "letter",
+              "camp": "letter", "temple": "letter", "stone": "letter", "grass": "short", "flowers": "short",
+              "sand": "short", "ford": "medium"}
+STEP_WORD_NOOK = "medium"  # going into a cave, glade, ...
+STEP_WORD_GATE = "long"
+
+
 def steps(save: dict) -> list[Hex]:
     """The world hexes you can step to (or try a gate at) from here."""
     big, spot = tuple(save["at"]), tuple(save["spot"])
@@ -319,12 +513,30 @@ def steps(save: dict) -> list[Hex]:
     return out
 
 
+def step_word(save: dict, g: Hex) -> str:
+    """The word length for stepping onto world hex g."""
+    big, h = lc.owner(g)
+    local = local_of(save, big)
+    if h in local.gates and not cleared(save, local.gates[h]):
+        return STEP_WORD_GATE
+    if h in local.nooks and local.nooks[h].doors:
+        return STEP_WORD_NOOK
+    return STEP_WORDS.get(local.tiles[h], "short")
+
+
 def _give(save: dict, item: str, n: int = 1) -> dict:
     return {**save, "items": {**save["items"], item: save["items"].get(item, 0) + n}}
 
 
 def _event(save: dict, **event) -> dict:
     return {**save, "events": [*save["events"], event]}
+
+
+def _xp(save: dict, amount: int) -> dict:
+    """XP for every real pet in the team (the writer saves it)."""
+    if not any(m["id"] for m in save["team"]):
+        return save
+    return _event(save, kind="xp", amount=amount)
 
 
 def _arrive(save: dict) -> dict:
@@ -347,11 +559,11 @@ def _arrive(save: dict) -> dict:
         coins = random.randint(*st.CACHE_COINS) + here.ring
         save = {**save, "found": [*save["found"], pid]}
         save = _event(save, kind="coins", amount=coins, text=f"You dig where the clue said... a buried cache! {coins} coins.")
-    elif poi == "lost":
-        tale = st.STORIES[here.region]
-        if save["quests"].get(here.region) != "done" and not save["items"].get(tale.lost):
-            save = _give(save, tale.lost)
-            save = _event(save, kind="found", text=f"You found the {tale.lost}! Someone must be missing it.")
+        save = _xp(save, st.XP_CACHE)
+    for g in _plan(save).givers.values():
+        if (g.lost.big, g.lost.at) == (big, spot) and not g.lost.check and not _lost_gone(save, g):
+            save = _give(save, _npc(g).lost)
+            save = _event(save, kind="found", text=f"You found a {_npc(g).lost}! {_npc(g).name} must be missing it.")
     return save
 
 
@@ -365,7 +577,11 @@ def place(save: dict) -> dict | None:
     here = world_of(save).hexes[big]
     tile = local.tiles.get(spot)
     if spot in local.buildings:
-        return {"kind": local.buildings[spot], "region": here.region}
+        role = local.buildings[spot]
+        if role.startswith("quest:"):
+            g = next(g for g in _plan(save).givers.values() if g.town == big and g.house == spot)
+            return {"kind": "giver", "region": here.region, "giver": g}
+        return {"kind": role, "region": here.region}
     if local.pois.get(spot) == "shrine":
         return {"kind": "shrine", "region": here.region}
     if spot in local.nooks:
@@ -377,27 +593,42 @@ def place(save: dict) -> dict | None:
     return None
 
 
+TOWNSFOLK = ("inn", "shop", "house")
+
+
+def _townsfolk(kind: str, region: str, pid: str) -> tuple[str, str]:
+    """(title, what they say) for an inn, shop or house in a region's town."""
+    if kind == "inn":
+        return st.INNS.get(region, "Inn"), ""
+    if kind == "shop":
+        return st.SHOPS.get(region, "Shop"), ""
+    houses = st.HOUSES.get(region) or [("A cozy house", "Lovely weather for wandering, isn't it?")]
+    return houses[sum(map(ord, pid)) % len(houses)]
+
+
+def _bridge_to_ask(save: dict, region: str) -> str | None:
+    """A broken shortcut on this region's borders you've found and that
+    nobody here has taken on yet (its region), or None."""
+    if region not in wd.REGIONS:
+        return None
+    for shortcut in qs.givers_in(region):
+        if save["bridges"].get(shortcut) and not save["menders"].get(shortcut):
+            return shortcut
+    return None
+
+
 def screen(save: dict) -> dict | None:
     """What going in shows: a title, what's said, and what Enter does."""
     where = place(save)
     if not where:
         return None
     kind, region = where["kind"], where["region"]
-    trip = save["trip"] or _trip(0)
+    trip = save["trip"] or _trip()
     pid = _place_id(tuple(save["at"]), tuple(save["spot"]))
     if kind == "nook":
         return _nook_screen(save, where["nook"], region, pid)
-    if kind == "elder":
-        tale = st.STORIES[region]
-        state = save["quests"].get(region)
-        lost_at = world_of(save).hexes[world_of(save).quests[region].lost].name
-        if state == "done":
-            return {"title": tale.elder, "text": f"Thanks again! The {tale.key} will open the {st.TYPE_NAMES[region]} Temple.", "action": None}
-        if save["items"].get(tale.lost):
-            return {"title": tale.elder, "text": f"My {tale.lost}! You found it! Please, take the {tale.key}. And my friends will mend {tale.shortcut} for you.", "action": "give", "label": "Give it back"}
-        if state == "asked":
-            return {"title": tale.elder, "text": f"Any luck finding my {tale.lost}? Try {lost_at}.", "action": None}
-        return {"title": tale.elder, "text": f"Oh dear, I've lost my {tale.lost}. {tale.lost_hint} Somewhere around {lost_at}. Could you look for it?", "action": "ask", "label": "I'll look"}
+    if kind == "giver":
+        return _giver_screen(save, where["giver"])
     if kind == "board":
         item = st.FORAGE[region]
         wanted = trip["side"].get(pid)
@@ -407,15 +638,19 @@ def screen(save: dict) -> dict | None:
         if wanted:
             return {"title": "Notice board", "text": f"Wanted: {st.SIDE_QUEST_COUNT} {item}s. You have {have}.", "action": None}
         return {"title": "Notice board", "text": f"Wanted: {st.SIDE_QUEST_COUNT} {item}s, for {st.SIDE_QUEST_COINS} coins.", "action": "board", "label": "Take the job"}
+    if kind in TOWNSFOLK and _bridge_to_ask(save, region):
+        bridge = _bridge_name(_bridge_to_ask(save, region))
+        return {"title": _townsfolk(kind, region, pid)[0], "text": "Hello, traveler! Can I help you?", "action": "ask_bridge", "label": f"Can anyone fix {bridge}?"}
     if kind == "inn":
+        title = _townsfolk(kind, region, pid)[0]
         if pid in trip["used"]:
-            return {"title": "Inn", "text": "You're full! Come back next trip.", "action": None}
-        return {"title": "Inn", "text": f"A warm bowl of soup? (+{st.INN_ENERGY} energy)", "action": "inn", "label": "Yes please"}
+            return {"title": title, "text": "You're full! Come back next trip.", "action": None}
+        return {"title": title, "text": f"A warm bowl of soup? (+{st.INN_ENERGY} energy)", "action": "inn", "label": "Yes please"}
     if kind == "shop":
-        return {"title": "Shop", "text": "The shopkeeper is still unpacking. Come back soon!", "action": None}
+        return {"title": _townsfolk(kind, region, pid)[0], "text": "The shopkeeper is still unpacking. Come back soon!", "action": None}
     if kind == "house":
-        lines = st.HOUSE_LINES
-        return {"title": "A cozy house", "text": lines[sum(map(ord, pid)) % len(lines)], "action": None}
+        title, line = _townsfolk(kind, region, pid)
+        return {"title": title, "text": line, "action": None}
     if kind == "shrine":
         if pid in trip["used"]:
             return {"title": "Shrine", "text": "The shrine is quiet. Come back next trip.", "action": None}
@@ -436,20 +671,40 @@ def screen(save: dict) -> dict | None:
             return {"title": "The Heartstone", "text": "The Heartstone hums happily.", "action": "credits", "label": "See the ending"}
         have = len(save["temples"])
         if have < len(wd.REGIONS):
-            return {"title": "The Heartstone", "text": f"Five hollows in the stone. {have} of them glow. Bring all five relics.", "action": None}
+            return {"title": "The Heartstone", "text": f"The great hall is quiet. Five tall pillars ring the Heartstone, one for each type, each with a hollow at the top. {have} of them glow. Bring all five relics home.", "action": None}
         return {"title": "The Heartstone", "text": "Five hollows, five relics. The stone is waiting.", "action": "heartstone", "label": "Place the relics"}
     return None
 
 
 def _left(save: dict, nook: lc.Nook, pid: str) -> list[str]:
     """The finds still to take at a nook."""
-    used = (save["trip"] or _trip(0))["used"]
+    used = (save["trip"] or _trip())["used"]
     return [f for f in nook.finds
             if (f in st.ONCE_FINDS and f"{pid}:{f}" not in save["found"])
             or (f in st.DAILY_FINDS and f"{pid}:{f}" not in used)]
 
 
 def _nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict:
+    shown = _plain_nook_screen(save, nook, region, pid)
+    finds = _quest_finds_here(save)
+    if not finds:
+        return shown
+    options, lines = [], [shown["text"]]
+    for f in finds:
+        kind, need = f.pop("check")
+        if has_levels(save, (kind, need)):
+            options.append(f)
+        else:
+            lines.append(f"Something glints in here, out of reach. It takes {need} {st.TYPE_NAMES[kind]} levels (you have {levels(save, kind)}).")
+    if shown["action"]:
+        options.append({"action": shown["action"], "label": shown["label"]})
+    out = {**shown, "text": " ".join(lines)}
+    if options:
+        out.update(options=options, action=options[0]["action"], label=options[0]["label"])
+    return out
+
+
+def _plain_nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict:
     words = st.NOOKS[nook.kind]
     pick = sum(map(ord, pid))
     lines = [words.text]
@@ -475,6 +730,8 @@ def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -
     """Taking what's left at a nook."""
     big, spot = tuple(save["at"]), tuple(save["spot"])
     ring = world_of(save).hexes[big].ring
+    if nook.need and not any(f"{pid}:{f}" in save["found"] for f in nook.finds):
+        save = _xp(save, st.XP_HARD_NOOK)
     for f in _left(save, nook, pid):
         mark = f"{pid}:{f}"
         if f in st.ONCE_FINDS:
@@ -488,8 +745,7 @@ def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -
             save = _give(save, st.FORAGE[region])
             save = _event(save, kind="found", text=f"You found a {st.FORAGE[region]}!")
         elif f == "energy":
-            trip = save["trip"]
-            save = {**save, "trip": {**trip, "energy": min(trip["max"], trip["energy"] + st.NOOK_ENERGY)}}
+            save = _restore(save, st.NOOK_ENERGY)
             save = _event(save, kind="found", text=f"You feel refreshed. +{st.NOOK_ENERGY} energy.")
         elif f == "fish":
             n = 2 if accuracy >= 1 else 1 if accuracy >= 0.6 else 0
@@ -508,12 +764,14 @@ def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -
     return save
 
 
-def act(save: dict, action: str, accuracy: float = 1.0) -> dict:
-    """Doing what the screen offers (its `action`)."""
+def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
+    """Doing what the screen offers (its `action`, or one of its `options`
+    with its `arg`)."""
     if not save["trip"]:
         raise WanderError("Start a trip first!")
     shown = screen(save)
-    if not shown or shown["action"] != action:
+    offered = shown and (shown.get("options") or [{"action": shown["action"], "arg": None}])
+    if not offered or not any(o["action"] == action and o.get("arg") == arg for o in offered):
         raise WanderError("There's nothing to do here.")
     save = {**save, "events": []}
     region = place(save)["region"]
@@ -522,14 +780,43 @@ def act(save: dict, action: str, accuracy: float = 1.0) -> dict:
     if action in ("search", "fish"):
         return _search(save, place(save)["nook"], region, pid, accuracy)
     if action == "ask":
-        return {**save, "quests": {**save["quests"], region: "asked"}}
-    if action == "give":
-        tale = st.STORIES[region]
-        items = {**save["items"], tale.lost: 0, tale.key: 1}
-        shortcut = world_of(save).quests[region].shortcut
-        save = {**save, "items": items, "quests": {**save["quests"], region: "done"},
-                "cleared": [*save["cleared"], _edge_id(shortcut)]}
-        return _event(save, kind="found", text=f"You got the {tale.key}! And {tale.shortcut} is fixed.")
+        g = place(save)["giver"]
+        save = {**save, "quests": {**save["quests"], g.id: "asked"}}
+        if not save["menders"].get(g.shortcut):
+            save = {**save, "menders": {**save["menders"], g.shortcut: g.id}}
+        return _event(save, kind="found", text=f"{_npc(g).name} is counting on you. It's in your journal.")
+    if action == "mend":
+        g = place(save)["giver"]
+        items = {**save["items"], **{x: 0 for x in (_npc(g).lost, *_parts(save, g.shortcut, g.region))}}
+        edge = world_of(save).quests[g.shortcut].shortcut
+        save = {**save, "items": items, "quests": {**save["quests"], g.id: "done"},
+                "cleared": [*save["cleared"], _edge_id(edge)]}
+        save = _event(save, kind="found", text=st.SHORTCUTS[g.shortcut].done)
+        return _xp(save, st.XP_QUEST)
+    if action == "train":
+        g = place(save)["giver"]
+        pet = next(m for m in save["team"] if m["id"] == arg)
+        save = {**save, "items": {**save["items"], _npc(g).lost: 0}, "quests": {**save["quests"], g.id: "done"}}
+        trained = _npc(g).trained.format(npc=_npc(g).name, pet=pet["name"])
+        return _event(save, kind="train", pet=arg, text=f"{trained} {pet['name']} grew a whole level!")
+    if action == "rumor":
+        key = _plan(save).keys[region]
+        save = {**save, "rumors": [*save["rumors"], region]}
+        how = st.KEY_HOW.get(key.kind, "")
+        text = st.KEY_RUMOR.format(key=st.STORIES[region].key, place=_place_name(save, key.big), how=how)
+        return _event(save, kind="found", text=f"\"{text}\" It's on your map.")
+    if action == "ask_bridge":
+        shortcut = _bridge_to_ask(save, region)
+        g = next(g for g in _plan(save).givers.values() if g.shortcut == shortcut and g.region == region)
+        return _event(save, kind="found", text=f"\"{_cap(_bridge_name(shortcut))}? Ask {_npc(g).name}, just over there. They know all about it.\"")
+    if action == "fetch":
+        if str(arg).startswith("key:"):
+            region = arg.split(":")[1]
+            key = st.STORIES[region].key
+            return _event(_give(save, key), kind="found", text=f"You found the {key}! It must open the {st.TYPE_NAMES[region]} Temple.")
+        g = _plan(save).givers[arg]
+        save = _xp(_give(save, _npc(g).lost), st.XP_HARD_NOOK)
+        return _event(save, kind="found", text=f"You found the {_npc(g).lost}! {_npc(g).name} will be so happy.")
     if action == "board":
         item = st.FORAGE[region]
         if pid in trip["side"]:
@@ -538,19 +825,17 @@ def act(save: dict, action: str, accuracy: float = 1.0) -> dict:
             return _event(save, kind="coins", amount=st.SIDE_QUEST_COINS, text=f"Thanks! {st.SIDE_QUEST_COINS} coins.")
         return {**save, "trip": {**trip, "side": {**trip["side"], pid: item}}}
     if action == "inn":
-        energy = min(trip["max"], trip["energy"] + st.INN_ENERGY)
-        save = {**save, "trip": {**trip, "energy": energy, "used": [*trip["used"], pid]}}
+        save = _restore({**save, "trip": {**trip, "used": [*trip["used"], pid]}}, st.INN_ENERGY)
         return _event(save, kind="found", text="Yum! You feel ready to go.")
     if action == "shrine":
         gain = round(st.SHRINE_ENERGY * max(0.0, min(1.0, accuracy)))
-        energy = min(trip["max"], trip["energy"] + gain)
-        save = {**save, "trip": {**trip, "energy": energy, "used": [*trip["used"], pid]}}
+        save = _restore({**save, "trip": {**trip, "used": [*trip["used"], pid]}}, gain)
         return _event(save, kind="found", text=f"The shrine glows. +{gain} energy.")
     if action == "temple":
         tale = st.STORIES[region]
         save = {**save, "temples": [*save["temples"], region], "charms": save["charms"] + 1,
                 "buffs": {**save["buffs"], region: tale.buff}}
-        save = _give(save, tale.relic)
+        save = _xp(_give(save, tale.relic), st.XP_TEMPLE)
         return _event(save, kind="relic", text=f"You found the {tale.relic}! Your {st.TYPE_NAMES[region]} pet becomes {tale.buff}, and you get a befriending charm.")
     if action == "heartstone":
         return _event({**save, "finished": True}, kind="credits")
@@ -562,13 +847,127 @@ def act(save: dict, action: str, accuracy: float = 1.0) -> dict:
 # --- writing ------------------------------------------------------------------------
 
 
+def current(conn, learner_id: int) -> dict:
+    """Your save as it stands (between trips, with the team as your pets are now)."""
+    save = load(conn, learner_id)
+    return save if save["trip"] else {**save, "team": _team(conn, learner_id, save["party"])}
+
+
+def roster(conn, learner_id: int) -> list[tuple[dict, wp.Record]]:
+    """Your pets that can go adventuring (no fish), starred first, with their records."""
+    records = db.get_wander_pets(conn, learner_id)
+    pets = [(p, wp.record_from(records.get(p["id"]))) for p in db.list_v3_pets(conn, learner_id) if wp.can_go(p["species"])]
+    return sorted(pets, key=lambda pr: (not pr[1].starred, pr[0]["id"]))
+
+
+def _team(conn, learner_id: int, party: list[int] | None) -> list[dict]:
+    pets = roster(conn, learner_id)
+    by_id = {p["id"]: (p, rec) for p, rec in pets}
+    ids = [i for i in party if i in by_id] if party is not None else [p["id"] for p, _ in pets[:PARTY_SIZE]]
+    return wp.team([wp.member(*by_id[i]) for i in ids])
+
+
 def _write(conn, learner_id: int, change) -> dict:
-    save = change(load(conn, learner_id))
-    db.save_wander(conn, learner_id, save)
+    save = load(conn, learner_id)
+    if not save["trip"]:  # between trips the team follows the pets
+        save = {**save, "team": _team(conn, learner_id, save["party"])}
+    save = change(save)
     for e in save["events"]:
         if e["kind"] == "coins":
             db.add_coins(conn, learner_id, e["amount"], "game", ref="wanderpaw")
+    gained = sum(e["amount"] for e in save["events"] if e["kind"] == "xp")
+    if gained:
+        save = _level_up(conn, learner_id, save, gained)
+    for e in save["events"]:
+        if e["kind"] == "train":  # exactly up to the next level
+            rec = wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"]))
+            save = _level_up(conn, learner_id, save, wp.XP_PER_LEVEL - rec.xp % wp.XP_PER_LEVEL, only=e["pet"])
+    save = _logged(save)
+    db.save_wander(conn, learner_id, save)
     return save
+
+
+LOG_SIZE = 10
+
+
+def _logged(save: dict) -> dict:
+    """The last LOG_SIZE things that happened (what the pop-ups said)."""
+    texts = [e["text"] for e in save["events"] if e.get("text")]
+    return {**save, "log": (save["log"] + texts)[-LOG_SIZE:]} if texts else save
+
+
+def _level_up(conn, learner_id: int, save: dict, amount: int, only: int | None = None) -> dict:
+    """XP to the team's real pets (or `only` one); their new levels join
+    the team (energy stays as it is for the trip)."""
+    records = db.get_wander_pets(conn, learner_id)
+    pets = {p["id"]: p for p in db.list_v3_pets(conn, learner_id)}
+    team = []
+    for m in save["team"]:
+        if m["id"] not in pets or (only is not None and m["id"] != only):
+            team.append(m)
+            continue
+        old = wp.record_from(records.get(m["id"]))
+        rec = wp.gain_xp(old, amount)
+        db.save_wander_pet(conn, learner_id, m["id"], wp.record_json(rec))
+        new = wp.member(pets[m["id"]], rec)
+        team.append({**new, "energy": m["energy"]})
+        if new["level"] > m["level"]:
+            text = f"{m['name']} reached level {new['level']}!"
+            if wp.second_choices(pets[m["id"]]["seed"], m["species"], rec):
+                text += " It can learn a second type: pick it in the party list."
+            save = _event(save, kind="level", text=text)
+    return {**save, "team": team}
+
+
+def pets_view(conn, learner_id: int) -> list[dict]:
+    """Your pets for the party picker."""
+    out = []
+    for p, rec in roster(conn, learner_id):
+        m = wp.member(p, rec)
+        out.append({**wp.stats(p["species"], p["genes"]["battle"], rec), **m, "genes": pet_genes.resolve(p["genes"]), "growth": p["growth"],
+                    "xp": rec.xp, "next": wp.level(rec.xp) * wp.XP_PER_LEVEL, "starred": rec.starred,
+                    "choices": wp.second_choices(p["seed"], p["species"], rec)})
+    return out
+
+
+def set_party(conn, learner_id: int, ids: list[int]) -> dict:
+    """Pick who goes (between trips)."""
+    mine = {p["id"] for p, _ in roster(conn, learner_id)}
+    if len(ids) > PARTY_SIZE or len(set(ids)) != len(ids) or not set(ids) <= mine:
+        raise WanderError("Pick up to five of your own pets.")
+
+    def change(s: dict) -> dict:
+        if s["trip"]:
+            raise WanderError("Pick your party before you set off.")
+        return {**s, "party": list(ids), "team": _team(conn, learner_id, ids), "events": []}
+    return _write(conn, learner_id, change)
+
+
+def _record(conn, learner_id: int, pet_id: int) -> tuple[dict, wp.Record]:
+    for pet, rec in roster(conn, learner_id):
+        if pet["id"] == pet_id:
+            return pet, rec
+    raise WanderError("That pet can't go adventuring.")
+
+
+def pick_second(conn, learner_id: int, pet_id: int, kind: str) -> None:
+    pet, rec = _record(conn, learner_id, pet_id)
+    try:
+        rec = wp.pick_second(pet["seed"], pet["species"], rec, kind)
+    except ValueError as exc:
+        raise WanderError(str(exc)) from exc
+    db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(rec))
+
+
+def star(conn, learner_id: int, pet_id: int) -> None:
+    pet, rec = _record(conn, learner_id, pet_id)
+    db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(wp.Record(**{**wp.record_json(rec), "starred": not rec.starred})))
+
+
+def give_xp(conn, learner_id: int, pet_id: int, amount: int) -> None:
+    """Lab: XP straight to one pet."""
+    pet, rec = _record(conn, learner_id, pet_id)
+    db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(wp.gain_xp(rec, amount)))
 
 
 def walk(conn, learner_id: int, to: Hex) -> dict:
@@ -591,12 +990,12 @@ def new_day(conn, learner_id: int) -> dict:
     return _write(conn, learner_id, next_day)
 
 
-def finish(conn, learner_id: int) -> dict:
-    return _write(conn, learner_id, end_trip)
+def finish(conn, learner_id: int, anywhere: bool = False) -> dict:
+    return _write(conn, learner_id, lambda s: end_trip(s, anywhere))
 
 
-def go_in(conn, learner_id: int, action: str, accuracy: float = 1.0) -> dict:
-    return _write(conn, learner_id, lambda s: act(s, action, accuracy))
+def go_in(conn, learner_id: int, action: str, accuracy: float = 1.0, arg=None) -> dict:
+    return _write(conn, learner_id, lambda s: act(s, action, accuracy, arg))
 
 
 # --- what the player sees ---------------------------------------------------------
@@ -604,15 +1003,9 @@ def go_in(conn, learner_id: int, action: str, accuracy: float = 1.0) -> dict:
 
 def big_view(save: dict) -> dict:
     world = world_of(save)
+    # Only places you've been (the rest of the world is just its shape).
     visited = {tuple(v) for v in save["visited"]}
-    seen = visited | {n for v in visited for n in hx.neighbors(v) if n in world.hexes}
-    hexes = []
-    for h in sorted(seen):
-        out = wd.hex_json(world.hexes[h])
-        out["visited"] = h in visited
-        if h not in visited:
-            out["name"] = None
-        hexes.append(out)
+    hexes = [{**wd.hex_json(world.hexes[h]), "visited": True} for h in sorted(visited)]
     edges = []
     for k, v in world.edges.items():
         if k[0] in visited or k[1] in visited:
@@ -620,11 +1013,17 @@ def big_view(save: dict) -> dict:
             if "gate" in edge:
                 edge["gate"]["cleared"] = cleared(save, k)
             edges.append(edge)
-    # Where an elder asked you to look, even before you've been there.
-    marks = [list(world.quests[r].lost) for r, s in save["quests"].items() if s == "asked"]
+    # Where a quest-giver said to look, and where a rumor says a key is,
+    # even before you've been there.
+    plan = _plan(save)
+    marks = [list(plan.givers[gid].lost.big) for gid, state in save["quests"].items()
+             if state == "asked" and not _lost_gone(save, plan.givers[gid])]
+    marks += [list(plan.keys[r].big) for r in save["rumors"] if not save["items"].get(st.STORIES[r].key) and r not in save["temples"]]
     # ... and where a clue points.
     marks += [list(_unkey(c.split("|")[0])) for c in save["clues"].values() if c not in save["found"]]
-    return {"at": save["at"], "radius": wd.MAP_RADIUS, "hexes": hexes, "edges": edges, "marks": marks}
+    # The world's shape (just where land is), so the map can show what's left to find.
+    shape = [list(h) for h in sorted(world.hexes)]
+    return {"at": save["at"], "radius": wd.MAP_RADIUS, "hexes": hexes, "edges": edges, "marks": marks, "shape": shape}
 
 
 def _tile(save: dict, local: lc.LocalMap, big: Hex, h: Hex) -> dict:
@@ -636,13 +1035,16 @@ def _tile(save: dict, local: lc.LocalMap, big: Hex, h: Hex) -> dict:
     gone = (
         (poi == "forage" and save["trip"] and pid in save["trip"]["used"])
         or (poi == "chest" and pid in save["chests"])
-        or (poi == "lost" and (save["items"].get(st.STORIES[world_of(save).hexes[big].region].lost)
-                               or save["quests"].get(world_of(save).hexes[big].region) == "done"))
     )
     if gone:
         del out["poi"]
+    for g in _plan(save).givers.values():
+        if (g.lost.big, g.lost.at) == (big, h) and not g.lost.check and not _lost_gone(save, g):
+            out["poi"] = "lost"
     if pid in save["clues"].values() and pid not in save["found"]:
         out["poi"] = "cache"
+    if out["kind"].startswith("pillar_") and out["kind"][7:] in save["temples"]:
+        out["lit"] = True  # its relic is home
     return out
 
 
@@ -680,21 +1082,56 @@ def local_view(save: dict) -> dict:
     return {
         "big": list(big), "name": here.name, "region": here.region, "biome": here.biome, "special": here.special,
         "radius": VIEW_RADIUS, "spot": list(me), "campfire": list(lc.to_world(big, local.campfire)),
-        "tiles": tiles, "steps": [list(g) for g in steps(save)],
+        "tiles": tiles, "steps": [[*g, step_word(save, g)] for g in steps(save)],
     }
 
 
 def quests_view(save: dict) -> list[dict]:
-    world = world_of(save)
+    """The journal: quests taken, bridges found, keys heard of. Each has a
+    title, what to do now, whether it's done, and big hexes to light up."""
+    world, plan = world_of(save), _plan(save)
     out = []
-    for region, state in save["quests"].items():
-        tale = st.STORIES[region]
-        q = world.quests[region]
-        out.append({
-            "region": region, "state": state, "elder": tale.elder, "lost": tale.lost,
-            "town": world.hexes[q.town].name, "lost_at": world.hexes[q.lost].name,
-            "found": bool(save["items"].get(tale.lost)),
-        })
+    for gid, state in save["quests"].items():
+        g = plan.givers[gid]
+        npc, town = _npc(g), _place_name(save, g.town)
+        if state == "done":
+            text = "Done!"
+        elif _mends(save, g):
+            near, far = _parts(save, g.shortcut, g.region)
+            need = [x.split(" for ")[0] for x in (npc.lost, near, far) if not save["items"].get(x)]
+            text = (f"{npc.name} in {town} needs the {_and(need)}." if need else f"Bring it all to {npc.name} in {town}!")
+            if not _has_lost(save, g):
+                text += f" The {npc.lost} is in {_place_name(save, g.lost.big)}."
+        else:
+            text = (f"Bring the {npc.lost} to {npc.name} in {town}." if _has_lost(save, g)
+                    else f"Find the {npc.lost} in {_place_name(save, g.lost.big)}.")
+        title = f"Mend {_bridge_name(g.shortcut)}" if save["menders"].get(g.shortcut) == gid else f"{npc.name}'s {npc.lost}"
+        hexes = [list(g.town)] + ([] if _lost_gone(save, g) else [list(g.lost.big)])
+        out.append({"title": title, "text": text, "done": state == "done", "hexes": hexes})
+    for shortcut in save["bridges"]:
+        if save["menders"].get(shortcut):
+            continue  # it's someone's quest now
+        sides = qs.bridge_sides(world, shortcut)
+        towns = [world.quests[world.hexes[b].region].town for b in sides]
+        out.append({"title": f"Fix {_bridge_name(shortcut)}", "done": False,
+                    "text": f"Someone in {' or '.join(_place_name(save, t) for t in towns)} might know how.",
+                    "hexes": [list(t) for t in towns] + [list(b) for b in sides]})
+    for region in save["rumors"]:
+        key, name = plan.keys[region], st.STORIES[region].key
+        got = bool(save["items"].get(name)) or region in save["temples"]
+        out.append({"title": f"The {name}", "done": got,
+                    "text": "Found!" if got else f"Hidden in {_place_name(save, key.big)}. {st.KEY_HOW.get(key.kind, '')}",
+                    "hexes": [] if got else [list(key.big)]})
+    return out
+
+
+def clues_view(save: dict) -> list[dict]:
+    """Clues you've read: where they point, and whether you've dug it up."""
+    hexes = world_of(save).hexes
+    out = []
+    for at, to in save["clues"].items():
+        big, far = _unkey(at.split("|")[0]), _unkey(to.split("|")[0])
+        out.append({"from": hexes[big].name, "to": hexes[far].name, "hex": list(far), "found": to in save["found"]})
     return out
 
 
@@ -708,9 +1145,12 @@ def view(save: dict) -> dict:
         "screen": screen(save),
         "campfires": len(campfires_found(save)),
         "at_camp": tuple(save["at"]) == CAMP,
-        "party": save["party"],
+        "team": save["team"],
         "levels": {t: levels(save, t) for t in wd.REGIONS if levels(save, t)},
         "items": {k: v for k, v in sorted(save["items"].items()) if v},
+        "about": {k: st.describe(k) for k, v in save["items"].items() if v},
+        "clues": clues_view(save),
+        "log": save["log"],
         "quests": quests_view(save),
         "temples": save["temples"],
         "charms": save["charms"],
@@ -741,17 +1181,8 @@ def refill(conn, learner_id: int) -> dict:
     """Full energy (starting a trip where you are if you're not on one)."""
     def change(s: dict) -> dict:
         s = s if s["trip"] else start_trip(s)
-        return {**s, "trip": {**s["trip"], "energy": TRIP_ENERGY}}
+        return {**s, "trip": {**_trip(s["team"]), "used": s["trip"]["used"], "side": s["trip"]["side"]}}
     return _write(conn, learner_id, change)
-
-
-def set_party(conn, learner_id: int, party: list[str], level: int | None = None) -> dict:
-    """The stand-in party's types and level (until real pets join)."""
-    if len(party) > PARTY_SIZE or any(t not in wd.REGIONS for t in party):
-        raise WanderError("A party is up to five of ember, splash, leaf, dream, shock.")
-    if level is not None and not 1 <= level <= 20:
-        raise WanderError("Pick a level from 1 to 20.")
-    return _write(conn, learner_id, lambda s: {**s, "party": list(party), "party_level": level or s["party_level"], "events": []})
 
 
 def reset(conn, learner_id: int, seed: int | None = None) -> dict:

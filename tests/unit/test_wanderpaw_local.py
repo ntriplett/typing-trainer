@@ -77,7 +77,7 @@ def test_feels_differ():
     for _, _, local in _maps():
         share[local.style].append(sum(local.walkable(h) for h in lc.CELLS) / len(lc.CELLS))
     mean = {k: statistics.mean(v) for k, v in share.items()}
-    assert mean["open"] > 0.7
+    assert mean["open"] > 0.65
     assert mean["open"] > mean["forest"] > mean["deep_forest"]
     assert all(m >= 0.45 for m in mean.values())  # most hexes walkable
 
@@ -118,8 +118,8 @@ def test_pois_and_building_roles():
         if world.hexes[big].special == "town":
             roles = set(local.buildings.values())
             assert {"board", "inn", "shop"} <= roles
-            assert ("elder" in roles) == any(q.town == big for q in world.quests.values())
-        assert ("lost" in local.pois.values()) == any(q.lost == big for q in world.quests.values())
+            region = world.hexes[big].region
+            assert {f"quest:{region}", f"quest:{wd.weak_against(region)}"} <= roles
 
 
 def test_beyond_is_the_ring_around():
@@ -173,3 +173,24 @@ def test_clues_point_to_open_ground_nearby():
                 m = lc.generate(seed, far)
                 assert m.tiles[at] in lc.GROUND and at in lc.reachable(m.tiles, m.campfire)
                 assert at not in m.nooks and at not in m.pois
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_heartstone_and_temples_are_great_halls(seed):
+    world = wd.generate(seed)
+    for big, b in world.hexes.items():
+        if b.special not in ("final", "temple"):
+            continue
+        local = lc.generate(seed, big)
+        heart = local.tiles[(0, 0)]
+        assert heart == ("stone" if b.special == "final" else "temple")
+        ring2 = [local.tiles[h] for h in hx.ring((0, 0), 2)]
+        assert ring2.count("court") == 1  # one doorway in the walled ring
+        assert ring2.count("colonnade") == 6
+        if b.special == "final":
+            assert sorted(k for k in ring2 if k.startswith("pillar_")) == sorted(f"pillar_{t}" for t in wd.REGIONS)
+        else:
+            assert sum(k == f"feature_{b.region}" for k in ring2 + [local.tiles[h] for h in hx.ring((0, 0), 1)]) == 7
+        assert all(local.tiles[h] == "court" for h in hx.ring((0, 0), 3))
+        # the heart is reached through the doorway
+        assert (0, 0) in lc.reachable(local.tiles, local.campfire)

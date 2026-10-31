@@ -152,6 +152,15 @@ CREATE TABLE IF NOT EXISTS wander_save (
     updated_at TEXT NOT NULL
 );
 
+-- Wanderpaw pets (PLAN.md 11n phase 4): each pet's adventure record,
+-- app/wanderpaw/pets.py's Record as JSON.
+CREATE TABLE IF NOT EXISTS wander_pet (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    pet_id INTEGER NOT NULL REFERENCES pet(id),
+    record TEXT NOT NULL,
+    PRIMARY KEY (learner_id, pet_id)
+);
+
 -- Pet Supplies (PLAN.md 11l): how many of each treat, toy, fish food.
 CREATE TABLE IF NOT EXISTS pet_supply (
     learner_id INTEGER NOT NULL REFERENCES learner(id),
@@ -1356,6 +1365,21 @@ def save_farm(conn: sqlite3.Connection, learner_id: int, state: dict) -> None:
 def get_wander(conn: sqlite3.Connection, learner_id: int) -> dict | None:
     row = conn.execute("SELECT state FROM wander_save WHERE learner_id = ?", (learner_id,)).fetchone()
     return json.loads(row["state"]) if row else None
+
+
+def get_wander_pets(conn: sqlite3.Connection, learner_id: int) -> dict[int, dict]:
+    rows = conn.execute("SELECT pet_id, record FROM wander_pet WHERE learner_id = ?", (learner_id,))
+    return {r["pet_id"]: json.loads(r["record"]) for r in rows}
+
+
+def save_wander_pet(conn: sqlite3.Connection, learner_id: int, pet_id: int, record: dict) -> None:
+    conn.execute(
+        """
+        INSERT INTO wander_pet (learner_id, pet_id, record) VALUES (?, ?, ?)
+        ON CONFLICT(learner_id, pet_id) DO UPDATE SET record = excluded.record
+        """,
+        (learner_id, pet_id, json.dumps(record)),
+    )
 
 
 def save_wander(conn: sqlite3.Connection, learner_id: int, state: dict) -> None:

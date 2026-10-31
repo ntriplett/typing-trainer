@@ -4,6 +4,7 @@ import pytest
 
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import pets as wp
 from app.wanderpaw import save as sv
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
@@ -11,8 +12,12 @@ from app.wanderpaw import world as wd
 SEED = 11
 
 
+TEAM = [wp.starter(t, 5) for t in wd.REGIONS]
+FULL = sv.WALK_ENERGY + wp.team_energy(TEAM)
+
+
 def _on_trip():
-    return sv.start_trip(sv.new_save(SEED))
+    return sv.start_trip({**sv.new_save(SEED), "team": TEAM})
 
 
 def _path(local, start, goal):
@@ -44,7 +49,8 @@ def test_walking_needs_a_trip_and_costs_energy():
         sv.apply_walk(save, to)
     save = sv.apply_walk(sv.start_trip(save), to)
     assert save["spot"] == list(to)
-    assert save["trip"]["energy"] == sv.TRIP_ENERGY - 1
+    assert save["trip"]["energy"] == sv.WALK_ENERGY + wp.team_energy(save["team"]) - 1
+    assert save["trip"]["walk"] == sv.WALK_ENERGY - 1  # your own goes first
     assert hx.neighbors(to)[0] in sv.seen_in(save, (0, 0)) or hx.neighbors(to)[0] not in lc.CELL_SET
 
 
@@ -118,7 +124,7 @@ def test_out_of_energy_naps_at_the_nearest_found_campfire():
         save = sv.apply_walk(save, step)
     assert nxt in sv.campfires_found(save)
     away = next(n for n in hx.neighbors(tuple(save["spot"])) if sv.local_of(save).walkable(n))
-    save = {**save, "trip": {"energy": 1, "max": sv.TRIP_ENERGY}}
+    save = {**save, "trip": {**save["trip"], "walk": 1, "pets": [0] * len(save["team"]), "energy": 1}}
     napped = sv.apply_walk(save, away)
     assert napped["trip"] is None and napped["note"] == "napped"
     assert napped["at"] == list(nxt)
@@ -135,24 +141,39 @@ def test_end_a_trip_only_at_a_campfire_and_start_again_at_camp():
             sv.end_trip(away)
     far = {**rested, "at": [1, 0], "spot": list(sv.local_of(rested, (1, 0)).campfire)}
     again = sv.start_trip(far, from_camp=True)
-    assert again["at"] == [0, 0] and again["trip"]["energy"] == sv.TRIP_ENERGY
+    assert again["at"] == [0, 0] and again["trip"]["energy"] == FULL
 
 
 def test_next_day_refills_where_you_are():
     save = _on_trip()
     to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))
-    tired = {**sv.apply_walk(save, to), "trip": {**save["trip"], "energy": 3, "used": ["x"]}}
+    tired = {**sv.apply_walk(save, to), "trip": {**sv._spend(save, FULL - 3)["trip"], "used": ["x"]}}
     day = sv.next_day(tired)
-    assert day["spot"] == list(to) and day["trip"]["energy"] == sv.TRIP_ENERGY and day["trip"]["used"] == []
-    assert sv.next_day(sv.new_save(SEED))["trip"]["energy"] == sv.TRIP_ENERGY
+    assert day["spot"] == list(to) and day["trip"]["energy"] == FULL and day["trip"]["used"] == []
+    fresh = sv.new_save(SEED)
+    assert sv.next_day(fresh)["trip"]["energy"] == sv.WALK_ENERGY + wp.team_energy(fresh["team"])
+
+
+def test_walking_uses_your_own_energy_then_the_pets_evenly():
+    save = _on_trip()
+    pets = save["trip"]["pets"]
+    assert save["trip"]["walk"] == sv.WALK_ENERGY and pets == [m["energy"] for m in TEAM]
+    spent = sv._spend(save, sv.WALK_ENERGY + 10)["trip"]
+    assert spent["walk"] == 0 and sum(pets) - sum(spent["pets"]) == 10
+    assert max(spent["pets"]) - min(spent["pets"]) <= max(pets) - min(pets)  # shared out, not one pet drained
+    # food tops up your own first, then the pets'
+    back = sv._restore({**save, "trip": spent}, 5)["trip"]
+    assert back["walk"] == 5 and back["pets"] == spent["pets"]
+    full = sv._restore({**save, "trip": spent}, 999)["trip"]
+    assert full["walk"] == sv.WALK_ENERGY and full["pets"] == pets
 
 
 def test_view_shows_only_what_you_have_seen():
     save = sv.new_save(SEED)
     view = sv.view(save)
     big = {(h["q"], h["r"]) for h in view["big"]["hexes"]}
-    assert big == {(0, 0), *[n for n in hx.neighbors((0, 0)) if n in wd.generate(SEED).hexes]}
-    assert all(h["name"] is None for h in view["big"]["hexes"] if not h["visited"])
+    assert big == {(0, 0)}  # only where you've been; the rest is just the world's shape
+    assert len(view["big"]["shape"]) == len(wd.generate(SEED).hexes)
     tiles = {(t["q"], t["r"]) for t in view["local"]["tiles"]}
     assert tiles == {(0, 0), *hx.neighbors((0, 0))}
     assert view["local"]["campfire"] == [0, 0] and view["local"]["spot"] == [0, 0]
@@ -241,12 +262,12 @@ def test_searching_a_nook_once_and_once_a_trip():
 def test_nooks_need_type_levels():
     big, h, nook = _nook(lambda n: n.need is not None and n.need[1] >= 3 and n.kind not in lc.IN_WALL)
     kind, need = nook.need
-    weak = _standing(big, h, party=[kind], party_level=need - 1)
+    weak = _standing(big, h, team=[wp.starter(kind, need - 1)])
     assert sv.screen(weak)["action"] is None and "levels" in sv.screen(weak)["text"]
     with pytest.raises(sv.WanderError):
         sv.act(weak, "search")
     # two pets of the type add up
-    assert sv.screen({**weak, "party": [kind, kind]})["action"] is not None
+    assert sv.screen({**weak, "team": [wp.starter(kind, need - 1)] * 2})["action"] is not None
 
 
 def test_fishing_takes_typing():
@@ -280,6 +301,44 @@ def test_wading_costs_more_without_a_swimmer():
     start = next(n for n in hx.neighbors(ford) if local.walkable(n) and n in lc.CELL_SET)
     save = _standing(big, start)
     swim = sv.apply_walk(save, ford)["trip"]["energy"]
-    wade = sv.apply_walk({**save, "party": ["leaf"]}, ford)["trip"]["energy"]
+    wade = sv.apply_walk({**save, "team": [wp.starter("leaf")]}, ford)["trip"]["energy"]
     assert save["trip"]["energy"] - swim == st.FORD_ENERGY_SWIM
     assert save["trip"]["energy"] - wade == st.FORD_ENERGY
+
+
+def test_heading_home_from_anywhere():
+    save = _on_trip()
+    to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))
+    away = sv.apply_walk(save, to)
+    with pytest.raises(sv.WanderError, match="campfire"):
+        sv.end_trip(away)
+    home = sv.end_trip(away, anywhere=True)
+    assert home["trip"] is None and home["spot"] == list(sv.local_of(home).campfire)
+
+
+def test_the_log_keeps_the_last_ten():
+    save = {**_on_trip(), "events": [{"kind": "found", "text": f"thing {i}"} for i in range(12)]}
+    logged = sv._logged(save)
+    assert logged["log"] == [f"thing {i}" for i in range(2, 12)]
+    assert sv._logged({**logged, "events": [{"kind": "xp", "amount": 5}]})["log"] == logged["log"]
+
+
+def test_the_bag_says_what_things_are_for():
+    tale = st.STORIES["leaf"]
+    npc = st.NPCS[("leaf", "leaf")]
+    assert npc.name in st.describe(npc.lost)
+    assert "vine ladder" in st.describe(f"{st.SHORTCUTS['leaf'].parts[0]} for the vine ladder")
+    assert "Temple" in st.describe(tale.key)
+    assert "Heartstone" in st.describe(tale.relic)
+    assert "board" in st.describe(st.FORAGE["leaf"])
+    view = sv.view({**_on_trip(), "items": {tale.key: 1}})
+    assert view["about"] == {tale.key: st.describe(tale.key)}
+
+
+def test_loading_fills_in_fields_added_later(tmp_path):
+    from app import db
+    with db.open_db(tmp_path / "t.db") as conn:
+        conn.execute("INSERT INTO learner (name, created_at) VALUES ('T', 'now')")
+        old = {k: v for k, v in sv.new_save(SEED).items() if k != "log"}
+        db.save_wander(conn, 1, old)
+        assert sv.load(conn, 1)["log"] == []
