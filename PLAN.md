@@ -923,6 +923,12 @@ turns its color and takes 25% from the type that beats it). Permanent for now; a
 screen is a whole page like the party book's: a number previews a choice in the six moves, Enter makes it. "Start my world
 over" now sends pets back to level 1 (stars stay).
 
+**Level 5 (2026-11-01).** The second type brings a plain attack in that type (`attack2`), taking the slot of a grey move
+the player picks (`Record.swaps`: gave up -> got; a Guardian's colored Guard doesn't count). Two steps on one page, each saved,
+so a reload keeps its place: the type, then the slot. Attack is now first type only; Big still uses whichever type does best;
+a Daredevil's double stays on its first type. Mythicals skip the type pick. Next: level 7, a mixed-type move replacing any of
+the six (20 ordered type pairs: first type sets how it behaves, second its flavor; first draft discussed 2026-11-01).
+
 **Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
 it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;
 `story.fill` instead of `str.format` for templates holding tokens), and the page's `wanderText` (wander_text.js) draws them.

@@ -1073,7 +1073,8 @@ function renderLevelup() {
     return;
   }
   const entry = `${up.pet}:${up.level}`;
-  const id = `${entry}:${levelPick}`;
+  const step = up.choose ? up.choose.kind : "";
+  const id = `${entry}:${step}:${levelPick}`;
   if (levelupShown === id) return;
   if (!levelupShown || !levelupShown.startsWith(`${entry}:`)) {
     document.getElementById("levelup-confetti").innerHTML = Array.from({ length: 36 }, (_, i) =>
@@ -1101,7 +1102,7 @@ function renderLevelup() {
       <ul class="wander-moves">${moves.map((m, i) => moveCard(m, undefined, pick && m.label !== up.moves[i].label)).join("")}</ul>
     </div>`;
   document.getElementById("levelup-choice").innerHTML = options.length
-    ? `<h3 class="wander-levelup-ask">${up.choose.kind === "focus" ? `What will ${esc(up.name)} focus on?` : `${esc(up.name)} can learn a second type!`}</h3>
+    ? `<h3 class="wander-levelup-ask">${wanderText(up.choose.ask)}</h3>
        <ul class="wander-levelup-options">${options.map((o, i) => levelOption(o, i)).join("")}</ul>`
     : "";
   const more = state.levelups.length - 1;
@@ -1121,9 +1122,9 @@ function renderLevelup() {
 }
 
 function levelOption(o, i) {
-  const color = WanderMap.TYPE_COLORS[o.type];
+  const color = o.type ? WanderMap.TYPE_COLORS[o.type] : "#8b7a5c";
   const on = i === levelPick ? "on" : "";
-  return `<li class="wander-levelup-option ${on}" data-option="${i}" style="border-color:${color};background:${TYPE_TINT[o.type]}">
+  return `<li class="wander-levelup-option ${on}" data-option="${i}" style="border-color:${color};background:${o.type ? TYPE_TINT[o.type] : "#efe6d2"}">
     <small><kbd class="keycap">${i + 1}</kbd> ${esc(o.title)}</small>
     <b style="color:${color}">${wanderText(o.label)}</b>
     ${o.passive ? `<span class="wander-move-always">Always on</span>` : ""}

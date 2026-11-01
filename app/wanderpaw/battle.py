@@ -9,9 +9,12 @@ creature; one with a second type hits with whichever does best.
 
 Each round every fighter with energy picks one of six moves (moves()),
 typing its word; each slip takes SLIP off its strength, down to FLOOR:
-- attack: damage, with whichever of its types does best here;
-- big: a three-word move that costs BIG_MANA: BIG times the damage, and
-  it leaves its type's mark on the creature. Big moves go first;
+- attack: damage, of its first type;
+- attack2: the same in its second type, a move it gets at level 5 in place
+  of a grey one (`swaps` on a team member: gave up -> got);
+- big: a three-word move that costs BIG_MANA: BIG times the damage, with
+  whichever of its types does best here, and it leaves that type's mark on
+  the creature. Big moves go first;
 - guard: take the hits meant for its partner this round, at GUARD;
 - focus: its next move is FOCUS times as strong;
 - cheer: its partner's move this round is CHEER times as strong;
@@ -220,7 +223,7 @@ def best_type(member: dict, foe: str | None) -> str:
 def described_moves(member: dict, mana: int | None = None) -> list[dict]:
     """A fighter's six moves away from any battle, saying just what each does."""
     hit, types, own = pet_hit(member["power"]), list(member["types"]), own_type(member)
-    names = " or ".join(wd.tw(t) for t in types)
+    names = " or ".join(wd.tw(t) for t in types)  # big moves can use either
     marks = " or ".join(MARKS[t].title() for t in types)
     rest = max(1, round(member["energy"] * REST_ENERGY))
     a, b = (wd.tw(t) for t in strong_against(own))
@@ -229,7 +232,8 @@ def described_moves(member: dict, mana: int | None = None) -> list[dict]:
     twice = f" Double that in {wd.tw(own)}, for {_daredevil_cost(member)} energy." if double else ""
     guard = f"Takes the hits meant for its partner this round, at {GUARD:.0%}."
     says = {
-        "attack": (f"{names} attack", f"Hits for about {round(hit)}.{twice}"),
+        "attack": (f"{wd.tw(own)} attack", f"Hits for about {round(hit)}.{twice}"),
+        "attack2": (None, f"Hits for about {round(hit)}."),
         "big": (f"Big {names}", f"Goes first and hits for about {round(hit * BIG)}. Leaves it {marks}. Costs {BIG_MANA} mana.{twice}"),
         "guard": ("Guard", guard),
         "focus": ("Focus", f"Its next move is {FOCUS}x as strong."),
@@ -266,9 +270,10 @@ def moves(member: dict, foe: str | None = None, mana: int | None = None) -> list
     """A fighter's six moves, each with a short reminder of what it does
     (how strong against a `foe` type, if known) and whether it can (mana)."""
     t = best_type(member, foe)
-    strength = _strength(matchup(t, foe)).strip() if foe else ""
+    own = own_type(member)
+    strength = _strength(matchup(own, foe)).strip() if foe else ""
     out = [
-        {"id": "attack", "type": t, "label": f"{wd.tw(t)} attack", "size": "medium",
+        {"id": "attack", "type": own, "label": f"{wd.tw(own)} attack", "size": "medium",
          "note": strength or "Hit it."},
         {"id": "big", "type": t, "label": f"Big {wd.tw(t)}", "size": "phrase", "cost": BIG_MANA,
          "note": f"First! {MARKS[t].title()}. {BIG_MANA} mana", "can": mana is None or mana >= BIG_MANA},
@@ -277,7 +282,24 @@ def moves(member: dict, foe: str | None = None, mana: int | None = None) -> list
         {"id": "cheer", "type": None, "label": "Cheer", "size": "short", "note": "Help your partner."},
         {"id": "rest", "type": None, "label": "Rest", "size": "short", "note": "Energy and mana back."},
     ]
-    return _with_focus(out, member, mana)
+    return _with_swaps(_with_focus(out, member, mana), member, foe)
+
+
+def _with_swaps(out: list[dict], member: dict, foe: str | None) -> list[dict]:
+    """The six moves with what it got at later levels in the slots they took."""
+    swaps = member.get("swaps") or {}
+    if not swaps:
+        return out
+    kinds = list(member["types"])
+    second = kinds[1] if len(kinds) > 1 else kinds[0]
+    strength = _strength(matchup(second, foe)).strip() if foe else ""
+    got = {"attack2": {"id": "attack2", "type": second, "label": f"{wd.tw(second)} attack", "size": "medium", "note": strength or "Hit it."}}
+    return [got[swaps[m["id"]]] if m["id"] in swaps else m for m in out]
+
+
+def grey_moves(member: dict) -> list[dict]:
+    """The moves still with no type: a new one can replace any of these."""
+    return [m for m in described_moves(member) if m["type"] is None]
 
 
 def _with_focus(out: list[dict], member: dict, mana: int | None) -> list[dict]:
@@ -359,7 +381,7 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         if energy[who] <= 0:
             continue
         move = chosen[who]["move"]
-        if move in ("attack", "big"):
+        if move in ("attack", "attack2", "big"):
             step(_hit(b, team, who, move, accuracy(chosen[who].get("slips", 0)) * boost[who], energy, mana))
         elif move == "mark":
             own = own_type(team[who])
@@ -434,7 +456,7 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     """A fighter's attack or big move: damage, any combos with the marks on
     it (each uses up its mark), and (a big move) its own mark."""
     foe = b["species"]
-    kind = best_type(team[who], b["kind"])
+    kind = next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
     mult = matchup(kind, b["kind"])
     power = pet_hit(team[who]["power"]) * mult * strength * (BIG if move == "big" else 1)
     extra, found, flash = "", None, None

@@ -70,6 +70,7 @@ class Record:
     partners: dict[str, int] = field(default_factory=dict)  # type -> battles fought beside it
     starred: bool = False
     focus: str | None = None  # what it chose at FOCUS_LEVEL (battle.FOCUSES)
+    swaps: dict[str, str] = field(default_factory=dict)  # move id it gave up -> move id it got (level choices)
 
 
 def can_go(species: str) -> bool:
@@ -150,6 +151,10 @@ def learn_focus(rec: Record, focus: str) -> Record:
     return replace(rec, focus=focus)
 
 
+def learn_swap(rec: Record, gives_up: str, gets: str) -> Record:
+    return replace(rec, swaps={**rec.swaps, gives_up: gets})
+
+
 def at_level(rec: Record, lv: int) -> Record:
     """The record as it stands on reaching level lv."""
     return replace(rec, xp=xp_for(lv))
@@ -172,7 +177,7 @@ def gain_xp(rec: Record, amount: int) -> Record:
 
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
-    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus,
+    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus, "swaps": rec.swaps,
             "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
             "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
@@ -206,7 +211,7 @@ def team_energy(members: list[dict]) -> int:
 
 
 def record_json(rec: Record) -> dict:
-    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus}
+    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps}
 
 
 def record_from(data: dict | None) -> Record:

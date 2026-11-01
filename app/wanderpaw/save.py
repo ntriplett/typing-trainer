@@ -1125,18 +1125,32 @@ def _level_entry(pet: dict, rec: wp.Record, lv: int) -> dict:
 
 def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | None:
     """What a pet gets to choose on reaching level lv (None: nothing). Odd
-    levels are the ones with choices: so far a focus, then a second type."""
+    levels are the ones with choices: a focus, then a second type and what
+    its new attack replaces (mythicals are born with the type: just that)."""
+    name = pet["name"]
     if lv == wp.FOCUS_LEVEL and not rec.focus:
-        return {"kind": "focus", "options": [bt.focus_option(member, f) for f in bt.FOCUSES]}
-    offered = wp.second_choices(pet["seed"], pet["species"], rec) if lv == wp.SECOND_TYPE_LEVEL else None
-    if not offered:
+        return {"kind": "focus", "ask": f"What will {name} focus on?", "options": [bt.focus_option(member, f) for f in bt.FOCUSES]}
+    if lv != wp.SECOND_TYPE_LEVEL:
         return None
+    offered = wp.second_choices(pet["seed"], pet["species"], rec)
+    if not offered:
+        return _attack2_choice(name, member) if "attack2" not in rec.swaps.values() else None
     options = []
     for t in offered:
         beats = " and ".join(wd.tw(x) for x in bt.strong_against(t))
         options.append({"id": t, "type": t, "label": wd.tw(t), "title": "Second type", "note": f"Strong against {beats}.",
                         "moves": bt.described_moves({**member, "types": {**member["types"], t: 1}})})
-    return {"kind": "second", "options": options}
+    return {"kind": "second", "ask": f"{name} can learn a second type!", "options": options}
+
+
+def _attack2_choice(name: str, member: dict) -> dict:
+    """Which grey move a pet's new second-type attack takes the place of."""
+    second = list(member["types"])[1]
+    options = []
+    for m in bt.grey_moves(member):
+        swaps = {**(member.get("swaps") or {}), m["id"]: "attack2"}
+        options.append({**m, "title": "Replace", "moves": bt.described_moves({**member, "swaps": swaps})})
+    return {"kind": "attack2", "ask": f"{name} learns a {wd.tw(second)} attack! Which move does it replace?", "options": options}
 
 
 def _redo_waiting(save: dict, pet: dict, rec: wp.Record) -> dict:
@@ -1157,15 +1171,19 @@ def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
     if not save["levelups"]:
         raise WanderError("Nobody's leveling up right now.")
     first, *rest = save["levelups"]
-    save = {**save, "levelups": rest, "events": [], "note": None}
+    save = {**save, "events": [], "note": None}
     pet = next(((p, rec) for p, rec in roster(conn, learner_id) if p["id"] == first["pet"]), None)
     if first["choose"] and pet:
         if choice not in [o["id"] for o in first["choose"]["options"]]:
             raise WanderError("Pick one of the choices.")
         kind = first["choose"]["kind"]
-        rec = wp.learn_focus(pet[1], choice) if kind == "focus" else wp.learn_second(pet[1], choice, first["level"])
+        learn = {"focus": lambda r: wp.learn_focus(r, choice), "second": lambda r: wp.learn_second(r, choice, first["level"]),
+                 "attack2": lambda r: wp.learn_swap(r, choice, "attack2")}[kind]
+        rec = learn(pet[1])
         db.save_wander_pet(conn, learner_id, first["pet"], wp.record_json(rec))
-        save = _redo_waiting(_refresh_member(save, pet[0], rec), pet[0], rec)
+        save = _redo_waiting(_refresh_member(save, pet[0], rec), pet[0], rec)  # one choice can bring the next
+        first, *rest = save["levelups"]
+    save = {**save, "levelups": [first, *rest] if first["choose"] and pet else rest}
     if not save["trip"]:  # between trips the team follows the pets
         save = {**save, "team": _team(conn, learner_id, save["party"])}
     db.save_wander(conn, learner_id, save)

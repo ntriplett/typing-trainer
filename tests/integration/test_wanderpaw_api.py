@@ -187,25 +187,42 @@ def test_level_five_has_to_choose_a_type_and_it_counts_at_once():
     assert client.post("/api/wander/levelup", json={}).status_code == 400  # no choice
     assert client.post("/api/wander/levelup", json={"choice": "ember"}).status_code == 400  # its own type
     data = _finish(offered[0])
-    assert [u["level"] for u in data["levelups"]] == [6]
     # counted from 5, the level that offered it, and already on the trip's team
     assert next(m for m in data["team"] if m["id"] == fox)["types"] == {"ember": 6, offered[0]: 2}
     assert next(p for p in client.get("/api/wander/pets").json()["pets"] if p["id"] == fox)["choices"] is None
+    # the same page goes on: what does its new attack replace? (a reload keeps its place)
+    assert client.get("/api/wander").json()["levelups"] == data["levelups"]
+    step = data["levelups"][0]
+    assert [u["level"] for u in data["levelups"]] == [5, 6] and step["choose"]["kind"] == "attack2"
+    assert [o["id"] for o in step["choose"]["options"]] == ["focus", "cheer", "rest"]  # Healer took guard
+    assert client.post("/api/wander/levelup", json={"choice": "attack"}).status_code == 400  # only grey ones
+    data = _finish("cheer")
+    assert [u["level"] for u in data["levelups"]] == [6]
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert [m["id"] for m in me["moves"]] == ["attack", "big", "healer", "focus", "attack2", "rest"]
+    assert me["moves"][4]["type"] == offered[0] and me["moves"][0]["label"] == "{ember} attack"
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.get_wander_pets(conn, 1)[fox]["swaps"] == {"cheer": "attack2"}
 
 
-def test_mythicals_focus_in_their_first_type_and_have_no_type_to_choose():
+def test_mythicals_focus_in_their_first_type_and_only_choose_what_their_second_attack_replaces():
     unicorn = _add_pet("unicorn", 5)
     ups = _level_to(unicorn, 5)
-    assert [u["level"] for u in ups if u["choose"]] == [3]
-    first = wp.SPECIES_TYPES["unicorn"][0]
+    assert [u["level"] for u in ups if u["choose"]] == [3, 5]
+    first, second = wp.SPECIES_TYPES["unicorn"]
     assert all(o["type"] == first for o in ups[1]["choose"]["options"])
+    assert ups[3]["choose"]["kind"] == "attack2"  # the type's already theirs: just what its attack replaces
+    assert f"{{{second}}}" in ups[3]["choose"]["ask"]
+    _finish(None, "daredevil", None)
+    me = next(m for m in _finish("guard")["team"] if m["id"] == unicorn)
+    assert next(m for m in me["moves"] if m["id"] == "attack2")["type"] == second
 
 
 def test_picking_from_the_party_list_answers_a_waiting_pop_up():
     fox = _add_pet("fox")
     five = _level_to(fox, 5)[-1]
     client.post(f"/api/wander/pets/{fox}/second", json={"type": five["choose"]["options"][0]["id"]})
-    assert client.get("/api/wander").json()["levelups"][-1]["choose"] is None
+    assert client.get("/api/wander").json()["levelups"][-1]["choose"]["kind"] == "attack2"
 
 
 def test_starting_the_world_over_starts_pets_over_but_keeps_stars():

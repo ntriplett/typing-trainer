@@ -147,10 +147,20 @@ def test_level_ups_pop_up_in_turn_and_level_five_asks_for_a_type(page: Page, liv
     page.keyboard.press("2")
     expect(page.locator("#levelup-detail .type-chip")).to_have_count(2)  # the preview
     page.keyboard.press("Enter")
+    # the same level goes on: what does the new attack replace? Healer's already taken guard
+    expect(level).to_have_text("Level 5")
+    expect(choice.locator(".wander-levelup-option")).to_have_count(3)
+    expect(choice).to_contain_text("Cheer")
+    page.keyboard.press("Enter")
+    expect(page.locator('#levelup-detail [data-move="attack2"]')).to_have_count(0)
+    page.keyboard.press("3")
+    expect(page.locator('#levelup-detail [data-move="attack2"].fresh')).to_be_visible()
+    expect(page.locator('#levelup-detail [data-move="rest"]')).to_have_count(0)
+    page.keyboard.press("Enter")
     expect(page.locator("#levelup")).to_be_hidden()
     expect(page.locator("#picker")).to_be_visible()
     me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
-    assert len(me["types"]) == 2 and me["choices"] is None and me["focus"] == "healer"
+    assert len(me["types"]) == 2 and me["choices"] is None and me["focus"] == "healer" and me["swaps"] == {"rest": "attack2"}
     # the party book shows it too
     page.keyboard.press("3")
     page.keyboard.press("ArrowDown")
@@ -160,3 +170,4 @@ def test_level_ups_pop_up_in_turn_and_level_five_asks_for_a_type(page: Page, liv
     word = page.locator('#party-detail [data-move="attack"] .type-word').first
     expect(word).to_have_text("EMBER")
     expect(word).to_have_css("color", "rgb(200, 67, 47)")
+    expect(page.locator('#party-detail [data-move="attack2"]')).to_be_visible()

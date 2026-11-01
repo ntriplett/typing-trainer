@@ -198,7 +198,8 @@ def test_moves_away_from_battle_say_just_what_they_do():
     assert str(round(hit * bt.BIG)) in moves["big"]["note"] and "Glowing" in moves["big"]["note"]
     assert moves["big"]["can"] is False  # not enough mana
     both = {m["id"]: m for m in bt.described_moves({**pet, "types": {"shock": 3, "ember": 3}})}
-    assert both["attack"]["label"] == "{shock} or {ember} attack" and "Static or Glowing" in both["big"]["note"]
+    assert both["attack"]["label"] == "{shock} attack" and "Static or Glowing" in both["big"]["note"]
+    assert both["big"]["label"] == "Big {shock} or {ember}"
 
 
 def test_six_moves_each_with_a_note():
@@ -210,9 +211,42 @@ def test_six_moves_each_with_a_note():
     assert moves[1]["can"] is False  # not enough mana
     with pytest.raises(ValueError, match="mana"):
         _round(bt.start(_critter(3), [0, 1]), [pet, pet], [{"move": "big", "slips": 0}] * 2, mana=[2, 2])
-    # a pet with two types attacks with the better one
+    # with two types, its big move uses the better one; Attack stays its first
     dragon = {**pet, "types": {"shock": 3, "ember": 3}}
     assert bt.best_type(dragon, "splash") == "shock" and bt.best_type(dragon, "dream") == "ember"
+    by_id = {m["id"]: m for m in bt.moves(dragon, "dream")}
+    assert by_id["big"]["type"] == "ember" and by_id["attack"]["type"] == "shock"
+
+
+def test_a_second_attack_takes_a_grey_moves_slot_and_hits_in_its_type():
+    pet = {**wp.starter("ember", 5), "types": {"ember": 5, "splash": 1}, "swaps": {"rest": "attack2"}, "mana": 30}
+    moves = bt.moves(pet, "ember")
+    assert [m["id"] for m in moves] == ["attack", "big", "guard", "focus", "cheer", "attack2"]
+    second = moves[-1]
+    assert second["type"] == "splash" and second["label"] == "{splash} attack" and second["size"] == "medium" and "Super strong" in second["note"]
+    assert moves[0]["type"] == "ember"
+    assert bt.described_moves(pet)[-1]["label"] == "{splash} attack"
+    team = [pet, _pet("leaf")]
+    damage = lambda move: next(s for s in _round(bt.start(_critter(5, "ember", "fox"), [0, 1]), team, [{"move": move, "slips": 0}, {"move": "guard", "slips": 0}], energy=[30, 30])[0]["log"] if s["who"] == 0)  # noqa: E731
+    two, one = damage("attack2"), damage("attack")
+    assert two["type"] == "splash" and one["type"] == "ember" and two["damage"] > one["damage"]  # splash beats ember
+    with pytest.raises(ValueError, match="moves"):  # rest is gone
+        damage("rest")
+
+
+def test_only_grey_moves_can_make_room():
+    plain = wp.starter("ember", 5)
+    assert [m["id"] for m in bt.grey_moves(plain)] == ["guard", "focus", "cheer", "rest"]
+    for focus, left in (("healer", ["focus", "cheer", "rest"]), ("elementalist", ["guard", "focus", "rest"]),
+                        ("daredevil", ["guard", "focus", "cheer"]), ("guardian", ["cheer", "rest"])):
+        assert [m["id"] for m in bt.grey_moves({**plain, "focus": focus})] == left
+
+
+def test_a_daredevils_second_attack_is_plain():
+    bold = {**_focused("ember", "daredevil", 5), "types": {"ember": 5, "splash": 1}, "swaps": {"focus": "attack2"}}
+    step = next(s for s in _round(bt.start(_critter(5, "leaf", "bunny"), [0, 1]), [bold, _pet("leaf")],
+                                  [{"move": "attack2", "slips": 0}, {"move": "guard", "slips": 0}], energy=[30, 30])[0]["log"] if s["who"] == 0)
+    assert step["flash"] is None and "double" not in step["text"]
 
 
 def test_guard_takes_the_hit_for_a_partner_at_half():
