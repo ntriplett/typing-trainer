@@ -941,6 +941,16 @@ def wander_party(body: WanderPartyRequest, conn=Depends(get_db), learner_id: int
     return _wander_act(conn, learner_id, lambda: wander.set_party(conn, learner_id, body.pets))
 
 
+class WanderLevelupRequest(BaseModel):
+    choice: str | None = None
+
+
+@app.post("/api/wander/levelup")
+def wander_levelup(body: WanderLevelupRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Done with the first level-up pop-up (and the choice it asked for, if any)."""
+    return _wander_act(conn, learner_id, lambda: wander.finish_levelup(conn, learner_id, body.choice))
+
+
 @app.post("/api/wander/pets/{pet_id}/second")
 def wander_pet_second(pet_id: int, body: WanderSecondRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """A level 5 pet picks its second type (one of the two offered)."""

@@ -2,6 +2,8 @@
 
 import pytest
 
+from pathlib import Path
+
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
 from app.wanderpaw import pets as wp
@@ -197,3 +199,26 @@ def test_old_saves_fit():
            "visited": [[0, 0]], "seen": {}, "trip": None, "note": None}
     fitted = sv.fit(old)
     assert fitted["party"] is None and len(fitted["team"]) == 5 and fitted["items"] == {} and fitted["version"] == sv.SAVE_VERSION
+
+
+def test_type_names_in_text_are_tokens_for_the_page_to_style():
+    """Words that mean a type say so ("{ember}"); a thing that happens to be
+    called that doesn't (the Sun Ember, dreaming big)."""
+    import re
+
+    from app.wanderpaw import battle as bt
+    from app.wanderpaw import pets as wp
+    from app.wanderpaw import story as st
+
+    assert st.TYPE_NAMES["ember"] == "{ember}"
+    assert st.fill("It takes {need} {ember} levels for {item}.", need=3, item="a nut") == "It takes 3 {ember} levels for a nut."
+    assert st.fill("{item}", item="{leaf}") == "{leaf}"
+    bare = re.compile(r"\b(Ember|Splash|Leaf|Dream|Shock) (levels|lands|friend|pet|attack|Temple)\b")
+    source = (Path(st.__file__)).read_text() + Path(bt.__file__).read_text()
+    code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))
+    assert not bare.findall(code)
+    for member in (wp.starter("ember", 3), {**wp.starter("ember", 3), "types": {"ember": 3, "leaf": 1}}):
+        for focus in (None, *bt.FOCUSES):
+            for m in bt.described_moves({**member, "focus": focus}) + bt.moves({**member, "focus": focus}, "dream"):
+                for text in (m["label"], m["note"]):
+                    assert not re.search(r"\b(Ember|Splash|Leaf|Shock|ember|splash|leaf|shock)\b(?!\})", re.sub(r"\{\w+\}", "", text)), text

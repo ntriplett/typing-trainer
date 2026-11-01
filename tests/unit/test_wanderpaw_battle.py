@@ -57,6 +57,150 @@ def test_strong_types_hit_harder():
         _round(bt.start(ember, [0, 1]), team, [{"move": "brace", "slips": 0}] * 2)
 
 
+# --- focuses ---------------------------------------------------------------------
+
+
+def _focused(kind, focus, level=3):
+    return {**wp.starter(kind, level), "mana": 30, "focus": focus}
+
+
+def _ids(member):
+    return [m["id"] for m in bt.moves(member)]
+
+
+def test_every_type_names_every_focus_and_each_takes_one_grey_move():
+    for t in wd.REGIONS:
+        assert set(bt.FOCUS_NAMES[t]) == set(bt.FOCUSES) and t in bt.GUARD_NAMES
+    assert len(set(bt.FOCUS_REPLACES.values())) == 4
+    for focus in bt.FOCUSES:
+        ids = _ids(_focused("ember", focus))
+        assert len(ids) == 6 and bt.FOCUS_MOVES[focus] in ids and bt.FOCUS_REPLACES[focus] not in ids
+        option = bt.focus_option(wp.starter("ember", 3), focus)
+        assert option["type"] == "ember" and option["note"] and len(option["moves"]) == 6
+    assert bt.strong_against("ember") == ("dream", "leaf") and bt.beaten_by("ember") == "splash"
+    assert bt.no_combo_with("splash") == "leaf"
+
+
+def test_a_passive_move_cant_be_picked():
+    team = [_focused("ember", "healer"), _pet("leaf")]
+    with pytest.raises(ValueError, match="just works"):
+        _round(bt.start(_critter(3), [0, 1]), team, [{"move": "healer", "slips": 0}, {"move": "attack", "slips": 0}], energy=[25, 25])
+    with pytest.raises(ValueError, match="moves"):  # guard is gone
+        _round(bt.start(_critter(3), [0, 1]), team, [{"move": "guard", "slips": 0}, {"move": "attack", "slips": 0}], energy=[25, 25])
+
+
+def test_a_healer_gives_its_partner_energy_and_mana_up_to_the_most():
+    team = [_focused("ember", "healer"), _pet("leaf")]
+    plain = [_pet("ember"), _pet("leaf")]
+    picks = [{"move": "guard" if False else "attack", "slips": 0}] * 2
+    b = {**bt.start(_critter(21), [0, 1]), "energy": 9999, "max": 9999}
+    energy, mana = [25, 10], [30, 5]
+    given = 0
+    for _ in range(8):
+        b, energy, mana = bt.turn(b, team, energy, picks, random.Random(1), mana)
+        energy[1] = 10  # (whatever hit it, it stays hurt: just the healing to see)
+        given += sum(s["act"] == "heal" for s in b["log"])
+    assert b["healed"]["0:energy"] == bt.HEAL_MAX_ENERGY and b["healed"]["0:mana"] == bt.HEAL_MAX_MANA
+    assert mana[1] == 5 + bt.HEAL_MAX_MANA and given == bt.HEAL_MAX_ENERGY
+    heal = bt.turn({**bt.start(_critter(21), [0, 1]), "energy": 9999}, team, [25, 10], picks, random.Random(1), [30, 5])[0]["log"]
+    step = next(s for s in heal if s["act"] == "heal")
+    assert step["target"] == 1 and step["flash"] == [0, "healer"] and "+1 energy" in step["text"] and "+1 mana" in step["text"]
+    assert not any(s["act"] == "heal" for s in bt.turn({**bt.start(_critter(21), [0, 1]), "energy": 9999}, plain, [25, 10], picks, random.Random(1), [30, 5])[0]["log"])
+
+
+def test_an_elementalist_marks_first_so_its_partner_can_set_off_a_combo():
+    team = [_focused("shock", "elementalist"), {**_pet("splash"), "speed": 999}]  # however fast the partner
+    b, _, mana = _round(bt.start(_critter(3, "leaf", "bunny"), [0, 1]), team,
+                        [{"move": "mark", "slips": 0}, {"move": "attack", "slips": 0}], energy=[25, 25], mana=[30, 30])
+    assert b["log"][0]["act"] == "mark" and mana[0] == 30 - bt.MARK_MANA
+    assert b["log"][0]["damage"] == 0
+    assert any(s.get("combo") == "Thunderstorm" for s in b["log"])
+    with pytest.raises(ValueError, match="mana"):
+        _round(bt.start(_critter(3), [0, 1]), team, [{"move": "mark", "slips": 0}, {"move": "attack", "slips": 0}], energy=[25, 25], mana=[0, 30])
+
+
+def test_a_daredevil_hits_twice_as_hard_for_energy_but_never_its_last():
+    plain = [_pet("ember"), _pet("ember")]
+    bold = [_focused("ember", "daredevil"), _pet("ember")]
+    picks = [{"move": "attack", "slips": 0}, {"move": "attack", "slips": 0}]
+    damage = lambda team, energy: next(s["damage"] for s in _round(bt.start(_critter(9, "leaf", "bunny"), [0, 1]), team, picks, energy=energy)[0]["log"] if s["who"] == 0)  # noqa: E731
+    assert damage(bold, [25, 25]) == pytest.approx(2 * damage(plain, [25, 25]), abs=1)
+    step = next(s for s in _round(bt.start(_critter(9, "leaf", "bunny"), [0, 1]), bold, picks, energy=[25, 25])[0]["log"] if s["who"] == 0)
+    assert step["flash"] == [0, "daredevil"] and "double" in step["text"]
+    # only its own type: a second type's hit is plain
+    two = {**bold[0], "types": {"ember": 3, "splash": 1}}
+    assert bt.best_type(two, "ember") == "ember"  # splash is x2 here but ember's doubled to match, and comes first
+    assert bt._daredevil_cost(wp.starter("ember", 3)) == 1 and bt._daredevil_cost(wp.starter("ember", 21)) == 2
+    b = {**bt.start(_critter(1, "leaf", "bunny"), [0, 1]), "skip": 5}  # it can't hit back
+    _, energy, _ = bt.turn(b, bold, [1, 25], picks, random.Random(1), [30, 30])
+    assert energy[0] == 1
+
+
+def test_a_guardian_keeps_two_types_off_its_partner_for_two_rounds():
+    team = [_focused("ember", "guardian"), _pet("leaf")]  # ember stops dream and leaf
+    picks = [{"move": "attack", "slips": 0}] * 2
+    foe = lambda: {**bt.start(_critter(3, "dream", "sheep"), [0, 1]), "energy": 9999}  # noqa: E731
+    seen = {"blocked": 0, "hit": 0}
+    for seed in range(40):
+        b = foe()
+        energy = [25, 25]
+        for r in (1, 2):
+            b, energy, _ = bt.turn(b, team, energy, picks, random.Random(seed + r), [30, 30])
+        assert energy[1] == 25  # nothing got through to the partner
+        seen["blocked"] += any(s["act"] == "blocked" for s in b["log"])
+    assert seen["blocked"]
+    # the third round it's over
+    hurt = 0
+    for seed in range(40):
+        b = {**foe(), "round": bt.GUARDIAN_ROUNDS}
+        _, energy, _ = bt.turn(b, team, [25, 25], picks, random.Random(seed), [30, 30])
+        hurt += energy[1] < 25
+    assert hurt
+    # other types get through, and a creature with a second type uses it
+    b = bt.start(_critter(3, "splash", "dog"), [0, 1])
+    assert not all(bt.turn(b, team, [25, 25], picks, random.Random(s), [30, 30])[1][1] == 25 for s in range(40))
+    two = {**foe(), "second": "shock"}
+    assert bt.foe_type(two, "leaf", bt.strong_against("ember")) == "shock"
+    assert bt.foe_type(foe(), "leaf", bt.strong_against("ember")) is None
+
+
+def test_a_guardians_guard_is_best_against_what_beats_it():
+    team = [_focused("ember", "guardian"), _pet("leaf")]
+    plain = [_pet("ember"), _pet("leaf")]
+    picks = [{"move": "guard", "slips": 0}, {"move": "attack", "slips": 0}]
+
+    def taken(members, kind, species):
+        total = 0
+        for seed in range(60):
+            b = {**bt.start(_critter(5, kind, species), [0, 1]), "energy": 9999}
+            _, energy, _ = bt.turn(b, members, [60, 60], picks, random.Random(seed), [30, 30])
+            total += 60 - energy[0]
+        return total
+
+    assert taken(team, "splash", "dog") < taken(plain, "splash", "dog")  # splash beats ember
+    assert taken(team, "shock", "cat") == pytest.approx(taken(plain, "shock", "cat"), rel=0.5)
+
+
+def test_two_guardians_guarding_never_trip_over_each_other():
+    team = [_focused("ember", "guardian"), _focused("dream", "guardian")]  # ember stops dream, leaf; dream stops leaf, shock
+    for seed in range(40):
+        b = bt.start(_critter(3, "leaf", "bunny"), [0, 1])
+        b, energy, _ = bt.turn(b, team, [25, 25], [{"move": "guard", "slips": 0}] * 2, random.Random(seed), [30, 30])
+        assert energy == [25, 25]
+
+
+def test_moves_away_from_battle_say_just_what_they_do():
+    pet = wp.starter("ember", 3)
+    moves = {m["id"]: m for m in bt.described_moves(pet, mana=2)}
+    assert list(moves) == ["attack", "big", "guard", "focus", "cheer", "rest"]
+    hit = bt.pet_hit(pet["power"])
+    assert moves["attack"]["label"] == "{ember} attack" and str(round(hit)) in moves["attack"]["note"]
+    assert str(round(hit * bt.BIG)) in moves["big"]["note"] and "Glowing" in moves["big"]["note"]
+    assert moves["big"]["can"] is False  # not enough mana
+    both = {m["id"]: m for m in bt.described_moves({**pet, "types": {"shock": 3, "ember": 3}})}
+    assert both["attack"]["label"] == "{shock} or {ember} attack" and "Static or Glowing" in both["big"]["note"]
+
+
 def test_six_moves_each_with_a_note():
     pet = wp.starter("ember", 3)
     moves = bt.moves(pet, "dream", mana=2)

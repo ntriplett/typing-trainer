@@ -25,7 +25,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-TYPE_NAMES = {"ember": "Ember", "splash": "Splash", "leaf": "Leaf", "dream": "Dream", "shock": "Shock"}
+TYPE_NAMES = {t: "{" + t + "}" for t in ("ember", "splash", "leaf", "dream", "shock")}  # see world.tw
+
+
+class _KeepTokens(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def fill(template: str, **values) -> str:
+    """str.format for text with type tokens in it: "{item}" fills, "{ember}" stays."""
+    return template.format_map(_KeepTokens(values))
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,11 +46,11 @@ class RegionStory:
 
 
 STORIES = {
-    "leaf": RegionStory("Oak Seed", "Evergreen Leaf", "Elder Leaf"),
-    "splash": RegionStory("Tide Pearl", "Tide Shell", "Elder Splash"),
-    "ember": RegionStory("Sun Ember", "Hearth Flame", "Elder Ember"),
-    "dream": RegionStory("Moon Feather", "Moon Opal", "Elder Dream"),
-    "shock": RegionStory("Thunder Key", "Storm Feather", "Elder Shock"),
+    "leaf": RegionStory("Oak Seed", "Evergreen Leaf", "Elder {leaf}"),
+    "splash": RegionStory("Tide Pearl", "Tide Shell", "Elder {splash}"),
+    "ember": RegionStory("Sun Ember", "Hearth Flame", "Elder {ember}"),
+    "dream": RegionStory("Moon Feather", "Moon Opal", "Elder {dream}"),
+    "shock": RegionStory("Thunder Key", "Storm Feather", "Elder {shock}"),
 }
 
 
@@ -92,7 +102,7 @@ class Npc:
 NPCS = {
     ("splash", "splash"): Npc(
         "Captain Biscuit", "dog", "Lucky Whistle", "Woof! Ahoy there, matey!",
-        "My ferry crossed to the Ember lands every day, till the line snapped.",
+        "My ferry crossed to the {ember} lands every day, till the line snapped.",
         "splice a new line and have her sailing by teatime",
         "I'll teach one of your pets to swim against the tide.",
         "{npc} takes {pet} for laps around the bay.", "Best crew a captain ever had!"),
@@ -186,16 +196,16 @@ SHOPS = {"splash": "Shellby's Shells", "ember": "Cinder & Sons", "dream": "Moonl
 
 # Where a lost thing is (by where it hides), with {item}, {place}, {type}.
 FETCH_HINTS = {
-    "dive": "I dropped my {item} into the deep pool in {place}. I'm no swimmer! It takes 3 Splash levels to dive for it.",
-    "cave": "I left my {item} deep in the cave in {place}. It's pitch dark in there; it takes 3 Ember levels to light the way.",
-    "glade": "My {item} is in the hidden glade in {place}. The vines are thick; it takes 3 Leaf levels to part them.",
-    "hole": "My {item} fell down the dark burrow in {place}. It takes 3 Ember levels to see down there.",
-    "grotto": "My {item} is somewhere in the misty grotto in {place}. A stone face sleeps across the door; it takes 3 Dream levels to sing it open.",
-    "mine": "I dropped my {item} down the old mine in {place}. The lift needs power; it takes 3 Shock levels to start it.",
-    "tangle": "My {item} is caught in the thorny vines in {place}. It takes 3 Leaf levels to reach it.",
-    "rune": "I left my {item} by the rune stone in {place}. It's sealed by the runes; it takes 3 Dream levels to read them.",
-    "ring": "My {item} is inside the mushroom ring in {place}. It takes 3 Dream levels to get in.",
-    "machine": "My {item} is stuck in the old machine in {place}. It takes 3 Shock levels to start it up.",
+    "dive": "I dropped my {item} into the deep pool in {place}. I'm no swimmer! It takes 3 {splash} levels to dive for it.",
+    "cave": "I left my {item} deep in the cave in {place}. It's pitch dark in there; it takes 3 {ember} levels to light the way.",
+    "glade": "My {item} is in the hidden glade in {place}. The vines are thick; it takes 3 {leaf} levels to part them.",
+    "hole": "My {item} fell down the dark burrow in {place}. It takes 3 {ember} levels to see down there.",
+    "grotto": "My {item} is somewhere in the misty grotto in {place}. A stone face sleeps across the door; it takes 3 {dream} levels to sing it open.",
+    "mine": "I dropped my {item} down the old mine in {place}. The lift needs power; it takes 3 {shock} levels to start it.",
+    "tangle": "My {item} is caught in the thorny vines in {place}. It takes 3 {leaf} levels to reach it.",
+    "rune": "I left my {item} by the rune stone in {place}. It's sealed by the runes; it takes 3 {dream} levels to read them.",
+    "ring": "My {item} is inside the mushroom ring in {place}. It takes 3 {dream} levels to get in.",
+    "machine": "My {item} is stuck in the old machine in {place}. It takes 3 {shock} levels to start it up.",
     "pocket": "My {item} rolled off into {place}, behind a gate. Get past it, and it's right there.",
     "ground": "I dropped my {item} somewhere in {place}.",
 }
@@ -226,7 +236,7 @@ XP_HARD_NOOK = 20  # the first search of a nook that needed type levels
 
 FORD_ENERGY = 2  # wading across
 FORD_ENERGY_SWIM = 1  # ... with a swimmer along
-SWIM_LEVELS = 1  # Splash levels that make a swimmer
+SWIM_LEVELS = 1  # {splash} levels that make a swimmer
 
 CHEST_COINS = (5, 20)  # + ring from Camp
 SHRINE_ENERGY = 15  # at full accuracy, once per shrine per trip
@@ -270,17 +280,17 @@ class NookWords:
 
 NOOKS = {
     "cave": NookWords("Cave", "A cool, quiet cave in the rock.", "Explore",
-                      "It's too dark to go deeper. It needs {need} Ember levels to light the way (you have {have})."),
+                      "It's too dark to go deeper. It needs {need} {ember} levels to light the way (you have {have})."),
     "grotto": NookWords("Misty grotto", "A doorway in the rock, full of soft purple mist.", "Explore",
-                        "A stone face sleeps across the way in. It takes {need} Dream levels to sing it open (you have {have})."),
+                        "A stone face sleeps across the way in. It takes {need} {dream} levels to sing it open (you have {have})."),
     "mine": NookWords("Old mine", "An old mine shaft with a rusty lift.", "Ride down",
-                      "The lift is dead. It takes {need} Shock levels to power it up (you have {have})."),
+                      "The lift is dead. It takes {need} {shock} levels to power it up (you have {have})."),
     "tunnel": NookWords("Tunnel", "A long tunnel right through the rock. You can see light at the other end."),
     "glade": NookWords("Hidden glade", "A sunny little clearing, hidden in the trees.", "Look around",
-                       "Vines hang thick across the way in. It needs {need} Leaf levels to part them (you have {have})."),
+                       "Vines hang thick across the way in. It needs {need} {leaf} levels to part them (you have {have})."),
     "fishing": NookWords("Fishing spot", "The water is clear and the fish are jumping."),
     "dive": NookWords("Deep pool", "Something glints far down in the water.", "Dive in",
-                      "It's too deep to dive. It needs {need} Splash levels (you have {have})."),
+                      "It's too deep to dive. It needs {need} {splash} levels (you have {have})."),
     "buried": NookWords("Buried chest", "A chest corner pokes out of the dirt.", "Dig it up"),
     "lookout": NookWords("Lookout", "A tall rock you can climb to see far away.", "Climb up"),
     "spring": NookWords("Warm spring", "A little spring bubbles up, warm and fresh.", "Take a sip"),
@@ -292,15 +302,15 @@ NOOKS = {
     "traveler": NookWords("A traveler", "A traveler is resting here, happy to chat."),
     "well": NookWords("Old well", "A stone well. The rope still works!", "Pull up the bucket"),
     "rune": NookWords("Rune stone", "A stone covered in sleepy, swirly marks.", "Read the runes",
-                      "The runes swim before your eyes. It needs {need} Dream levels to read them (you have {have})."),
+                      "The runes swim before your eyes. It needs {need} {dream} levels to read them (you have {have})."),
     "ring": NookWords("Mushroom ring", "A perfect ring of mushrooms. It hums softly.", "Step inside",
-                      "The ring won't let you in. It needs {need} Dream levels (you have {have})."),
+                      "The ring won't let you in. It needs {need} {dream} levels (you have {have})."),
     "machine": NookWords("Old machine", "Gears and wires, rusty and still.", "Power it up",
-                         "It's dead as a doornail. It needs {need} Shock levels to wake it (you have {have})."),
+                         "It's dead as a doornail. It needs {need} {shock} levels to wake it (you have {have})."),
     "tangle": NookWords("Overgrown nook", "Thorny vines have grown over something.", "Reach in",
-                        "The vines are too thick. It needs {need} Leaf levels to part them (you have {have})."),
+                        "The vines are too thick. It needs {need} {leaf} levels to part them (you have {have})."),
     "hole": NookWords("Dark burrow", "A deep, dark burrow.", "Crawl in",
-                      "It's pitch black inside. It needs {need} Ember levels to light it (you have {have})."),
+                      "It's pitch black inside. It needs {need} {ember} levels to light it (you have {have})."),
 }
 ONCE_FINDS = ("coins", "clue", "view")  # once ever
 DAILY_FINDS = ("forage", "energy", "fish")  # once a trip
@@ -327,7 +337,7 @@ LORE = [
     "A note says: when the bells ring on the hill, a storm is coming.",
 ]
 TIPS = [
-    "\"Wading is slow, but a Splash friend makes it easy.\"",
+    "\"Wading is slow, but a {splash} friend makes it easy.\"",
     "\"Dead ends aren't always empty. Poke around!\"",
     "\"Climb a lookout and the whole land opens up.\"",
     "\"A clue will lead you to treasure. Look for it on your map.\"",

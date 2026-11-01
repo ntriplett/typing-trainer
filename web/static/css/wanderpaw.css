@@ -987,3 +987,203 @@ main.wander {
 .wander-combo-list {
   padding-left: 1rem;
 }
+
+/* A pet levels up: its page, like the party book's, with what grew and any choice it brings. */
+.wander-play.leveling > .wander-board,
+.wander-play.leveling > .wander-side {
+  display: none;
+}
+
+.wander-levelup {
+  overflow: hidden;
+}
+
+.wander-levelup-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  gap: 0.15rem 1rem;
+  margin: 0.4rem 0 0;
+}
+
+.wander-levelup-stats dt {
+  color: var(--ink-soft);
+}
+
+.wander-levelup-stats dd {
+  margin: 0;
+}
+
+.wander-levelup-gain {
+  color: #4f7f3d;
+  font-weight: bold;
+}
+
+.wander-levelup-ask {
+  margin: 0;
+}
+
+.wander-levelup-options {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.4rem;
+}
+
+.wander-levelup-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.3rem 0.5rem;
+  border: 3px solid;
+  cursor: pointer;
+}
+
+.wander-levelup-option.on {
+  outline: 4px solid var(--outline);
+}
+
+.wander-levelup-option .wander-move-note {
+  white-space: normal;
+}
+
+/* a move this choice would bring */
+.wander-move.fresh {
+  outline: 4px solid var(--outline);
+  animation: wander-pop 300ms ease-out;
+}
+
+.wander-move-always {
+  align-self: flex-start;
+  padding: 0 0.4rem;
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--surface);
+  background: var(--outline);
+}
+
+/* a passive move at work */
+.wander-move.flash {
+  animation: wander-move-flash 900ms ease-out;
+}
+
+@keyframes wander-move-flash {
+  20% { box-shadow: 0 0 0 5px var(--fx), 0 0 18px 6px var(--fx); }
+}
+
+.wander-heal-spark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--fx);
+  box-shadow: 0 0 6px var(--fx);
+  pointer-events: none;
+  opacity: 0;
+  animation: wander-heal-rise 1000ms steps(10) forwards;
+}
+
+@keyframes wander-heal-rise {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-60px); opacity: 0; }
+}
+
+.wander-levelup-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.wander-levelup-confetti i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  animation: wander-confetti 1100ms steps(14) forwards;
+}
+
+@keyframes wander-confetti {
+  0% { transform: translateY(0); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(380px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wander-levelup-confetti, .wander-heal-spark { display: none; }
+  .wander-move.flash, .wander-move.fresh { animation: none; }
+}
+
+/* The party book: a whole screen like a battle's, the board and side put away. */
+.wander-play.partying > .wander-board,
+.wander-play.partying > .wander-side {
+  display: none;
+}
+
+.wander-party-split {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.wander-party-scene {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 3px solid var(--outline);
+  image-rendering: pixelated;
+}
+
+.wander-party .hint {
+  margin: 0.4rem 0 0;
+}
+
+.wander-level {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0 0.6rem;
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--surface);
+  background: var(--outline);
+}
+
+.wander-party-name {
+  font-size: 24px;
+}
+
+.wander-party .wander-fighter-head {
+  gap: 1rem;
+}
+
+.wander-party .wander-hp {
+  width: 240px;
+  margin-top: 0.3rem;
+}
+
+.wander-hp.xp span {
+  background: #e2a33c;
+}
+
+.wander-party-stats {
+  margin: 0.4rem 0 0;
+}
+
+/* here the notes have room to say it all */
+.wander-party .wander-move-note {
+  overflow: visible;
+  white-space: normal;
+}
+
+@media (max-width: 860px) {
+  .wander-party-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A type's name in text (wander_text.js). */
+.type-word {
+  font-weight: bold;
+}

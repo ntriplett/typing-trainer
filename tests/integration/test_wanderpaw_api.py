@@ -124,6 +124,101 @@ def test_your_pets_make_the_team():
     assert client.post("/api/wander/party", json={"pets": [fox]}).status_code == 400  # not mid-trip
 
 
+def _level_to(pet, lv):
+    now = next(p for p in client.get("/api/wander/pets").json()["pets"] if p["id"] == pet)["xp"]
+    client.post("/api/wander-lab/xp", json={"pet_id": pet, "xp": wp.xp_for(lv) - now})
+    return client.get("/api/wander").json()["levelups"]
+
+
+def _finish(*choices):
+    data = None
+    for choice in choices:
+        data = client.post("/api/wander/levelup", json={"choice": choice}).json()
+    return data
+
+
+def test_level_ups_wait_in_turn_with_what_grew():
+    fox, bunny = _add_pet("fox"), _add_pet("bunny", 2)
+    _level_to(fox, 2)
+    ups = _level_to(bunny, 2)
+    assert [(u["pet"], u["level"]) for u in ups] == [(fox, 2), (bunny, 2)]
+    assert ups[0]["now"]["power"] == ups[0]["was"]["power"] + 1 and ups[0]["now"]["energy"] == ups[0]["was"]["energy"] + 2
+    assert len(ups[0]["moves"]) == 6 and not any(u["choose"] for u in ups)
+    data = client.post("/api/wander/levelup", json={}).json()
+    assert [(u["pet"], u["level"]) for u in data["levelups"]] == [(bunny, 2)]
+    assert client.post("/api/wander/levelup", json={}).json()["levelups"] == []
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    assert client.get("/api/wander").json()["levelups"] == []  # and they stay done
+
+
+def test_level_three_chooses_a_focus_that_changes_its_moves():
+    fox = _add_pet("fox")
+    client.post("/api/wander/trip/start", json={})
+    ups = _level_to(fox, 4)
+    three = ups[1]
+    assert three["level"] == 3 and three["choose"]["kind"] == "focus"
+    options = {o["id"]: o for o in three["choose"]["options"]}
+    assert set(options) == {"healer", "elementalist", "daredevil", "guardian"}
+    assert options["healer"]["label"] == "Cozy Hearth" and options["healer"]["replaces"] == "Guard" and options["healer"]["passive"]
+    # each previews its six moves; choosing nothing doesn't get past it
+    assert "healer" in [m["id"] for m in options["healer"]["moves"]] and "guard" not in [m["id"] for m in options["healer"]["moves"]]
+    _finish(None)  # level 2
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    assert client.post("/api/wander/levelup", json={"choice": "wizard"}).status_code == 400
+    data = _finish("guardian")
+    # on the trip at once, and on the pop-ups still to come
+    me = next(m for m in data["team"] if m["id"] == fox)
+    ids = [m["id"] for m in me["moves"]]
+    assert me["focus"] == "guardian" and "guardian" in ids and "focus" not in ids
+    assert next(m for m in me["moves"] if m["id"] == "guard")["label"] == "Flame Guard"
+    assert "guardian" in [m["id"] for m in data["levelups"][0]["moves"]] and data["levelups"][0]["choose"] is None
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.get_wander_pets(conn, 1)[fox]["focus"] == "guardian"
+
+
+def test_level_five_has_to_choose_a_type_and_it_counts_at_once():
+    fox = _add_pet("fox")
+    client.post("/api/wander/trip/start", json={})
+    ups = _level_to(fox, 6)
+    five = next(u for u in ups if u["level"] == 5)
+    offered = [o["id"] for o in five["choose"]["options"]]
+    assert len(offered) == 2 and {u["level"] for u in ups if u["choose"]} == {3, 5}
+    _finish(None, "healer", None)
+    assert client.post("/api/wander/levelup", json={}).status_code == 400  # no choice
+    assert client.post("/api/wander/levelup", json={"choice": "ember"}).status_code == 400  # its own type
+    data = _finish(offered[0])
+    assert [u["level"] for u in data["levelups"]] == [6]
+    # counted from 5, the level that offered it, and already on the trip's team
+    assert next(m for m in data["team"] if m["id"] == fox)["types"] == {"ember": 6, offered[0]: 2}
+    assert next(p for p in client.get("/api/wander/pets").json()["pets"] if p["id"] == fox)["choices"] is None
+
+
+def test_mythicals_focus_in_their_first_type_and_have_no_type_to_choose():
+    unicorn = _add_pet("unicorn", 5)
+    ups = _level_to(unicorn, 5)
+    assert [u["level"] for u in ups if u["choose"]] == [3]
+    first = wp.SPECIES_TYPES["unicorn"][0]
+    assert all(o["type"] == first for o in ups[1]["choose"]["options"])
+
+
+def test_picking_from_the_party_list_answers_a_waiting_pop_up():
+    fox = _add_pet("fox")
+    five = _level_to(fox, 5)[-1]
+    client.post(f"/api/wander/pets/{fox}/second", json={"type": five["choose"]["options"][0]["id"]})
+    assert client.get("/api/wander").json()["levelups"][-1]["choose"] is None
+
+
+def test_starting_the_world_over_starts_pets_over_but_keeps_stars():
+    fox = _add_pet("fox")
+    _level_to(fox, 4)
+    _finish(None, "healer")
+    client.post(f"/api/wander/pets/{fox}/star")
+    client.post("/api/wander-lab/reset", json={"seed": 7})
+    me = next(p for p in client.get("/api/wander/pets").json()["pets"] if p["id"] == fox)
+    assert me["level"] == 1 and me["focus"] is None and me["starred"]
+    assert client.get("/api/wander").json()["levelups"] == []
+
+
 def test_levels_second_types_and_stars():
     fox = _add_pet("fox")
     unicorn = _add_pet("unicorn", 5)
@@ -168,7 +263,7 @@ def test_a_battle_pays_its_fighters():
     day = data["stats"]["trips"]
     world = wd.generate(seed)
     spot = None
-    for big in sorted(world.hexes):
+    for big in sorted(b for b, h in world.hexes.items() if h.region == wd.HEARTLAND):  # creatures a new party can beat
         local = lc.generate(seed, big)
         here = cr.at(seed, big, day)
         for h in sorted(here):

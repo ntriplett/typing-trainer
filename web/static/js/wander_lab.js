@@ -239,7 +239,7 @@ function renderInfo() {
   const tp = document.getElementById("teleport-button");
   if (tp) tp.onclick = () => act("/api/wander-lab/teleport", { q: h.q, r: h.r });
   document.getElementById("reset-button").onclick = () => {
-    if (confirm(`Start your Wanderpaw world over with seed ${world.seed}? Everything you've explored is forgotten.`)) {
+    if (confirm(`Start your Wanderpaw world over with seed ${world.seed}? Everything you've explored is forgotten, and your pets go back to level 1.`)) {
       act("/api/wander-lab/reset", { seed: world.seed });
     }
   };

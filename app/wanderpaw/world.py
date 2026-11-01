@@ -70,6 +70,12 @@ SHORTCUT_LEVEL = 3  # each side of a shortcut takes exactly one gate this high
 REGIONS = ("splash", "ember", "dream", "leaf", "shock")
 HEARTLAND = "camp"
 
+
+def tw(kind: str) -> str:
+    """A type's name as it goes in text the player reads: "{ember}". The page
+    draws these all caps in the type's color (wander_text.js)."""
+    return "{" + kind + "}"
+
 # region -> [(biome, nearest ring, farthest ring)]
 BIOMES: dict[str, list[tuple[str, int, int]]] = {
     HEARTLAND: [("fields", 0, 1), ("orchard", 0, 1)],

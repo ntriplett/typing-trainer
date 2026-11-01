@@ -30,7 +30,7 @@
 // step (caves and glades only from their doors).
 
 const REGION_NAMES = {
-  camp: "Heartland", ember: "Ember", splash: "Splash", leaf: "Leaf", dream: "Dream", shock: "Shock",
+  camp: "Heartland", ember: "EMBER", splash: "SPLASH", leaf: "LEAF", dream: "DREAM", shock: "SHOCK",
 };
 
 const localCanvas = document.getElementById("wander-local");
@@ -41,7 +41,10 @@ const typer = new Typer();
 let state = null;
 let targets = [];
 let busy = false;
-let mode = "walk"; // walk | screen | line | menu | battle | credits (the picker shows between trips)
+let mode = "walk"; // walk | screen | line | menu | battle | credits | levelup (the picker shows between trips)
+let afterLevelup = "walk"; // where to go back to when the level-up pop-ups are done
+let levelupShown = null; // the pop-up on screen, so it only draws (and celebrates) once
+let levelPick = null; // which of its choices is being looked at
 let fight = null; // this round: {round, picks, able, targets}
 // A round playing back, step by step: {steps, i, cur: what the bars show}.
 let replay = null;
@@ -60,7 +63,7 @@ const words = (name) => name.replace(/_/g, " ");
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
 function say(text, good = false) {
-  message.textContent = text || "";
+  message.innerHTML = wanderText(text);
   message.classList.toggle("good", good);
   message.classList.remove("pop");
   void message.offsetWidth; // restart the pop
@@ -128,6 +131,7 @@ function render() {
   }
   renderKeys();
   renderScreen();
+  renderLevelup();
   renderPicker();
   renderMenu();
   renderBattle();
@@ -151,7 +155,7 @@ function fightWords() {
     return word;
   };
   return fight.able[k].moves
-    .filter((m) => m.can !== false)
+    .filter((m) => m.can !== false && !m.passive)
     .map((m) => {
       let word;
       if (m.size === "phrase") {
@@ -180,7 +184,6 @@ function renderBattle() {
   if (box.hidden) return;
   const b = state.battle;
   if (!fight || fight.round !== b.round) startRound();
-  const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="width:${(100 * e) / m}%"></span></span>`;
   // during a replay, the bars show where everyone stands at that step
   const foeEnergy = replay ? replay.cur.foe : b.energy;
   const petEnergy = (f) => (replay ? replay.cur.pets[f.place] : f.energy);
@@ -205,7 +208,7 @@ function renderBattle() {
     ? replay.steps.slice(0, replay.i + 1).map((e) => e.text)
     : (state.events || []).filter((e) => e.text).map((e) => e.text);
   document.getElementById("battle-log").innerHTML = lines.length
-    ? lines.map((l) => `<li>${esc(l)}</li>`).join("")
+    ? lines.map((l) => `<li>${wanderText(l)}</li>`).join("")
     : `<li class="hint">${esc(`A wild ${b.species} blocks the way!`)}</li>`;
   // your fighters, on the left, each with its moves under it
   const team = document.getElementById("battle-team");
@@ -214,22 +217,14 @@ function renderBattle() {
       const k = fight.able.indexOf(f);
       const picked = k >= 0 ? fight.picks[k] : null;
       const picking = k >= 0 && k === fight.picks.findIndex((p) => !p);
-      const card = (m, word) => {
-        const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
-        const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
-        return `<li class="wander-move ${m.can === false ? "off" : ""}" style="border-color:${color};background:${tint}">
-          <b style="color:${color}">${esc(m.label)}</b>
-          <span class="wander-move-word">${word ? labelHtml(word) : "&nbsp;"}</span>
-          <span class="wander-move-note">${esc(m.note)}</span></li>`;
-      };
       const moves = replay
-        ? `<ul class="wander-moves waiting">${f.moves.map((m) => card(m, null)).join("")}</ul>` // dimmed while the round plays
+        ? `<ul class="wander-moves waiting">${f.moves.map((m) => moveCard(m, null)).join("")}</ul>` // dimmed while the round plays
         : b.over || k < 0
           ? ""
           : picked
-            ? `<p class="wander-picked">Ready: <b>${esc(picked.label)}</b></p>`
+            ? `<p class="wander-picked">Ready: <b>${wanderText(picked.label)}</b></p>`
             : `<ul class="wander-moves ${picking ? "" : "waiting"}">${f.moves
-                .map((m) => card(m, picking && fight.targets.find((t) => t.move.id === m.id)))
+                .map((m) => moveCard(m, (picking && fight.targets.find((t) => t.move.id === m.id)) || null))
                 .join("")}</ul>`;
       return `<div class="wander-fighter ${petEnergy(f) ? "" : "out"}">
         <div class="wander-fighter-head">
@@ -414,10 +409,18 @@ function showStep(s) {
   const color = s.type ? WanderMap.TYPE_COLORS[s.type] : "#e8b33e";
   if (s.act === "hit") {
     retrigger(actor, s.who === "foe" ? "lunge-left" : "lunge-right");
-  } else if (actor && ["guard", "focus", "cheer", "rest"].includes(s.act)) {
+  } else if (actor && ["guard", "focus", "cheer", "rest", "mark", "heal"].includes(s.act)) {
     retrigger(actor, "glow-up");
   } else if (actor && ["skip", "doze"].includes(s.act)) {
     retrigger(actor, "sway");
+  }
+  if (s.flash) {
+    // a passive move at work: its card lights up
+    const card = battleCanvas(s.flash[0])?.closest(".wander-fighter")?.querySelector(`[data-move="${s.flash[1]}"]`);
+    if (card) {
+      card.style.setProperty("--fx", color);
+      retrigger(card, "flash");
+    }
   }
   if (s.combo) {
     // a combo: its name, big, over the creature
@@ -460,10 +463,23 @@ function showStep(s) {
         setTimeout(() => fx.remove(), 900);
         retrigger(target, "shake");
       }
-      const n = s.damage ? `-${s.damage}` : s.gain ? `+${s.gain}` : "";
+      if (s.act === "heal") {
+        // sparkles rising in the healer's color
+        for (let i = 0; i < 10; i++) {
+          const spark = document.createElement("div");
+          spark.className = "wander-heal-spark";
+          spark.style.left = `${x + (i - 5) * 9}px`;
+          spark.style.top = `${y + (i % 3) * 8}px`;
+          spark.style.setProperty("--fx", color);
+          spark.style.animationDelay = `${(i % 4) * 90}ms`;
+          box.appendChild(spark);
+          setTimeout(() => spark.remove(), 1300);
+        }
+      }
+      const n = s.act === "blocked" ? "Blocked!" : s.damage ? `-${s.damage}` : s.gain ? `+${s.gain}` : "";
       if (n) {
         const num = document.createElement("div");
-        num.className = `wander-dmg ${s.gain ? "gain" : ""}`;
+        num.className = `wander-dmg ${s.gain || s.act === "blocked" ? "gain" : ""}`;
         num.textContent = n;
         num.style.left = `${x}px`;
         num.style.top = `${y - at.height / 3}px`;
@@ -532,7 +548,7 @@ function renderKeys() {
   let ready = null;
   if (state.trip && mode === "walk") {
     if (state.screen) ready = state.screen.rest ? "Rest by the fire" : `Go in: ${state.screen.title}`;
-    if (ready) lines.push(`<p class="wander-ready ${ready !== lastReady ? "fresh" : ""}"><kbd class="keycap">Enter</kbd> ${esc(ready)}</p>`);
+    if (ready) lines.push(`<p class="wander-ready ${ready !== lastReady ? "fresh" : ""}"><kbd class="keycap">Enter</kbd> ${wanderText(ready)}</p>`);
   }
   if (ready !== lastReady) {
     lastReady = ready;
@@ -566,8 +582,6 @@ function menuRows() {
       return Object.keys(state.items);
     case "journal":
       return [...state.quests.map((q) => ({ quest: q })), ...state.clues.map((c) => ({ clue: c }))];
-    case "party":
-      return state.team;
     case "log":
       return state.log;
     case "home":
@@ -586,10 +600,126 @@ const HOME_CHOICES = [
   { label: "Keep playing", go: "stay" },
 ];
 
+// Bars and move cards: the battle screen's, and the party book's.
+const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="width:${(100 * e) / m}%"></span></span>`;
+
+function moveCard(m, word, fresh = false) {
+  const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
+  const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
+  const always = `<span class="wander-move-always">Always on</span>`;
+  const slot = word === undefined ? (m.passive ? always : "") : `<span class="wander-move-word">${m.passive ? always : word ? labelHtml(word) : "&nbsp;"}</span>`;
+  return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""}" data-move="${m.id}" style="border-color:${color};background:${tint}">
+    <b style="color:${color}">${wanderText(m.label)}</b>
+    ${slot}
+    <span class="wander-move-note">${wanderText(m.note)}</span></li>`;
+}
+
+// --- the party book: everyone together, then each pet up close ---------------------
+
+const PARTY_SCENE_PX = 6; // the 160x90 habitat grid on a 960x540 canvas
+const PARTY_PET_SCALE = 2 / 3;
+const PARTY_TICK_MS = 120;
+// The scene for where you are, by biome. Just grass so far; new ones go here.
+const PARTY_SCENES = {};
+let partyScene = null; // {key, world, background, timer}
+
+function partySceneStart() {
+  const kind = PARTY_SCENES[state.local.biome] || "meadow";
+  const key = `${kind}:${state.team.map((m) => m.name).join()}`;
+  if (!partyScene || partyScene.key !== key) {
+    if (partyScene) clearInterval(partyScene.timer);
+    const look = HABITAT_LOOKS[kind];
+    const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props, terrain: look.terrain };
+    partyScene = { key, world: PetMotion.create(state.team.filter((m) => m.genes), area, PARTY_PET_SCALE), background: habitatBackground(kind, PARTY_SCENE_PX), timer: null };
+  }
+  if (!partyScene.timer) {
+    partyScene.timer = setInterval(() => {
+      if (!document.getElementById("party-scene")) {
+        clearInterval(partyScene.timer);
+        partyScene.timer = null;
+        return;
+      }
+      PetMotion.step(partyScene.world);
+      partySceneDraw();
+    }, PARTY_TICK_MS);
+  }
+  partySceneDraw();
+}
+
+function partySceneDraw() {
+  const ctx = document.getElementById("party-scene").getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(partyScene.background, 0, 0);
+  PetMotion.draw(partyScene.world, habitatPainter(ctx, PARTY_SCENE_PX), { ctx, unit: PARTY_SCENE_PX, tags: true });
+}
+
+function partyPetDetail(m, i) {
+  const energy = state.trip?.pets?.[i] ?? m.energy;
+  const mana = state.trip?.mana?.[i] ?? m.mana;
+  const xp = !m.id
+    ? `<small>A starter: doesn't level up</small>`
+    : m.progress
+      ? `${bar(m.progress[0], m.progress[1], "xp")} <small>${m.progress[0]} / ${m.progress[1]} xp</small>`
+      : `${bar(1, 1, "xp")} <small>Fully leveled</small>`;
+  return `<div class="wander-fighter">
+      <div class="wander-fighter-head">
+        <canvas id="party-pet" width="150" height="120"></canvas>
+        <div>
+          <span class="wander-level">Level ${m.level}</span>
+          <b class="wander-party-name">${esc(m.name)}</b> <small>${words(m.species)}</small>
+          ${chips(m.types)}${state.fighters.includes(i) ? ` <span class="wander-mark">⚔ fights next</span>` : ""}<br>
+          ${bar(energy, m.energy)} <small>${energy} / ${m.energy} energy</small><br>
+          ${bar(mana, m.mana, "mana")} <small class="wander-mana">${mana} / ${m.mana} mana</small><br>
+          ${xp}
+          <p class="wander-party-stats">Power <b>${m.power}</b> &nbsp; Speed <b>${m.speed}</b></p>
+        </div>
+      </div>
+      <ul class="wander-moves">${m.moves.map((move) => moveCard(move)).join("")}</ul>
+    </div>`;
+}
+
+function renderParty() {
+  const box = document.getElementById("party");
+  const on = mode === "menu" && menu.name === "party";
+  box.hidden = !on;
+  box.parentElement.classList.toggle("partying", on);
+  if (!on) return;
+  menu.at = Math.max(0, Math.min(menu.at, state.team.length)); // 0: the whole party
+  const list = document.getElementById("party-list");
+  const row = (i, html) => `<li class="${i === menu.at ? "on" : ""}" data-i="${i}">${html}</li>`;
+  list.innerHTML = row(0, "<b>Whole party</b>") + state.team
+    .map((m, i) => row(i + 1, `${state.fighters.includes(i) ? "⚔ " : ""}${esc(m.name)} <small>${m.id ? `lv ${m.level}` : "starter"}</small>`))
+    .join("");
+  list.querySelectorAll("li[data-i]").forEach((li) => {
+    li.onclick = () => {
+      menu.at = Number(li.dataset.i);
+      render();
+    };
+  });
+  const detail = document.getElementById("party-detail");
+  const keys = document.getElementById("party-keys");
+  const look = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look`;
+  const close = `<kbd class="keycap">Esc</kbd> close`;
+  if (menu.at === 0) {
+    detail.innerHTML = `<canvas id="party-scene" class="wander-party-scene" width="960" height="540"></canvas>
+      <p class="hint">Your party, taking it easy at ${esc(state.local.name)}.</p>`;
+    keys.innerHTML = `${look} &nbsp; ${close}`;
+    partySceneStart();
+    return;
+  }
+  const m = state.team[menu.at - 1];
+  detail.innerHTML = partyPetDetail(m, menu.at - 1);
+  keys.innerHTML = `${look} &nbsp; ${state.trip ? `<kbd class="keycap">F</kbd> fight / sit out (⚔ = fights next) &nbsp; ` : ""}${close}`;
+  const canvas = document.getElementById("party-pet");
+  canvas.hidden = !m.genes;
+  if (m.genes) paintPet(canvas, m, 4);
+}
+
 function renderMenu() {
   const box = document.getElementById("menu");
-  box.hidden = mode !== "menu" || menu.name === "map";
+  box.hidden = mode !== "menu" || menu.name === "map" || menu.name === "party";
   renderAtlas();
+  renderParty();
   if (box.hidden) return;
   const rows = menuRows();
   menu.at = Math.max(0, Math.min(menu.at, rows.length - 1));
@@ -604,7 +734,7 @@ function renderMenu() {
     const item = rows[menu.at];
     body.innerHTML = rows.length
       ? `<div class="wander-menu-split">${list(rows, (k) => `${esc(k)}${state.items[k] > 1 ? ` x${state.items[k]}` : ""}`)}
-          <p class="wander-menu-detail"><b>${esc(item)}</b><br>${esc(state.about[item] || "")}</p></div>`
+          <p class="wander-menu-detail"><b>${esc(item)}</b><br>${wanderText(state.about[item] || "")}</p></div>`
       : `<p class="hint">Nothing yet. Things you find go here.</p>`;
   } else if (menu.name === "journal") {
     title.textContent = "Journal";
@@ -619,31 +749,9 @@ function renderMenu() {
     WanderMap.draw(document.getElementById("journal-map"), state.big, {
       size: 40, trail: true, simple: true, highlight: lit, ...around(lit.length ? lit : [state.big.at]),
     });
-  } else if (menu.name === "party") {
-    title.textContent = "Party";
-    const m = rows[menu.at];
-    body.innerHTML = `<div class="wander-menu-split">
-        ${list(rows, (x, i) => `${state.fighters.includes(i) ? "⚔ " : ""}${esc(x.name)} <small>${x.id ? `lv ${x.level}` : "starter"}</small>`)}
-        <div class="wander-menu-detail">
-          <canvas id="party-pet" width="96" height="80"></canvas><br>
-          <b>${esc(m.name)}</b> <small>(${words(m.species)}${m.id ? "" : ", a starter: doesn't level up"})</small>
-          <p>${chips(m.types)}</p>
-          <dl class="wander-stats-list">
-            <dt>Level</dt><dd>${m.level}${m.id && m.progress ? ` <small>(${m.progress[0]} / ${m.progress[1]} xp)</small>` : m.id && m.progress === null ? " <small>(fully leveled)</small>" : ""}</dd>
-            <dt>Energy</dt><dd>${state.trip && state.trip.pets ? `${state.trip.pets[menu.at]} / ${m.energy}` : m.energy}</dd>
-            <dt>Power</dt><dd>${m.power}</dd>
-            <dt>Speed</dt><dd>${m.speed}</dd>
-            <dt>Mana</dt><dd>${m.mana}</dd>
-          </dl>
-          <p class="hint">Power, speed and mana matter in battles (coming soon).</p>
-        </div></div>`;
-    if (state.trip) keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look &nbsp; <kbd class="keycap">F</kbd> fight / sit out (⚔ = fights next) &nbsp; <kbd class="keycap">Esc</kbd> close`;
-    const pet = m.id && pets && pets.pets.find((x) => x.id === m.id);
-    if (pet) paintPet(document.getElementById("party-pet"), pet);
-    else document.getElementById("party-pet").hidden = true;
   } else if (menu.name === "log") {
     title.textContent = "Log";
-    body.innerHTML = rows.length ? list([...rows].reverse(), (t) => esc(t)) : `<p class="hint">Nothing has happened yet.</p>`;
+    body.innerHTML = rows.length ? list([...rows].reverse(), (t) => wanderText(t)) : `<p class="hint">Nothing has happened yet.</p>`;
     keys.innerHTML = `<kbd class="keycap">Esc</kbd> close`;
   } else if (menu.name === "combos") {
     title.textContent = "Combo book";
@@ -664,11 +772,11 @@ function renderMenu() {
             .join("")}</tr>`)
           .join("")}
       </table>
-      ${found.length ? `<ul class="wander-combo-list">${found.map((c) => `<li><b>${esc(c.name)}</b> (${c.mark} + ${c.hit}): ${esc(c.says)}</li>`).join("")}</ul>` : ""}`;
+      ${found.length ? `<ul class="wander-combo-list">${found.map((c) => `<li><b>${esc(c.name)}</b> (${c.mark} + ${wanderText(`{${c.hit}}`)}): ${wanderText(c.says)}</li>`).join("")}</ul>` : ""}`;
     keys.innerHTML = `<kbd class="keycap">Esc</kbd> close`;
   } else if (menu.name === "home") {
     title.textContent = "Heading home?";
-    body.innerHTML = list(rows, (c, i) => `<kbd class="keycap">${i + 1}</kbd> ${esc(c.label)}`);
+    body.innerHTML = list(rows, (c, i) => `<kbd class="keycap">${i + 1}</kbd> ${wanderText(c.label)}`);
     keys.innerHTML = `<kbd class="keycap">Enter</kbd> choose &nbsp; <kbd class="keycap">Esc</kbd> keep playing`;
   }
   body.querySelectorAll("li[data-i]").forEach((li) => {
@@ -747,7 +855,7 @@ function placeInfo(hex) {
     </dl>`;
 }
 
-const questLine = (q) => `<b>${esc(q.title)}</b>: ${q.done ? "done!" : esc(q.text)}`;
+const questLine = (q) => `<b>${wanderText(q.title)}</b>: ${q.done ? "done!" : wanderText(q.text)}`;
 const clueLine = (c) => `Clue from ${esc(c.from)}: dig in ${esc(c.to)}${c.found ? " (dug up!)" : ""}`;
 
 async function chooseHome(i) {
@@ -776,7 +884,8 @@ function menuKey(e) {
     render();
   } else if (menu.name === "party" && (e.key === "f" || e.key === "F") && state.trip) {
     // pick who fights next: up to two
-    const at = menu.at;
+    if (menu.at === 0) return; // the whole party's picture
+    const at = menu.at - 1;
     let slots = state.fighters.includes(at) ? state.fighters.filter((i) => i !== at) : [...state.fighters, at];
     slots = slots.slice(-2);
     send("/api/wander/fighters", { slots }).then((data) => data && apply(data));
@@ -916,7 +1025,7 @@ function renderScreen() {
   screenBox.classList.toggle("wander-credits", mode === "credits");
   if (mode === "credits") {
     title.textContent = "The End";
-    text.innerHTML = state.credits.map((l) => esc(l) || "&nbsp;").join("<br>");
+    text.innerHTML = state.credits.map((l) => wanderText(l) || "&nbsp;").join("<br>");
     keys.innerHTML = `<kbd class="keycap">Enter</kbd> back to the map`;
     return;
   }
@@ -926,8 +1035,8 @@ function renderScreen() {
     screenBox.hidden = true;
     return;
   }
-  title.textContent = s.title;
-  text.textContent = s.text;
+  title.innerHTML = wanderText(s.title);
+  text.innerHTML = wanderText(s.text);
   if (mode === "line") {
     const chars = [...typing.line];
     line.innerHTML = chars
@@ -940,17 +1049,118 @@ function renderScreen() {
     return;
   }
   if (s.options && s.options.length > 1) {
-    keys.innerHTML = `${s.options.map((o, i) => `<kbd class="keycap">${i + 1}</kbd> ${esc(o.label)}`).join("<br>")}<br><kbd class="keycap">Esc</kbd> leave`;
+    keys.innerHTML = `${s.options.map((o, i) => `<kbd class="keycap">${i + 1}</kbd> ${wanderText(o.label)}`).join("<br>")}<br><kbd class="keycap">Esc</kbd> leave`;
     return;
   }
   keys.innerHTML = s.action
-    ? `<kbd class="keycap">Enter</kbd> ${esc(s.label)} &nbsp; <kbd class="keycap">Esc</kbd> leave`
+    ? `<kbd class="keycap">Enter</kbd> ${wanderText(s.label)} &nbsp; <kbd class="keycap">Esc</kbd> leave`
     : `<kbd class="keycap">Enter</kbd> leave`;
 }
 
+const LEVEL_STATS = [["energy", "Energy"], ["mana", "Mana"], ["power", "Power"], ["speed", "Speed"]];
+const CONFETTI = ["#e2a33c", "#c8553d", "#6d9f58", "#4f8fb8", "#a76fb0"];
+
+// Looks like a pet's page in the party book: stats with what grew, its six
+// moves, and below them any choice to make. A number previews a choice in
+// the six moves; Enter makes it.
+function renderLevelup() {
+  const box = document.getElementById("levelup");
+  const up = mode === "levelup" ? state.levelups[0] : null;
+  box.hidden = !up;
+  box.parentElement.classList.toggle("leveling", !!up);
+  if (!up) {
+    levelupShown = null;
+    return;
+  }
+  const entry = `${up.pet}:${up.level}`;
+  const id = `${entry}:${levelPick}`;
+  if (levelupShown === id) return;
+  if (!levelupShown || !levelupShown.startsWith(`${entry}:`)) {
+    document.getElementById("levelup-confetti").innerHTML = Array.from({ length: 36 }, (_, i) =>
+      `<i style="left:${(i * 37) % 100}%;background:${CONFETTI[i % CONFETTI.length]};animation-delay:${(i % 7) * 70}ms"></i>`).join("");
+  }
+  levelupShown = id;
+  const options = up.choose ? up.choose.options : [];
+  const pick = options[levelPick];
+  const moves = pick ? pick.moves : up.moves;
+  const types = pick && up.choose.kind === "second" ? { ...up.types, [pick.id]: 1 } : up.types;
+  const title = up.max ? `Fully leveled!` : `Level up!`;
+  document.getElementById("levelup-detail").innerHTML = `<div class="wander-fighter">
+      <div class="wander-fighter-head">
+        <canvas id="levelup-pet" width="150" height="120"></canvas>
+        <div>
+          <span class="wander-level">Level ${up.level}</span>
+          <b class="wander-party-name">${esc(up.name)}</b> <small>${words(up.species)}</small>
+          ${chips(types)} <b id="levelup-title">${title}</b>
+          <dl class="wander-levelup-stats" id="levelup-stats">${LEVEL_STATS.map(([k, name]) => {
+            const later = k === "energy" && state.trip ? ` <small>(from tomorrow)</small>` : "";
+            return `<dt>${name}</dt><dd>${up.was[k]} &rarr; <b>${up.now[k]}</b> <span class="wander-levelup-gain">+${up.now[k] - up.was[k]}</span>${later}</dd>`;
+          }).join("")}</dl>
+        </div>
+      </div>
+      <ul class="wander-moves">${moves.map((m, i) => moveCard(m, undefined, pick && m.label !== up.moves[i].label)).join("")}</ul>
+    </div>`;
+  document.getElementById("levelup-choice").innerHTML = options.length
+    ? `<h3 class="wander-levelup-ask">${up.choose.kind === "focus" ? `What will ${esc(up.name)} focus on?` : `${esc(up.name)} can learn a second type!`}</h3>
+       <ul class="wander-levelup-options">${options.map((o, i) => levelOption(o, i)).join("")}</ul>`
+    : "";
+  const more = state.levelups.length - 1;
+  const left = more ? ` &nbsp; <small>${more} more to celebrate</small>` : "";
+  document.getElementById("levelup-keys").innerHTML = (options.length
+    ? `${options.map((_, i) => `<kbd class="keycap">${i + 1}</kbd>`).join("")} look at a choice${pick ? ` &nbsp; <kbd class="keycap">Enter</kbd> choose ${wanderText(pick.label)}` : ""}`
+    : `<kbd class="keycap">Enter</kbd> hooray!`) + left;
+  box.querySelectorAll("[data-option]").forEach((el) => {
+    el.onclick = () => {
+      levelPick = Number(el.dataset.option);
+      render();
+    };
+  });
+  const canvas = document.getElementById("levelup-pet");
+  canvas.hidden = !up.genes;
+  if (up.genes) paintPet(canvas, up, 4);
+}
+
+function levelOption(o, i) {
+  const color = WanderMap.TYPE_COLORS[o.type];
+  const on = i === levelPick ? "on" : "";
+  return `<li class="wander-levelup-option ${on}" data-option="${i}" style="border-color:${color};background:${TYPE_TINT[o.type]}">
+    <small><kbd class="keycap">${i + 1}</kbd> ${esc(o.title)}</small>
+    <b style="color:${color}">${wanderText(o.label)}</b>
+    ${o.passive ? `<span class="wander-move-always">Always on</span>` : ""}
+    <span class="wander-move-note">${wanderText(o.note)}</span>
+    ${o.replaces ? `<small>Replaces ${esc(o.replaces)}.${o.also ? ` ${esc(o.also)}` : ""}</small>` : ""}
+  </li>`;
+}
+
+function levelupKey(e) {
+  const up = state.levelups[0];
+  if (!up.choose) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finishLevelup(null);
+    }
+    return;
+  }
+  if (up.choose.options[Number(e.key) - 1]) {
+    levelPick = Number(e.key) - 1;
+    render();
+  } else if (e.key === "Enter" && levelPick !== null) {
+    e.preventDefault();
+    finishLevelup(up.choose.options[levelPick].id);
+  }
+}
+
+async function finishLevelup(choice) {
+  const data = await send("/api/wander/levelup", { choice });
+  if (!data) return;
+  levelPick = null;
+  apply(data);
+  loadPets(); // new levels, new types
+}
+
 function noteFor(data) {
-  // (a battle's blow-by-blow goes in its own log, not up here)
-  const texts = (data.events || []).filter((e) => e.text && e.kind !== "hit").map((e) => e.text);
+  // (a battle's blow-by-blow goes in its own log, and level-ups get a pop-up)
+  const texts = (data.events || []).filter((e) => e.text && e.kind !== "hit" && e.kind !== "level").map((e) => e.text);
   if (data.note === "rested" && !data.trip) texts.push("You head home for the night. Tomorrow you'll set off from the nearest campfire you've rested at.");
   if (data.note === "new_day") texts.push("A new day! You're full of energy.");
   return texts.join(" ");
@@ -996,6 +1206,12 @@ function apply(data) {
   typer.release();
   pickTargets();
   if (data.credits) mode = "credits";
+  if (data.levelups.length && !data.battle && mode !== "line" && mode !== "credits") {
+    if (mode !== "levelup") afterLevelup = mode === "screen" ? "screen" : "walk";
+    mode = "levelup";
+  } else if (mode === "levelup" && !data.levelups.length) {
+    mode = afterLevelup;
+  }
   render();
 }
 
@@ -1160,6 +1376,7 @@ document.addEventListener("keydown", (e) => {
   else if (mode === "battle") battleKey(e);
   else if (mode === "menu") menuKey(e);
   else if (mode === "line") lineKey(e);
+  else if (mode === "levelup") levelupKey(e);
   else screenKey(e);
 });
 

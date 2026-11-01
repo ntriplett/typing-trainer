@@ -904,6 +904,31 @@ creature spells, temple bosses, a level 21 bonus that helps from outside the fig
 simulated fights, sessions to levels 5/10/15/20, and TARGETS for how the game should feel. Run it around big balance
 changes; it exits 1 if a number leaves its target.
 
+**Level-up pop-ups (2026-11-01).** Each level gained queues a pop-up in the save (`levelups`; survives reloads, shown
+one at a time, after any battle): what grew, and at odd levels a choice that has to be made (pets.level_choice; so far
+only level 5's second type, other levels just show stats). `POST /api/wander/levelup` finishes the first one. The
+lab's XP buttons queue them too. The party list's pick stays for pets that reached 5 before this.
+
+**Party book (2026-11-01).** A whole screen like a battle's (the board and side put away). Opens on "Whole party": the
+team moving around a scene for where you are (PARTY_SCENES by biome; only the grass Meadow habitat so far, using
+habitats.js and pet_motion.js). Each pet: big level, energy, mana and XP bars, power, speed, and its six moves as
+battle-style cards saying what they do with its real numbers (battle.described_moves, sent as `moves` on each team member).
+
+**Focuses (2026-11-01, level 3).** Odd levels bring a choice; level 3 picks one of four focuses, themed by the pet's first
+type (battle.FOCUS_NAMES, `Record.focus`), each taking over a grey move: Healer for Guard (passive: partner +1 energy up to
+5, +1 mana up to 3, a battle, each round), Elementalist for Cheer (typed, 1 mana, goes first of all, no damage, leaves its
+mark), Daredevil for Rest (passive: its type's Attack and Big x2, each 4% of its energy, never its last), Guardian for Focus
+(passive: partner can't be hurt by the two types it's strong against for 2 rounds; creatures with another type use it; Guard
+turns its color and takes 25% from the type that beats it). Permanent for now; a later level may replace it. The level-up
+screen is a whole page like the party book's: a number previews a choice in the six moves, Enter makes it. "Start my world
+over" now sends pets back to level 1 (stars stay).
+
+**Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
+it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;
+`story.fill` instead of `str.format` for templates holding tokens), and the page's `wanderText` (wander_text.js) draws them.
+Use it for anything that shows game text. A thing merely named with the word (the Sun Ember, the Evergreen Leaf, "dream big",
+the Ember Peaks biome) stays plain. Shock's text is a darker orange so it can be read on our paper.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

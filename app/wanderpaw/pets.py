@@ -54,6 +54,7 @@ MYTHICAL = frozenset(s for s, (_, second) in SPECIES_TYPES.items() if second)
 XP_FIRST_LEVEL = 500
 XP_GROWTH = 1.08
 MAX_LEVEL = 21
+FOCUS_LEVEL = 3
 SECOND_TYPE_LEVEL = 5
 PARTY_SIZE = 5
 STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
@@ -68,6 +69,7 @@ class Record:
     second_at: int | None = None
     partners: dict[str, int] = field(default_factory=dict)  # type -> battles fought beside it
     starred: bool = False
+    focus: str | None = None  # what it chose at FOCUS_LEVEL (battle.FOCUSES)
 
 
 def can_go(species: str) -> bool:
@@ -137,7 +139,20 @@ def pick_second(seed: int, species: str, rec: Record, choice: str) -> Record:
     offered = second_choices(seed, species, rec)
     if not offered or choice not in offered:
         raise ValueError("That type isn't one of the choices.")
-    return replace(rec, second=choice, second_at=level(rec.xp))
+    return learn_second(rec, choice, level(rec.xp))
+
+
+def learn_second(rec: Record, choice: str, at: int) -> Record:
+    return replace(rec, second=choice, second_at=at)
+
+
+def learn_focus(rec: Record, focus: str) -> Record:
+    return replace(rec, focus=focus)
+
+
+def at_level(rec: Record, lv: int) -> Record:
+    """The record as it stands on reaching level lv."""
+    return replace(rec, xp=xp_for(lv))
 
 
 def note_battle(rec: Record, partner_types: list[str]) -> Record:
@@ -157,7 +172,7 @@ def gain_xp(rec: Record, amount: int) -> Record:
 
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
-    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp),
+    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus,
             "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
             "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
@@ -191,7 +206,7 @@ def team_energy(members: list[dict]) -> int:
 
 
 def record_json(rec: Record) -> dict:
-    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred}
+    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus}
 
 
 def record_from(data: dict | None) -> Record:

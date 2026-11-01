@@ -73,6 +73,9 @@ def test_tough_creatures_show_both_types_and_the_party_book_shows_this_levels_xp
     expect(page.locator(f'#lab-pets [data-xp="{fox}"]').first).to_have_attribute("data-n", str(wp.xp_for(4) - wp.xp_for(3) - 10))
 
     page.goto(f"{live_server}/wanderpaw")
+    page.request.post(f"{live_server}/api/wander/levelup", data={})  # the lab's level 2 pop-up
+    page.request.post(f"{live_server}/api/wander/levelup", data={"choice": "healer"})  # and level 3's
+    page.reload()
     seed = page.request.get(f"{live_server}/api/wander-lab/world").json()["seed"]
     day = page.request.post(f"{live_server}/api/wander/trip/start", data={}).json()["stats"]["trips"]
     world = wd.generate(seed)
@@ -84,8 +87,15 @@ def test_tough_creatures_show_both_types_and_the_party_book_shows_this_levels_xp
     page.reload()
     page.wait_for_function("state && state.trip")
     page.keyboard.press("3")
-    expect(page.locator(".wander-stats-list").first).to_contain_text(f"10 / {wp.xp_for(4) - wp.xp_for(3)} xp")
+    expect(page.locator("#party-scene")).to_be_visible()  # the whole party first
+    expect(page.locator("#wander-local")).to_be_hidden()
+    page.keyboard.press("ArrowDown")
+    detail = page.locator("#party-detail")
+    expect(detail).to_contain_text(f"10 / {wp.xp_for(4) - wp.xp_for(3)} xp")
+    expect(detail.locator(".wander-level")).to_have_text("Level 3")
+    expect(detail.locator(".wander-move")).to_have_count(6)
     page.keyboard.press("Escape")
+    expect(page.locator("#party")).to_be_hidden()
 
     g = lc.to_world(big, h)
     page.request.post(f"{live_server}/api/wander/walk", data={"q": g[0], "r": g[1]})
@@ -93,3 +103,60 @@ def test_tough_creatures_show_both_types_and_the_party_book_shows_this_levels_xp
     foe = page.locator("#battle-foe-info")
     expect(foe).to_contain_text(f"level {c.level}")
     expect(foe.locator(".type-chip")).to_have_count(2)
+    expect(page.locator("#battle-team .wander-move")).to_have_count(12)  # six each, the same cards as the party's
+    # words for the one picking now: Rusty's Healer focus just works, so it has one less
+    expect(page.locator("#battle-team .wander-word")).to_have_count(5)
+    expect(page.locator('#battle-team [data-move="healer"]')).to_contain_text("Always on")
+
+
+def test_level_ups_pop_up_in_turn_and_level_five_asks_for_a_type(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import pets as wp
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    page.request.post(f"{live_server}/api/wander-lab/xp", data={"pet_id": fox, "xp": wp.xp_for(5)})
+    page.reload()
+    level, keys, choice = page.locator("#levelup-detail .wander-level"), page.locator("#levelup-keys"), page.locator("#levelup-choice")
+    expect(page.locator("#wander-local")).to_be_hidden()  # a whole screen, like the party book's
+    expect(level).to_have_text("Level 2")
+    expect(page.locator("#levelup-stats")).to_contain_text("Power")
+    expect(page.locator("#levelup-detail .wander-move")).to_have_count(6)
+    expect(keys).to_contain_text("more to celebrate")
+    page.keyboard.press("Enter")
+    # level 3: four focuses in its own type, and it has to choose
+    expect(level).to_have_text("Level 3")
+    expect(choice.locator(".wander-levelup-option")).to_have_count(4)
+    expect(choice).to_contain_text("Cozy Hearth")
+    page.keyboard.press("Enter")
+    page.keyboard.press("Escape")
+    expect(level).to_have_text("Level 3")
+    # a number shows it in the six moves; Enter makes it so
+    page.keyboard.press("1")
+    expect(page.locator('#levelup-detail [data-move="healer"].fresh')).to_contain_text("Always on")
+    expect(page.locator('#levelup-detail [data-move="guard"]')).to_have_count(0)
+    page.keyboard.press("Enter")
+    expect(level).to_have_text("Level 4")
+    expect(page.locator('#levelup-detail [data-move="healer"]')).to_have_count(1)  # it shows on later pop-ups
+    page.keyboard.press("Enter")
+    expect(level).to_have_text("Level 5")
+    expect(choice.locator(".wander-levelup-option")).to_have_count(2)
+    page.keyboard.press("Enter")
+    expect(level).to_have_text("Level 5")
+    page.keyboard.press("2")
+    expect(page.locator("#levelup-detail .type-chip")).to_have_count(2)  # the preview
+    page.keyboard.press("Enter")
+    expect(page.locator("#levelup")).to_be_hidden()
+    expect(page.locator("#picker")).to_be_visible()
+    me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
+    assert len(me["types"]) == 2 and me["choices"] is None and me["focus"] == "healer"
+    # the party book shows it too
+    page.keyboard.press("3")
+    page.keyboard.press("ArrowDown")
+    expect(page.locator('#party-detail [data-move="healer"]')).to_contain_text("Cozy Hearth")
+
+    # type names in text: all caps, in the type's color
+    word = page.locator('#party-detail [data-move="attack"] .type-word').first
+    expect(word).to_have_text("EMBER")
+    expect(word).to_have_css("color", "rgb(200, 67, 47)")

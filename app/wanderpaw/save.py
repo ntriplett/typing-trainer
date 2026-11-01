@@ -75,7 +75,7 @@ PARTY_SIZE = wp.PARTY_SIZE
 DEFAULTS = {
     "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
     "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
-    "battle": None, "fighters": None, "combos": [], "camps": [],
+    "battle": None, "fighters": None, "combos": [], "camps": [], "levelups": [],
     "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
@@ -278,7 +278,7 @@ def _place_name(save: dict, big: Hex) -> str:
 
 def _hint(save: dict, g: qs.Giver) -> str:
     spot = g.lost
-    return st.FETCH_HINTS[spot.kind].format(item=_npc(g).lost, place=_place_name(save, spot.big))
+    return st.fill(st.FETCH_HINTS[spot.kind], item=_npc(g).lost, place=_place_name(save, spot.big))
 
 
 def _bump_bridge(save: dict, shortcut: str) -> dict:
@@ -881,7 +881,7 @@ def _plain_nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict
     out = {"title": words.title, "action": None}
     if not has_levels(save, nook.need):
         kind, need = nook.need
-        lines.append(words.locked.format(need=need, type=st.TYPE_NAMES[kind], have=levels(save, kind)))
+        lines.append(st.fill(words.locked, need=need, type=st.TYPE_NAMES[kind], have=levels(save, kind)))
     elif "fish" in _left(save, nook, pid):
         out.update(action="fish", label="Cast a line", line=st.FISH_LINES[pick % len(st.FISH_LINES)])
         lines.append("Type the line to reel one in.")
@@ -1056,6 +1056,10 @@ def _write(conn, learner_id: int, change) -> dict:
     for e in save["events"]:
         if e["kind"] == "coins":
             db.add_coins(conn, learner_id, e["amount"], "game", ref="wanderpaw")
+    for e in save["events"]:  # first: this battle counts toward the types a new level offers
+        if e["kind"] == "fought":
+            rec = wp.note_battle(wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"])), e["partners"])
+            db.save_wander_pet(conn, learner_id, e["pet"], wp.record_json(rec))
     gained = sum(e["amount"] for e in save["events"] if e["kind"] == "xp" and "pets" not in e)
     if gained:
         save = _level_up(conn, learner_id, save, gained)
@@ -1063,9 +1067,6 @@ def _write(conn, learner_id: int, change) -> dict:
         if e["kind"] == "xp" and "pets" in e:  # a battle's: just the fighters
             for pid in e["pets"]:
                 save = _level_up(conn, learner_id, save, e["amount"], only=pid)
-        if e["kind"] == "fought":
-            rec = wp.note_battle(wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"])), e["partners"])
-            db.save_wander_pet(conn, learner_id, e["pet"], wp.record_json(rec))
     for e in save["events"]:
         if e["kind"] == "train":  # exactly up to the next level
             rec = wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"]))
@@ -1099,12 +1100,76 @@ def _level_up(conn, learner_id: int, save: dict, amount: int, only: int | None =
         db.save_wander_pet(conn, learner_id, m["id"], wp.record_json(rec))
         new = wp.member(pets[m["id"]], rec)
         team.append({**new, "energy": m["energy"]})
+        save = _celebrate(save, pets[m["id"]], old, rec)
         if new["level"] > m["level"]:
-            text = f"{m['name']} reached level {new['level']}!"
-            if wp.second_choices(pets[m["id"]]["seed"], m["species"], rec):
-                text += " It can learn a second type: pick it in the party list."
-            save = _event(save, kind="level", text=text)
+            save = _event(save, kind="level", text=f"{m['name']} reached level {new['level']}!")
     return {**save, "team": team}
+
+
+def _celebrate(save: dict, pet: dict, old: wp.Record, rec: wp.Record) -> dict:
+    """A pop-up to come for each level gained, shown one at a time after any battle."""
+    gained = [_level_entry(pet, rec, lv) for lv in range(wp.level(old.xp) + 1, wp.level(rec.xp) + 1)]
+    return {**save, "levelups": [*save["levelups"], *gained]} if gained else save
+
+
+def _level_entry(pet: dict, rec: wp.Record, lv: int) -> dict:
+    """One level's pop-up: what grew, its six moves, and any choice it brings."""
+    species, battle = pet["species"], pet["genes"]["battle"]
+    stats = lambda n: wp.stats(species, battle, wp.Record(xp=wp.xp_for(n)))  # noqa: E731
+    at = wp.at_level(rec, lv)
+    member = wp.member(pet, at)
+    return {"pet": pet["id"], "name": pet["name"], "species": species, "level": lv, "max": lv == wp.MAX_LEVEL,
+            "types": member["types"], "was": stats(lv - 1), "now": stats(lv), "moves": bt.described_moves(member),
+            "choose": _level_choice(pet, at, member, lv), "genes": member["genes"], "growth": member["growth"]}
+
+
+def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | None:
+    """What a pet gets to choose on reaching level lv (None: nothing). Odd
+    levels are the ones with choices: so far a focus, then a second type."""
+    if lv == wp.FOCUS_LEVEL and not rec.focus:
+        return {"kind": "focus", "options": [bt.focus_option(member, f) for f in bt.FOCUSES]}
+    offered = wp.second_choices(pet["seed"], pet["species"], rec) if lv == wp.SECOND_TYPE_LEVEL else None
+    if not offered:
+        return None
+    options = []
+    for t in offered:
+        beats = " and ".join(wd.tw(x) for x in bt.strong_against(t))
+        options.append({"id": t, "type": t, "label": wd.tw(t), "title": "Second type", "note": f"Strong against {beats}.",
+                        "moves": bt.described_moves({**member, "types": {**member["types"], t: 1}})})
+    return {"kind": "second", "options": options}
+
+
+def _redo_waiting(save: dict, pet: dict, rec: wp.Record) -> dict:
+    """A pet changed: its pop-ups still to come show it as it is now."""
+    return {**save, "levelups": [_level_entry(pet, rec, e["level"]) if e["pet"] == pet["id"] else e for e in save["levelups"]]}
+
+
+def _refresh_member(save: dict, pet: dict, rec: wp.Record) -> dict:
+    """A pet's new record joins the team (on a trip, its energy stays as it is)."""
+    new = wp.member(pet, rec)
+    return {**save, "team": [{**new, "energy": m["energy"] if save["trip"] else new["energy"]} if m["id"] == pet["id"] else m
+                             for m in save["team"]]}
+
+
+def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
+    """Done with the first pop-up: if it offers a choice, this makes it."""
+    save = load(conn, learner_id)
+    if not save["levelups"]:
+        raise WanderError("Nobody's leveling up right now.")
+    first, *rest = save["levelups"]
+    save = {**save, "levelups": rest, "events": [], "note": None}
+    pet = next(((p, rec) for p, rec in roster(conn, learner_id) if p["id"] == first["pet"]), None)
+    if first["choose"] and pet:
+        if choice not in [o["id"] for o in first["choose"]["options"]]:
+            raise WanderError("Pick one of the choices.")
+        kind = first["choose"]["kind"]
+        rec = wp.learn_focus(pet[1], choice) if kind == "focus" else wp.learn_second(pet[1], choice, first["level"])
+        db.save_wander_pet(conn, learner_id, first["pet"], wp.record_json(rec))
+        save = _redo_waiting(_refresh_member(save, pet[0], rec), pet[0], rec)
+    if not save["trip"]:  # between trips the team follows the pets
+        save = {**save, "team": _team(conn, learner_id, save["party"])}
+    db.save_wander(conn, learner_id, save)
+    return save
 
 
 def pets_view(conn, learner_id: int) -> list[dict]:
@@ -1145,6 +1210,8 @@ def pick_second(conn, learner_id: int, pet_id: int, kind: str) -> None:
     except ValueError as exc:
         raise WanderError(str(exc)) from exc
     db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(rec))
+    save = load(conn, learner_id)  # a pop-up still waiting has nothing left to ask
+    db.save_wander(conn, learner_id, _redo_waiting(save, pet, rec))
 
 
 def star(conn, learner_id: int, pet_id: int) -> None:
@@ -1155,7 +1222,10 @@ def star(conn, learner_id: int, pet_id: int) -> None:
 def give_xp(conn, learner_id: int, pet_id: int, amount: int) -> None:
     """Lab: XP straight to one pet."""
     pet, rec = _record(conn, learner_id, pet_id)
-    db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(wp.gain_xp(rec, amount)))
+    new = wp.gain_xp(rec, amount)
+    db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(new))
+    save = _celebrate(load(conn, learner_id), pet, rec, new)
+    db.save_wander(conn, learner_id, _refresh_member(save, pet, new))
 
 
 def walk(conn, learner_id: int, to: Hex) -> dict:
@@ -1338,6 +1408,12 @@ def clues_view(save: dict) -> list[dict]:
     return out
 
 
+def team_view(save: dict) -> list[dict]:
+    """The team for the party book: how far along each is, and its moves."""
+    mana = _mana(save) if save["trip"] else [m["mana"] for m in save["team"]]
+    return [{**m, "progress": wp.progress(m["xp"]), "moves": bt.described_moves(m, mana[i])} for i, m in enumerate(save["team"])]
+
+
 def view(save: dict) -> dict:
     return {
         "big": big_view(save),
@@ -1348,7 +1424,7 @@ def view(save: dict) -> dict:
         "screen": screen(save),
         "campfires": len(campfires_rested(save)),
         "at_camp": tuple(save["at"]) == CAMP,
-        "team": save["team"],
+        "team": team_view(save),
         "fighters": fighters(save),
         "combo_book": combo_book(save),
         "battle": battle_view(save),
@@ -1357,6 +1433,7 @@ def view(save: dict) -> dict:
         "about": {k: st.describe(k) for k, v in save["items"].items() if v},
         "clues": clues_view(save),
         "log": save["log"],
+        "levelups": save["levelups"],
         "quests": quests_view(save),
         "temples": save["temples"],
         "charms": save["charms"],
@@ -1392,6 +1469,9 @@ def refill(conn, learner_id: int) -> dict:
 
 
 def reset(conn, learner_id: int, seed: int | None = None) -> dict:
+    """A new world: pets start over at level 1 (they stay starred)."""
+    for pet_id, data in db.get_wander_pets(conn, learner_id).items():
+        db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(wp.Record(starred=wp.record_from(data).starred)))
     save = new_save(seed if seed is not None else random.randrange(2**31))
     db.save_wander(conn, learner_id, save)
     return save
