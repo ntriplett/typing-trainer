@@ -24,6 +24,7 @@ markers = [
 ]
 testpaths = ["tests"]
 pythonpath = ["."]
+pythonpath = ["."]
 
 [tool.setuptools]
 packages = ["app", "app.activities", "launcher"]
