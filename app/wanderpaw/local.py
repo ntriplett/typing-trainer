@@ -4,8 +4,8 @@ Each big hex is a hexagon of small hexes, LOCAL_RADIUS from its middle
 (91 hexes), built from the world seed and the big hex's place, so it's the
 same every time. The hexagons tile one seamless world grid: big hex b's
 middle is world hex center(b), and its six neighbors sit at SPANS (a
-little turned from the small grid, so the big map is drawn turned to
-match). Small hex h of big hex b is world hex to_world(b, h); owner()
+little turned from the small grid: a cluster of pointy-top hexes is
+flat-topped, and the big map is drawn as flat-top hexes to match). Small hex h of big hex b is world hex to_world(b, h); owner()
 goes back.
 
 Along an open big edge you can cross wherever both sides are walkable;

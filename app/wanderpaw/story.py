@@ -231,7 +231,9 @@ SWIM_LEVELS = 1  # Splash levels that make a swimmer
 CHEST_COINS = (5, 20)  # + ring from Camp
 SHRINE_ENERGY = 15  # at full accuracy, once per shrine per trip
 INN_ENERGY = 25  # a warm meal, once per inn per trip
+CAMP_ENERGY = 10  # resting by a campfire: once a day, once your energy is half gone
 GATE_ENERGY = 2  # using a field skill
+FLEE_ENERGY = 2  # running from a battle (your own walking energy)
 SIDE_QUEST_COUNT = 3
 SIDE_QUEST_COINS = 10
 

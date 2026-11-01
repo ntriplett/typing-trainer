@@ -50,9 +50,8 @@ def test_trip_walk_and_end():
     assert data["trip"]["energy"] == data["trip"]["max"]
     data = client.post("/api/wander/walk", json={"q": to[0], "r": to[1]}).json()
     assert data["local"]["spot"] == list(to)
-    assert client.post("/api/wander/trip/end").status_code == 400  # not at the campfire
-    client.post("/api/wander/walk", json={"q": 0, "r": 0})
-    assert client.post("/api/wander/trip/end").json()["note"] == "rested"
+    ended = client.post("/api/wander/trip/end").json()  # ends the day from anywhere
+    assert ended["note"] == "rested" and ended["trip"] is None and ended["local"]["spot"] == [0, 0]
 
 
 def test_next_day():
@@ -157,3 +156,42 @@ def test_quests_give_the_team_xp():
     assert data["team"][0]["id"] == fox
     with db.open_db(main.DB_PATH) as conn:
         assert db.get_wander_pets(conn, 1)[fox]["xp"] == sv.st.XP_QUEST
+
+
+def test_a_battle_pays_its_fighters():
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    fox, bunny = _add_pet("fox"), _add_pet("bunny", 2)
+    seed = _seed()
+    client.post("/api/wander/trip/start", json={})
+    data = client.get("/api/wander").json()
+    day = data["stats"]["trips"]
+    world = wd.generate(seed)
+    spot = None
+    for big in sorted(world.hexes):
+        local = lc.generate(seed, big)
+        here = cr.at(seed, big, day)
+        for h in sorted(here):
+            n = next((n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in here), None)
+            if n:
+                spot = (big, h, n)
+                break
+        if spot:
+            break
+    big, h, n = spot
+    client.post("/api/wander-lab/teleport", json={"q": big[0], "r": big[1], "spot": list(n)})
+    g = lc.to_world(big, h)
+    data = client.post("/api/wander/walk", json={"q": g[0], "r": g[1]}).json()
+    assert data["battle"] and [f["place"] for f in data["battle"]["fighters"]] == [0, 1]
+    while not data["battle"]["over"]:
+        moves = [{"move": f["moves"][0]["id"], "slips": 0} for f in data["battle"]["fighters"] if f["energy"] > 0]
+        data = client.post("/api/wander/battle/turn", json={"moves": moves}).json()
+    assert data["battle"]["over"] in ("won", "lost")
+    if data["battle"]["over"] == "won":
+        with db.open_db(main.DB_PATH) as conn:
+            recs = db.get_wander_pets(conn, 1)
+        assert recs[fox]["xp"] > 0 and recs[bunny]["xp"] > 0
+        assert recs[fox]["partners"] == {"leaf": 1} and recs[bunny]["partners"] == {"ember": 1}
+    left = client.post("/api/wander/battle/leave", json={}).json()
+    assert left["battle"] is None
+    assert client.post("/api/wander/fighters", json={"slots": [1, 0]}).json()["fighters"] == [1, 0]

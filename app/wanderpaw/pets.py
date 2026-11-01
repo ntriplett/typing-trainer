@@ -20,8 +20,8 @@ pool). Empty party slots get temporary starters (level 1, one of each
 missing type) that don't level.
 
 A team member (`member()`, kept in the save for the trip) is a plain
-dict: {id (None for a starter), name, species, xp, types, and stats():
-level, energy, power, speed, mana}.
+dict: {id (None for a starter), name, species, xp, types, stats() (level,
+energy, power, speed, mana), and its looks (genes, growth) for drawing}.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field, replace
 
+from app import pet_genes
 from app.wanderpaw import world as wd
 
 TYPES = wd.REGIONS
@@ -133,7 +134,8 @@ def gain_xp(rec: Record, amount: int) -> Record:
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
     return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp,
-            "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec)}
+            "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
+            "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
 
 def starter(kind: str, lv: int = 1) -> dict:
@@ -141,7 +143,12 @@ def starter(kind: str, lv: int = 1) -> dict:
     name, species = STARTERS[kind]
     rec = Record(xp=(lv - 1) * XP_PER_LEVEL)
     return {"id": None, "name": name, "species": species, "xp": rec.xp, "types": {kind: lv},
-            **stats(species, STARTER_STATS, rec)}
+            **stats(species, STARTER_STATS, rec), "genes": looks(species, sum(map(ord, name))), "growth": 10}
+
+
+def looks(species: str, seed: int) -> dict:
+    """Rolled looks for a pet that isn't anyone's (a starter, a wild creature)."""
+    return pet_genes.resolve(pet_genes.roll(species, None, None, seed))
 
 
 def team(members: list[dict]) -> list[dict]:

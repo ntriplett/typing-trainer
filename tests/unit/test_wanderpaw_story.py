@@ -13,6 +13,12 @@ SEED = 11
 WORLD = wd.generate(SEED)
 
 
+@pytest.fixture(autouse=True)
+def no_creatures(monkeypatch):
+    """These tests aren't about wild creatures (test_wanderpaw_battle.py is)."""
+    monkeypatch.setattr(sv.cr, "at", lambda *a: {})
+
+
 def _team(*kinds, lv=5):
     """Starters of these types at a level (all five by default)."""
     return [wp.starter(k, lv) for k in kinds or wd.REGIONS]

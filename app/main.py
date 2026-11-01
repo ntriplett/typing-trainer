@@ -808,8 +808,21 @@ class WanderPartyRequest(BaseModel):
     pets: list[int]
 
 
-class WanderEndRequest(BaseModel):
-    anywhere: bool = False
+class WanderMove(BaseModel):
+    move: str
+    slips: int = Field(default=0, ge=0, le=50)
+
+
+class WanderTurnRequest(BaseModel):
+    moves: list[WanderMove] = Field(max_length=2)
+
+
+class WanderLeaveRequest(BaseModel):
+    run: bool = False  # flee (else: leave a finished battle)
+
+
+class WanderFightersRequest(BaseModel):
+    slots: list[int] = Field(max_length=2)
 
 
 class WanderSecondRequest(BaseModel):
@@ -881,10 +894,9 @@ def wander_trip_start(body: WanderTripRequest, conn=Depends(get_db), learner_id:
 
 
 @app.post("/api/wander/trip/end")
-def wander_trip_end(body: WanderEndRequest | None = None, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    """Rest at a campfire and end the trip (anywhere: head home from wherever you are)."""
-    anywhere = bool(body and body.anywhere)
-    return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id, anywhere))
+def wander_trip_end(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """End the day and go home: the next starts at the nearest campfire you've rested at."""
+    return _wander_act(conn, learner_id, lambda: wander.finish(conn, learner_id))
 
 
 @app.post("/api/wander/day")
@@ -897,6 +909,24 @@ def wander_next_day(conn=Depends(get_db), learner_id: int = Depends(current_lear
 def wander_go_in(body: WanderActRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """Do what the place you're standing on offers (save.screen's action)."""
     return _wander_act(conn, learner_id, lambda: wander.go_in(conn, learner_id, body.action, body.accuracy, body.arg))
+
+
+@app.post("/api/wander/battle/turn")
+def wander_battle_turn(body: WanderTurnRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """One round: a typed move (and its slips) for each fighter."""
+    return _wander_act(conn, learner_id, lambda: wander.fight(conn, learner_id, [m.model_dump() for m in body.moves]))
+
+
+@app.post("/api/wander/battle/leave")
+def wander_battle_leave(body: WanderLeaveRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Run from a battle, or walk on from a finished one."""
+    return _wander_act(conn, learner_id, lambda: wander.leave_battle(conn, learner_id, body.run))
+
+
+@app.post("/api/wander/fighters")
+def wander_fighters(body: WanderFightersRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Which two of the party fight (team places)."""
+    return _wander_act(conn, learner_id, lambda: wander.set_fighters(conn, learner_id, body.slots))
 
 
 @app.get("/api/wander/pets")

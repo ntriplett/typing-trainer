@@ -16,6 +16,12 @@ WORLD = wd.generate(SEED)
 PLAN = qs.plan(SEED)
 
 
+@pytest.fixture(autouse=True)
+def no_creatures(monkeypatch):
+    """These tests aren't about wild creatures (test_wanderpaw_battle.py is)."""
+    monkeypatch.setattr(sv.cr, "at", lambda *a: {})
+
+
 def _team(*kinds, lv=5):
     return [wp.starter(k, lv) for k in kinds or wd.REGIONS]
 

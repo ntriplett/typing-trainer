@@ -46,6 +46,20 @@
           <p class="wander-screen-keys" id="menu-keys"></p>
         </div>
       </section>
+      <div class="panel wander-battle" id="battle" hidden>
+        <div class="wander-battle-sides">
+          <div class="wander-battle-team" id="battle-team"></div>
+          <div class="wander-battle-foe">
+            <div class="wander-foe-art">
+              <canvas id="battle-foe" width="220" height="170"></canvas>
+              <canvas id="battle-marks" width="220" height="170"></canvas>
+            </div>
+            <div id="battle-foe-info"></div>
+          </div>
+        </div>
+        <ul class="wander-battle-log" id="battle-log"></ul>
+        <p class="wander-screen-keys" id="battle-keys"></p>
+      </div>
       <div class="panel wander-atlas" id="atlas" hidden>
         <div class="wander-atlas-head">
           <h2 class="panel-title">Map</h2>
@@ -65,7 +79,8 @@
           <button type="button" data-menu="journal"><kbd class="keycap">2</kbd> Journal</button>
           <button type="button" data-menu="party"><kbd class="keycap">3</kbd> Party</button>
           <button type="button" data-menu="log"><kbd class="keycap">4</kbd> Log</button>
-          <button type="button" data-menu="map" class="wander-book-wide"><kbd class="keycap">5</kbd> Map</button>
+          <button type="button" data-menu="map"><kbd class="keycap">5</kbd> Map</button>
+          <button type="button" data-menu="combos"><kbd class="keycap">6</kbd> Combos</button>
         </section>
       </aside>
     </div>

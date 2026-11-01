@@ -10,7 +10,8 @@
 // temple, the Heartstone) and shows its screen; Enter again does what it
 // offers, Esc leaves. At a shrine you type the line on the stone for
 // energy; at a fishing spot, the line reels one in. At a campfire, Enter
-// rests and ends the trip. The keys you can use right now sit in the map's
+// rests there a while: a new day can then start there (the day itself only
+// ends when you run out of energy or go home and end it). The keys you can use right now sit in the map's
 // top-right corner (glowing when something new is ready); what just
 // happened shows in the top box.
 //
@@ -40,7 +41,11 @@ const typer = new Typer();
 let state = null;
 let targets = [];
 let busy = false;
-let mode = "walk"; // walk | screen | line | menu | credits (the picker shows between trips)
+let mode = "walk"; // walk | screen | line | menu | battle | credits (the picker shows between trips)
+let fight = null; // this round: {round, picks, able, targets}
+// A round playing back, step by step: {steps, i, cur: what the bars show}.
+let replay = null;
+const STEP_MS = 1600;
 let menu = null; // an open book or the go-home question: {name, at}
 let lastReady = null; // what Enter offered last render, so a new offer glows
 let pets = null; // the picker's list (GET /api/wander/pets)
@@ -52,7 +57,6 @@ let slide = null; // {from, to, start}
 const SLIDE_MS = 220;
 
 const words = (name) => name.replace(/_/g, " ");
-const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
 function say(text, good = false) {
@@ -61,10 +65,6 @@ function say(text, good = false) {
   message.classList.remove("pop");
   void message.offsetWidth; // restart the pop
   if (text) message.classList.add("pop");
-}
-
-function onCampfire() {
-  return same(state.local.spot, state.local.campfire);
 }
 
 // The places you can step to (the server says): walkable hexes, gates,
@@ -106,7 +106,7 @@ function render() {
   }
   WanderMap.drawLocal(localCanvas, state.local, { size: 28, labels, focus: state.local.spot, camera, time: performance.now() });
   animateHalls();
-  WanderMap.draw(bigCanvas, state.big, { size: 44, trail: true, simple: true, straight: true, focus: state.big.at, view: 1.2 });
+  WanderMap.draw(bigCanvas, state.big, { size: 44, trail: true, simple: true, focus: state.big.at, view: 1.2 });
 
   const here = state.local;
   const chip = document.getElementById("where-chip");
@@ -114,7 +114,7 @@ function render() {
   chip.style.background = WanderMap.TYPE_COLORS[here.region];
   document.getElementById("where-name").textContent = here.name;
   document.getElementById("where-land").textContent = here.special ? "" : `(${words(here.biome)})`;
-  document.getElementById("campfires").textContent = `Campfires found: ${state.campfires}`;
+  document.getElementById("campfires").textContent = `Campfires rested at: ${state.campfires}`;
 
   const energy = document.getElementById("energy");
   energy.hidden = !state.trip;
@@ -130,16 +130,392 @@ function render() {
   renderScreen();
   renderPicker();
   renderMenu();
+  renderBattle();
+}
+
+// --- battles -----------------------------------------------------------------------
+// Each round, each fighter (with energy) picks a move by typing its word;
+// slips weaken it. Then the round is sent and played out.
+
+// The fighter picking now gets a word for each of its moves, each starting
+// with a different letter (a big move's is three short words). Fighters
+// pick one after the other.
+function fightWords() {
+  const k = fight.picks.findIndex((p) => !p);
+  if (k < 0) return [];
+  const used = new Set();
+  const take = (size) => {
+    const pool = [...(state.words[size] || state.words.short)].sort(() => Math.random() - 0.5);
+    const word = pool.find((w) => !used.has(w[0])) || state.words.letter.find((w) => !used.has(w)) || pool[0];
+    used.add(word[0]);
+    return word;
+  };
+  return fight.able[k].moves
+    .filter((m) => m.can !== false)
+    .map((m) => {
+      let word;
+      if (m.size === "phrase") {
+        const first = take("short");
+        const rest = [...state.words.short].sort(() => Math.random() - 0.5).slice(0, 2);
+        word = [first, ...rest].join(" ");
+      } else {
+        word = take(m.size);
+      }
+      return { word, typed: 0, slips: 0, move: m, fighter: k };
+    });
+}
+
+function startRound() {
+  const able = state.battle.fighters.filter((f) => f.energy > 0);
+  fight = { round: state.battle.round, picks: able.map(() => null), able, targets: [] };
+  fight.targets = fightWords();
+}
+
+const TYPE_TINT = { ember: "#f6d5cf", splash: "#d4e5f6", leaf: "#dcecd0", dream: "#e6d8f1", shock: "#f9e5c6" };
+
+function renderBattle() {
+  const box = document.getElementById("battle");
+  box.hidden = mode !== "battle" || !state.battle;
+  box.parentElement.classList.toggle("battling", !box.hidden); // it takes the map's place
+  if (box.hidden) return;
+  const b = state.battle;
+  if (!fight || fight.round !== b.round) startRound();
+  const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="width:${(100 * e) / m}%"></span></span>`;
+  // during a replay, the bars show where everyone stands at that step
+  const foeEnergy = replay ? replay.cur.foe : b.energy;
+  const petEnergy = (f) => (replay ? replay.cur.pets[f.place] : f.energy);
+  const petMana = (f) => (replay ? replay.cur.mana[f.place] : f.mana);
+  // the creature, on the right
+  paintPet(document.getElementById("battle-foe"), { genes: b.looks, growth: 10 }, 5, true); // facing your pets
+  const marks = [
+    ...Object.entries(b.marks || {}).map(([m, rounds]) => {
+      const color = WanderMap.TYPE_COLORS[MARK_TYPE[m]];
+      return `<span class="wander-mark" style="border-color:${color};color:${color}">${esc(m)} <small>(${rounds})</small></span>`;
+    }),
+    ...Object.entries(b.effects || {}).map(([e, rounds]) => `<span class="wander-mark effect">${esc(EFFECT_NAMES[e] || e)} <small>(${rounds})</small></span>`),
+    ...(b.skip ? [`<span class="wander-mark effect">can't move <small>(${b.skip})</small></span>`] : []),
+  ].join(" ");
+  animateMarks();
+  document.getElementById("battle-foe-info").innerHTML = `
+    <b>Wild ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "" })}<br>
+    ${bar(foeEnergy, b.max)} <small>${foeEnergy} / ${b.max}</small>
+    ${marks ? `<p>${marks}</p>` : ""}`;
+  // what happened last round (during a replay: so far)
+  const lines = replay
+    ? replay.steps.slice(0, replay.i + 1).map((e) => e.text)
+    : (state.events || []).filter((e) => e.text).map((e) => e.text);
+  document.getElementById("battle-log").innerHTML = lines.length
+    ? lines.map((l) => `<li>${esc(l)}</li>`).join("")
+    : `<li class="hint">${esc(`A wild ${b.species} blocks the way!`)}</li>`;
+  // your fighters, on the left, each with its moves under it
+  const team = document.getElementById("battle-team");
+  team.innerHTML = b.fighters
+    .map((f, i) => {
+      const k = fight.able.indexOf(f);
+      const picked = k >= 0 ? fight.picks[k] : null;
+      const picking = k >= 0 && k === fight.picks.findIndex((p) => !p);
+      const card = (m, word) => {
+        const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
+        const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
+        return `<li class="wander-move ${m.can === false ? "off" : ""}" style="border-color:${color};background:${tint}">
+          <b style="color:${color}">${esc(m.label)}</b>
+          <span class="wander-move-word">${word ? labelHtml(word) : "&nbsp;"}</span>
+          <span class="wander-move-note">${esc(m.note)}</span></li>`;
+      };
+      const moves = replay
+        ? `<ul class="wander-moves waiting">${f.moves.map((m) => card(m, null)).join("")}</ul>` // dimmed while the round plays
+        : b.over || k < 0
+          ? ""
+          : picked
+            ? `<p class="wander-picked">Ready: <b>${esc(picked.label)}</b></p>`
+            : `<ul class="wander-moves ${picking ? "" : "waiting"}">${f.moves
+                .map((m) => card(m, picking && fight.targets.find((t) => t.move.id === m.id)))
+                .join("")}</ul>`;
+      return `<div class="wander-fighter ${petEnergy(f) ? "" : "out"}">
+        <div class="wander-fighter-head">
+          <canvas width="110" height="86" data-fighter="${i}" data-place="${f.place}"></canvas>
+          <div><b>${esc(f.name)}</b> <small>lv ${f.level}</small> ${chips(f.types)}<br>
+          ${bar(petEnergy(f), f.max)} <small>${petEnergy(f)} / ${f.max}</small><br>
+          ${bar(petMana(f), f.max_mana, "mana")} <small class="wander-mana">${petMana(f)} / ${f.max_mana} mana</small>
+          ${f.focused ? `<span class="wander-mark">focused</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
+        </div>
+        ${moves}
+      </div>`;
+    })
+    .join("");
+  team.querySelectorAll("canvas[data-fighter]").forEach((c) => {
+    const f = b.fighters[Number(c.dataset.fighter)];
+    if (f.genes) paintPet(c, f);
+  });
+  const keys = document.getElementById("battle-keys");
+  if (replay) {
+    keys.innerHTML = "&nbsp;";
+    return;
+  }
+  if (b.over) {
+    keys.innerHTML = `<span class="wander-battle-over">${b.over === "won" ? "You won!" : "Your fighters are worn out."}</span>
+      <kbd class="keycap">Enter</kbd> ${b.over === "won" ? "walk on" : "back away"}`;
+    return;
+  }
+  keys.innerHTML = `Type a word to pick that move. <kbd class="keycap">Esc</kbd> run away`;
+}
+
+// A word with what's typed so far shown.
+function labelHtml(t) {
+  const done = esc(t.word.slice(0, t.typed));
+  const rest = esc(t.word.slice(t.typed));
+  return `<kbd class="wander-word"><span class="done">${done}</span>${rest}</kbd>`;
+}
+
+// --- marks on the creature, drawn and moving ---------------------------------------
+
+const MARK_TYPE = { soaked: "splash", glowing: "ember", drowsy: "dream", tangled: "leaf", static: "shock" };
+// What a combo leaves on it, as the labels say.
+const EFFECT_NAMES = { drenched: "drenched", thorns: "thorns", confused: "dizzy", burn: "burning", popped: "bubble", doze: "sleepy" };
+let marksTimer = null;
+
+function animateMarks() {
+  const on = mode === "battle" && state.battle && Object.keys(state.battle.marks || {}).length;
+  if (on && !marksTimer) marksTimer = setInterval(drawMarks, 1000 / 20);
+  if (!on && marksTimer) {
+    clearInterval(marksTimer);
+    marksTimer = null;
+  }
+  drawMarks();
+}
+
+function drawMarks() {
+  const c = document.getElementById("battle-marks");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  const marks = (state.battle && state.battle.marks) || {};
+  const t = performance.now();
+  const w = c.width;
+  const h = c.height;
+  const seeded = (i) => (Math.sin(i * 91.7) * 43758.5) % 1;
+  if (marks.soaked) {
+    // drips falling round it, and a puddle
+    ctx.fillStyle = "rgba(58, 127, 200, 0.85)";
+    for (let i = 0; i < 9; i++) {
+      const x = w * (0.2 + 0.6 * Math.abs(seeded(i)));
+      const y = ((t / 9 + i * 41) % (h * 0.8)) + h * 0.1;
+      ctx.fillRect(x, y, 3, 6);
+    }
+    ctx.fillStyle = "rgba(58, 127, 200, 0.3)";
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h - 8, w * 0.32, 7, 0, 0, 7);
+    ctx.fill();
+  }
+  if (marks.glowing) {
+    // embers rising
+    for (let i = 0; i < 16; i++) {
+      const life = (t / 1400 + i / 16) % 1;
+      const x = w * (0.2 + 0.6 * Math.abs(seeded(i + 3))) + Math.sin(t / 300 + i) * 8;
+      const y = h * 0.9 - life * h * 0.85;
+      const size = 7 - life * 4;
+      ctx.fillStyle = `rgba(${i % 3 ? "232, 140, 40" : "250, 210, 80"}, ${Math.min(1, 1.3 - life)})`;
+      ctx.fillRect(x - size / 2, y - size / 2, size, size);
+    }
+  }
+  if (marks.drowsy) {
+    // z's floating up
+    ctx.font = 'bold 22px "Atkinson Hyperlegible Mono", monospace';
+    for (let i = 0; i < 3; i++) {
+      const life = ((t / 1800 + i / 3) % 1);
+      ctx.fillStyle = `rgba(138, 79, 184, ${1 - life})`;
+      ctx.font = `bold ${14 + life * 16}px "Atkinson Hyperlegible Mono", monospace`;
+      ctx.fillText("z", w * 0.62 + life * 40, h * 0.35 - life * 50);
+    }
+  }
+  if (marks.tangled) {
+    // vines wrapped round its feet
+    ctx.strokeStyle = "#4f8f2a";
+    ctx.lineWidth = 4;
+    for (let k = 0; k < 2; k++) {
+      ctx.beginPath();
+      for (let x = w * 0.18; x <= w * 0.82; x += 4) {
+        const y = h * (0.78 + 0.06 * k) + Math.sin(x / 10 + t / 500 + k * 2) * 6;
+        x === w * 0.18 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#77a447";
+    for (let i = 0; i < 6; i++) ctx.fillRect(w * (0.2 + i * 0.11), h * 0.76 + Math.sin(t / 400 + i) * 5, 6, 4);
+  }
+  if (marks.static) {
+    // sparks crackling round it
+    ctx.strokeStyle = "#e89a2a";
+    ctx.lineWidth = 3;
+    const flick = Math.floor(t / 120);
+    for (let i = 0; i < 4; i++) {
+      if ((flick + i) % 3 === 0) continue;
+      const a = seeded(flick * 7 + i) * Math.PI * 2;
+      const cx = w / 2 + Math.cos(a) * w * 0.32;
+      const cy = h * 0.5 + Math.sin(a) * h * 0.32;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + 8, cy + 6);
+      ctx.lineTo(cx + 2, cy + 10);
+      ctx.lineTo(cx + 10, cy + 18);
+      ctx.stroke();
+    }
+  }
+}
+
+// --- playing a round back ----------------------------------------------------------
+// Each step in turn: the one acting lunges at its target, a burst in the
+// move's type color hits, the target shakes, the number floats up, and
+// the bars move.
+
+function startReplay(before, steps) {
+  const pets = {};
+  const mana = {};
+  before.fighters.forEach((f) => {
+    pets[f.place] = f.energy;
+    mana[f.place] = f.mana;
+  });
+  replay = { steps, i: -1, cur: { foe: before.energy, pets, mana } };
+  setTimeout(nextStep, 400);
+}
+
+function nextStep() {
+  if (!replay) return;
+  replay.i += 1;
+  if (replay.i >= replay.steps.length) {
+    replay = null;
+    render();
+    return;
+  }
+  const s = replay.steps[replay.i];
+  replay.cur = { foe: s.foe, pets: s.pets, mana: s.mana };
+  render();
+  showStep(s);
+  setTimeout(nextStep, STEP_MS);
+}
+
+function battleCanvas(who) {
+  return who === "foe"
+    ? document.getElementById("battle-foe")
+    : document.querySelector(`#battle-team canvas[data-place="${who}"]`);
+}
+
+function retrigger(el, cls) {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth; // restart the animation
+  el.classList.add(cls);
+}
+
+function showStep(s) {
+  const box = document.getElementById("battle");
+  const actor = battleCanvas(s.who);
+  const target = s.target === null || s.target === undefined ? null : battleCanvas(s.target);
+  const color = s.type ? WanderMap.TYPE_COLORS[s.type] : "#e8b33e";
+  if (s.act === "hit") {
+    retrigger(actor, s.who === "foe" ? "lunge-left" : "lunge-right");
+  } else if (actor && ["guard", "focus", "cheer", "rest"].includes(s.act)) {
+    retrigger(actor, "glow-up");
+  } else if (actor && ["skip", "doze"].includes(s.act)) {
+    retrigger(actor, "sway");
+  }
+  if (s.combo) {
+    // a combo: its name, big, over the creature
+    const banner = document.createElement("div");
+    banner.className = "wander-combo";
+    banner.textContent = `${s.combo}!`;
+    banner.style.setProperty("--fx", color);
+    document.querySelector(".wander-battle-foe").appendChild(banner);
+    setTimeout(() => banner.remove(), 1500);
+  }
+  if (!target) return;
+  const at = target.getBoundingClientRect();
+  const home = box.getBoundingClientRect();
+  const x = at.left - home.left + at.width / 2;
+  const y = at.top - home.top + at.height / 2;
+  // a shot in the move's color, from the one acting to its target
+  if (s.act === "hit" && actor) {
+    const from = actor.getBoundingClientRect();
+    const shot = document.createElement("div");
+    shot.className = "wander-shot";
+    shot.style.setProperty("--fx", color);
+    shot.style.left = `${from.left - home.left + from.width / 2}px`;
+    shot.style.top = `${from.top - home.top + from.height / 2}px`;
+    shot.style.setProperty("--dx", `${x - (from.left - home.left + from.width / 2)}px`);
+    shot.style.setProperty("--dy", `${y - (from.top - home.top + from.height / 2)}px`);
+    box.appendChild(shot);
+    setTimeout(() => shot.remove(), 520);
+  }
+  setTimeout(
+    () => {
+      if (s.damage && s.target !== "foe") retrigger(target.closest(".wander-fighter"), "hit-card");
+      if (s.damage) {
+        // a burst in the move's color, a shake, and the number
+        const fx = document.createElement("div");
+        fx.className = `wander-fx ${s.big || s.combo ? "big" : ""}`;
+        fx.style.left = `${x}px`;
+        fx.style.top = `${y}px`;
+        fx.style.setProperty("--fx", color);
+        box.appendChild(fx);
+        setTimeout(() => fx.remove(), 900);
+        retrigger(target, "shake");
+      }
+      const n = s.damage ? `-${s.damage}` : s.gain ? `+${s.gain}` : "";
+      if (n) {
+        const num = document.createElement("div");
+        num.className = `wander-dmg ${s.gain ? "gain" : ""}`;
+        num.textContent = n;
+        num.style.left = `${x}px`;
+        num.style.top = `${y - at.height / 3}px`;
+        box.appendChild(num);
+        setTimeout(() => num.remove(), 1300);
+      }
+    },
+    s.act === "hit" ? 480 : 0,
+  );
+}
+
+async function battleKey(e) {
+  if (replay) return; // let it play
+  const b = state.battle;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    if (!b.over) {
+      const data = await send("/api/wander/battle/leave", { run: true });
+      if (data) apply(data);
+    }
+    return;
+  }
+  if (b.over) {
+    if (e.key === "Enter") {
+      const data = await send("/api/wander/battle/leave", {});
+      if (data) apply(data);
+    }
+    return;
+  }
+  if (e.key.length !== 1) return;
+  e.preventDefault();
+  const r = typer.press(e.key.toLowerCase(), fight.targets);
+  if (r.kind === "done") {
+    fight.picks[r.target.fighter] = { move: r.target.move.id, slips: r.target.slips || 0, label: r.target.move.label };
+    fight.targets = fightWords();
+    if (fight.picks.every(Boolean)) {
+      const data = await send("/api/wander/battle/turn", { moves: fight.picks.map(({ move, slips }) => ({ move, slips })) });
+      if (data) apply(data);
+      return;
+    }
+  }
+  render();
 }
 
 // The keys you can use right now, in the map's corner. What Enter does
 // glows when it's new.
-// A temple or the Heartstone in view: keep redrawing so its magic moves.
+// A temple, the Heartstone or a wild creature in view: keep redrawing so it moves.
 let hallTimer = null;
 const HALL_FPS = 15;
 
 function animateHalls() {
-  const magic = state.local.tiles.some((t) => t.accent && (t.kind === "temple" || t.kind === "stone" || t.lit || t.kind.startsWith("feature_")));
+  const magic = state.local.tiles.some((t) => t.critter || (t.accent && (t.kind === "temple" || t.kind === "stone" || t.lit || t.kind.startsWith("feature_"))));
   if (magic && !hallTimer) {
     hallTimer = setInterval(() => {
       if (!slide) render();
@@ -155,8 +531,7 @@ function renderKeys() {
   const lines = [];
   let ready = null;
   if (state.trip && mode === "walk") {
-    if (state.screen) ready = `Go in: ${state.screen.title}`;
-    else if (onCampfire()) ready = "Rest by the fire";
+    if (state.screen) ready = state.screen.rest ? "Rest by the fire" : `Go in: ${state.screen.title}`;
     if (ready) lines.push(`<p class="wander-ready ${ready !== lastReady ? "fresh" : ""}"><kbd class="keycap">Enter</kbd> ${esc(ready)}</p>`);
   }
   if (ready !== lastReady) {
@@ -168,7 +543,7 @@ function renderKeys() {
 
 // --- books and the go-home question ----------------------------------------------------
 
-const BOOKS = ["bag", "journal", "party", "log", "map"];
+const BOOKS = ["bag", "journal", "party", "log", "map", "combos"];
 
 function openMenu(name) {
   if (mode === "line" || mode === "credits") return;
@@ -198,6 +573,7 @@ function menuRows() {
     case "home":
       return HOME_CHOICES;
     case "map":
+    case "combos":
       return [];
     default:
       return [];
@@ -241,13 +617,13 @@ function renderMenu() {
         <canvas id="journal-map" class="wander-map"></canvas>
       </div>`;
     WanderMap.draw(document.getElementById("journal-map"), state.big, {
-      size: 40, trail: true, simple: true, straight: true, highlight: lit, ...around(lit.length ? lit : [state.big.at]),
+      size: 40, trail: true, simple: true, highlight: lit, ...around(lit.length ? lit : [state.big.at]),
     });
   } else if (menu.name === "party") {
     title.textContent = "Party";
     const m = rows[menu.at];
     body.innerHTML = `<div class="wander-menu-split">
-        ${list(rows, (x) => `${esc(x.name)} <small>${x.id ? `lv ${x.level}` : "starter"}</small>`)}
+        ${list(rows, (x, i) => `${state.fighters.includes(i) ? "⚔ " : ""}${esc(x.name)} <small>${x.id ? `lv ${x.level}` : "starter"}</small>`)}
         <div class="wander-menu-detail">
           <canvas id="party-pet" width="96" height="80"></canvas><br>
           <b>${esc(m.name)}</b> <small>(${words(m.species)}${m.id ? "" : ", a starter: doesn't level up"})</small>
@@ -261,12 +637,34 @@ function renderMenu() {
           </dl>
           <p class="hint">Power, speed and mana matter in battles (coming soon).</p>
         </div></div>`;
+    if (state.trip) keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look &nbsp; <kbd class="keycap">F</kbd> fight / sit out (⚔ = fights next) &nbsp; <kbd class="keycap">Esc</kbd> close`;
     const pet = m.id && pets && pets.pets.find((x) => x.id === m.id);
     if (pet) paintPet(document.getElementById("party-pet"), pet);
     else document.getElementById("party-pet").hidden = true;
   } else if (menu.name === "log") {
     title.textContent = "Log";
     body.innerHTML = rows.length ? list([...rows].reverse(), (t) => esc(t)) : `<p class="hint">Nothing has happened yet.</p>`;
+    keys.innerHTML = `<kbd class="keycap">Esc</kbd> close`;
+  } else if (menu.name === "combos") {
+    title.textContent = "Combo book";
+    const order = ["splash", "ember", "dream", "shock", "leaf"];
+    const marks = ["soaked", "glowing", "drowsy", "static", "tangled"];
+    const cell = (mark, hit) => state.combo_book.find((c) => c.mark === mark && c.hit === hit);
+    const found = state.combo_book.filter((c) => c.name);
+    body.innerHTML = `
+      <p>A big move leaves a mark; the next hit of the right type sets off a combo. Found ${found.length} of ${state.combo_book.length}.</p>
+      <table class="wander-combos">
+        <tr><th>mark / hit</th>${order.map((t) => `<th>${chips({ [t]: "" })}</th>`).join("")}</tr>
+        ${marks
+          .map((m) => `<tr><th style="color:${WanderMap.TYPE_COLORS[MARK_TYPE[m]]}">${m}</th>${order
+            .map((t) => {
+              const c = cell(m, t);
+              return `<td class="${c ? (c.name ? "found" : "") : "gap"}">${c ? (c.name ? esc(c.name) : "???") : ""}</td>`;
+            })
+            .join("")}</tr>`)
+          .join("")}
+      </table>
+      ${found.length ? `<ul class="wander-combo-list">${found.map((c) => `<li><b>${esc(c.name)}</b> (${c.mark} + ${c.hit}): ${esc(c.says)}</li>`).join("")}</ul>` : ""}`;
     keys.innerHTML = `<kbd class="keycap">Esc</kbd> close`;
   } else if (menu.name === "home") {
     title.textContent = "Heading home?";
@@ -286,7 +684,7 @@ function renderMenu() {
 // the land still to find in gray and a legend in the margin. Click a place
 // to read about it (a little box, top right).
 const atlasOpts = () => ({
-  size: menu.size || 40, trail: true, straight: true, names: true, shape: true, paper: true, legend: LEGEND, selected: menu.picked,
+  size: menu.size || 40, trail: true, names: true, shape: true, paper: true, legend: LEGEND, selected: menu.picked,
 });
 
 function renderAtlas() {
@@ -356,11 +754,7 @@ async function chooseHome(i) {
   const go = HOME_CHOICES[i].go;
   if (go === "stay") return closeMenu();
   if (go === "end" && state.trip) {
-    const res = await fetch("/api/wander/trip/end", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ anywhere: true }),
-    });
+    const res = await fetch("/api/wander/trip/end", { method: "POST" });
     if (!res.ok) return say((await res.json()).detail);
   }
   location.href = "/";
@@ -380,6 +774,12 @@ function menuKey(e) {
     e.preventDefault();
     menu.at += e.key === "ArrowDown" ? 1 : -1;
     render();
+  } else if (menu.name === "party" && (e.key === "f" || e.key === "F") && state.trip) {
+    // pick who fights next: up to two
+    const at = menu.at;
+    let slots = state.fighters.includes(at) ? state.fighters.filter((i) => i !== at) : [...state.fighters, at];
+    slots = slots.slice(-2);
+    send("/api/wander/fighters", { slots }).then((data) => data && apply(data));
   } else if (menu.name === "home" && e.key === "Enter") {
     chooseHome(menu.at);
   } else if (menu.name === "home" && ["1", "2", "3"].includes(e.key)) {
@@ -445,16 +845,16 @@ function renderPicker() {
     <kbd class="keycap">Enter</kbd> set off${state.at_camp ? "" : ` &nbsp; <kbd class="keycap">C</kbd> set off from Camp`}`;
 }
 
-function paintPet(canvas, p) {
+function paintPet(canvas, p, most = 3, faceLeft = false) {
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   const { w, h } = petSize(p.genes, p.growth);
-  const scale = Math.max(1, Math.min(3, Math.floor((canvas.width - 4) / w), Math.floor((canvas.height - 4) / h)));
+  const scale = Math.max(1, Math.min(most, Math.floor((canvas.width - 4) / w), Math.floor((canvas.height - 4) / h)));
   const px = (x, y, pw, ph, c) => {
     ctx.fillStyle = c;
     ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(pw), Math.ceil(ph));
   };
-  drawPet(px, Math.round((canvas.width - w * scale) / 2), canvas.height - 3, p.genes, p.growth, { scale, shadow: false });
+  drawPet(px, Math.round((canvas.width - w * scale) / 2), canvas.height - 3, p.genes, p.growth, { scale, shadow: false, faceLeft });
 }
 
 async function toggle() {
@@ -549,8 +949,9 @@ function renderScreen() {
 }
 
 function noteFor(data) {
-  const texts = (data.events || []).filter((e) => e.text).map((e) => e.text);
-  if (data.note === "rested" && !data.trip) texts.push("You rest by the campfire. Next time you can set off from here.");
+  // (a battle's blow-by-blow goes in its own log, not up here)
+  const texts = (data.events || []).filter((e) => e.text && e.kind !== "hit").map((e) => e.text);
+  if (data.note === "rested" && !data.trip) texts.push("You head home for the night. Tomorrow you'll set off from the nearest campfire you've rested at.");
   if (data.note === "new_day") texts.push("A new day! You're full of energy.");
   return texts.join(" ");
 }
@@ -583,6 +984,12 @@ function tick(now) {
 }
 
 function apply(data) {
+  const before = state && state.battle;
+  if (data.battle && before && data.battle.round > before.round && data.battle.log.length) {
+    startReplay(before, data.battle.log);
+  }
+  if (data.battle) mode = "battle";
+  else if (mode === "battle") mode = "walk";
   if (!data.trip && (!pets || state?.trip)) loadPets(); // back between trips: levels may have changed
   state = data;
   slideTo(data.local.spot);
@@ -594,13 +1001,21 @@ function apply(data) {
 
 async function send(url, body) {
   busy = true;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const data = await res.json();
-  busy = false;
+  let res;
+  let data;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    data = await res.json();
+  } catch {
+    say("Something went wrong. Try again?");
+    return null;
+  } finally {
+    busy = false; // never leave the keys locked
+  }
   if (!res.ok) {
     say(data.detail);
     return null;
@@ -634,11 +1049,6 @@ async function startTrip(fromCamp) {
   if (!data) return;
   say("Off you go!", true);
   apply(data);
-}
-
-async function endTrip() {
-  const data = await send("/api/wander/trip/end");
-  if (data) apply(data);
 }
 
 document.getElementById("go-home").addEventListener("click", (e) => {
@@ -682,8 +1092,6 @@ function walkKey(e) {
       mode = "screen";
       say("");
       render();
-    } else if (onCampfire()) {
-      endTrip();
     }
     return;
   }
@@ -749,6 +1157,7 @@ function lineKey(e) {
 document.addEventListener("keydown", (e) => {
   if (!state || busy || e.ctrlKey || e.metaKey || e.altKey) return;
   if (mode === "walk") walkKey(e);
+  else if (mode === "battle") battleKey(e);
   else if (mode === "menu") menuKey(e);
   else if (mode === "line") lineKey(e);
   else screenKey(e);

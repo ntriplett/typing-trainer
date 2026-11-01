@@ -16,6 +16,12 @@ TEAM = [wp.starter(t, 5) for t in wd.REGIONS]
 FULL = sv.WALK_ENERGY + wp.team_energy(TEAM)
 
 
+@pytest.fixture(autouse=True)
+def no_creatures(monkeypatch):
+    """These tests aren't about wild creatures (test_wanderpaw_battle.py is)."""
+    monkeypatch.setattr(sv.cr, "at", lambda *a: {})
+
+
 def _on_trip():
     return sv.start_trip({**sv.new_save(SEED), "team": TEAM})
 
@@ -114,32 +120,35 @@ def test_walls_and_the_edge_of_the_world_refuse():
         sv.apply_walk({**save, "spot": list(h)}, (g[0] - c[0], g[1] - c[1]))
 
 
-def test_out_of_energy_naps_at_the_nearest_found_campfire():
+def test_resting_at_a_campfire_marks_where_a_new_day_starts():
     save = _on_trip()
     h, d, step, _ = _exit_step(sv.local_of(save))
     save = sv.apply_walk({**save, "spot": list(h)}, step)
     nxt = tuple(save["at"])
-    # walk to the new hex's campfire, then run out of energy there
     for step in _path(sv.local_of(save), tuple(save["spot"]), sv.local_of(save).campfire):
         save = sv.apply_walk(save, step)
-    assert nxt in sv.campfires_found(save)
+    shown = sv.screen(save)
+    assert shown["rest"] and shown["action"] == "camp"
+    rested = sv.act(save, "camp")
+    # it doesn't end the day: same trip, same party; fresh, you're not ready to rest
+    assert rested["trip"] == save["trip"] and rested["team"] == save["team"]
+    assert nxt in sv.campfires_rested(rested) and "not ready" in rested["events"][0]["text"]
+    # out of energy: wake by the nearest campfire you've rested at
     away = next(n for n in hx.neighbors(tuple(save["spot"])) if sv.local_of(save).walkable(n))
-    save = {**save, "trip": {**save["trip"], "walk": 1, "pets": [0] * len(save["team"]), "energy": 1}}
-    napped = sv.apply_walk(save, away)
+    tired = {**rested, "trip": {**rested["trip"], "walk": 1, "pets": [0] * len(rested["team"]), "energy": 1}}
+    napped = sv.apply_walk(tired, away)
     assert napped["trip"] is None and napped["note"] == "napped"
-    assert napped["at"] == list(nxt)
-    assert napped["spot"] == list(sv.local_of(napped).campfire)
+    assert napped["at"] == list(nxt) and napped["spot"] == list(sv.local_of(napped).campfire)
+    # without resting there, you'd wake at Camp
+    assert sv.apply_walk({**tired, "camps": []}, away)["at"] == [0, 0]
 
 
-def test_end_a_trip_only_at_a_campfire_and_start_again_at_camp():
+def test_going_home_ends_the_day_from_anywhere():
     save = _on_trip()
-    rested = sv.end_trip(save)  # Camp's camp is a campfire
-    assert rested["trip"] is None and rested["note"] == "rested"
-    away = {**_on_trip(), "spot": [1, 0]} if sv.local_of(save).walkable((1, 0)) else None
-    if away:
-        with pytest.raises(sv.WanderError, match="campfire"):
-            sv.end_trip(away)
-    far = {**rested, "at": [1, 0], "spot": list(sv.local_of(rested, (1, 0)).campfire)}
+    to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))
+    home = sv.end_trip(sv.apply_walk(save, to))
+    assert home["trip"] is None and home["note"] == "rested" and home["spot"] == [0, 0]
+    far = {**home, "at": [1, 0], "spot": list(sv.local_of(home, (1, 0)).campfire)}
     again = sv.start_trip(far, from_camp=True)
     assert again["at"] == [0, 0] and again["trip"]["energy"] == FULL
 
@@ -306,14 +315,6 @@ def test_wading_costs_more_without_a_swimmer():
     assert save["trip"]["energy"] - wade == st.FORD_ENERGY
 
 
-def test_heading_home_from_anywhere():
-    save = _on_trip()
-    to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))
-    away = sv.apply_walk(save, to)
-    with pytest.raises(sv.WanderError, match="campfire"):
-        sv.end_trip(away)
-    home = sv.end_trip(away, anywhere=True)
-    assert home["trip"] is None and home["spot"] == list(sv.local_of(home).campfire)
 
 
 def test_the_log_keeps_the_last_ten():
@@ -342,3 +343,15 @@ def test_loading_fills_in_fields_added_later(tmp_path):
         old = {k: v for k, v in sv.new_save(SEED).items() if k != "log"}
         db.save_wander(conn, 1, old)
         assert sv.load(conn, 1)["log"] == []
+
+
+def test_resting_gives_energy_once_a_day_once_half_gone():
+    save = sv._spend(_on_trip(), FULL // 2 + 5)  # Camp's camp is a campfire
+    assert sv.screen(save)["action"] == "camp"
+    rested = sv.act(save, "camp")
+    assert rested["trip"]["energy"] == save["trip"]["energy"] + sv.st.CAMP_ENERGY
+    again = sv.act(rested, "camp")
+    assert again["trip"]["energy"] == rested["trip"]["energy"] and "already rested" in again["events"][0]["text"]
+    # a new day: you can rest again
+    tomorrow = sv._spend(sv.next_day(rested), FULL // 2 + 5)
+    assert sv.act(tomorrow, "camp")["trip"]["energy"] > tomorrow["trip"]["energy"]

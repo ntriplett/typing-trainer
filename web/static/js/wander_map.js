@@ -1,10 +1,11 @@
 // Wanderpaw's maps (PLAN.md 11n), like app/wanderpaw/hexes.py and
 // local.py. Standalone: the play page and the lab both draw with it.
 //
-// Small hexes are pointy-top in axial (q, r). Big hexes are clusters of
-// them that tile one world grid (local.SPANS), so a big hex sits where its
-// small hexes do: turned TILT degrees, drawn as a hexagon with flat sides
-// facing its neighbors.
+// Small hexes are pointy-top in axial (q, r). Big hexes are flat-top in
+// axial (q, r): each is a cluster of 91 small ones (a flat-topped hexagon
+// of pointy hexes) tiling one world grid (local.SPANS), so a big hex's
+// sides line up with the edges of the land you walk. Big direction d
+// (hexes.DIRECTIONS) is at 30 + 60d degrees counter-clockwise from east.
 //
 //   WanderMap.draw(canvas, map, opts)   // map: {radius, hexes, edges, at}
 //   WanderMap.hexAt(canvas, map, opts, x, y) -> [q, r] (canvas pixels)
@@ -130,38 +131,29 @@ const WanderMap = (() => {
 
   const key = (q, r) => `${q},${r}`;
 
-  // The world grid (local.py): big hex (q, r)'s middle is small hex
-  // SPAN_A*q + SPAN_B*r.
-  const SPAN_A = [11, -5];
-  const SPAN_B = [5, 6];
-  const AREA = SPAN_A[0] * SPAN_B[1] - SPAN_A[1] * SPAN_B[0];
-  const span = (q, r) => [SPAN_A[0] * q + SPAN_B[0] * r, SPAN_A[1] * q + SPAN_B[1] * r];
-  const smallXY = (q, r) => [SQRT3 * (q + r / 2), 1.5 * r]; // size 1
-  const [SPAN_X, SPAN_Y] = smallXY(...SPAN_A);
-  const BIG_STEP = Math.hypot(SPAN_X, SPAN_Y); // between big middles, in small sizes
-  const BIG_CORNER = BIG_STEP / SQRT3; // a big hex's corner radius, in small sizes
-  const TILT = Math.atan2(-SPAN_Y, SPAN_X); // where big direction 0 points (ccw)
+  // A hex's middle, size 1 (screen, y down): pointy-top small hexes, and
+  // flat-top big ones (their east neighbor up-right, north-east straight up).
+  const hexXY = (q, r) => [SQRT3 * (q + r / 2), 1.5 * r];
+  const bigXY = (q, r) => [1.5 * (q + r), (SQRT3 / 2) * (r - q)];
 
-  // Small maps (big: false): pointy-top, size = corner radius. Big maps
-  // (big: true): size = a big hex's corner radius, turned TILT to match the
-  // small grid, or not (opts.straight: pointy-top, the way you'd draw a
-  // map by itself). focus centers the canvas on a hex, showing `view`
-  // hexes around it; camera (fractional q, r) overrides where the middle
-  // is, for sliding between hexes.
+  // Small maps (big: false): pointy-top; big maps (big: true): flat-top;
+  // size = corner radius. focus centers the canvas on a hex, showing
+  // `view` hexes around it; camera (fractional q, r) overrides where the
+  // middle is, for sliding between hexes.
   function geometry(canvas, map, opts, big = false) {
     const size = opts.size || 34;
     const r = opts.focus ? opts.view : opts.radius ?? map.radius;
     let width;
     let height;
     if (big) {
-      const reach = (r * BIG_STEP / BIG_CORNER + 1) * size;
+      const reach = (r * SQRT3 + 1) * size;
       width = Math.ceil(2 * reach) + 8;
       height = width;
     } else {
       width = Math.ceil(SQRT3 * size * (2 * r + 1)) + 8;
       height = Math.ceil(size * (3 * r + 2)) + 8;
     }
-    const g = { size, width, height, big, cx: width / 2, cy: height / 2, turn: big && opts.straight ? TILT : 0 };
+    const g = { size, width, height, big, cx: width / 2, cy: height / 2 };
     if (opts.legend && map.shape) {
       // A paper map: just the land, with the legend in the right margin.
       const pts = map.shape.map(([q, r]) => center({ ...g, cx: 0, cy: 0 }, q, r));
@@ -183,26 +175,14 @@ const WanderMap = (() => {
   const distance = (q, r) => (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
 
   function center(g, q, r) {
-    if (g.big) {
-      const [x, y] = turned(smallXY(...span(q, r)), g.turn);
-      const k = g.size / BIG_CORNER;
-      return [g.cx + x * k, g.cy + y * k];
-    }
-    const [x, y] = smallXY(q, r);
+    const [x, y] = g.big ? bigXY(q, r) : hexXY(q, r);
     return [g.cx + g.size * x, g.cy + g.size * y];
   }
 
-  // Turn a screen point (y down) clockwise by a.
-  const turned = ([x, y], a) => (a ? [x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)] : [x, y]);
-
-  // Corner i of a hex, on screen (y down). Small hexes: corner i at 60i - 30
-  // degrees clockwise. Big hexes: at TILT + 30 + 60i counter-clockwise.
+  // Corner i of a hex, on screen (y down), clockwise from east: a small
+  // pointy-top one's at 60i - 30 degrees, a big flat-top one's at 60i - 60.
   function cornerAt(g, x, y, i, s = g.size) {
-    if (g.big) {
-      const a = TILT - g.turn + (Math.PI / 180) * (30 + 60 * i);
-      return [x + s * Math.cos(a), y - s * Math.sin(a)];
-    }
-    const a = (Math.PI / 180) * (60 * i - 30);
+    const a = (Math.PI / 180) * (60 * i - (g.big ? 60 : 30));
     return [x + s * Math.cos(a), y + s * Math.sin(a)];
   }
 
@@ -215,11 +195,9 @@ const WanderMap = (() => {
     ctx.closePath();
   }
 
-  // The side of a hex facing direction d. Small: direction d is at screen
-  // angle -60d, between corners -d and 1-d. Big: d faces TILT + 60d, between
-  // corners d-1 and d.
+  // The side of a hex facing direction d, between corners -d and 1-d
+  // (small: at 60d degrees counter-clockwise from east; big: 30 + 60d).
   function side(g, x, y, d) {
-    if (g.big) return [cornerAt(g, x, y, (d + 5) % 6), cornerAt(g, x, y, d)];
     const i0 = (6 - d) % 6;
     return [cornerAt(g, x, y, i0), cornerAt(g, x, y, (i0 + 1) % 6)];
   }
@@ -772,6 +750,59 @@ const WanderMap = (() => {
     }
   }
 
+  // A wild creature on the map: a little beast in its type's color that
+  // bobs, looks about and blinks (opts.time), with its level on a badge;
+  // guardians wear a "!".
+  const CRITTER_FRAMES = [
+    ["..k...k..", ".kXk.kXk.", "kXXXXXXXk", "kXwkXwkXk", "kXXXXXXXk", ".kXXXXXk.", ".k.k.k.k."],
+    ["..k...k..", ".kXk.kXk.", "kXXXXXXXk", "kXkwXkwXk", "kXXXXXXXk", ".kXXXXXk.", "..k...k.."],
+    ["..k...k..", ".kXk.kXk.", "kXXXXXXXk", "kXwkXwkXk", "kXXXXXXXk", ".kXXXXXk.", ".k.k.k.k."],
+    ["..k...k..", ".kXk.kXk.", "kXXXXXXXk", "kXkkXkkXk", "kXXXXXXXk", ".kXXXXXk.", "..k...k.."],
+  ];
+
+  function drawCritter(ctx, g, t, x, y) {
+    const c = t.critter;
+    const r = hashRand(t.q, t.r)();
+    const frame = Math.floor(hallTime / 260 + r * 4) % CRITTER_FRAMES.length;
+    const bob = Math.round(Math.abs(Math.sin(hallTime / 300 + r * 6)) * g.size * 0.12);
+    const px = Math.max(2, Math.round(g.size / 7));
+    const rows = CRITTER_FRAMES[frame];
+    const ox = Math.round(x - (rows[0].length * px) / 2);
+    const oy = Math.round(y - (rows.length * px) / 2 - bob);
+    // a shadow on the ground
+    ctx.fillStyle = "rgba(59, 36, 23, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + rows.length * px * 0.5, g.size * 0.38, g.size * 0.1, 0, 0, 7);
+    ctx.fill();
+    const colors = { k: "#2a1a10", X: TYPE_COLORS[c.kind], w: "#fffaf0" };
+    rows.forEach((row, j) => {
+      [...row].forEach((ch, i) => {
+        if (ch === ".") return;
+        ctx.fillStyle = colors[ch];
+        ctx.fillRect(ox + i * px, oy + j * px, px, px);
+      });
+    });
+    // its level
+    const bx = x + g.size * 0.42;
+    const by = y - g.size * 0.42 - bob;
+    ctx.fillStyle = "#fffaf0";
+    ctx.strokeStyle = "#2a1a10";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bx, by, g.size * 0.2, 0, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#2a1a10";
+    ctx.font = `bold ${Math.round(g.size * 0.26)}px "Atkinson Hyperlegible Mono", monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(c.level), bx, by + 1);
+    if (c.guardian) {
+      ctx.fillStyle = "#b8432f";
+      ctx.fillText("!", x - g.size * 0.42, by + 1);
+    }
+  }
+
   function drawTile(ctx, g, t, biome, x, y) {
     const base = LAND_COLORS[biome] || BIOME_COLORS[biome] || "#d8c7a0";
     hexPath(ctx, g, x, y);
@@ -802,6 +833,7 @@ const WanderMap = (() => {
     if (t.poi) glyph(ctx, GLYPHS[t.poi], x, y, px);
     else if (t.nook && !t.doors && GLYPHS[t.nook]) glyph(ctx, GLYPHS[t.nook], x, y, px);
     if (t.exit !== undefined) glyph(ctx, GLYPHS.sign, x + g.size * 0.35, y - g.size * 0.3, Math.max(2, px - 1));
+    if (t.critter) drawCritter(ctx, g, t, x, y);
   }
 
   // view: {radius, tiles: [{q, r, kind, biome?, big?, faded?, poi?, role?,
@@ -1138,15 +1170,16 @@ const WanderMap = (() => {
 
   function hexAtLocal(canvas, local, opts, x, y) {
     const g = geometry(canvas, local, { ...opts, radius: local.radius });
-    return cubeRound(...toAxial((x - g.cx) / g.size, (y - g.cy) / g.size));
+    // bigXY backwards
+    const [px, py] = [(x - g.cx) / g.size, (y - g.cy) / g.size];
+    return cubeRound((px / 1.5 - (2 * py) / SQRT3) / 2, (px / 1.5 + (2 * py) / SQRT3) / 2);
   }
 
   function hexAt(canvas, map, opts, x, y) {
     const g = geometry(canvas, map, opts, true);
-    const k = g.size / BIG_CORNER;
-    const [q, r] = toAxial(...turned([(x - g.cx) / k, (y - g.cy) / k], -g.turn));
-    // small (q, r) -> big, through the inverse of the spans
-    return cubeRound((SPAN_B[1] * q - SPAN_B[0] * r) / AREA, (-SPAN_A[1] * q + SPAN_A[0] * r) / AREA);
+    // bigXY backwards
+    const [px, py] = [(x - g.cx) / g.size, (y - g.cy) / g.size];
+    return cubeRound((px / 1.5 - (2 * py) / SQRT3) / 2, (px / 1.5 + (2 * py) / SQRT3) / 2);
   }
 
   // Where a big hex's middle is on a big map's canvas.
@@ -1291,5 +1324,5 @@ const WanderMap = (() => {
     ctx.restore();
   }
 
-  return { draw, drawLocal, hexAt, hexAtLocal, pointAt, TYPE_COLORS, BIOME_COLORS, DIRS, key, span };
+  return { draw, drawLocal, hexAt, hexAtLocal, pointAt, TYPE_COLORS, BIOME_COLORS, DIRS, key };
 })();

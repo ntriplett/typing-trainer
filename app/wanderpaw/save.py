@@ -60,6 +60,8 @@ import random
 
 from app import db, pet_genes
 from app.wanderpaw import hexes as hx
+from app.wanderpaw import battle as bt
+from app.wanderpaw import critters as cr
 from app.wanderpaw import local as lc
 from app.wanderpaw import pets as wp
 from app.wanderpaw import quests as qs
@@ -73,6 +75,7 @@ PARTY_SIZE = wp.PARTY_SIZE
 DEFAULTS = {
     "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
     "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
+    "battle": None, "fighters": None, "combos": [], "camps": [],
     "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
@@ -180,11 +183,17 @@ def campfires_found(save: dict) -> list[Hex]:
     return sorted(found)
 
 
+def campfires_rested(save: dict) -> list[Hex]:
+    """The campfires you've rested at (Camp always counts): where a new
+    day can start."""
+    return sorted({CAMP, *(_unkey(k) for k in save["camps"])})
+
+
 def nearest_campfire(save: dict, big: Hex) -> Hex:
-    """The found campfire fewest big-map steps from big (then the nearest
-    as the crow flies)."""
+    """The campfire you've rested at fewest big-map steps from big (then
+    the nearest as the crow flies)."""
     steps = wd.distances_from(world_of(save), big)
-    return min(campfires_found(save), key=lambda c: (steps.get(c, 999), hx.distance(c, big), c))
+    return min(campfires_rested(save), key=lambda c: (steps.get(c, 999), hx.distance(c, big), c))
 
 
 # --- gates and standing ---------------------------------------------------------------
@@ -367,6 +376,143 @@ def _try_gate(save: dict, local: lc.LocalMap, h: Hex) -> dict:
     }
 
 
+# --- wild creatures and battles (critters.py, battle.py) ----------------------------
+
+
+def day(save: dict) -> int:
+    """Which day it is (a new one every trip): where wanderers turn up."""
+    return save["stats"]["trips"]
+
+
+def critter_at(save: dict, big: Hex, h: Hex) -> cr.Critter | None:
+    """A creature still standing there today (None: none, or beaten)."""
+    c = cr.at(save["seed"], big, day(save)).get(h)
+    beaten = (save["trip"] or {}).get("beaten", [])
+    return c if c and c.id not in beaten else None
+
+
+def fighters(save: dict) -> list[int]:
+    """The two team places that fight: the ones picked (with energy left),
+    then the first others with energy."""
+    pets = (save["trip"] or {}).get("pets") or [m["energy"] for m in save["team"]]
+    able = [i for i in range(len(save["team"])) if i < len(pets) and pets[i] > 0]
+    picked = [i for i in (save.get("fighters") or []) if i in able]
+    return (picked + [i for i in able if i not in picked])[:2]
+
+
+def _critter_by_id(save: dict, cid: str) -> cr.Critter:
+    big = tuple(int(v) for v in cid.split(":")[1].split(","))
+    return next(c for c in cr.at(save["seed"], big, day(save)).values() if c.id == cid)
+
+
+def _start_battle(save: dict, c: cr.Critter) -> dict:
+    who = fighters(save)
+    if not who:
+        raise WanderError("Your pets are too tired to fight. Rest at a campfire, or go round.")
+    return _event({**save, "battle": bt.start(c, who)}, kind="battle",
+                  text=f"A wild level {c.level} {c.species} blocks the way!")
+
+
+def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None) -> dict:
+    """One round of the battle: picks are each fighter's {move, slips}."""
+    b = save.get("battle")
+    if not b or b["over"]:
+        raise WanderError("There's no battle going on.")
+    save = {**save, "events": []}
+    rng = rng or random.Random()
+    try:
+        b, pets, mana = bt.turn(b, save["team"], save["trip"]["pets"], picks, rng, _mana(save))
+    except ValueError as exc:
+        raise WanderError(str(exc)) from exc
+    trip = save["trip"]
+    save = {**save, "battle": b, "trip": {**trip, "pets": pets, "mana": mana, "energy": trip["walk"] + sum(pets)}}
+    for line in b["log"]:
+        save = _event(save, kind="hit", text=line["text"])
+        if line.get("combo") and line["combo"] not in save["combos"]:
+            # a combo you've never set off: into the combo book
+            save = {**save, "combos": [*save["combos"], line["combo"]]}
+            says = next(c.says for c in bt.COMBOS.values() if c.name == line["combo"])
+            save = _event(save, kind="combo", text=f"New combo: {line['combo']}! {says}")
+            ids = [save["team"][i]["id"] for i in b["fighters"] if save["team"][i]["id"]]
+            if ids:
+                save = _event(save, kind="xp", amount=bt.COMBO_XP, pets=ids)
+    if b["over"] == "won":
+        c = _critter_by_id(save, b["critter"])
+        save = {**save, "trip": {**save["trip"], "beaten": [*save["trip"].get("beaten", []), c.id]}}
+        ids = [save["team"][i]["id"] for i in b["fighters"] if save["team"][i]["id"]]
+        gain = bt.xp(b, save["team"])
+        save = _event(save, kind="won", text=f"You won! The {b['species']} scampers off.")
+        if ids:
+            save = _event(save, kind="xp", amount=gain, pets=ids)
+            for i in b["fighters"]:
+                me = save["team"][i]
+                partner = [save["team"][j] for j in b["fighters"] if j != i]
+                if me["id"]:
+                    save = _event(save, kind="fought", pet=me["id"], partners=[t for p in partner for t in p["types"]])
+    elif b["over"] == "lost":
+        save = _event(save, kind="lost", text="Your fighters are worn out. They'll rest till tomorrow.")
+    return save
+
+
+def end_battle(save: dict) -> dict:
+    """Leave a finished battle: step onto the creature's hex if you won;
+    out of pet energy after losing, nap."""
+    b = save.get("battle")
+    if not b or not b["over"]:
+        raise WanderError("The battle isn't over.")
+    save = {**save, "battle": None, "events": []}
+    if b["over"] == "won":
+        c = _critter_by_id(save, b["critter"])
+        save = _see({**save, "at": list(c.big), "spot": list(c.at)}, c.big, c.at)
+        save = _arrive(save)
+    elif not sum(save["trip"]["pets"]):
+        return nap(save)
+    return save
+
+
+def flee(save: dict) -> dict:
+    """Run away (before it's over): it costs your own walking energy."""
+    b = save.get("battle")
+    if not b or b["over"]:
+        raise WanderError("There's no battle to run from.")
+    save = _spend({**save, "battle": None, "events": []}, st.FLEE_ENERGY)
+    save = _event(save, kind="fled", text="You back away. Phew!")
+    return nap(save) if save["trip"]["energy"] <= 0 else save
+
+
+def pick_fighters(save: dict, slots: list[int]) -> dict:
+    if save.get("battle"):
+        raise WanderError("Not in the middle of a battle!")
+    if len(slots) > 2 or len(set(slots)) != len(slots) or any(not 0 <= i < len(save["team"]) for i in slots):
+        raise WanderError("Pick up to two of your party to fight.")
+    return {**save, "fighters": list(slots), "events": []}
+
+
+def battle_view(save: dict) -> dict | None:
+    b = save.get("battle")
+    if not b:
+        return None
+    pets, mana = save["trip"]["pets"], _mana(save)
+    return {**b, "looks": cr_looks(b), "fighters": [
+        {"place": i, "name": save["team"][i]["name"], "species": save["team"][i]["species"], "level": save["team"][i]["level"],
+         "types": save["team"][i]["types"], "energy": pets[i], "max": save["team"][i]["energy"],
+         "mana": mana[i], "max_mana": save["team"][i]["mana"], "focused": i in b.get("focus", []),
+         "genes": save["team"][i].get("genes"), "growth": save["team"][i].get("growth", 10),
+         "moves": bt.moves(save["team"][i], b["kind"], mana[i])}
+        for i in b["fighters"]]}
+
+
+def combo_book(save: dict) -> list[dict]:
+    """Every combo, by the mark and the hit: found ones say what they do."""
+    return [{"mark": mark, "hit": kind, "name": c.name if c.name in save["combos"] else None,
+             "says": c.says if c.name in save["combos"] else None}
+            for (mark, kind), c in bt.COMBOS.items()]
+
+
+def cr_looks(b: dict) -> dict:
+    return wp.looks(b["species"], b["seed"])
+
+
 # --- trips ----------------------------------------------------------------------
 
 
@@ -376,7 +522,13 @@ WALK_ENERGY = 50  # your own, just for walking: used before the pets'
 def _trip(team: list[dict] | None = None) -> dict:
     pets = [m["energy"] for m in team or []]
     walk = WALK_ENERGY if team is not None else 0
-    return {"walk": walk, "pets": pets, "energy": walk + sum(pets), "max": walk + sum(pets), "used": [], "side": {}}
+    return {"walk": walk, "pets": pets, "energy": walk + sum(pets), "max": walk + sum(pets), "used": [], "side": {},
+            "beaten": [], "mana": [m["mana"] for m in team or []]}
+
+
+def _mana(save: dict) -> list[int]:
+    """Each pet's mana left today (full, for a trip from before mana)."""
+    return list(save["trip"].get("mana") or [m["mana"] for m in save["team"]])
 
 
 def _spend(save: dict, n: int) -> dict:
@@ -414,28 +566,25 @@ def start_trip(save: dict, from_camp: bool = False) -> dict:
     if from_camp:
         save = {**save, "at": list(CAMP), "spot": [0, 0]}
     stats = {**save["stats"], "trips": save["stats"]["trips"] + 1}
-    save = {**save, "trip": _trip(save["team"]), "note": None, "events": [], "stats": stats}
+    save = {**save, "trip": _trip(save["team"]), "note": None, "events": [], "stats": stats, "battle": None, "fighters": None}
     return _see(save, tuple(save["at"]), tuple(save["spot"]))
 
 
-def end_trip(save: dict, anywhere: bool = False) -> dict:
-    """Head home from a campfire (or from `anywhere`: you'll start the next
-    trip at the nearest campfire you've found)."""
+def end_trip(save: dict) -> dict:
+    """End the day and go home (from wherever you are): the next day starts
+    at the nearest campfire you've rested at."""
     if not save["trip"]:
         raise WanderError("You're not on a trip.")
-    if tuple(save["spot"]) != local_of(save).campfire:
-        if not anywhere:
-            raise WanderError("Find a campfire to rest at first.")
-        big = nearest_campfire(save, tuple(save["at"]))
-        save = _see({**save, "at": list(big), "spot": list(local_of(save, big).campfire)}, big, local_of(save, big).campfire)
+    big = nearest_campfire(save, tuple(save["at"]))
+    save = _see({**save, "at": list(big), "spot": list(local_of(save, big).campfire)}, big, local_of(save, big).campfire)
     return {**save, "trip": None, "note": "rested", "events": []}
 
 
 def nap(save: dict) -> dict:
-    """Out of energy: wake at the nearest campfire you've found."""
+    """Out of energy: the day's over; wake at the nearest campfire you've rested at."""
     big = nearest_campfire(save, tuple(save["at"]))
     save = {**save, "at": list(big), "spot": list(local_of(save, big).campfire), "trip": None, "note": "napped",
-            "events": [*save["events"], {"kind": "nap", "text": "All tired out! You napped by the nearest campfire you've found."}]}
+            "events": [*save["events"], {"kind": "nap", "text": "All tired out! You curl up and sleep. Tomorrow you'll wake by the nearest campfire you've rested at."}]}
     return _see(save, big, tuple(save["spot"]))
 
 
@@ -458,7 +607,11 @@ def apply_walk(save: dict, to: Hex) -> dict:
     if nbig not in world_of(save).hexes:
         raise WanderError("That's the edge of the world.")
     local = local_of(save, nbig)
+    if save.get("battle"):
+        raise WanderError("You're in the middle of a battle!")
     why = _blocked(save, big, spot, nbig, h)
+    if why == "critter":
+        return _start_battle(save, critter_at(save, nbig, h))
     if why == "gate" and world_of(save).gates[local.gates[h]].kind == "quest":
         return _bump_bridge(save, world_of(save).gates[local.gates[h]].region)
     if why == "gate":
@@ -488,6 +641,8 @@ def _blocked(save: dict, big: Hex, spot: Hex, nbig: Hex, h: Hex) -> str | None:
         return None if nbig == big and spot in nook.doors else f"The {local.tiles[h]} is in the way."
     if h in local.gates and not cleared(save, local.gates[h]):
         return "gate"
+    if critter_at(save, nbig, h):
+        return "critter"
     if not standable(save, local, h):
         return f"The {local.tiles[h].replace('_', ' ')} is in the way."
     return None
@@ -508,7 +663,7 @@ def steps(save: dict) -> list[Hex]:
     out = []
     for g in hx.neighbors(lc.to_world(big, spot)):
         nbig, h = lc.owner(g)
-        if nbig in world_of(save).hexes and _blocked(save, big, spot, nbig, h) in (None, "gate"):
+        if nbig in world_of(save).hexes and _blocked(save, big, spot, nbig, h) in (None, "gate", "critter"):
             out.append(g)
     return out
 
@@ -517,7 +672,7 @@ def step_word(save: dict, g: Hex) -> str:
     """The word length for stepping onto world hex g."""
     big, h = lc.owner(g)
     local = local_of(save, big)
-    if h in local.gates and not cleared(save, local.gates[h]):
+    if h in local.gates and not cleared(save, local.gates[h]) or critter_at(save, big, h):
         return STEP_WORD_GATE
     if h in local.nooks and local.nooks[h].doors:
         return STEP_WORD_NOOK
@@ -586,6 +741,8 @@ def place(save: dict) -> dict | None:
         return {"kind": "shrine", "region": here.region}
     if spot in local.nooks:
         return {"kind": "nook", "region": here.region, "nook": local.nooks[spot]}
+    if spot == local.campfire:
+        return {"kind": "campfire", "region": here.region}
     if tile == "temple":
         return {"kind": "temple", "region": here.region}
     if tile == "stone":
@@ -629,6 +786,11 @@ def screen(save: dict) -> dict | None:
         return _nook_screen(save, where["nook"], region, pid)
     if kind == "giver":
         return _giver_screen(save, where["giver"])
+    if kind == "campfire":
+        known = tuple(save["at"]) in campfires_rested(save)
+        return {"title": "Campfire", "rest": True, "action": "camp", "label": "Rest by the fire",
+                "text": "A warm, crackly fire." + (" A new day can start here." if known else
+                                                   " Rest a while, and a new day can start here.")}
     if kind == "board":
         item = st.FORAGE[region]
         wanted = trip["side"].get(pid)
@@ -779,6 +941,20 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
     trip = save["trip"]
     if action in ("search", "fish"):
         return _search(save, place(save)["nook"], region, pid, accuracy)
+    if action == "camp":
+        # a new day can start here from now on, however the rest goes
+        texts = []
+        if tuple(save["at"]) not in campfires_rested(save):
+            save = {**save, "camps": [*save["camps"], _key(tuple(save["at"]))]}
+            texts.append("A new day can start here now.")
+        if trip.get("rested"):
+            texts.insert(0, "You've already rested today.")
+        elif trip["energy"] > trip["max"] / 2:
+            texts.insert(0, "You're not ready to rest yet.")
+        else:
+            save = _restore({**save, "trip": {**trip, "rested": True}}, st.CAMP_ENERGY)
+            texts.insert(0, f"You and your party rest by the fire for a while. +{st.CAMP_ENERGY} energy.")
+        return _event(save, kind="camp", text=" ".join(texts))
     if action == "ask":
         g = place(save)["giver"]
         save = {**save, "quests": {**save["quests"], g.id: "asked"}}
@@ -875,9 +1051,16 @@ def _write(conn, learner_id: int, change) -> dict:
     for e in save["events"]:
         if e["kind"] == "coins":
             db.add_coins(conn, learner_id, e["amount"], "game", ref="wanderpaw")
-    gained = sum(e["amount"] for e in save["events"] if e["kind"] == "xp")
+    gained = sum(e["amount"] for e in save["events"] if e["kind"] == "xp" and "pets" not in e)
     if gained:
         save = _level_up(conn, learner_id, save, gained)
+    for e in save["events"]:
+        if e["kind"] == "xp" and "pets" in e:  # a battle's: just the fighters
+            for pid in e["pets"]:
+                save = _level_up(conn, learner_id, save, e["amount"], only=pid)
+        if e["kind"] == "fought":
+            rec = wp.note_battle(wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"])), e["partners"])
+            db.save_wander_pet(conn, learner_id, e["pet"], wp.record_json(rec))
     for e in save["events"]:
         if e["kind"] == "train":  # exactly up to the next level
             rec = wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"]))
@@ -990,8 +1173,20 @@ def new_day(conn, learner_id: int) -> dict:
     return _write(conn, learner_id, next_day)
 
 
-def finish(conn, learner_id: int, anywhere: bool = False) -> dict:
-    return _write(conn, learner_id, lambda s: end_trip(s, anywhere))
+def finish(conn, learner_id: int) -> dict:
+    return _write(conn, learner_id, end_trip)
+
+
+def fight(conn, learner_id: int, picks: list[dict]) -> dict:
+    return _write(conn, learner_id, lambda s: battle_turn(s, picks))
+
+
+def leave_battle(conn, learner_id: int, run: bool) -> dict:
+    return _write(conn, learner_id, flee if run else end_battle)
+
+
+def set_fighters(conn, learner_id: int, slots: list[int]) -> dict:
+    return _write(conn, learner_id, lambda s: pick_fighters(s, slots))
 
 
 def go_in(conn, learner_id: int, action: str, accuracy: float = 1.0, arg=None) -> dict:
@@ -1043,6 +1238,9 @@ def _tile(save: dict, local: lc.LocalMap, big: Hex, h: Hex) -> dict:
             out["poi"] = "lost"
     if pid in save["clues"].values() and pid not in save["found"]:
         out["poi"] = "cache"
+    c = critter_at(save, big, h)
+    if c:
+        out["critter"] = {"species": c.species, "kind": c.kind, "level": c.level, "guardian": c.guardian}
     if out["kind"].startswith("pillar_") and out["kind"][7:] in save["temples"]:
         out["lit"] = True  # its relic is home
     return out
@@ -1143,9 +1341,12 @@ def view(save: dict) -> dict:
         "note": save["note"],
         "events": save["events"],
         "screen": screen(save),
-        "campfires": len(campfires_found(save)),
+        "campfires": len(campfires_rested(save)),
         "at_camp": tuple(save["at"]) == CAMP,
         "team": save["team"],
+        "fighters": fighters(save),
+        "combo_book": combo_book(save),
+        "battle": battle_view(save),
         "levels": {t: levels(save, t) for t in wd.REGIONS if levels(save, t)},
         "items": {k: v for k, v in sorted(save["items"].items()) if v},
         "about": {k: st.describe(k) for k, v in save["items"].items() if v},

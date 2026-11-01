@@ -872,6 +872,26 @@ shows places you've been. Great halls: the Heartstone (5 relic pillars that ligh
 toward Camp) and temples (features per type) are 7 hexes across, with moving glows and sparkles.
 
 
+**Phase 5 (building, 2026-10-31): battles.** Wild creatures (`critters.py`): guardians at key spots
+(nook doors, by chests, one-wide trails; back each day) and wanderers in new spots each day; wild
+animals of the region's species, level from how deep the place is; animated markers on the map;
+walking into one (a long word) starts a battle; beaten ones are gone for the trip. Battles
+(`battle.py`): your two fighters (picked in the Party book with F, else the first two) vs one
+creature; each round each fighter types one of six moves: Attack (its best type), Big (a three-word
+phrase, 6 mana, 2.2x, goes first, leaves its type's mark), Guard, Focus, Cheer, Rest; slips weaken a
+move; then speed order. Pacing: a fair fight ~3 rounds, ~10% of each fighter's energy (creatures have
+their own energy and hit sizes). Marks last this round and the next; a hit of the right type sets off
+one of 20 combos (battle.COMBOS: a 5x5 of mark x hit with one gap per row and column), each uses up
+the mark: more damage, lost turns, weaker hits, burning, or a boost for your pets. Combo book (book 6)
+fills in as you find them (20 XP each, first time). Winning: XP to the fighters, partner counts (for
+second types), you step on; losing rests the two; Esc runs (2 walking energy). The battle screen
+replaces the map: fighters with energy and mana bars and their moves left, the creature right; each
+round plays back step by step (lunges, shots, bursts, numbers, marks drawn on the creature).
+Campfires: resting no longer ends the day: it makes the campfire a place a new day can start, and
+once a day, once your energy is half gone, gives +10. A day ends only out of energy or Go home ->
+end the day (waking by the nearest campfire you've rested at). Big maps are drawn flat-top, small
+maps pointy-top. Next: befriending and the Camp roster, telegraphs, duets, terrain.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every
