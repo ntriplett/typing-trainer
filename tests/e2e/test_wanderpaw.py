@@ -54,3 +54,42 @@ def test_go_in_to_a_quest_giver_and_take_the_quest(page: Page, live_server):
     expect(page.locator("#menu")).to_be_hidden()
     page.keyboard.press("Escape")  # go home?
     expect(page.locator("#menu-title")).to_have_text("Heading home?")
+
+
+def test_tough_creatures_show_both_types_and_the_party_book_shows_this_levels_xp(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    from app.wanderpaw import local as lc
+    from app.wanderpaw import pets as wp
+    from app.wanderpaw import world as wd
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    # the lab's level button goes by this level's real cost
+    assert page.request.post(f"{live_server}/api/wander-lab/xp", data={"pet_id": fox, "xp": wp.xp_for(3) + 10}).ok
+    page.goto(f"{live_server}/wander-lab")
+    expect(page.locator(f'#lab-pets [data-xp="{fox}"]').first).to_have_attribute("data-n", str(wp.xp_for(4) - wp.xp_for(3) - 10))
+
+    page.goto(f"{live_server}/wanderpaw")
+    seed = page.request.get(f"{live_server}/api/wander-lab/world").json()["seed"]
+    day = page.request.post(f"{live_server}/api/wander/trip/start", data={}).json()["stats"]["trips"]
+    world = wd.generate(seed)
+    spots = ((big, h, c) for big in sorted(world.hexes) for h, c in sorted(cr.at(seed, big, day).items()) if c.second)
+    big, h, c = next(spots)
+    local = lc.generate(seed, big)
+    beside = next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in cr.at(seed, big, day))
+    page.request.post(f"{live_server}/api/wander-lab/teleport", data={"q": big[0], "r": big[1], "spot": list(beside)})
+    page.reload()
+    page.wait_for_function("state && state.trip")
+    page.keyboard.press("3")
+    expect(page.locator(".wander-stats-list").first).to_contain_text(f"10 / {wp.xp_for(4) - wp.xp_for(3)} xp")
+    page.keyboard.press("Escape")
+
+    g = lc.to_world(big, h)
+    page.request.post(f"{live_server}/api/wander/walk", data={"q": g[0], "r": g[1]})
+    page.reload()
+    foe = page.locator("#battle-foe-info")
+    expect(foe).to_contain_text(f"level {c.level}")
+    expect(foe.locator(".type-chip")).to_have_count(2)

@@ -335,9 +335,9 @@ def _giver_screen(save: dict, g: qs.Giver) -> dict:
                 "text": f"{npc.hello} Could you help me? {_hint(save, g)} Find it, and {npc.train} A whole level's worth!"}
     if not _has_lost(save, g):
         return {"title": title, "text": f"Any luck finding my {npc.lost}? {_hint(save, g)}", "action": None}
-    pets = [m for m in save["team"] if m["id"]]
+    pets = [m for m in save["team"] if m["id"] and m["level"] < wp.MAX_LEVEL]
     if not pets:
-        return {"title": title, "text": f"My {npc.lost}! Bring one of your own pets along and I'll train it.", "action": None}
+        return {"title": title, "text": f"My {npc.lost}! Bring along one of your own pets with some growing left to do and I'll train it.", "action": None}
     options = [{"action": "train", "arg": m["id"], "label": f"Train {m['name']} (level {m['level']})"} for m in pets]
     return {"title": title, "text": f"My {npc.lost}! Thank you! Which pet should I train?", "options": options,
             "action": "train", "label": options[0]["label"]}
@@ -384,9 +384,14 @@ def day(save: dict) -> int:
     return save["stats"]["trips"]
 
 
+def relics_out(save: dict) -> int:
+    """Relics taken from their temples: every creature grows with each."""
+    return len(save["temples"])
+
+
 def critter_at(save: dict, big: Hex, h: Hex) -> cr.Critter | None:
     """A creature still standing there today (None: none, or beaten)."""
-    c = cr.at(save["seed"], big, day(save)).get(h)
+    c = cr.at(save["seed"], big, day(save), relics_out(save)).get(h)
     beaten = (save["trip"] or {}).get("beaten", [])
     return c if c and c.id not in beaten else None
 
@@ -402,7 +407,7 @@ def fighters(save: dict) -> list[int]:
 
 def _critter_by_id(save: dict, cid: str) -> cr.Critter:
     big = tuple(int(v) for v in cid.split(":")[1].split(","))
-    return next(c for c in cr.at(save["seed"], big, day(save)).values() if c.id == cid)
+    return next(c for c in cr.at(save["seed"], big, day(save), relics_out(save)).values() if c.id == cid)
 
 
 def _start_battle(save: dict, c: cr.Critter) -> dict:
@@ -1064,7 +1069,7 @@ def _write(conn, learner_id: int, change) -> dict:
     for e in save["events"]:
         if e["kind"] == "train":  # exactly up to the next level
             rec = wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"]))
-            save = _level_up(conn, learner_id, save, wp.XP_PER_LEVEL - rec.xp % wp.XP_PER_LEVEL, only=e["pet"])
+            save = _level_up(conn, learner_id, save, max(0, wp.xp_for(wp.level(rec.xp) + 1) - rec.xp), only=e["pet"])
     save = _logged(save)
     db.save_wander(conn, learner_id, save)
     return save
@@ -1108,7 +1113,7 @@ def pets_view(conn, learner_id: int) -> list[dict]:
     for p, rec in roster(conn, learner_id):
         m = wp.member(p, rec)
         out.append({**wp.stats(p["species"], p["genes"]["battle"], rec), **m, "genes": pet_genes.resolve(p["genes"]), "growth": p["growth"],
-                    "xp": rec.xp, "next": wp.level(rec.xp) * wp.XP_PER_LEVEL, "starred": rec.starred,
+                    "xp": rec.xp, "next": wp.xp_for(wp.level(rec.xp) + 1), "plus4": wp.xp_for(wp.level(rec.xp) + 4), "starred": rec.starred,
                     "choices": wp.second_choices(p["seed"], p["species"], rec)})
     return out
 
@@ -1240,7 +1245,7 @@ def _tile(save: dict, local: lc.LocalMap, big: Hex, h: Hex) -> dict:
         out["poi"] = "cache"
     c = critter_at(save, big, h)
     if c:
-        out["critter"] = {"species": c.species, "kind": c.kind, "level": c.level, "guardian": c.guardian}
+        out["critter"] = {"species": c.species, "kind": c.kind, "second": c.second, "level": c.level, "guardian": c.guardian}
     if out["kind"].startswith("pillar_") and out["kind"][7:] in save["temples"]:
         out["lit"] = True  # its relic is home
     return out

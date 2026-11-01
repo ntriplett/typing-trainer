@@ -4,7 +4,8 @@ wild creature, one typed move each per round.
 The type ring: a move is very strong (x2) against the next type around
 the ring (REGIONS order: Splash -> Ember -> Dream -> Leaf -> Shock ->),
 strong (x1.5) against the one after, weak (x2/3) and very weak (x1/2)
-against the other two. A pet defends with its first type.
+against the other two. A pet defends with its first type, and so does a
+creature; one with a second type hits with whichever does best.
 
 Each round every fighter with energy picks one of six moves (moves()),
 typing its word; each slip takes SLIP off its strength, down to FLOOR:
@@ -33,7 +34,7 @@ take off it in ROUNDS rounds, and its hits are sized to a share of the
 target's full energy.
 
 A battle is a plain dict (the save keeps it while it's on):
-{critter, species, kind, level, seed, energy, max, speed, fighters: [team
+{critter, species, kind, second, level, seed, energy, max, speed, fighters: [team
 places], marks: {mark: rounds}, effects: {effect: rounds}, focus: [places],
 skip: turns the creature loses, round, log: [steps], over: None | "won" |
 "lost"}.
@@ -141,11 +142,17 @@ def start(critter, fighters: list[int]) -> dict:
     """A battle against `critter` (critters.Critter) with these team places."""
     energy = round(2 * ROUNDS * pet_hit(_even_power(critter.level)) * TYPICAL_ACCURACY)
     return {
-        "critter": critter.id, "species": critter.species, "kind": critter.kind, "level": critter.level,
+        "critter": critter.id, "species": critter.species, "kind": critter.kind, "second": critter.second, "level": critter.level,
         "seed": critter.seed, "energy": energy, "max": energy, "speed": 5 + critter.level,
         "fighters": list(fighters), "marks": {}, "effects": {}, "focus": [], "skip": 0, "round": 0, "log": [],
         "over": None,
     }
+
+
+def foe_type(b: dict, target: str) -> str:
+    """The creature's type that hits a `target` type hardest."""
+    kinds = [b["kind"], *filter(None, [b.get("second")])]
+    return max(kinds, key=lambda t: (matchup(t, target), -kinds.index(t)))
 
 
 def best_type(member: dict, foe: str | None) -> str:
@@ -332,7 +339,9 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     m = team[i]
     ratio = max(0.5, min(2.0, b["level"] / max(1, m["level"])))
     share = FAIR_COST / (ROUNDS / len(b["fighters"]))  # its hits land on two fighters
-    mult = matchup(b["kind"], next(iter(m["types"])))
+    defends = next(iter(m["types"]))
+    kind = foe_type(b, defends)
+    mult = matchup(kind, defends)
     hit = m["energy"] * share * mult * ratio
     if i != aim:
         hit *= GUARD
@@ -343,7 +352,7 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     dmg = max(1, round(hit))
     energy[i] = max(0, energy[i] - dmg)
     guarded = f" {m['name']} guards {team[aim]['name']}!" if i != aim else ""
-    out = [{"who": "foe", "act": "hit", "target": i, "type": b["kind"], "damage": dmg,
+    out = [{"who": "foe", "act": "hit", "target": i, "type": kind, "damage": dmg,
             "text": f"The {foe} hits {m['name']} for {dmg}.{_strength(mult)}{guarded}"}]
     if "thorns" in b["effects"]:
         prick = max(1, round(even * 0.5))

@@ -9,14 +9,17 @@ creature is gone for the rest of the trip.
 They're wild animals of the pet species, mostly their region's (Ember
 lands: foxes and lizards, ...), with their own rolled looks. Their level
 follows how deep the place is: the type levels it takes to get there
-(world.gate_needs, the cheapest way) and how far out it is. The heartland
-has plenty of weak ones, enough to take a starting party up a level.
+(world.gate_needs, the cheapest way), RING_LEVELS for each ring past the
+heartland, give or take WIGGLE. Every relic you hold adds RELIC_LEVELS to
+them all, up to wp.MAX_LEVEL. The heartland starts with plenty of weak ones,
+enough to take a starting party up a level. Above SECOND_TYPE_ABOVE a
+creature has a second type, like a pet's: it can hit with either.
 """
 
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 from app.wanderpaw import hexes as hx
@@ -29,6 +32,10 @@ GUARDIANS = {"heartland": (2, 3), "region": (2, 3)}  # per big hex
 WANDERERS = {"heartland": (1, 2), "region": (1, 2)}  # per big hex, per day
 OTHER_SPECIES = 0.2  # a creature from outside its region
 KEEP_CLEAR = 2  # steps from the campfire with no creatures
+RING_LEVELS = 2  # for each ring past the heartland
+RELIC_LEVELS = 2  # for each relic you hold
+WIGGLE = 2  # levels, either way, for one creature
+SECOND_TYPE_ABOVE = 5
 COMMON = sorted(s for s, (_, second) in wp.SPECIES_TYPES.items() if not second)
 
 
@@ -42,6 +49,7 @@ class Critter:
     level: int
     guardian: bool
     seed: int  # its looks (pet_genes.roll)
+    second: str | None = None  # its second type, once it's strong enough (at)
 
 
 def _region_species(region: str) -> list[str]:
@@ -60,7 +68,7 @@ def _level(rng: random.Random, seed: int, big: Hex) -> int:
     ring = wd.generate(seed).hexes[big].ring
     if depth == 0:
         return rng.randint(1, 2)
-    return max(1, depth + rng.randint(0, 1) + ring // 3 - 1)
+    return max(1, min(wp.MAX_LEVEL, depth - 1 + RING_LEVELS * (ring - 1) + rng.randint(-WIGGLE, WIGGLE)))
 
 
 def _free(local: lc.LocalMap, taken: set[Hex]) -> list[Hex]:
@@ -126,6 +134,15 @@ def wanderers(seed: int, big: Hex, day: int) -> tuple[Critter, ...]:
     return tuple(_make(rng, seed, big, h, False, f"w{day}:{big[0]},{big[1]}:{h[0]},{h[1]}") for h in free[:want])
 
 
-def at(seed: int, big: Hex, day: int) -> dict[Hex, Critter]:
+def _grown(c: Critter, relics: int) -> Critter:
+    """A creature as strong as it is with this many relics out of their temples."""
+    lv = min(wp.MAX_LEVEL, c.level + RELIC_LEVELS * relics)
+    second = None
+    if lv > SECOND_TYPE_ABOVE:
+        second = random.Random(f"wanderpaw-critter-second:{c.seed}").choice([t for t in wp.TYPES if t != c.kind])
+    return replace(c, level=lv, second=second)
+
+
+def at(seed: int, big: Hex, day: int, relics: int = 0) -> dict[Hex, Critter]:
     """Every creature in a big hex on a given day, by where it stands."""
-    return {c.at: c for c in (*guardians(seed, big), *wanderers(seed, big, day))}
+    return {c.at: _grown(c, relics) for c in (*guardians(seed, big), *wanderers(seed, big, day))}

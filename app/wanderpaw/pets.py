@@ -4,7 +4,8 @@ Types live here (only this game uses them). Each species has a primary
 type; mythicals also have a second one from level 1, as strong as the
 first. Fish stay home (no type).
 
-Levels: XP_PER_LEVEL XP a level. A pet's type levels are what gates, nooks
+Levels: the first takes XP_FIRST_LEVEL XP and each one after takes XP_GROWTH
+times the last, up to MAX_LEVEL. A pet's type levels are what gates, nooks
 and temples count (summed over the party): the primary type is the pet's
 level; at SECOND_TYPE_LEVEL a pet picks a second type from two offered
 (the type it has fought beside most, and one more), which counts up from
@@ -27,7 +28,9 @@ energy, power, speed, mana), and its looks (genes, growth) for drawing}.
 from __future__ import annotations
 
 import random
+from bisect import bisect_right
 from dataclasses import dataclass, field, replace
+from itertools import accumulate
 
 from app import pet_genes
 from app.wanderpaw import world as wd
@@ -48,7 +51,9 @@ SPECIES_TYPES: dict[str, tuple[str, str | None]] = {
     "flower_fairy": ("leaf", "splash"),  # a stub until its art is designed
 }
 MYTHICAL = frozenset(s for s, (_, second) in SPECIES_TYPES.items() if second)
-XP_PER_LEVEL = 500
+XP_FIRST_LEVEL = 500
+XP_GROWTH = 1.08
+MAX_LEVEL = 21
 SECOND_TYPE_LEVEL = 5
 PARTY_SIZE = 5
 STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
@@ -69,8 +74,27 @@ def can_go(species: str) -> bool:
     return species in SPECIES_TYPES
 
 
+def _level_costs(growth: float = XP_GROWTH) -> list[int]:
+    """XP from each level to the next, to the nearest 5."""
+    return [5 * round(XP_FIRST_LEVEL * growth**i / 5) for i in range(MAX_LEVEL - 1)]
+
+
+LEVEL_XP = (0, *accumulate(_level_costs()))  # the XP that reaches each level (level 1 first)
+
+
+def xp_for(lv: int) -> int:
+    """The XP that reaches level lv."""
+    return LEVEL_XP[min(lv, MAX_LEVEL) - 1]
+
+
 def level(xp: int) -> int:
-    return 1 + xp // XP_PER_LEVEL
+    return bisect_right(LEVEL_XP, xp)
+
+
+def progress(xp: int) -> tuple[int, int] | None:
+    """XP into this level and what it takes (None: fully leveled)."""
+    lv = level(xp)
+    return None if lv == MAX_LEVEL else (xp - xp_for(lv), xp_for(lv + 1) - xp_for(lv))
 
 
 def type_levels(species: str, rec: Record) -> dict[str, int]:
@@ -133,7 +157,7 @@ def gain_xp(rec: Record, amount: int) -> Record:
 
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
-    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp,
+    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp),
             "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
             "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
@@ -141,7 +165,7 @@ def member(pet: dict, rec: Record) -> dict:
 def starter(kind: str, lv: int = 1) -> dict:
     """A temporary starter of a type (lv: tests and the lab only)."""
     name, species = STARTERS[kind]
-    rec = Record(xp=(lv - 1) * XP_PER_LEVEL)
+    rec = Record(xp=xp_for(lv))
     return {"id": None, "name": name, "species": species, "xp": rec.xp, "types": {kind: lv},
             **stats(species, STARTER_STATS, rec), "genes": looks(species, sum(map(ord, name))), "growth": 10}
 

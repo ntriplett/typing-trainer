@@ -197,7 +197,7 @@ function renderBattle() {
   ].join(" ");
   animateMarks();
   document.getElementById("battle-foe-info").innerHTML = `
-    <b>Wild ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "" })}<br>
+    <b>Wild ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
     ${bar(foeEnergy, b.max)} <small>${foeEnergy} / ${b.max}</small>
     ${marks ? `<p>${marks}</p>` : ""}`;
   // what happened last round (during a replay: so far)
@@ -629,7 +629,7 @@ function renderMenu() {
           <b>${esc(m.name)}</b> <small>(${words(m.species)}${m.id ? "" : ", a starter: doesn't level up"})</small>
           <p>${chips(m.types)}</p>
           <dl class="wander-stats-list">
-            <dt>Level</dt><dd>${m.level}${m.id ? ` <small>(${m.xp % 500} / 500 xp)</small>` : ""}</dd>
+            <dt>Level</dt><dd>${m.level}${m.id && m.progress ? ` <small>(${m.progress[0]} / ${m.progress[1]} xp)</small>` : m.id && m.progress === null ? " <small>(fully leveled)</small>" : ""}</dd>
             <dt>Energy</dt><dd>${state.trip && state.trip.pets ? `${state.trip.pets[menu.at]} / ${m.energy}` : m.energy}</dd>
             <dt>Power</dt><dd>${m.power}</dd>
             <dt>Speed</dt><dd>${m.speed}</dd>

@@ -6,4 +6,5 @@
 
 # Left out of the release zip (.github/workflows/release.yml).
 tests/ export-ignore
+tools/ export-ignore
 .github/ export-ignore

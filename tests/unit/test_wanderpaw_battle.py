@@ -188,17 +188,60 @@ def test_creatures_stand_where_you_can_see_them():
     assert any(cr.wanderers(SEED, b, 1) != cr.wanderers(SEED, b, 2) for b in WORLD.hexes)
 
 
+def test_creatures_get_tougher_with_each_ring():
+    depth = cr._depth(SEED)
+    out_there = {}
+    for big, b in WORLD.hexes.items():
+        if b.region == wd.HEARTLAND:
+            continue
+        for c in cr.at(SEED, big, 1).values():
+            middle = depth[big] - 1 + cr.RING_LEVELS * (b.ring - 1)
+            assert max(1, middle - cr.WIGGLE) <= c.level <= min(wp.MAX_LEVEL, middle + cr.WIGGLE)
+            out_there.setdefault(b.ring, []).append(c.level)
+    means = [sum(v) / len(v) for _, v in sorted(out_there.items())]
+    assert means == sorted(means) and max(max(v) for v in out_there.values()) > 8
+
+
+def test_relics_grow_every_creature_up_to_the_cap():
+    big = next(b for b, h in WORLD.hexes.items() if h.region == wd.HEARTLAND and cr.at(SEED, b, 1))
+    for h, c in cr.at(SEED, big, 1).items():
+        assert cr.at(SEED, big, 1, relics=2)[h].level == c.level + 2 * cr.RELIC_LEVELS
+        assert cr.at(SEED, big, 1, relics=50)[h].level == wp.MAX_LEVEL
+    save = sv.new_save(SEED)
+    h, c = next(iter(cr.at(SEED, big, sv.day(save)).items()))
+    assert sv.critter_at({**save, "temples": ["ember", "leaf"]}, big, h).level == c.level + 2 * cr.RELIC_LEVELS
+
+
+def test_only_creatures_above_five_have_a_second_type():
+    big = next(b for b, h in WORLD.hexes.items() if h.region == wd.HEARTLAND and cr.at(SEED, b, 1))
+    for relics in range(6):
+        for c in cr.at(SEED, big, 1, relics).values():
+            assert (c.second is not None) == (c.level > cr.SECOND_TYPE_ABOVE) and c.second != c.kind
+    # the same second type however strong it gets
+    h = next(iter(cr.at(SEED, big, 1)))
+    assert cr.at(SEED, big, 1, 4)[h].second == cr.at(SEED, big, 1, 5)[h].second
+
+
+def test_a_creature_hits_with_its_better_type():
+    one = {**bt.start(_critter(6, "shock", "cat"), [0, 1]), "second": None}
+    assert bt.foe_type(one, "ember") == "shock"
+    two = {**one, "second": "splash"}  # splash is very strong against ember; shock isn't
+    assert bt.foe_type(two, "ember") == "splash" and bt.matchup("splash", "ember") > bt.matchup("shock", "ember")
+    b, energy, _ = _round(two, [_pet("ember"), _pet("ember")], [{"move": "guard", "slips": 0}] * 2)
+    assert any(line["act"] == "hit" and line["type"] == "splash" for line in b["log"] if line["who"] == "foe")
+
+
 def test_the_heartland_has_enough_to_level_a_party():
     heart = [b for b, h in WORLD.hexes.items() if h.region == wd.HEARTLAND]
     today = [c for b in heart for c in cr.at(SEED, b, 1).values()]
     team = [wp.starter(t) for t in wd.REGIONS]
     xp = sum(2 * bt.xp(bt.start(c, [0, 1]), team) for c in today)  # two fighters each
-    assert xp >= 5 * wp.XP_PER_LEVEL and all(c.level <= 2 for c in today)
+    assert xp >= 5 * wp.XP_FIRST_LEVEL and all(c.level <= 2 for c in today)
 
 
 def _beside_a_creature():
     """A save standing next to a creature, on a trip."""
-    save = sv.start_trip({**sv.new_save(SEED), "team": [wp.starter(t, 3) for t in wd.REGIONS]})
+    save = sv.start_trip({**sv.new_save(SEED), "team": [wp.starter(t, wp.MAX_LEVEL) for t in wd.REGIONS]})
     for big, b in sorted(WORLD.hexes.items()):
         local = lc.generate(SEED, big)
         for h, c in sorted(cr.at(SEED, big, sv.day(save)).items()):

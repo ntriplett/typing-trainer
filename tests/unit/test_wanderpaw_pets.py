@@ -21,19 +21,29 @@ def test_every_type_has_two_starter_species_and_a_mythical():
 
 def test_levels_and_type_levels():
     assert wp.level(0) == 1 and wp.level(499) == 1 and wp.level(500) == 2
-    rec = wp.Record(xp=6 * wp.XP_PER_LEVEL)  # level 7
+    rec = wp.Record(xp=wp.xp_for(7))  # level 7
     assert wp.type_levels("bunny", rec) == {"leaf": 7}
-    picked = wp.Record(xp=6 * wp.XP_PER_LEVEL, second="shock", second_at=5)
+    picked = wp.Record(xp=wp.xp_for(7), second="shock", second_at=5)
     assert wp.type_levels("bunny", picked) == {"leaf": 7, "shock": 3}
     # mythicals have both, equal, from level 1
     assert wp.type_levels("dragon", wp.Record()) == {"shock": 1, "ember": 1}
     assert wp.type_levels("dragon", rec) == {"shock": 7, "ember": 7}
 
 
+def test_each_level_takes_a_bit_more_xp_up_to_the_cap():
+    assert wp.xp_for(1) == 0 and wp.xp_for(2) == 500 and wp.xp_for(3) == 1040
+    costs = [wp.xp_for(lv + 1) - wp.xp_for(lv) for lv in range(1, wp.MAX_LEVEL)]
+    assert costs == sorted(costs) and all(b / a == pytest.approx(wp.XP_GROWTH, abs=0.02) for a, b in zip(costs, costs[1:]))
+    assert wp.level(wp.xp_for(7)) == 7 and wp.level(wp.xp_for(7) - 1) == 6
+    assert wp.level(wp.xp_for(wp.MAX_LEVEL) * 2) == wp.MAX_LEVEL
+    assert wp.progress(wp.xp_for(4) + 10) == (10, wp.xp_for(5) - wp.xp_for(4))
+    assert wp.progress(wp.xp_for(wp.MAX_LEVEL)) is None
+
+
 def test_second_type_offered_at_five_from_partners():
-    young = wp.Record(xp=3 * wp.XP_PER_LEVEL)
+    young = wp.Record(xp=wp.xp_for(4))
     assert wp.second_choices(1, "bunny", young) is None
-    five = wp.Record(xp=4 * wp.XP_PER_LEVEL)
+    five = wp.Record(xp=wp.xp_for(5))
     offered = wp.second_choices(1, "bunny", five)
     assert len(set(offered)) == 2 and "leaf" not in offered
     fought = wp.note_battle(wp.note_battle(five, ["dream", "leaf"]), ["dream"])
@@ -42,7 +52,7 @@ def test_second_type_offered_at_five_from_partners():
     rec = wp.pick_second(1, "bunny", fought, "dream")
     assert rec.second == "dream" and rec.second_at == 5
     assert wp.second_choices(1, "bunny", rec) is None
-    assert wp.type_levels("bunny", wp.gain_xp(rec, wp.XP_PER_LEVEL)) == {"leaf": 6, "dream": 2}
+    assert wp.type_levels("bunny", wp.gain_xp(rec, wp.xp_for(6) - rec.xp)) == {"leaf": 6, "dream": 2}
     with pytest.raises(ValueError):
         wp.pick_second(1, "bunny", fought, "ember" if "ember" not in wp.second_choices(1, "bunny", fought) else "leaf")
     assert wp.second_choices(1, "unicorn", five) is None  # mythicals are born with theirs
@@ -50,7 +60,7 @@ def test_second_type_offered_at_five_from_partners():
 
 def test_stats_grow_with_level():
     one = wp.stats("fox", BATTLE, wp.Record())
-    three = wp.stats("fox", BATTLE, wp.Record(xp=2 * wp.XP_PER_LEVEL))
+    three = wp.stats("fox", BATTLE, wp.Record(xp=wp.xp_for(3)))
     assert one == {"level": 1, "energy": 23, "power": 7, "speed": 5, "mana": 11}
     assert three["energy"] == one["energy"] + 4 and three["power"] == one["power"] + 2
 

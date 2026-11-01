@@ -127,7 +127,7 @@ def test_your_pets_make_the_team():
 def test_levels_second_types_and_stars():
     fox = _add_pet("fox")
     unicorn = _add_pet("unicorn", 5)
-    pets = client.post("/api/wander-lab/xp", json={"pet_id": fox, "xp": 4 * wp.XP_PER_LEVEL}).json()["pets"]
+    pets = client.post("/api/wander-lab/xp", json={"pet_id": fox, "xp": wp.xp_for(5)}).json()["pets"]
     me = next(p for p in pets if p["id"] == fox)
     assert me["level"] == 5 and len(me["choices"]) == 2
     assert client.post(f"/api/wander/pets/{fox}/second", json={"type": "ember"}).status_code == 400

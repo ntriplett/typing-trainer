@@ -892,6 +892,18 @@ once a day, once your energy is half gone, gives +10. A day ends only out of ene
 end the day (waking by the nearest campfire you've rested at). Big maps are drawn flat-top, small
 maps pointy-top. Next: befriending and the Camp roster, telegraphs, duets, terrain.
 
+**Levels and tougher creatures (2026-11-01).** Each level costs 1.08x the last (pets.XP_FIRST_LEVEL 500,
+XP_GROWTH: favorites may max out, the whole party shouldn't), cap 21 for pets and creatures (22,890 XP in all; stored XP is kept, levels recomputed). A creature's
+level: heartland 1-2; elsewhere gate depth - 1 + 2 per ring past the heartland (ring 2 +2 .. ring 6 +10), +/-2 for
+each creature; then +2 for every relic out of its temple (save.relics_out; relics count when taken until returning
+them is its own step). Above level 5 a creature has a second type (seeded, from its looks seed): it hits with
+whichever is best and defends with its first, like a pet. Later: gates rising with relics (balance pass), bigger
+creature spells, temple bosses, a level 21 bonus that helps from outside the fight.
+
+**Balance report.** `tools/wander_balance.py` (not in the game or the test suite): creature levels by ring, energy,
+simulated fights, sessions to levels 5/10/15/20, and TARGETS for how the game should feel. Run it around big balance
+changes; it exits 1 if a number leaves its target.
+
 ## 12. Workflow
 
 - GitHub repo, feature-branch-ish commits (small, one logical change each), tests green before every

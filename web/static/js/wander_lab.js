@@ -318,8 +318,8 @@ function showPets(data) {
   document.getElementById("lab-pets").innerHTML = data.pets.length
     ? data.pets
         .map((p) => `<li><b>${p.name}</b> (${p.species}) lv ${p.level}, ${types(p.types)}, ${p.xp} xp
-          <button class="button-go" data-xp="${p.id}" data-n="500">+1 level</button>
-          <button class="button-go" data-xp="${p.id}" data-n="2000">+4 levels</button></li>`)
+          <button class="button-go" data-xp="${p.id}" data-n="${Math.max(0, p.next - p.xp)}">+1 level</button>
+          <button class="button-go" data-xp="${p.id}" data-n="${Math.max(0, p.plus4 - p.xp)}">+4 levels</button></li>`)
         .join("")
     : `<li class="hint">No pets that can adventure yet (fish stay home).</li>`;
   document.querySelectorAll("#lab-pets [data-xp]").forEach((b) => {
