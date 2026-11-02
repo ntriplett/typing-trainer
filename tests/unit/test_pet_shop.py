@@ -29,7 +29,7 @@ def test_departments_match_the_plan():
         d = shop.DEPARTMENTS[dept_id]
         assert (d.slots, d.base_price, set(d.species)) == (slots, base, species)
     assert set(shop.STOCKED) == set(expect)
-    assert set(shop.BASE_PRICE) == set(g.SPECIES_COLORS)  # every species is sold somewhere
+    assert set(shop.BASE_PRICE) == set(g.SPECIES_COLORS) - g.NOT_SOLD_YET  # every finished species is sold somewhere
 
 
 def test_departments_open_as_rows_are_learned():

@@ -67,9 +67,9 @@ const PET_RECIPES = {
 // or, for "face" and "skin", a shade of the coat).
 const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body", "wool", "leg", "neck", "head", "farear", "ear", "snout", "beard", "cap", "chest", "fold", "flop", "mane", "fluff", "tuft", "shell", "rim", "spine", "dewlap", "frill", "fin"]);
 // Parts that cover what's behind them with a line (inside the silhouette).
-const FRONT = new Set(["body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "fbody", "fhead", "lip", "pectoral", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
+const FRONT = new Set(["hshell", "hshell2", "hface", "hbody", "hneck", "body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "fbody", "fhead", "lip", "pectoral", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2", "gill", "fhead"]);
+const BLENDS_IN = new Set(["hpearl", "hinner", "hhair", "hback", "htop", "harm", "hfin", "thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2", "gill", "fhead"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
@@ -601,6 +601,7 @@ function coatValue(pattern, label, x, y, geo, n, splotch) {
 function paintCoat(out, grid, genes, built, hex) {
   if (built.fire) return paintFire(out, grid, genes, built, hex);
   if (built.fish) return paintFish(out, grid, genes, built, hex);
+  if (built.mermaid) return paintMermaid(out, grid, genes, built, hex);
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
@@ -2603,6 +2604,7 @@ const PET_DESIGNS = {
   },
   // chosen in the pet lab, 2026-10-27: seven unicorn breeds, foal to grown;
   // a mix borrows another breed's wings, horn or neck
+  mermaid: { get breeds() { return MERMAID_BREEDS; } },
   unicorn: {
     get breeds() {
       return UNICORN_BREEDS;
@@ -3001,7 +3003,24 @@ const PHOENIX_BREEDS = {
   emblem: PHOENIX({ name: "Emblem: facing us, wings spread wide, tail fanned", facing: "front", fold: false, wings: 12, tail: 14, head: 3.2 }),
 };
 
+// Mermaid trial designs, on the upper bodies kept so far.
+function MERMAID(over) {
+  return { mermaid: true, facing: "front", pose: "sit", fluke: "fan", hair: "wavy", bangs: "part", ...over };
+}
+
+const MERMAID_BREEDS = {
+  classic: MERMAID({ name: "Classic: tail curled along the ground, fan fluke" }),
+  rock: MERMAID({ name: "On a rock, tail draped down", pose: "rock", hair: "long" }),
+  swim: MERMAID({ name: "Swimming: tail streaming behind", pose: "swim", bangs: "side" }),
+  crescent: MERMAID({ name: "Crescent: tail curving up behind her", pose: "crescent", hair: "bun", bangs: "fringe" }),
+  sing: MERMAID({ name: "Singing: tail coiled under her", pose: "coil", sing: true }),
+  veil: MERMAID({ name: "Veil tail: long trailing fluke", fluke: "veil", hair: "long", tailWidths: [3.1, 3.2, 2.6, 1.8, 1.2, 0.9] }),
+  koi: MERMAID({ name: "Koi: short, round tail and paddle fluke", fluke: "round", hair: "tails", tailLen: 0.72, tailWidths: [3.4, 5, 4.4, 2.8, 1.8, 1.2] }),
+  frill: MERMAID({ name: "Frilled: fins at the hips", frills: true, bangs: "side" }),
+};
+
 const PET_VARIANTS = {
+  mermaid: Object.values(MERMAID_BREEDS),
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
   bunny: Object.values(PET_DESIGNS.bunny.breeds),
@@ -3030,6 +3049,7 @@ function buildVariant(genes, stage, frame, V) {
   if (V.dragon) return buildDragon(genes, stage, frame, V);
   if (V.unicorn) return buildUnicorn(genes, stage, frame, V);
   if (V.phoenix) return buildPhoenix(genes, stage, frame, V);
+  if (V.mermaid) return buildMermaid(genes, stage, frame, V);
   if (V.fish) return buildFish(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
@@ -4975,6 +4995,358 @@ function hornAt(grid, a, b, hs) {
     const c = grid[y] && grid[y][x];
     if (c && c.l === "uhorn") c.l = "uhornline";
   }
+}
+
+// --- mermaid and flower fairy: the shared upper body -------------------------------------
+// Big head, small body like the pets: a face toward us, duo eyes, soft outline.
+// Skin comes from the player's table (sprites.js SKIN_TONES); hair is the second
+// color and the covered top the first.
+function humanSkin(genes) {
+  return SKIN_TONES[genes.face && genes.face.skin] || SKIN_TONES.light;
+}
+
+function paintHuman(out, grid, genes, built, hex) {
+  built.coatDone = true;
+  built.painted = new Set(["hface", "hbody", "harm", "hneck", "hhair", "hback", "htop", "htail", "hfin", "hrock", "hshell", "hshell2", "hinner", "hpearl"]);
+  const [skin, shade] = humanSkin(genes);
+  const hair = hex[1] || hex[0];
+  const colors = {
+    hface: skin, hbody: skin, harm: skin, hneck: shade, hhair: hair, hback: blend(hair, SHADOW_TINT, 0.14),
+    htop: blend(hex[0], "#ffffff", 0.14), htail: hex[0], hfin: blend(hex[0], "#ffffff", 0.32), hrock: "#8e8a80",
+    hshell: blend(hex[0], "#f8ecdc", 0.84), hshell2: blend(hex[0], "#e0c8b4", 0.78), hinner: blend(hex[0], "#6a4a50", 0.7), hpearl: blend(hair, "#fffaf0", 0.82),
+  };
+  grid.forEach((row, y) => row.forEach((c, x) => {
+    if (c && colors[c.l]) out[y][x] = colors[c.l];
+  }));
+}
+
+// The upper body with its waist at (cx, wy). `behind` draws what sits behind the
+// torso but in front of the back hair (a tail). Returns the face and geometry.
+function humanTop(grid, genes, frame, V, { cx, wy, s, hs, behind }) {
+  const th = 11 * s;
+  const sy = wy - th; // the shoulders
+  const sw = 4.4 * s;
+  const ww = 3.1 * s;
+  const hrx = 7 * hs;
+  const hry = 6.3 * hs;
+  const hy = sy - 1 - hry * 0.8;
+  const sway = frame % 2;
+  const hairStyle = V.hair || "long";
+
+  // hair behind everything
+  if (hairStyle === "long" || hairStyle === "wavy") {
+    for (const side of [-1, 1]) {
+      const pts = hairStyle === "wavy"
+        ? [[cx + side * 4 * hs, hy], [cx + side * 7.6 * hs, hy + 5 * hs], [cx + side * 6 * hs, hy + 9 * hs], [cx + side * 7.2 * hs, hy + 13 * hs], [cx + side * 6.2 * hs - sway * 0.5, wy - 2 * s]]
+        : [[cx + side * 4 * hs, hy], [cx + side * 6.8 * hs, hy + 5 * hs], [cx + side * 6.6 * hs, hy + 9 * hs], [cx + side * 6.4 * hs, hy + 13 * hs], [cx + side * 6 * hs - sway * 0.5, wy - 3 * s]];
+      taper(grid, pts, [4.2 * hs, 2.8 * hs, 2.2 * hs, 1.9 * hs, 1], "hback");
+    }
+  } else if (hairStyle === "tails") {
+    for (const side of [-1, 1]) {
+      taper(grid, [[cx + side * (hrx - 0.5), hy - 3 * hs], [cx + side * (hrx + 2.4 * hs), hy + 3 * hs], [cx + side * (hrx + 2 * hs), hy + 9 * hs], [cx + side * (hrx + 2.6 * hs) - sway * 0.5, hy + 14 * hs]], [1.8 * hs, 2.6 * hs, 2.2 * hs, 1], "hback");
+    }
+  } else if (hairStyle === "bun") {
+    fillEllipse(grid, cx, hy - hry - 1.4 * hs, 3.3 * hs, 2.9 * hs, "hhair");
+  }
+  if (behind) behind();
+
+  // the torso, tapering to the waist, a covered top from the chest down
+  const topY = sy + 2 * s;
+  for (let y = Math.floor(sy); y <= wy; y++) {
+    const t = (y - sy) / th;
+    const hw = sw + (ww - sw) * t;
+    for (let x = Math.floor(cx - hw); x < cx + hw; x++) {
+      put(grid, x, y, { l: y >= topY ? "htop" : "hbody", nx: (x + 0.5 - cx) / (hw + 1), ny: ((y - sy) / th - 0.5) * 1.1 });
+    }
+  }
+  fillRect(grid, cx - 1.5 * hs, sy - 1.5, 3 * hs, 2.5, "hneck");
+  for (const side of [-1, 1]) {
+    taper(grid, [[cx + side * (sw + 0.2), sy + 1.2 * s], [cx + side * (sw + 1.2 * s), sy + 5.5 * s], [cx + side * (sw + 1.6 * s), sy + 9.5 * s]], [1.2 * s, 1.1 * s, 1.15 * s], "harm");
+  }
+
+  // the head and the hair on it
+  fillEllipse(grid, cx, hy, hrx, hry, "hface");
+  const capX = hrx + 0.8;
+  const capY = hry + 0.9;
+  const capC = hy - 0.5;
+  for (let y = Math.floor(capC - capY); y <= Math.ceil(capC + capY); y++) {
+    for (let x = Math.floor(cx - capX); x <= Math.ceil(cx + capX); x++) {
+      const nx = (x + 0.5 - cx) / capX;
+      const ny = (y + 0.5 - capC) / capY;
+      if (nx * nx + ny * ny > 1) continue;
+      const d = (x + 0.5 - cx) / hrx;
+      const yy = (y + 0.5 - hy) / hs;
+      const edge = Math.abs(d) > 0.88 ? 2.6 : V.bangs === "fringe" ? -2 : V.bangs === "side" ? -4 + Math.max(0, 0.25 - d) * 2.8 : -3.8 + Math.abs(d) * 3.6;
+      if (yy < edge) put(grid, x, y, { l: "hhair", nx, ny });
+    }
+  }
+
+  const skin = humanSkin(genes)[0];
+  const ey = Math.round(hy + hs);
+  const deep = luminance(skin) < 0.55; // darker skin: lighter eyes, a rosy mouth and cheeks
+  const iris = blend((genes.face && genes.face.eyes) || "#3a5a8a", "#ffffff", deep ? 0.4 : 0);
+  const ex = Math.round(4 * hs);
+  const cheek = blend(skin, deep ? "#f08080" : "#e86a6a", deep ? 0.5 : 0.4);
+  const lip = deep ? blend(skin, "#f07a80", 0.8) : blend(skin, PET_OUTLINE, 0.55);
+  const mouth = V.sing && frame % 2 ? [[cx - 1, ey + 3, lip], [cx, ey + 3, lip], [cx - 1, ey + 4, lip], [cx, ey + 4, lip]] : [[cx - 1, ey + 3, lip], [cx, ey + 3, lip]];
+  const face = {
+    eyes: [{ x: cx - ex - 1, y: ey, size: "duo", iris }, { x: cx + ex - 1, y: ey, size: "duo", iris }],
+    nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [],
+    glints: [[cx - ex - 2, ey + 2, cheek], [cx + ex, ey + 2, cheek], ...mouth],
+  };
+  return { face, hy, hrx, hry, sy, th, sw };
+}
+
+// --- mermaid coats: real fish markings -----------------------------------------------
+// The tail wears them, following its curve; the first color is the tail, the
+// second (also her hair) the marks. A metal third color, when rolled, is a belt and a
+// clip in her hair.
+//   shimmer    clear rows of scales that catch the light
+//   seafoam    fades down the tail into the second color
+//   koi        big soft patches, like a kohaku
+//   clownfish  bands round the tail with dark edges
+//   angelfish  thin slanted stripes
+//   pearlbelly a pale underside, like most fish
+//   betta      a deep tail and big fins in the second color
+const MERMAID_METALS = new Set(["gilt", "sterling", "bronze", "rose_gold", "platinum"]);
+const MERMAID_PATTERNS = new Set(["shimmer", "seafoam", "koi", "clownfish", "angelfish", "pearlbelly", "betta"]);
+
+// Where a point sits on a path: how far along it, and how far off to one side.
+function alongPath(pts, x, y) {
+  let best = { d: Infinity, along: 0, across: 0 };
+  let run = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i];
+    const dx = pts[i + 1][0] - ax;
+    const dy = pts[i + 1][1] - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (len * len)));
+    const d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+    if (d < best.d) best = { d, along: run + t * len, across: ((x - ax) * dy - (y - ay) * dx) / len };
+    run += len;
+  }
+  return { ...best, total: run };
+}
+
+function paintMermaid(out, grid, genes, built, hex) {
+  paintHuman(out, grid, genes, built, hex);
+  const shiny = MERMAID_METALS.has((genes.coat.colors || [])[0]);
+  const c1 = shiny ? blend(hex[0], "#ffd890", 0.22) : hex[0];
+  const c2 = hex[1] || hex[0];
+  const metal = hex[2];
+  const pattern = genes.coat.pattern;
+  const s = built.scale;
+  const noise = valueNoise(genes.seed);
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  const pale = (c) => blend(c, "#fff4e0", 0.62);
+  const size = 2.4 * Math.max(0.8, s);
+  // a dark arc at the end of each overlapping scale, rows staggered
+  const scaleEdge = (along, across) => {
+    const r = Math.floor(along / size);
+    const f = along / size - r;
+    const q = (across + 40 + (r % 2) * size * 0.5) / size;
+    return f > 0.6 || (q - Math.floor(q) < 0.22 && f > 0.25);
+  };
+  const tailColor = (x, y) => {
+    const { along, across, total } = alongPath(built.tailPath, x + 0.5, y + 0.5);
+    const t = along / total;
+    let c = c1;
+    if (pattern === "seafoam") c = blend(c1, c2, Math.max(0, Math.min(4, Math.floor(t * 5 + ((x + y) & 1 ? 0.25 : -0.25)))) / 4);
+    if (pattern === "koi" && noise(x * 0.2 + 7, y * 0.2 + 3) > 0.54) c = c2;
+    if (pattern === "clownfish") {
+      // evenly spaced whatever the tail's length, so a short tail gets fewer
+      const gap = total / Math.max(2, Math.round(total / ((built.shortTail ? 11 : 8) * Math.max(0.7, s))));
+      const b = Math.abs((along / gap) % 1 - 0.5) * gap;
+      if (t > 0.12 && b < 1.5 * s) c = c2;
+      else if (t > 0.12 && b < 2.3 * s) c = blend(c1, PET_OUTLINE, 0.55);
+    }
+    if (pattern === "angelfish" && ((along + across * (built.shortTail ? 0.15 : 0.6) + 40) % ((built.shortTail ? 7.5 : 5) * Math.max(0.8, s))) < 1.3) c = c2;
+    if (pattern === "pearlbelly" && across < -0.3 * s) c = pale(c1);
+    if (pattern === "betta") c = blend(c1, SHADOW_TINT, 0.18);
+    if (pattern === "shimmer" && tick(x, y) < 0.1) c = blend(c, "#ffffff", 0.35);
+    if (scaleEdge(along, across)) c = blend(c, SHADOW_TINT, pattern === "shimmer" ? 0.24 : 0.1);
+    if (shiny) {
+      // polished: a bright streak down the tail and a few sparks
+      if (Math.abs(across + 0.6 * s) < 0.9 * s) c = blend(c, "#fff8e0", 0.42);
+      if (tick(x, y) < 0.07) c = blend(c, "#ffffff", 0.7);
+    }
+    return c;
+  };
+  const finBase = pattern === "betta" ? c2 : pattern === "seafoam" ? blend(c2, "#ffffff", 0.3) : pattern === "koi" ? pale(c1) : pattern === "clownfish" ? c1 : blend(c1, "#ffffff", 0.32);
+  const [fx, fy] = built.tailEnd;
+  grid.forEach((row, y) => row.forEach((c, x) => {
+    if (!c) return;
+    if (c.l === "htail") out[y][x] = tailColor(x, y);
+    else if (c.l === "hfin") {
+      // rays fanning out from where the fin joins the tail
+      const ray = Math.floor(Math.atan2(y + 0.5 - fy, x + 0.5 - fx) * 5 + 40) % 2;
+      out[y][x] = ray ? blend(finBase, SHADOW_TINT, pattern === "betta" ? 0.2 : 0.12) : finBase;
+    } else if (c.l === "htop") {
+      out[y][x] = pattern === "pearlbelly" ? pale(c1) : pattern === "betta" ? c1 : blend(c1, "#ffffff", 0.14);
+    }
+  }));
+  if (metal) {
+    // the belt: the last rows of the top
+    const wy = built.geo.cy;
+    grid.forEach((row, y) => row.forEach((c, x) => {
+      if (c && c.l === "htop" && y >= wy - Math.max(1, Math.round(s))) out[y][x] = metal;
+    }));
+    const [hx, hy, hrx, hry] = built.geo.head;
+    const clip = [Math.round(hx + hrx * 0.55), Math.round(hy - hry * 0.62)];
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+      const c = grid[clip[1] + dy] && grid[clip[1] + dy][clip[0] + dx];
+      if (c && c.l === "hhair") out[clip[1] + dy][clip[0] + dx] = metal;
+    }
+  }
+}
+
+// --- mermaids -----------------------------------------------------------------------------
+const MERMAID_GROWTH = {
+  mid: { body: 0.74, head: 0.84 },
+  big: { body: 0.92, head: 0.94 },
+  grown: { body: 1.12, head: 1.04 },
+};
+
+// Each pose: the waist's height off the ground and the tail's path as [x, height
+// off the ground] from the waist on, sized for a body of 1.
+const MERMAID_POSES = {
+  sit: { waist: 13, tail: [[0, 13], [1, 7], [5, 3], [13, 3], [20, 6]], fluke: -0.5 },
+  rock: { waist: 14, tail: [[0, 14], [3, 9], [9, 7], [15, 7]], fluke: -0.25, rock: true },
+  swim: { waist: 15, tail: [[0, 15], [-5, 11], [-13, 11], [-21, 14]], fluke: Math.PI + 0.3, wave: true },
+  crescent: { waist: 9, tail: [[0, 9], [-3, 4], [-10, 4], [-16, 11], [-17, 21]], fluke: -Math.PI / 2 - 0.2 },
+  coil: { waist: 16, tail: [[0, 16], [1, 10], [8, 6], [6, 2], [-8, 2], [-12, 6]], fluke: Math.PI + 0.7 },
+};
+
+// The tail's end. fan: two lobes; veil: long and trailing; round: one soft paddle.
+function fluke(grid, x, y, angle, type, s, flip) {
+  const a = angle + flip * 0.12;
+  const at = (ang, len) => [x + Math.cos(ang) * len * s, y + Math.sin(ang) * len * s];
+  const veil = type === "veil";
+  const round = type === "round";
+  const len = veil ? 10 : round ? 4.5 : 6.5;
+  const spread = veil ? 0.45 : round ? 0.85 : 0.7;
+  for (const side of [-1, 1]) {
+    const ang = a + side * spread;
+    taper(grid, [[x, y], at(ang, len * 0.55), at(ang + side * 0.12 + (veil ? 0.25 : 0), len)], [1.1 * s, (veil ? 2.6 : round ? 2.6 : 2.2) * s, round ? 1.6 * s : 0.7], "hfin");
+  }
+}
+
+// A mermaid starts as a pearl in an open clam (baby), then sits up in it, peeking
+// over the rim with her fluke flicking out (small). The clam is the same for every breed.
+function clamBack(grid, cx, y0, R, lift) {
+  // the upper shell, a scalloped fan standing open behind
+  const ribs = 7;
+  const top = y0 - lift;
+  for (let y = Math.floor(top - R); y <= top; y++) {
+    for (let x = Math.floor(cx - R - 1); x <= Math.ceil(cx + R + 1); x++) {
+      const dx = x + 0.5 - cx;
+      const dy = (y + 0.5 - top) / 0.85;
+      const r = Math.hypot(dx, dy);
+      const a = Math.atan2(-dy, dx); // 0 right .. PI left
+      const edge = R * (0.93 + 0.07 * Math.abs(Math.sin(a * ribs)));
+      if (r > edge) continue;
+      put(grid, x, y, { l: Math.floor((a / Math.PI) * ribs * 2) % 2 ? "hshell2" : "hshell", nx: dx / (R + 1), ny: dy / (R + 1) });
+    }
+  }
+  // the inside of the lower shell, dark, where things sit
+  fillEllipse(grid, cx, y0, R * 0.9, 2.2, "hinner");
+}
+
+function clamFront(grid, cx, y0, R) {
+  // the lower shell: a shallow bowl with a scalloped rim
+  const ribs = 7;
+  const depth = R * 0.42;
+  for (let y = Math.floor(y0 - 1); y <= Math.ceil(y0 + depth); y++) {
+    for (let x = Math.floor(cx - R - 1); x <= Math.ceil(cx + R + 1); x++) {
+      const dx = (x + 0.5 - cx) / R;
+      const dy = (y + 0.5 - y0) / depth;
+      if (Math.abs(dx) > 1) continue;
+      const rim = -0.1 + 0.14 * Math.abs(Math.sin(dx * ribs * 1.57));
+      if (dy < rim || dx * dx + dy * dy > 1) continue;
+      put(grid, x, y, { l: Math.floor((dx + 1) * ribs) % 2 ? "hshell2" : "hshell", nx: dx, ny: dy * 0.8 });
+    }
+  }
+}
+
+const EMPTY_FACE = () => ({ eyes: [], nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [], glints: [] });
+
+function buildMermaidPearl(genes, frame) {
+  const grid = makeGrid();
+  const cx = 46;
+  const R = 9;
+  const y0 = GROUND - 4.4;
+  const open = frame % 4 < 2 ? 1 : 0; // the shell breathes open and shut
+  clamBack(grid, cx, y0, R, open);
+  fillEllipse(grid, cx, y0 - 2 - open * 0.5, 2.6, 2.6, "hpearl");
+  clamFront(grid, cx, y0, R);
+  const glints = frame % 4 === 0 ? [[cx - 1, Math.round(y0 - 3 - open), "#ffffff"]] : [];
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: { ...EMPTY_FACE(), glints }, center: [cx, y0], scale: 0.5, softOutline: true, softNeck: true,
+    geo: { cx, cy: y0, rx: R, ry: 4, legTop: GROUND, legH: 0, tail: [cx, y0, 0], head: [cx, y0, 1, 1], faceBox: null, muzzle: null },
+    mermaid: true, tailPath: [[cx, y0], [cx + 1, y0]], tailEnd: [cx, y0],
+  };
+}
+
+function buildMermaidHatch(genes, frame, V) {
+  const grid = makeGrid();
+  const cx = 46;
+  const R = 12.5;
+  const y0 = GROUND - 5.6;
+  const s = 0.56;
+  const hs = 0.72;
+  const flick = frame % 2;
+  const end = [cx + R + 2, y0 - 6 - flick];
+  const path = [[cx + 3.5, y0 + 2.5], [cx + R * 0.72, y0 - 1], end];
+  clamBack(grid, cx, y0, R, 0);
+  const top = humanTop(grid, genes, frame, V, {
+    cx, wy: Math.round(y0 + 1), s, hs,
+    behind: () => {
+    },
+  });
+  clamFront(grid, cx, y0, R);
+  // over the rim, so it reads as her tail and not part of the shell
+  fluke(grid, end[0], end[1], -0.5, V.fluke || "fan", 0.7, flick);
+  taper(grid, path, [2, 1.7, 1], "htail");
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: top.face, center: [cx, top.hy], scale: s, softOutline: true, softNeck: true,
+    geo: { cx, cy: Math.round(y0 + 1), rx: top.sw, ry: top.th / 2, legTop: y0, legH: 0, tail: [cx, y0, 0], head: [cx, top.hy, top.hrx, top.hry], faceBox: null, muzzle: null },
+    mermaid: true, tailPath: path, tailEnd: end,
+  };
+}
+
+function buildMermaid(genes, stage, frame, V) {
+  if (stage.id === "baby") return buildMermaidPearl(genes, frame);
+  if (stage.id === "small") return buildMermaidHatch(genes, frame, V);
+  const grid = makeGrid();
+  const G = MERMAID_GROWTH[stage.id];
+  const s = G.body;
+  const hs = G.head * (V.head || 1);
+  const P = MERMAID_POSES[V.pose || "sit"];
+  const cx = 46;
+  const flip = frame % 2;
+  const wy = Math.round(GROUND - P.waist * s);
+  const widths = V.tailWidths || [3.1, 3.7, 3.1, 2.2, 1.5, 1];
+  const pts = P.tail.map(([x, h], i) => {
+    const wave = P.wave && i > 1 ? (i % 2 ? flip : 1 - flip) * 1.2 : 0;
+    return [cx + x * s * (V.tailLen || 1), GROUND - h * s + wave];
+  });
+  const top = humanTop(grid, genes, frame, V, {
+    cx, wy, s, hs,
+    behind: () => {
+      if (P.rock) {
+        fillEllipse(grid, cx - 2 * s, GROUND - 5 * s, 10 * s, 5.5 * s, "hrock");
+      }
+      const n = pts.length;
+      const end = pts[n - 1];
+      fluke(grid, end[0], end[1], P.fluke, V.fluke || "fan", s, flip);
+      taper(grid, pts, pts.map((_, i) => Math.max(0.8, widths[Math.round((i / (n - 1)) * (widths.length - 1))] * s)), "htail");
+      if (V.frills) {
+        for (const side of [-1, 1]) taper(grid, [[cx + side * 3 * s, wy + 1.5 * s], [cx + side * 7 * s, wy + 3.5 * s]], [1.4 * s, 0.7], "hfin");
+      }
+    },
+  });
+  const geo = { cx, cy: wy, rx: top.sw, ry: top.th / 2, legTop: wy, legH: 0, tail: [cx, wy, 0], head: [cx, top.hy, top.hrx, top.hry], faceBox: null, muzzle: null };
+  return { grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: top.face, center: [cx, top.hy], scale: s, softOutline: true, softNeck: true, geo, mermaid: true, shortTail: (V.tailLen || 1) < 1, tailPath: pts, tailEnd: pts[pts.length - 1] };
 }
 
 // --- phoenixes -------------------------------------------------------------------------

@@ -34,6 +34,8 @@ import random
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.appearance import SKIN_TONES
+
 GENES_VERSION = 1
 
 
@@ -194,7 +196,7 @@ def fits(species: str | None, color_id: str) -> bool:
         return owner == species
     return family != "metal" and owner in (None, species)
 # Species whose third color is always a treasure metal.
-TREASURE_THIRD = {"dragon", "unicorn"}
+TREASURE_THIRD = {"dragon", "unicorn", "mermaid"}
 
 NATURAL = 1.0
 RARE = 0.08
@@ -225,6 +227,7 @@ SPECIES_COLORS: dict[str, dict[str, float]] = {
     # flames: bright oranges most often, then reds and golds; blue, green and
     # violet fire are rare (about 1 in 10 between them)
     "phoenix": {"fire_orange": NATURAL, "fire_red": 0.6, "fire_gold": 0.5, "fire_blue": 0.15, "fire_green": 0.12, "fire_violet": 0.1},
+    "mermaid": {"teal": NATURAL, "blue": NATURAL, "green": NATURAL, "purple": NATURAL, "pink": NATURAL, "gold": NATURAL, "red": NATURAL, "white": RARE},
     "unicorn": {"white": NATURAL, "cream": NATURAL, "pink": NATURAL, "purple": NATURAL, "blue": NATURAL, "gray": NATURAL, "teal": NATURAL, "gold": NATURAL, "black": RARE},
 }
 
@@ -241,6 +244,7 @@ STARTER_COLORS: dict[str, tuple[str, str, str]] = {
     "snake": ("moss", "rust", "buttercream"),
     "dragon": ("fern", "crimson", "golden"),
     "unicorn": ("snow", "lavender", "sky"),
+    "mermaid": ("lavender", "sky", "fern"),
     "phoenix": ("blaze", "tangerine", "sunfire"),
     "fish": ("orange", "sky", "silver"),
 }
@@ -256,6 +260,7 @@ ACCENT_CHANCE = {
     "fish": {"solid": 0.1, "twotone": 0.15, "gradient": 0.15, "stripe": 0.5, "bars": 0.35, "spots": 0.3, "marbled": 0.4, "scaled": 0.2},
     "phoenix": {"pure": 0, "wingtips": 0, "embers": 0, "starburst": 0, "smoke": 0},  # their flames are enough
     "unicorn": {"solid": 0.4, "blaze": 0.4, "dapple": 0.4, "pinto": 0.4, "appaloosa": 0.4, "rainbow": 0.4, "starry": 0.4},
+    "mermaid": {"shimmer": 0.4, "seafoam": 0.4, "koi": 0.4, "clownfish": 0.4, "angelfish": 0.4, "pearlbelly": 0.4, "betta": 0.4},
     "dragon": {"storybook": 0.4, "ombre": 0.4, "ridgeback": 0.4, "scaled": 0.4, "tiger": 0.4, "jeweled": 0.4, "shadow": 0.4},
     "snake": {"banded": 0.5, "diamondback": 0.45, "saddles": 0.4, "striped": 0.4, "speckled": 0.35, "plain": 0.3},
 }
@@ -284,6 +289,8 @@ SPECIES_PATTERNS = {
     # snakes: real snake markings laid along the body (paintSnake)
     "snake": {"diamondback": 25, "banded": 18, "saddles": 16, "striped": 15, "speckled": 12, "plain": 14},
     # dragons: storybook looks built on real reptile markings (paintDragon)
+    # mermaids: real fish markings down the tail (paintMermaid)
+    "mermaid": {"shimmer": 22, "seafoam": 18, "koi": 14, "clownfish": 12, "angelfish": 12, "pearlbelly": 12, "betta": 10},
     "dragon": {"storybook": 25, "ombre": 15, "ridgeback": 15, "scaled": 15, "tiger": 12, "jeweled": 10, "shadow": 8},
     # unicorns: real horse markings plus a little magic (paintUnicorn)
     # phoenixes: subtle touches on the fire (paintFire)
@@ -297,6 +304,8 @@ FIN_PATTERNS = {
     "fish": {"clear": 24, "solid": 18, "edged": 14, "tipped": 12, "gradient": 10, "striped": 9, "spotted": 8, "rayed": 5},
 }
 EYES = {"#2a1c14": 6.0, "#5c3a1a": 3.0, "#c8861e": 2.0, "#3a7a3a": 1.5, "#3a6ab8": 1.0, "#7a3ab8": 0.2}
+# Species with a person's skin, from the player's own tones (sprites.js has the colors).
+HAS_SKIN = {"mermaid"}
 # Species with their own eye colors (cats: green, amber, copper, gold, blue).
 SPECIES_EYES = {
     "cat": {"#7ab84a": 4.0, "#e0a828": 4.0, "#c8702a": 2.0, "#e8d040": 2.0, "#5a9ae0": 1.0},
@@ -310,6 +319,7 @@ SPECIES_EYES = {
     "lizard": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 1.5},
     "snake": {"#e0a828": 4.0, "#c8702a": 3.0, "#b03a2a": 1.5, "#2a1810": 2.0},
     "phoenix": {"#3a1408": 4.0, "#2a1810": 3.0, "#5a1a3a": 1.0},  # dark, so they show against the glow
+    "mermaid": {"#3a7a8a": 4.0, "#3a5a9a": 3.0, "#3a8a5a": 2.0, "#6a3a8a": 1.0, "#3a2416": 2.0},
     "unicorn": {"#5a3a8a": 3.0, "#3a6ab8": 3.0, "#2a1810": 3.0, "#c8608a": 1.0},
     "dragon": {"#e0a828": 4.0, "#e8d040": 2.0, "#c8702a": 2.0, "#5a9ae0": 1.0, "#b03a2a": 1.0},
     "sheep": {"#c8902a": 3.0, "#8a5a2a": 3.0, "#3a2416": 2.0},
@@ -329,6 +339,7 @@ BREEDS = {
     "turtle": ("box", "tortoise", "baby", "snapper", "shy"),
     "lizard": ("iguana", "iguana_s", "monitor", "skink", "chameleon"),
     "snake": ("classic", "cobra", "wave", "diamondback", "strike", "slider", "rattler", "baby"),
+    "mermaid": ("classic", "rock", "swim", "crescent", "sing", "veil", "koi", "frill"),
     "dragon": ("classic", "wyvern", "flying", "fire", "chubby"),
     "phoenix": ("classic", "rising", "flying", "emblem"),
     "unicorn": ("classic", "prance", "rear", "gallop", "pony", "lying", "alicorn"),
@@ -346,7 +357,7 @@ PARTS = {
     },
 }
 MIX_CHANCE = 0.25
-MIX_PARTS = {"cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head"), "unicorn": ("wings", "horn", "neck"), "phoenix": ("flame", "tail", "crest")}
+MIX_PARTS = {"mermaid": ("fluke", "hair", "frills"), "cat": ("ears", "head", "cheeks"), "dog": ("tail", "ears"), "bunny": ("ears",), "fox": ("ears", "head"), "sheep": ("ears", "ramHorns", "tuft"), "goat": ("ears", "goatHorns", "beard"), "llama": ("ears", "head", "tuft"), "turtle": ("head", "ridges", "tailLen"), "lizard": ("crest", "dewlap", "head"), "snake": ("viper", "rattle", "hood"), "dragon": ("fire", "horns", "wings", "head"), "unicorn": ("wings", "horn", "neck"), "phoenix": ("flame", "tail", "crest")}
 
 # Looks only some species have: name -> (low, high, mode) for a triangular
 # roll. Cats lean skinny; a dog's snout length; a bunny's roundness.
@@ -379,6 +390,34 @@ FAR_FLOOR = 0.04
 # When the game picks a dragon's second color: the same family most of the
 # time, a neighboring family often, and now and then one far away.
 SECOND_COLOR_ODDS = {"same": 0.6, "near": 0.3, "far": 0.1}
+# A mermaid's second color is her hair: mostly another family, and never so
+# close in lightness to her tail that the two run together.
+SECOND_COLOR_ODDS_BY_SPECIES = {"mermaid": {"same": 0.1, "near": 0.6, "far": 0.3}}
+MIN_SECOND_CONTRAST = {"mermaid": 0.16}
+# The rare bright look: this share of a species' game-picked tails, and again of
+# its hair, wears a bold or (a third of the time) neon color, and never both at
+# once. A bright one wears no metal. These can't be picked or unlocked.
+BRIGHT_SHARE = {"mermaid": 0.04}
+BRIGHT_NEON_ODDS = 1 / 3
+
+
+def _is_bright(color_id: str | None) -> bool:
+    return bool(color_id) and COLORS[color_id].family.startswith(("bold", "neon"))
+
+
+def _with_brights(species: str, weights: dict[str, float], keep=lambda c: True) -> dict[str, float]:
+    """A color table with BRIGHT_SHARE of its weight moved to the bright colors."""
+    share = BRIGHT_SHARE.get(species)
+    bright = [c for c in COLORS if _is_bright(c) and keep(c)]
+    if not share or not bright:
+        return weights
+    neon = [c for c in bright if COLORS[c].family == "neon"]
+    bold = [c for c in bright if c not in neon]
+    total = sum(weights.values())
+    out = {c: w * (1 - share) for c, w in weights.items()}
+    for group, odds in ((bold, 1 - BRIGHT_NEON_ODDS), (neon, BRIGHT_NEON_ODDS)):
+        out.update({c: total * share * odds / len(group) for c in group})
+    return out
 NEAR_FAMILIES = {
     "dragon": {
         "red": {"gold", "purple", "black"},
@@ -389,6 +428,16 @@ NEAR_FAMILIES = {
         "purple": {"blue", "red", "black"},
         "black": {"purple", "blue", "red"},
         "white": {"gold", "blue"},
+    },
+    "mermaid": {
+        "teal": {"blue", "green", "gold"},
+        "blue": {"teal", "purple", "white"},
+        "green": {"teal", "gold"},
+        "purple": {"pink", "blue"},
+        "pink": {"purple", "gold", "white"},
+        "gold": {"red", "pink", "white"},
+        "red": {"gold", "pink"},
+        "white": {"blue", "pink", "gold"},
     },
     "unicorn": {
         "white": {"cream", "gray", "blue"},
@@ -457,7 +506,7 @@ def primary_color_weights(species: str) -> dict[str, float]:
     weights = {c: realism(species, c) for c in eligible_colors(species) if c not in GLOW_ONLY}
     white = WHITE_ACCENT.get(species)
     if white is None:
-        return weights
+        return _with_brights(species, weights)
     whites = {c for c in weights if COLORS[c].family == "white"}
     w_total = sum(weights[c] for c in whites)
     o_total = sum(w for c, w in weights.items() if c not in whites)
@@ -487,14 +536,22 @@ def second_color_weights(species: str, primary: str) -> dict[str, float]:
             if COLORS[c].family != "white":
                 sizes[COLORS[c].family] = sizes.get(COLORS[c].family, 0.0) + realism(species, c)
         return {c: realism(species, c) / sizes[COLORS[c].family] for c in colors if COLORS[c].family != "white"}
+    contrast = MIN_SECOND_CONTRAST.get(species)
+    if contrast:
+        colors = [c for c in colors if abs(_lum(c) - _lum(primary)) >= contrast] or colors
     near = NEAR_FAMILIES.get(species)
     if not near:
         return {c: realism(species, c) for c in colors}
+    odds = SECOND_COLOR_ODDS_BY_SPECIES.get(species, SECOND_COLOR_ODDS)
     tier = lambda c: "same" if COLORS[c].family == family else "near" if COLORS[c].family in near.get(family, ()) else "far"  # noqa: E731
     totals: dict[str, float] = {}
     for c in colors:
         totals[tier(c)] = totals.get(tier(c), 0.0) + realism(species, c)
-    return {c: SECOND_COLOR_ODDS[tier(c)] * realism(species, c) / totals[tier(c)] for c in colors}
+    weights = {c: odds[tier(c)] * realism(species, c) / totals[tier(c)] for c in colors}
+    if _is_bright(primary):
+        return weights
+    gap = contrast or 0
+    return _with_brights(species, weights, lambda c: abs(_lum(c) - _lum(primary)) >= gap)
 
 
 def third_color_weights(species: str, unlocked: set[str], exclude: set[str]) -> dict[str, float]:
@@ -544,6 +601,10 @@ def _roll_coat(seed: int, species: str, ctx: dict) -> dict:
         primary = round(rng.uniform(0.5, 0.68), 3)
         secondary = round(min(rng.uniform(0.15, 0.3), 1 - primary - MIN_THIRD_SHARE), 3)
         third = round(1 - primary - secondary, 3)
+    if third and species in BRIGHT_SHARE and (_is_bright(ctx["primary"]) or _is_bright(ctx["secondary"])):
+        style = "mix"  # the bright color is its treasure: no metal as well
+        primary = round(1 - secondary - third, 3)
+        secondary, third = round(1 - primary, 3), 0.0
     third_color = None
     if third:
         if species in TREASURE_THIRD:
@@ -590,6 +651,8 @@ def _roll_face(seed: int, species: str, ctx: dict) -> dict:
     face = {"eyes": eyes, "sparkle": rng.random() < SPARKLE_CHANCE}
     if rng.random() < ODD_EYES_CHANCE.get(species, 0):
         face["odd_eye"] = _pick(rng, {c: w for c, w in palette.items() if c != eyes})
+    if species in HAS_SKIN:
+        face["skin"] = rng.choice(SKIN_TONES)  # drawn last so other faces keep their values
     return face
 
 
@@ -725,7 +788,7 @@ def resolve(genes: dict) -> dict:
 
 def new_colors(genes: dict, unlocked: set[str]) -> list[str]:
     """Colors on this pet the learner hadn't unlocked yet (for any species)."""
-    return [c for c in genes["coat"]["colors"] if c and c not in unlocked and COLORS[c].family != "metal"]
+    return [c for c in genes["coat"]["colors"] if c and c not in unlocked and fits(genes.get("species"), c)]
 
 
 def color_catalog(unlocked: set[str], species: str | None = None) -> list[dict]:
@@ -741,7 +804,9 @@ def color_catalog(unlocked: set[str], species: str | None = None) -> list[dict]:
 # --- the pet shop (PLAN.md 11h): which colors its pets roll, and how rare they are ---
 
 # Species whose colors the game always picks by its own rules (shop or not).
-GAME_PICKED = {"dragon", "unicorn", "phoenix", "fish"}
+GAME_PICKED = {"dragon", "unicorn", "phoenix", "fish", "mermaid"}
+# Being designed in the lab: not in the Pet Shop yet.
+NOT_SOLD_YET = {"mermaid"}
 # Of the shop's pets, this share keep a traditional main color (when there's
 # anything fancy to pick instead).
 TRADITIONAL_SHARE = 0.5

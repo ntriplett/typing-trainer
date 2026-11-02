@@ -5,6 +5,7 @@ import collections
 
 import pytest
 
+from app.appearance import SKIN_TONES
 from app import pet_genes as g
 
 
@@ -519,3 +520,34 @@ def test_special_orders_only_use_unlocked_colors():
     for seed in range(100):  # game-picked species too
         pet = g.order_roll("phoenix", "blaze", None, set(), seed)
         assert pet["coat"]["colors"][1] in g.available_colors("phoenix", set())
+
+
+def test_mermaids_roll_breeds_patterns_skin_and_hair_that_stands_out():
+    mermaids = [g.roll("mermaid", None, None, seed) for seed in range(600)]
+    assert {m["shape"]["breed"] for m in mermaids} == set(g.BREEDS["mermaid"])
+    assert {m["coat"]["pattern"] for m in mermaids} == set(g.SPECIES_PATTERNS["mermaid"])
+    assert {m["face"]["skin"] for m in mermaids} == set(SKIN_TONES)
+    for m in mermaids:
+        tail, hair, third = m["coat"]["colors"]
+        assert abs(g._lum(tail) - g._lum(hair)) >= g.MIN_SECOND_CONTRAST["mermaid"]
+        assert third is None or g.COLORS[third].family == "metal"
+        assert all(part in g.MIX_PARTS["mermaid"] for part in m["shape"]["mix"])
+    same = sum(g.COLORS[m["coat"]["colors"][0]].family == g.COLORS[m["coat"]["colors"][1]].family for m in mermaids)
+    assert same < len(mermaids) * 0.25
+
+
+def test_a_rare_mermaid_wears_one_bright_color_and_no_metal():
+    mermaids = [g.roll("mermaid", None, None, seed)["coat"] for seed in range(4000)]
+    tails = sum(g._is_bright(c["colors"][0]) for c in mermaids)
+    hair = sum(g._is_bright(c["colors"][1]) for c in mermaids)
+    assert 0.02 * 4000 < tails < 0.06 * 4000 and 0.02 * 4000 < hair < 0.06 * 4000
+    for c in mermaids:
+        tail, second, third = c["colors"]
+        assert not (g._is_bright(tail) and g._is_bright(second))
+        if g._is_bright(tail) or g._is_bright(second):
+            assert third is None and abs(sum(c["shares"]) - 1) < 0.01
+    # they can't be picked or unlocked, and don't count as new to the player
+    with pytest.raises(g.GeneError):
+        g.roll("mermaid", "neon_blue", None, 1, {"neon_blue"})
+    bright = next(g.roll("mermaid", None, None, s) for s in range(4000) if g._is_bright(g.roll("mermaid", None, None, s)["coat"]["colors"][0]))
+    assert bright["coat"]["colors"][0] not in g.new_to_player(bright, set())

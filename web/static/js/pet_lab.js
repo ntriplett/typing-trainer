@@ -10,7 +10,7 @@ const LITTER = 24;
 const TICK_MS = 400;
 const STAGE_GROWTH = [0, 2, 5, 8, 10];
 // The species picked first when the lab opens (every species is listed).
-const LAB_FIRST = "fish";
+const LAB_FIRST = "mermaid";
 
 let species = {}; // /api/pet-lab/species
 let litter = [];
