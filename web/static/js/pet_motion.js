@@ -37,7 +37,6 @@ const PetMotion = (() => {
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const trait = (p, k) => (p.genes.personality || {})[k] ?? 0.5;
-  const isEgg = (p) => p.growth === 0 && (p.species === "dragon" || p.species === "phoenix");
   const center = (w) => w.x + w.width / 2;
   const inside = (cx, y, r) => cx >= r.x && cx <= r.x + r.w && y >= r.y && y <= r.y + r.h;
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
@@ -75,7 +74,8 @@ const PetMotion = (() => {
         phase: 0,
         frame: 0,
         ticks: 0,
-        still: isEgg(p),
+        still: isPetEgg(p) || isPetRooted(p),
+        sways: isPetRooted(p), // stays put, but stays alive
         e: trait(p, "energy"),
         s: trait(p, "sleepy"),
         f: trait(p, "friendly"),
@@ -363,8 +363,13 @@ const PetMotion = (() => {
 
   const RESTING = new Set(["idle", "nap", "look", "cuddle", "bask"]);
 
+  const SWAY_TICKS = 3; // a rooted pet's frames: slower than walking legs
+
   function stepOne(world, w) {
-    if (w.still) return;
+    if (w.still) {
+      if (w.sways && ++w.ticks % SWAY_TICKS === 0) w.frame += 1;
+      return;
+    }
     let moving = false;
     if (RESTING.has(w.state)) {
       w.hop = 0;

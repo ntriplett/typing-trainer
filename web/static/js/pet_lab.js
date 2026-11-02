@@ -279,12 +279,28 @@ $("opt-secondary").addEventListener("change", roll);
 $("roll-button").addEventListener("click", roll);
 $("opt-growth").addEventListener("input", () => {
   $("growth-value").textContent = growth();
+  $("adopt-growth").textContent = growth();
   drawLitter();
 });
 $("litter").addEventListener("click", (e) => {
   const b = e.target.closest(".litter-pet");
   if (b) select(litter[b.dataset.i]);
 });
+
+// The close-up pet, knobs and design as drawn, joins your pets for free.
+async function adopt() {
+  const design = Number($("opt-variant").value);
+  const pet = design ? { ...selected, variant: design } : selected;
+  const res = await fetch("/api/pet-lab/adopt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ genes: pet, growth: growth() }),
+  });
+  const data = await res.json();
+  $("adopt-message").innerHTML = res.ok ? `Adopted! <a href="/pets/care?pet=${data.id}">See ${data.name} in the Pet Care Center</a>` : data.detail;
+}
+
+$("adopt-button").onclick = adopt;
 
 (async () => {
   species = await (await fetch("/api/pet-lab/species")).json();

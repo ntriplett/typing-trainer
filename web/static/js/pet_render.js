@@ -2123,6 +2123,30 @@ function petSize(genes, growth) {
   return { w, h };
 }
 
+// Species as people read them: flower_fairy -> "Flower fairy".
+function petSpeciesName(species) {
+  const name = species.replace(/_/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+// Pets too young to go anywhere. An egg just sits there. A fairy's bud and
+// flower and a mermaid's pearl and clam stay put too, but sway and flick.
+const isPetEgg = (p) => p.growth === 0 && (p.species === "dragon" || p.species === "phoenix");
+const isPetRooted = (p) => p.growth <= 3 && (p.species === "flower_fairy" || p.species === "mermaid");
+
+const PET_YOUNG_STAGES = {
+  flower_fairy: { baby: "Bud", small: "Opening" },
+  mermaid: { baby: "Pearl", small: "Peeking out" },
+};
+
+// What the Care Center calls a pet this young (null: nothing special).
+function petYoungStage(p) {
+  if (isPetEgg(p)) return "Egg";
+  const names = PET_YOUNG_STAGES[p.species];
+  if (!names || p.growth > 3) return null;
+  return p.growth === 0 ? names.baby : names.small;
+}
+
 // --- dragon coats: storybook looks built on real reptile markings --------------------
 // The first color is the body; the second goes where the pattern says:
 //   storybook  belly, wing skin, spines and spade

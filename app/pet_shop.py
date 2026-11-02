@@ -366,13 +366,13 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
         cost = price(slot.genes, unlocked, slot.price_roll)
         balance = db.get_coin_balance(conn, learner_id)
         if balance < cost:
-            raise ShopError(f"You need {cost - balance:,} more coins for this {slot.species}.")
+            raise ShopError(f"You need {cost - balance:,} more coins for this {g.species_name(slot.species).lower()}.")
         db.add_coins(conn, learner_id, -cost, "purchase", ref=f"pet:{dept_id}:{slot.seed}")
     db.put_shop_slot(conn, learner_id, _to_row(sold))
     new = g.new_to_player(slot.genes, unlocked)
     db.unlock_pet_colors(conn, learner_id, [c for c in slot.genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
     source = "order" if dept_id == "orders" else "shop"
-    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, slot.species.capitalize(), source)
+    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, g.species_name(slot.species), source)
     pet = db.get_v3_pet(conn, learner_id, pet_id)
     return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": [g.COLORS[c].name for c in new]}
 

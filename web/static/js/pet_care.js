@@ -27,8 +27,7 @@ const TRAITS = [
 ];
 const SIDE = { 1: "right", 2: "left" };
 
-const isEgg = (p) => p.growth === 0 && (p.species === "dragon" || p.species === "phoenix");
-const speciesName = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const speciesName = petSpeciesName;
 const grownSize = (p) => {
   const s = petSize(p.genes, 10);
   return s.w * s.h;
@@ -116,7 +115,7 @@ function tick() {
   frame += 1;
   for (const canvas of document.querySelectorAll("canvas[data-pet]")) {
     const p = petById(Number(canvas.dataset.pet));
-    if (p && !isEgg(p)) paint(canvas, p, Number(canvas.dataset.most));
+    if (p && !isPetEgg(p)) paint(canvas, p, Number(canvas.dataset.most));
   }
 }
 
@@ -202,7 +201,8 @@ function select(id) {
 // --- the right page ----------------------------------------------------------------
 
 function stageName(p) {
-  if (isEgg(p)) return "Egg";
+  const young = petYoungStage(p);
+  if (young) return young;
   if (p.growth >= care.max_growth) return "All grown up";
   if (p.growth >= 7) return "Almost grown";
   if (p.growth >= 4) return "Growing";

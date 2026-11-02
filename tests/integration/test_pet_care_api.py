@@ -194,3 +194,21 @@ def test_the_same_habitat_twice():
     client.post("/api/pets/shop/habitats/forest")
     r = client.post("/api/pets/shop/habitats/forest").json()
     assert r["bought"]["name"] == "Forest 2" and r["bought"]["price"] == 1500
+
+
+def test_the_lab_adopts_the_pet_as_shown_at_any_growth():
+    shown = g.resolve({**g.roll("mermaid", None, None, 7), "shape": {**g.roll("mermaid", None, None, 7)["shape"], "breed": "koi"}})
+    r = client.post("/api/pet-lab/adopt", json={"genes": shown, "growth": 2})
+    assert r.status_code == 200 and r.json()["name"] == "Mermaid"
+    pet = next(p for p in client.get("/api/care").json()["pets"] if p["id"] == r.json()["id"])
+    assert (pet["species"], pet["growth"], pet["genes"]["shape"]["breed"], pet["spot"]) == ("mermaid", 2, "koi", None)
+    assert pet["source"] == "lab"
+
+
+def test_the_lab_only_adopts_real_pets():
+    good = g.roll("dog", None, None, 7)
+    assert client.post("/api/pet-lab/adopt", json={"genes": {**good, "species": "gryphon"}, "growth": 2}).status_code == 400
+    assert client.post("/api/pet-lab/adopt", json={"genes": {"species": "dog"}, "growth": 2}).status_code == 400
+    assert client.post("/api/pet-lab/adopt", json={"genes": good, "growth": 11}).status_code == 422
+    client.cookies.clear()
+    assert client.post("/api/pet-lab/adopt", json={"genes": good, "growth": 2}).status_code == 401

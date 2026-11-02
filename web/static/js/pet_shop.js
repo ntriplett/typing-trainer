@@ -45,8 +45,8 @@ let frame = 0;
 let pick = null; // the order form: {species, primary, secondary}
 let preview = null; // a sample pet for the order form
 
-const PLURAL = { bunny: "bunnies", fish: "fish", fox: "foxes", sheep: "sheep", phoenix: "phoenixes" };
-const speciesName = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const PLURAL = { bunny: "bunnies", fish: "fish", fox: "foxes", sheep: "sheep", phoenix: "phoenixes", flower_fairy: "flower fairies" };
+const speciesName = petSpeciesName;
 const plural = (s) => PLURAL[s] || `${s}s`;
 const slotAt = (index) => dept && dept.slots.find((s) => s.index === index);
 const coins = (n) => `<span class="coins-inline"><span class="coin-icon"></span>${n.toLocaleString()}</span>`;
@@ -1015,7 +1015,7 @@ function welcome(pet) {
   body.innerHTML = `
     <h2 class="panel-title">🎉 Welcome home, ${pet.name}!</h2>
     <div class="detail-pets dept-${deptId}"><figure><div class="detail-canvas"></div></figure></div>
-    <p>Your new ${pet.species} is waiting for you at the <b>Pet Care Center</b>.</p>
+    <p>Your new ${speciesName(pet.species).toLowerCase()} is waiting for you at the <b>Pet Care Center</b>.</p>
     ${pet.new_colors.length ? `<p class="unlocked-colors">✨ New ${pet.new_colors.length > 1 ? "colors" : "color"} unlocked: <b>${pet.new_colors.join(", ")}</b></p>` : ""}
     <div class="detail-actions"><button class="button-go big-button">Yay!</button></div>`;
   const genes = pet.genes;

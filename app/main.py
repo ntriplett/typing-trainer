@@ -380,7 +380,7 @@ def buy_keyboard_hint(body: HintIn, conn=Depends(get_db), learner_id: int = Depe
     return {"spent": price, "coin_balance": db.get_coin_balance(conn, learner_id)}
 
 
-# --- pet lab (grow and roll pets for free; dev only, nothing is saved) -----------
+# --- pet lab (grow and roll pets for free; dev only; saved only if you adopt one) ---
 
 
 @app.get("/pet-lab")
@@ -416,6 +416,27 @@ def pet_lab_roll(species: str, primary: str = "", secondary: str = "", seed: int
     except pet_genes.GeneError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return {"pets": rolled}
+
+
+class PetLabAdoptRequest(BaseModel):
+    genes: dict
+    growth: int = Field(ge=0, le=pet_care.MAX_GROWTH)
+
+
+@app.post("/api/pet-lab/adopt")
+def pet_lab_adopt(body: PetLabAdoptRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The pet as the lab shows it, free, at any growth (to try it in the
+    game before it's sold). It goes to the Care Center like a bought one."""
+    # what the lab sent to draw it, not part of its genes
+    genes = {k: v for k, v in body.genes.items() if k not in ("hex", "color_names")}
+    if genes.get("species") not in pet_genes.SPECIES_COLORS:
+        raise HTTPException(status_code=400, detail="That's not a species.")
+    try:
+        pet_genes.resolve(genes)
+    except (KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Those aren't a pet's genes.") from exc
+    name = pet_genes.species_name(genes["species"])
+    return {"id": db.add_v3_pet(conn, learner_id, genes, name, "lab", growth=body.growth), "name": name}
 
 
 # --- practice lab (try every practice module) -----------------------------------

@@ -79,3 +79,41 @@ def test_every_habitat_kind_has_a_look_and_runs_with_pets(page: Page, live_serve
         expect(page.locator("#habitat-count")).to_have_text("Living here: 6 of 6")
         page.evaluate("for (let i = 0; i < 1500; i++) PetMotion.step(world)")  # minutes of pet life, fast
     assert errors == []
+
+
+def test_the_youngest_fairies_and_mermaids_stay_put_but_stay_alive(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/trail")
+    page.request.post(f"{live_server}/api/pets/shop/habitats/meadow")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        for species, growth in (("flower_fairy", 0), ("flower_fairy", 3), ("mermaid", 0), ("mermaid", 3), ("dragon", 0), ("flower_fairy", 4)):
+            pid = db.add_v3_pet(conn, 1, g.roll(species, None, None, 5), g.species_name(species), "shop")
+            db.update_v3_pet(conn, 1, pid, home="trail:0", growth=growth)
+    page.goto(f"{live_server}/pets/trail/0")
+    expect(page.locator("#habitat-count")).to_have_text("Living here: 6 of 6")
+    page.wait_for_function("typeof world !== 'undefined' && world && world.walkers.length === 6")
+    seen = page.evaluate("""() => {
+      const was = world.walkers.map((w) => [w.x, w.y]);
+      const start = world.walkers.map((w) => w.frame);
+      for (let i = 0; i < 3000; i++) PetMotion.step(world);
+      return world.walkers.map((w, i) => ({
+        species: w.p.species, growth: w.p.growth, moved: w.x !== was[i][0] || w.y !== was[i][1], animated: w.frame !== start[i],
+      }));
+    }""")
+    by = {(w["species"], w["growth"]): w for w in seen}
+    for young in (("flower_fairy", 0), ("flower_fairy", 3), ("mermaid", 0), ("mermaid", 3)):
+        assert not by[young]["moved"] and by[young]["animated"], young
+    assert not by[("dragon", 0)]["moved"] and not by[("dragon", 0)]["animated"]  # an egg just sits there
+    assert by[("flower_fairy", 4)]["moved"]  # she's old enough to go places
+
+
+def test_young_fairies_and_mermaids_have_their_own_stage_names(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/care")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        ids = {}
+        for species, growth, stage in (("flower_fairy", 0, "Bud"), ("flower_fairy", 2, "Opening"), ("mermaid", 0, "Pearl"), ("mermaid", 2, "Peeking out"), ("dragon", 0, "Egg"), ("flower_fairy", 4, "Growing")):
+            pid = db.add_v3_pet(conn, 1, g.roll(species, None, None, 5), g.species_name(species), "shop")
+            db.update_v3_pet(conn, 1, pid, growth=growth)
+            ids[pid] = (species, stage)
+    for pid, (species, stage) in ids.items():
+        page.goto(f"{live_server}/pets/care?pet={pid}")
+        expect(page.locator(".detail-kind")).to_have_text(f"{g.species_name(species)} · {stage}")

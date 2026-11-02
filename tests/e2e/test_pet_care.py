@@ -60,3 +60,13 @@ def test_move_into_a_meadow_and_bring_along(page: Page, live_server, tmp_path):
     expect(page.locator(".book-pet.current .book-pet-badge")).to_have_text("🎒")
     page.get_by_role("button", name="Stay home").click()
     expect(page.get_by_role("button", name="🎒 Bring along")).to_be_visible()
+
+
+def test_adopt_a_pet_from_the_lab(page: Page, live_server):
+    page.goto(f"{live_server}/pet-lab")
+    page.locator("#opt-growth").fill("2")
+    expect(page.locator("#adopt-growth")).to_have_text("2")
+    page.locator("#adopt-button").click()
+    page.get_by_role("link", name="See Flower fairy in the Pet Care Center").click()
+    expect(page.locator("#book-detail h2")).to_have_text("Flower fairy")
+    expect(page.locator(".detail-kind")).to_have_text("Flower fairy · Opening")

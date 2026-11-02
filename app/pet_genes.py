@@ -986,6 +986,11 @@ def rare_multiplier(odds: dict, outcome: object) -> float:
     return 1 + (RARE_TOP - 1) * min(1.0, math.log(ratio) / math.log(RARE_RATIO))
 
 
+def species_name(species: str) -> str:
+    """As people read it: flower_fairy -> "Flower fairy"."""
+    return species.replace("_", " ").capitalize()
+
+
 def rare_features(genes: dict) -> dict[str, float]:
     """Feature name -> price multiplier, for the features rarer than usual."""
     out = {}

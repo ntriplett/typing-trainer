@@ -565,3 +565,8 @@ def test_flower_fairies_roll_breeds_skin_and_a_bright_third_color_for_their_wing
         assert min(g._distance(third, main), g._distance(third, second)) >= g.MIN_THIRD_DISTANCE
     # it can't be picked or unlocked, and doesn't count as new to the player
     assert fairies[0]["coat"]["colors"][2] not in g.new_to_player(fairies[0], set())
+
+
+def test_species_names_read_like_words():
+    assert g.species_name("flower_fairy") == "Flower fairy"
+    assert g.species_name("dog") == "Dog"
