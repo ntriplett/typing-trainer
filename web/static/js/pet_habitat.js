@@ -40,9 +40,7 @@ function step() {
 
 function renderShelf() {
   const box = $("shelf");
-  $("play-hint").textContent = shelf.length
-    ? "Click a treat or toy, then type a word to throw it there!"
-    : "";
+  $("play-hint").textContent = shelf.length ? "Click one, then type a word to send it there! Treats and toys get thrown; gifts float down gently." : "";
   if (!shelf.length) {
     box.innerHTML = `<p>No treats or toys yet. Find them upstairs in the <a href="/pets/shop?dept=supplies">Pet Shop</a>!</p>`;
     return;
@@ -58,7 +56,7 @@ function renderShelf() {
       c.height = 48;
       supplyCanvas(c, (r) => drawSupply(r, item.id));
       const fans = habitat.pets.filter((p) => item.likes.includes(p.species)).length;
-      b.title = fans ? `${fans} of your pets here love it` : "Nobody here likes this one";
+      b.title = item.gift ? (fans ? "Someone here would love this" : "This is for someone who isn't here") : fans ? `${fans} of your pets here love it` : "Nobody here likes this one";
       b.append(c, Object.assign(document.createElement("span"), { textContent: item.kind === "toy" ? item.name : `${item.name} ×${item.have}` }));
       b.onclick = () => aim(item);
       return b;
@@ -137,13 +135,14 @@ function onKey(e) {
 function throwAt(item, target) {
   aiming = null;
   renderWords();
-  thrown = { item, from: [HABITAT_W / 2, HABITAT_H + 4], to: [target.x, target.y], t: 0, landed: false, stay: TOY_STAYS };
+  const from = item.gift ? [target.x, -8] : [HABITAT_W / 2, HABITAT_H + 4]; // a gift floats down
+  thrown = { item, from, to: [target.x, target.y], t: 0, landed: false, stay: TOY_STAYS };
   renderShelf();
 }
 
 function flyStep() {
   if (!thrown.landed) {
-    thrown.t = Math.min(1, thrown.t + 0.05);
+    thrown.t = Math.min(1, thrown.t + (thrown.item.gift ? 0.025 : 0.05));
     if (thrown.t >= 1) land();
     return;
   }
@@ -165,7 +164,7 @@ async function land() {
     if (!r.ok) throw new Error(data.detail || "Couldn't throw it.");
     shelf = data.shelf;
     const fans = Object.keys(data.likers).map(Number);
-    say(fans.length ? "" : `Nobody here likes the ${item.name}. Try another!`);
+    say(fans.length ? "" : item.gift ? `The ${item.name} is for someone who isn't here.` : `Nobody here likes the ${item.name}. Try another!`);
     thrown.eaten = false;
     if (!fans.length) thrown.stay = 20;
     PetMotion.attract(world, fans, x, y, () => {
@@ -190,7 +189,7 @@ async function land() {
 function drawThrown(ctx) {
   const t = thrown.t;
   const x = thrown.from[0] + (thrown.to[0] - thrown.from[0]) * t;
-  const y = thrown.from[1] + (thrown.to[1] - thrown.from[1]) * t - Math.sin(Math.PI * t) * 30; // an arc
+  const y = thrown.from[1] + (thrown.to[1] - thrown.from[1]) * t - (thrown.item.gift ? 0 : Math.sin(Math.PI * t) * 30); // an arc
   const size = 6; // scene units
   const unit = (size / SUPPLY_GRID) * SCENE_PX;
   drawSupply((sx, sy, w, h, c) => {

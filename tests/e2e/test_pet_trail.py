@@ -81,44 +81,6 @@ def test_every_habitat_kind_has_a_look_and_runs_with_pets(page: Page, live_serve
     assert errors == []
 
 
-def test_the_youngest_fairies_and_mermaids_stay_put_but_stay_alive(page: Page, live_server, tmp_path):
-    page.goto(f"{live_server}/pets/trail")
-    page.request.post(f"{live_server}/api/pets/shop/habitats/meadow")
-    with db.open_db(tmp_path / "e2e.db") as conn:
-        for species, growth in (("flower_fairy", 0), ("flower_fairy", 3), ("mermaid", 0), ("mermaid", 3), ("dragon", 0), ("flower_fairy", 4)):
-            pid = db.add_v3_pet(conn, 1, g.roll(species, None, None, 5), g.species_name(species), "shop")
-            db.update_v3_pet(conn, 1, pid, home="trail:0", growth=growth)
-    page.goto(f"{live_server}/pets/trail/0")
-    expect(page.locator("#habitat-count")).to_have_text("Living here: 6 of 6")
-    page.wait_for_function("typeof world !== 'undefined' && world && world.walkers.length === 6")
-    seen = page.evaluate("""() => {
-      const was = world.walkers.map((w) => [w.x, w.y]);
-      const start = world.walkers.map((w) => w.frame);
-      for (let i = 0; i < 3000; i++) PetMotion.step(world);
-      return world.walkers.map((w, i) => ({
-        species: w.p.species, growth: w.p.growth, moved: w.x !== was[i][0] || w.y !== was[i][1], animated: w.frame !== start[i],
-      }));
-    }""")
-    by = {(w["species"], w["growth"]): w for w in seen}
-    for young in (("flower_fairy", 0), ("flower_fairy", 3), ("mermaid", 0), ("mermaid", 3)):
-        assert not by[young]["moved"] and by[young]["animated"], young
-    assert not by[("dragon", 0)]["moved"] and not by[("dragon", 0)]["animated"]  # an egg just sits there
-    assert by[("flower_fairy", 4)]["moved"]  # she's old enough to go places
-
-
-def test_young_fairies_and_mermaids_have_their_own_stage_names(page: Page, live_server, tmp_path):
-    page.goto(f"{live_server}/pets/care")
-    with db.open_db(tmp_path / "e2e.db") as conn:
-        ids = {}
-        for species, growth, stage in (("flower_fairy", 0, "Bud"), ("flower_fairy", 2, "Opening"), ("mermaid", 0, "Pearl"), ("mermaid", 2, "Peeking out"), ("dragon", 0, "Egg"), ("flower_fairy", 4, "Growing")):
-            pid = db.add_v3_pet(conn, 1, g.roll(species, None, None, 5), g.species_name(species), "shop")
-            db.update_v3_pet(conn, 1, pid, growth=growth)
-            ids[pid] = (species, stage)
-    for pid, (species, stage) in ids.items():
-        page.goto(f"{live_server}/pets/care?pet={pid}")
-        expect(page.locator(".detail-kind")).to_have_text(f"{g.species_name(species)} · {stage}")
-
-
 def _in_a_habitat(page, live_server, tmp_path, pets, kind="meadow"):
     page.goto(f"{live_server}/pets/trail")
     page.request.post(f"{live_server}/api/pets/shop/habitats/{kind}")
@@ -155,7 +117,7 @@ def test_grown_fairies_dragons_and_phoenixes_fly_in_habitats(page: Page, live_se
     _in_a_habitat(page, live_server, tmp_path, [("flower_fairy", 6), ("dragon", 6), ("phoenix", 10), ("dragon", 3), ("dog", 6)])
     seen = page.evaluate(AIRTIME, False)
     by = {(p["species"], p["growth"]): p["air"] for p in seen["pets"]}
-    assert by[("flower_fairy", 6)] > 0.5  # mostly in the air
+    assert by[("flower_fairy", 10)] > 0.5  # mostly in the air
     assert 0 < by[("dragon", 6)] < 0.5 and 0 < by[("phoenix", 10)] < 0.5  # some of the time
     assert by[("dragon", 3)] == 0 and by[("dog", 6)] == 0  # too young, and no wings
     assert seen["offscreen"] == 0
@@ -332,3 +294,47 @@ def test_a_swimming_mermaid_stays_in_the_picture_with_water_under_her_tail(page:
     }""", genes)
     assert seen["left"] >= 2 and seen["right"] <= 158
     assert seen["low"] <= 48 + 27 - seen["tail"] + 0.01
+
+
+def test_companions_dont_bounce_chase_or_dig(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    pets = [{"id": i, "species": sp, "growth": 10, "genes": g.resolve(g.roll(sp, None, None, 30 + i))} for i, sp in enumerate(("flower_fairy", "dog", "mermaid"))]
+    seen = page.evaluate("""(pets) => {
+      const look = HABITAT_LOOKS.pond;
+      const world = PetMotion.create(pets, { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, sky: true, props: look.props, terrain: look.terrain }, 2 / 3);
+      const states = pets.map(() => new Set());
+      let chasedFriend = false;
+      for (let i = 0; i < 30000; i++) {
+        PetMotion.step(world);
+        world.walkers.forEach((w, k) => states[k].add(w.state));
+        if (world.walkers[1].state === "chase" && world.walkers[1].target.companion) chasedFriend = true;
+      }
+      // a gift lands: she comes over and is pleased, without bouncing
+      const results = [0, 2].map((k) => {
+        const w = world.walkers[k];
+        Object.assign(w, { state: "idle", timer: 99, ledge: null, hop: 0 });
+        let done = 0, hop = 0;
+        PetMotion.attract(world, [k], 80, 80, () => (done += 1));
+        for (let i = 0; i < 4000 && !done; i++) PetMotion.step(world);
+        const frames = [];
+        for (let i = 0; i < 40 && w.state === "happy"; i++) {
+          PetMotion.step(world);
+          hop = Math.max(hop, w.hop);
+          frames.push(w.dir);
+        }
+        return { done, hop, turned: new Set(frames).size > 1 };
+      });
+      return { fairy: [...states[0]], dog: [...states[1]], mermaid: [...states[2]], chasedFriend, results };
+    }""", pets)
+    for banned in ("hop", "chase", "dig", "jump", "splash"):
+        assert banned not in seen["fairy"] and banned not in seen["mermaid"], banned
+    assert not seen["chasedFriend"]
+    for r in seen["results"]:
+        assert r["done"] == 1 and r["hop"] == 0 and not r["turned"]
+
+
+def test_every_supply_has_art(page: Page, live_server):
+    from app import pet_supplies
+    page.goto(f"{live_server}/pets/care")
+    missing = page.evaluate("(ids) => ids.filter((id) => !SUPPLY_ART[id])", list(pet_supplies.SUPPLIES))
+    assert missing == []

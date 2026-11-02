@@ -432,6 +432,8 @@ def init_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as exc:  # another request added it first
                 if "duplicate column" not in str(exc):
                     raise
+    # Companions (pet_genes.COMPANIONS) stopped being babies.
+    conn.execute("UPDATE pet SET growth = 10 WHERE species IN ('mermaid', 'flower_fairy') AND growth < 10")
     # The room grew from 96x96 to 160x90 (wall 54 tall, was 60): move old
     # furniture over so it keeps its spot, centered, against the baseboard.
     conn.execute("UPDATE room_item SET x = x + 32, y = MAX(0, y - 6), wide = 1 WHERE wide = 0")

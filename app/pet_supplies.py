@@ -31,6 +31,7 @@ class Supply:
     price: int
     likes: tuple[str, ...] = ()  # species that run after it
     sinks: bool = False  # fish food: sinks to the bottom feeders, or floats down slowly
+    gift: bool = False  # for a companion: offered, not thrown (a treat is a sweet, a toy a keepsake)
 
 
 SUPPLIES: dict[str, Supply] = {
@@ -45,6 +46,8 @@ SUPPLIES: dict[str, Supply] = {
         Supply("berry_bites", "Berry Bites", "treat", 5, ("fox", "bunny", "turtle")),
         Supply("ember_candy", "Ember Candy", "treat", 5, ("dragon", "phoenix")),
         Supply("star_sugar", "Star Sugar", "treat", 5, ("unicorn", "llama")),
+        Supply("honey_drop", "Honey Drop", "treat", 5, ("mermaid",), gift=True),
+        Supply("nectar_drop", "Nectar Drop", "treat", 5, ("flower_fairy",), gift=True),
         # toys: kept
         Supply("ball", "Bouncy Ball", "toy", 100, ("dog", "cat", "fox", "goat")),
         Supply("frisbee", "Frisbee", "toy", 100, ("dog",)),
@@ -56,6 +59,8 @@ SUPPLIES: dict[str, Supply] = {
         Supply("treasure_orb", "Treasure Orb", "toy", 100, ("dragon",)),
         Supply("rainbow_ribbon", "Rainbow Ribbon", "toy", 100, ("unicorn",)),
         Supply("flame_feather", "Flame Feather", "toy", 100, ("phoenix",)),
+        Supply("pearl_comb", "Pearl Comb", "toy", 100, ("mermaid",), gift=True),
+        Supply("silver_thimble", "Silver Thimble", "toy", 100, ("flower_fairy",), gift=True),
         # fish food: used up, in tanks
         Supply("fish_flakes", "Fish Flakes", "fish_food", 5, ("fish",)),
         Supply("sinking_pellets", "Sinking Pellets", "fish_food", 5, ("fish",), sinks=True),
@@ -97,7 +102,7 @@ def buy(conn, learner_id: int, item_id: str) -> dict:
         raise SupplyError("There's nothing like that in the shop.")
     have = db.get_supply_counts(conn, learner_id).get(item_id, 0)
     if item.kind == "toy" and have:
-        raise SupplyError(f"You already have a {item.name}! Toys never get used up.")
+        raise SupplyError(f"You already have a {item.name}! " + ("Keepsakes stay with you." if item.gift else "Toys never get used up."))
     _pay(conn, learner_id, item.price, item.name, f"supply:{item_id}")
     db.add_supply(conn, learner_id, item_id, 1)
     return {"item": item_id, "have": have + 1}
@@ -132,7 +137,8 @@ def play(conn, learner_id: int, spot: int, item_id: str, today: date) -> dict:
     item = _use(conn, learner_id, item_id, ("treat", "toy"))
     likers = {}
     for pet in db.list_v3_pets(conn, learner_id):
-        if pet["home"] == f"trail:{spot}" and pet["species"] in item.likes:
+        egg = pet["species"] in g.EGG_SPECIES and pet["growth"] == 0  # can't come and get it
+        if pet["home"] == f"trail:{spot}" and pet["species"] in item.likes and not egg:
             hearts = min(MAX_JOY, joy(pet, today) + 1)
             db.update_v3_pet(conn, learner_id, pet["id"], joy=hearts, joy_on=today.isoformat())
             likers[pet["id"]] = hearts
@@ -234,7 +240,7 @@ def supplies_state(conn, learner_id: int, today: date) -> dict:
     return {
         "items": [
             {"id": s.id, "name": s.name, "kind": s.kind, "price": s.price, "likes": list(s.likes),
-             "sinks": s.sinks, "have": have.get(s.id, 0)}
+             "sinks": s.sinks, "gift": s.gift, "have": have.get(s.id, 0)}
             for s in SUPPLIES.values()
         ],
         "potions": potions_state(conn, learner_id, today),
@@ -245,7 +251,7 @@ def shelf(conn, learner_id: int, kinds: tuple[str, ...]) -> list[dict]:
     """What you have to play with (habitats) or feed (tanks)."""
     have = db.get_supply_counts(conn, learner_id)
     return [
-        {"id": s.id, "name": s.name, "kind": s.kind, "likes": list(s.likes), "sinks": s.sinks, "have": have[s.id]}
+        {"id": s.id, "name": s.name, "kind": s.kind, "likes": list(s.likes), "sinks": s.sinks, "gift": s.gift, "have": have[s.id]}
         for s in SUPPLIES.values()
         if s.kind in kinds and have.get(s.id, 0) > 0
     ]

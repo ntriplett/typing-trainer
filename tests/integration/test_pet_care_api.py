@@ -197,11 +197,13 @@ def test_the_same_habitat_twice():
 
 
 def test_the_lab_adopts_the_pet_as_shown_at_any_growth():
-    shown = g.resolve({**g.roll("mermaid", None, None, 7), "shape": {**g.roll("mermaid", None, None, 7)["shape"], "breed": "koi"}})
+    rolled = g.roll("dog", None, None, 7)
+    breed = g.BREEDS["dog"][-1]
+    shown = g.resolve({**rolled, "shape": {**rolled["shape"], "breed": breed}})
     r = client.post("/api/pet-lab/adopt", json={"genes": shown, "growth": 2})
-    assert r.status_code == 200 and r.json()["name"] == "Mermaid"
+    assert r.status_code == 200 and r.json()["name"] == "Dog"
     pet = next(p for p in client.get("/api/care").json()["pets"] if p["id"] == r.json()["id"])
-    assert (pet["species"], pet["growth"], pet["genes"]["shape"]["breed"], pet["spot"]) == ("mermaid", 2, "koi", None)
+    assert (pet["species"], pet["growth"], pet["genes"]["shape"]["breed"], pet["spot"]) == ("dog", 2, breed, None)
     assert pet["source"] == "lab"
 
 
@@ -248,3 +250,21 @@ def test_the_water_habitats_are_the_agreed_ones():
 def test_the_foggy_lagoon_is_a_magical_habitat_for_mermaids():
     lagoon = pet_care.HABITAT_KINDS["lagoon"]
     assert (lagoon.name, lagoon.tier, lagoon.water) == ("Foggy Lagoon", "magical", True)
+
+
+def test_companions_are_always_grown():
+    fairy = _adopt("flower_fairy", 0)
+    dog = _adopt("dog", 2)
+    pets = {p["id"]: p for p in client.get("/api/care").json()["pets"]}
+    assert pets[fairy]["growth"] == 10 and pets[fairy]["companion"]
+    assert pets[dog]["growth"] == 2 and not pets[dog]["companion"]
+
+
+def test_companions_who_were_babies_grow_up_on_start():
+    with db.open_db(main.DB_PATH) as conn:
+        fairy = db.add_v3_pet(conn, 1, g.roll("flower_fairy", None, None, 7), "Fern", "lab", growth=1)
+        egg = db.add_v3_pet(conn, 1, g.roll("dragon", None, None, 7), "Egg", "shop", growth=0)
+    with db.open_db(main.DB_PATH) as conn:
+        db.init_schema(conn)
+        assert db.get_v3_pet(conn, 1, fairy)["growth"] == 10
+        assert db.get_v3_pet(conn, 1, egg)["growth"] == 0

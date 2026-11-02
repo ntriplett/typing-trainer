@@ -394,6 +394,7 @@ def pet_lab_species() -> dict:
         species: {
             "colors": pet_genes.color_catalog(pet_genes.starting_unlocks(), species),
             "starters": list(pet_genes.STARTER_COLORS[species]),
+            "always_grown": species in pet_genes.COMPANIONS,
         }
         for species in pet_genes.SPECIES_COLORS
     }
@@ -436,7 +437,8 @@ def pet_lab_adopt(body: PetLabAdoptRequest, conn=Depends(get_db), learner_id: in
     except (KeyError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Those aren't a pet's genes.") from exc
     name = pet_genes.species_name(genes["species"])
-    return {"id": db.add_v3_pet(conn, learner_id, genes, name, "lab", growth=body.growth), "name": name}
+    growth = pet_care.MAX_GROWTH if genes["species"] in pet_genes.COMPANIONS else body.growth
+    return {"id": db.add_v3_pet(conn, learner_id, genes, name, "lab", growth=growth), "name": name}
 
 
 # --- practice lab (try every practice module) -----------------------------------

@@ -99,6 +99,7 @@ def view(pet: dict, today: date) -> dict:
         "rare": g.rare_features(pet["genes"]),
         "water": pet["species"] in WATER_ONLY,
         "swimmer": pet["species"] in SWIMMERS_ONLY,
+        "companion": pet["species"] in g.COMPANIONS,
         "joy": pet_supplies.joy(pet, today),
     }
 

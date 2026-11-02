@@ -113,6 +113,34 @@ const SUPPLY_ART = {
     }
     r(8, 13, 1, 3, "#8b5a2b");
   },
+  honey_drop(r) {
+    for (let k = 0; k < 4; k++) r(8 - k * 0.5, 3 + k, k + 1, 1, "#e8a82a"); // the tip of the drop
+    supplyDisc(r, 8, 10, 4, "#e8a82a");
+    supplyDisc(r, 8, 10, 2.6, "#f4c850");
+    r(6, 8, 1.5, 1.5, "#fff4c8");
+  },
+  nectar_drop(r) {
+    for (const [x, y] of [[3, 11], [13, 11], [8, 13]]) supplyDisc(r, x, y, 2.5, "#f09ac0"); // a petal cup
+    supplyDisc(r, 8, 11, 3.5, "#e87aa8");
+    for (let k = 0; k < 3; k++) r(8 - k * 0.5, 2 + k, k + 1, 1, "#8ad8e8");
+    supplyDisc(r, 8, 7, 2.5, "#8ad8e8");
+    r(7, 6, 1, 1, "#ffffff");
+  },
+  pearl_comb(r) {
+    r(3, 5, 10, 3, "#e8b33e");
+    r(4, 4, 8, 1, "#f8d870");
+    for (let x = 3; x < 13; x += 2) r(x, 8, 1, 5, "#c89428");
+    supplyDisc(r, 8, 4, 2, "#f4ecf8");
+    r(7, 3, 1, 1, "#ffffff");
+  },
+  silver_thimble(r) {
+    supplyDisc(r, 8, 6, 4, "#c8d0dc"); // the rounded top
+    r(4, 6, 8, 7, "#c8d0dc");
+    r(3, 12, 10, 2, "#8a94a4"); // the rim
+    r(3, 12, 10, 0.6, "#e8eef4");
+    for (let y = 4; y < 12; y += 2) for (let x = 5 + (y % 4 ? 1 : 0); x < 12; x += 2) r(x, y, 0.8, 0.8, "#9aa4b4"); // the dimples
+    r(5, 4, 1, 6, "#f4f8fc");
+  },
   fish_flakes(r) {
     r(4, 3, 8, 11, "#4a8ab0"); // a shaker can
     r(4, 3, 8, 2, "#d8d8e0");

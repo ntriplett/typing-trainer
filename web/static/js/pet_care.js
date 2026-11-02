@@ -201,8 +201,7 @@ function select(id) {
 // --- the right page ----------------------------------------------------------------
 
 function stageName(p) {
-  const young = petYoungStage(p);
-  if (young) return young;
+  if (isPetEgg(p)) return "Egg";
   if (p.growth >= care.max_growth) return "All grown up";
   if (p.growth >= 7) return "Almost grown";
   if (p.growth >= 4) return "Growing";
@@ -241,18 +240,18 @@ function renderDetail() {
   ).join("");
   box.innerHTML = `
     <div class="detail-name">${mode === "rename" ? renameForm(p) : `<h2>${escapeHtml(p.name)}</h2><button class="link-button" data-act="rename">✏️ Rename</button>`}</div>
-    <p class="detail-kind">${speciesName(p.species)} · ${stageName(p)}</p>
+    <p class="detail-kind">${speciesName(p.species)}${p.companion ? "" : ` · ${stageName(p)}`}</p>
     <div class="detail-portrait"></div>
-    <div class="growth"><span>Growth</span><span class="meter grow"><span style="width:${(p.growth / care.max_growth) * 100}%"></span></span><span>${p.growth}/${care.max_growth}</span></div>
+    ${p.companion ? "" : `<div class="growth"><span>Growth</span><span class="meter grow"><span style="width:${(p.growth / care.max_growth) * 100}%"></span></span><span>${p.growth}/${care.max_growth}</span></div>`}
     <div class="detail-actions" id="detail-actions"></div>
     <div id="detail-picker"></div>
     <dl class="detail-facts">
       <dt>Home</dt><dd>${p.water ? (tank ? `Swims in <b>${escapeHtml(tank.name)}</b>` : "Waiting for a tank") : habitat ? `Lives in <b>${habitat.name}</b>` : "Here at the Care Center"}${p.along ? ` · 🎒 Comes along on your ${SIDE[p.along]}` : ""}</dd>
       ${p.water ? `<dt>School</dt><dd>${p.school > 1 ? `You have <b>${p.school}</b> of these` : "Just one. Buy more for a school!"}</dd>` : ""}
-      ${p.water ? "" : `<dt>Happy</dt><dd class="hearts" title="${p.joy} of 5">${"♥".repeat(p.joy)}<span class="empty">${"♡".repeat(5 - p.joy)}</span>${p.joy ? "" : " Play with it in its habitat!"}</dd>`}
+      ${p.water ? "" : `<dt>${p.companion ? "Friendship" : "Happy"}</dt><dd class="hearts" title="${p.joy} of 5">${"♥".repeat(p.joy)}<span class="empty">${"♡".repeat(5 - p.joy)}</span>${p.joy ? "" : p.companion ? " Bring her a gift in her habitat!" : " Play with it in its habitat!"}</dd>`}
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
-      <dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>
-      <dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>
+      ${p.companion ? "" : `<dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>`}
+      ${p.companion ? `<dt>Came to stay</dt><dd>${days(p.adopted_at)}</dd>` : `<dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>`}
       ${rare ? `<dt>Rare</dt><dd><ul class="detail-rare">${rare}</ul></dd>` : ""}
     </dl>
     <div class="traits">${traits}</div>`;
@@ -286,7 +285,9 @@ function button(text, cls, onclick, disabled = false) {
 
 function renderActions(p) {
   const out = [];
-  if (p.grown) out.push(button("All grown up!", "", null, true));
+  if (p.companion) {
+    /* nothing to grow: she's herself already */
+  } else if (p.grown) out.push(button("All grown up!", "", null, true));
   else if (p.fed_today) out.push(button("Full for today", "", null, true));
   else out.push(button("🥕 Feed", "button-go", () => openMode("feed")));
   if (!p.water) out.push(button(p.spot === null ? "🏡 Move to a habitat" : "🏡 Move", "", () => openMode("move")));

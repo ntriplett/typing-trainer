@@ -70,7 +70,7 @@ const PetMotion = (() => {
   function create(pets, area, scale) {
     const world = { walkers: [], area, scale };
     world.walkers = pets.map((p, i) => {
-      const settled = p.species === "mermaid" && !isPetRooted(p);
+      const settled = p.species === "mermaid";
       const pool = settled && area.sky ? biggestPool(area) : null;
       const swimPose = pool && petScenePose(p.genes, p.growth, "water");
       const genes = settled && !pool ? petOnLand(p.genes) : p.genes;
@@ -94,16 +94,16 @@ const PetMotion = (() => {
         phase: 0,
         frame: 0,
         ticks: 0,
-        still: isPetEgg(p) || isPetRooted(p),
-        sways: isPetRooted(p), // stays put, but stays alive
-        flutters: p.species === "flower_fairy", // once grown, her wings never stop
+        still: isPetEgg(p),
+        companion: PET_COMPANIONS.has(p.species), // no hopping, chasing or digging
+        flutters: p.species === "flower_fairy", // her wings never stop
         e: trait(p, "energy"),
         s: trait(p, "sleepy"),
         f: trait(p, "friendly"),
         c: trait(p, "curious"),
         pl: trait(p, "playful"),
       };
-      const [x, y] = w.pool ? poolSpot(w) : isPetRooted(p) && p.species === "mermaid" && area.sky ? shoreSpot(world, w) : groundSpot(world, w, false);
+      const [x, y] = w.pool ? poolSpot(w) : groundSpot(world, w, false);
       w.x = x;
       w.y = y;
       return w;
@@ -169,17 +169,6 @@ const PetMotion = (() => {
       if (clear) return [x, y];
     }
     return null;
-  }
-
-  // A pearl or clam waits at the water's edge.
-  function shoreSpot(world, w) {
-    const pool = biggestPool(world.area);
-    if (!pool) return groundSpot(world, w, false);
-    const rect = pool.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
-    const y = Math.min(rect.y + rect.h + 1, world.area.bottom);
-    const x = rand(rect.x, rect.x + rect.w) - w.width / 2;
-    const cx = x + w.width / 2;
-    return blocked(world, cx, y) || waterAt(world, cx, y) ? groundSpot(world, w, false) : [x, y];
   }
 
   function ledgeSpot(world, w, ledge) {
@@ -351,21 +340,21 @@ const PetMotion = (() => {
     const species = w.p.species;
     const others = world.walkers.filter((o) => o !== w && !o.still && o.ledge === w.ledge);
     const friends = others.filter((o) => o.f > 0.5 && !o.pool && o.state !== "walk" && o.state !== "leap" && o.state !== "fly");
-    const players = others.filter((o) => o.pl > 0.5 && !o.settled && o.state !== "nap" && o.state !== "leap" && o.state !== "fly");
-    const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge && allowed(p, w));
+    const players = others.filter((o) => o.pl > 0.5 && !o.companion && o.state !== "nap" && o.state !== "leap" && o.state !== "fly");
+    const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge && allowed(p, w) && !(w.companion && (p.action === "dig" || p.action === "jump")));
     const options = [["wander", 1]];
     if (w.s > 0.3) options.push(["nap", w.s * 1.2]);
-    options.push(["hop", w.e * 0.6 + w.pl * 0.5]);
+    if (!w.companion) options.push(["hop", w.e * 0.6 + w.pl * 0.5]);
     for (const prop of props) {
       const lean = prop.action === "bask" ? BASKERS[species] || 0 : prop.action === "nap" ? w.s : prop.action === "jump" || prop.action === "dig" ? w.pl * 0.6 : 0;
       options.push([prop, (w.c * 1.2 + lean) / Math.max(1, props.length / 2)]);
     }
     if (friends.length && w.f > 0.5) options.push(["friend", w.f * 1.3]);
-    if (players.length && w.pl > 0.5) options.push(["chase", w.pl * 1.0]);
+    if (players.length && w.pl > 0.5 && !w.companion) options.push(["chase", w.pl * 1.0]);
     if (w.ledge !== null || ledges.some((l) => allowed(l, w))) options.push(["climb", w.e * 0.5 + (CLIMBERS[species] || 0) + (w.ledge !== null ? 0.6 : 0)]);
     if (water.length && w.ledge === null) {
       if (swims(w)) options.push(["swim", (SWIMMERS[species] || 0) + w.pl * 0.3]);
-      else options.push(["splash", w.pl * 0.5]);
+      else if (!w.companion) options.push(["splash", w.pl * 0.5]);
     }
     if (canFly(world, w)) options.push(["fly", FLIERS[species] + w.e * 0.5]);
     const what = weighted(options);
@@ -521,7 +510,7 @@ const PetMotion = (() => {
           else {
             [w.tx, w.ty] = [tx, ty];
             w.state = "paddle";
-            w.speed = 0.3 + w.e * 0.2;
+            w.speed = 0.18 + w.e * 0.2;
           }
         } else startHappy(w); // can't come, but pleased all the same
         continue;
@@ -531,12 +520,12 @@ const PetMotion = (() => {
         [w.tx, w.ty] = [tx, ty];
         w.landLedge = null;
         w.cruise = FLY_HEIGHT[0];
-        w.speed *= 1.5;
+        if (!w.companion) w.speed *= 1.5;
       } else if (w.ledge !== null) {
         leapTo(w, tx, ty, null); // hop down first; it walks over once it lands
         w.after = { x: tx, y: ty };
       } else walkTo(world, w, tx, ty, "happy", 1.5);
-      w.running = true;
+      w.running = !w.companion;
     }
   }
 
@@ -555,13 +544,8 @@ const PetMotion = (() => {
 
   const RESTING = new Set(["idle", "nap", "look", "cuddle", "bask"]);
 
-  const SWAY_TICKS = 3; // a rooted pet's frames: slower than walking legs
-
   function stepOne(world, w) {
-    if (w.still) {
-      if (w.sways && ++w.ticks % SWAY_TICKS === 0) w.frame += 1;
-      return;
-    }
+    if (w.still) return;
     if (w.state === "fly") return stepFlight(world, w);
     let moving = false;
     if (w.state === "paddle") {
@@ -594,10 +578,12 @@ const PetMotion = (() => {
         rest(w);
       }
     } else if (w.state === "happy") {
-      w.phase += 0.35 + w.e * 0.2;
-      w.hop = Math.abs(Math.sin(w.phase)) * (2.5 + w.pl * 2);
-      if (Math.sin(w.phase / 3) > 0.95) w.dir = -w.dir; // spinning with joy
-      moving = true;
+      if (!w.companion) {
+        w.phase += 0.35 + w.e * 0.2;
+        w.hop = Math.abs(Math.sin(w.phase)) * (2.5 + w.pl * 2);
+        if (Math.sin(w.phase / 3) > 0.95) w.dir = -w.dir; // spinning with joy
+        moving = true;
+      }
       if (--w.timer <= 0) {
         w.hop = 0;
         rest(w);
@@ -620,7 +606,7 @@ const PetMotion = (() => {
       moving = true;
       const cx = center(w);
       const wet = w.ledge === null && waterAt(world, cx, w.y);
-      const bouncy = w.running || w.e > 0.7 || (wet && !swims(w)); // hop across water you can't swim
+      const bouncy = !w.companion && (w.running || w.e > 0.7 || (wet && !swims(w))); // hop across water you can't swim
       w.phase += 0.4;
       w.hop = bouncy && w.state !== "swim" ? Math.abs(Math.sin(w.phase)) * (w.running || wet ? 2.5 : 1) : 0;
       const arrived = moveToward(world, w, w.tx, w.ty, w.state === "swim" ? w.speed * 0.6 : w.speed);

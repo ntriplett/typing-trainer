@@ -683,9 +683,10 @@ async function buyAqua(item) {
 // --- Pet Supplies (app/pet_supplies.py; art in supply_art.js) -------------------------
 
 const SUPPLY_ROOMS = [
-  { name: "Treats & Fish Food", has: (i) => i.kind === "treat" || i.kind === "fish_food" },
-  { name: "Toys", has: (i) => i.kind === "toy" },
+  { name: "Treats & Fish Food", has: (i) => !i.gift && (i.kind === "treat" || i.kind === "fish_food") },
+  { name: "Toys", has: (i) => !i.gift && i.kind === "toy" },
   { name: "Magic Potions", potions: true },
+  { name: "Gifts for Friends", gifts: true, has: (i) => i.gift },
 ];
 const POTION_TIER = {
   mystery: { name: "Mystery Potion", about: "Nobody knows what colors are inside!" },
@@ -704,7 +705,9 @@ function renderPetSupplies() {
   const room = SUPPLY_ROOMS[page];
   const sup = dept.supplies;
   $("dept-title").textContent = `Pet Supplies: ${room.name}`;
-  $("dept-hint").textContent = room.potions
+  $("dept-hint").textContent = room.gifts
+    ? "For the mermaids and fairies who come to stay. Offer one in their habitat: type a word and it floats down to them."
+    : room.potions
     ? "A potion repaints a pet in its colors, one time. New potions every day! Use them at the Pet Care Center."
     : "Throw treats and toys for your pets in their habitats: type a word to throw! Treats get eaten; toys you keep.";
   $("shop-scene").hidden = false;
@@ -777,7 +780,8 @@ function showSupply(id) {
   const kind = { treat: "A treat: gets eaten.", toy: "A toy: you keep it and throw it again and again.", fish_food: item.sinks ? "Sinks to the bottom for the bottom feeders." : "Floats down slowly from the top." }[item.kind];
   const who = item.kind === "fish_food" ? "Fish swim over to eat it in your tanks." : `${likesText(item.likes)} love it!`;
   const have = item.have ? ` You have ${item.kind === "toy" ? "it" : item.have}.` : "";
-  supplyDialog(item.name, (r) => drawSupply(r, id), `${kind} ${who}${have}`, buyButton(item.price, item.kind === "toy" && item.have > 0, () => buySupply(item)));
+  const about = item.gift ? `${item.kind === "toy" ? "A keepsake: you keep it and can offer it again and again." : "A little sweet to share: it's gone once she has it."} A gift for a ${speciesName(item.likes[0]).toLowerCase()}.` : `${kind} ${who}`;
+  supplyDialog(item.name, (r) => drawSupply(r, id), `${about}${have}`, buyButton(item.price, item.kind === "toy" && item.have > 0, () => buySupply(item)));
 }
 
 function showPotion(index) {

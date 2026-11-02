@@ -144,3 +144,33 @@ def test_potions_only_fit_pets_that_can_wear_them():
 def test_play_words():
     words = client.get("/api/play/words").json()["words"]
     assert len(words) >= 3 and all(isinstance(w, str) and w for w in words)
+
+
+def test_gifts_are_for_companions(clock):
+    give(300)
+    client.post("/api/pets/shop/habitats/pond")
+    mermaid = add_pet("mermaid", home="trail:0")
+    fairy = add_pet("flower_fairy", 2, home="trail:0")
+    items = {i["id"]: i for i in client.get("/api/pets/shop/supplies").json()["supplies"]["items"]}
+    for gift, who in (("honey_drop", "mermaid"), ("pearl_comb", "mermaid"), ("nectar_drop", "flower_fairy"), ("silver_thimble", "flower_fairy")):
+        assert items[gift]["gift"] and items[gift]["likes"] == [who]
+    assert not items["bone_biscuit"]["gift"]
+    client.post("/api/supplies/honey_drop")
+    client.post("/api/supplies/silver_thimble")
+    assert {s["id"]: s["gift"] for s in client.get("/api/trail/0").json()["shelf"]} == {"honey_drop": True, "silver_thimble": True}
+    r = client.post("/api/trail/0/play", json={"item": "honey_drop"}).json()
+    assert r["likers"] == {str(mermaid): 1} and r["used_up"]
+    r = client.post("/api/trail/0/play", json={"item": "silver_thimble"}).json()
+    assert r["likers"] == {str(fairy): 1} and not r["used_up"]
+    again = client.post("/api/supplies/silver_thimble")
+    assert again.status_code == 400 and "Keepsakes" in again.json()["detail"]
+
+
+def test_an_egg_cant_come_for_a_treat(clock):
+    give(300)
+    client.post("/api/pets/shop/habitats/meadow")
+    egg = add_pet("dragon", home="trail:0")
+    with db.open_db(main.DB_PATH) as conn:
+        db.update_v3_pet(conn, 1, egg, growth=0)
+    client.post("/api/supplies/ember_candy")
+    assert client.post("/api/trail/0/play", json={"item": "ember_candy"}).json()["likers"] == {}

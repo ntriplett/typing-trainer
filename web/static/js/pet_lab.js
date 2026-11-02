@@ -74,6 +74,7 @@ async function roll() {
   const data = await res.json();
   if (!res.ok) return alert(data.detail);
   litter = data.pets;
+  showAdoptGrowth();
   renderLitter();
   select(litter[0]);
 }
@@ -279,13 +280,18 @@ $("opt-secondary").addEventListener("change", roll);
 $("roll-button").addEventListener("click", roll);
 $("opt-growth").addEventListener("input", () => {
   $("growth-value").textContent = growth();
-  $("adopt-growth").textContent = growth();
+  showAdoptGrowth();
   drawLitter();
 });
 $("litter").addEventListener("click", (e) => {
   const b = e.target.closest(".litter-pet");
   if (b) select(litter[b.dataset.i]);
 });
+
+// Companions are always grown, whatever the slider says.
+function showAdoptGrowth() {
+  $("adopt-growth").textContent = species[$("opt-species").value].always_grown ? 10 : growth();
+}
 
 // The close-up pet, knobs and design as drawn, joins your pets for free.
 async function adopt() {

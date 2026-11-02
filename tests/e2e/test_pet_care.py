@@ -64,9 +64,24 @@ def test_move_into_a_meadow_and_bring_along(page: Page, live_server, tmp_path):
 
 def test_adopt_a_pet_from_the_lab(page: Page, live_server):
     page.goto(f"{live_server}/pet-lab")
+    page.locator("#opt-species").select_option("dog")
+    page.locator("#roll-button").click()
     page.locator("#opt-growth").fill("2")
     expect(page.locator("#adopt-growth")).to_have_text("2")
     page.locator("#adopt-button").click()
+    page.get_by_role("link", name="See Dog in the Pet Care Center").click()
+    expect(page.locator("#book-detail h2")).to_have_text("Dog")
+    expect(page.locator(".growth")).to_contain_text("2/10")
+
+
+def test_a_companion_is_shown_as_a_friend_not_a_pet(page: Page, live_server):
+    page.goto(f"{live_server}/pet-lab")  # the lab's slider doesn't make her a baby
+    page.locator("#opt-growth").fill("2")
+    expect(page.locator("#adopt-growth")).to_have_text("10")
+    page.locator("#adopt-button").click()
     page.get_by_role("link", name="See Flower fairy in the Pet Care Center").click()
-    expect(page.locator("#book-detail h2")).to_have_text("Flower fairy")
-    expect(page.locator(".detail-kind")).to_have_text("Flower fairy · Opening")
+    expect(page.locator(".detail-kind")).to_have_text("Flower fairy")
+    expect(page.locator("#book-detail")).to_contain_text("Friendship")
+    expect(page.locator("#book-detail")).to_contain_text("Came to stay")
+    for gone in ("Growth", "Happy", "Loves", "Got it", "Feed", "All grown up"):
+        expect(page.locator("#book-detail")).not_to_contain_text(gone)

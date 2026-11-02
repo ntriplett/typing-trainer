@@ -986,6 +986,11 @@ def rare_multiplier(odds: dict, outcome: object) -> float:
     return 1 + (RARE_TOP - 1) * min(1.0, math.log(ratio) / math.log(RARE_RATIO))
 
 
+# Not pets: friends who come to stay, always grown up. Eggs just sit there until they hatch.
+COMPANIONS = {"mermaid", "flower_fairy"}
+EGG_SPECIES = {"dragon", "phoenix"}
+
+
 def species_name(species: str) -> str:
     """As people read it: flower_fairy -> "Flower fairy"."""
     return species.replace("_", " ").capitalize()
