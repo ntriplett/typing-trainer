@@ -760,31 +760,48 @@ const WanderMap = (() => {
     ["..k...k..", ".kXk.kXk.", "kXXXXXXXk", "kXkkXkkXk", "kXXXXXXXk", ".kXXXXXk.", "..k...k.."],
   ];
 
+  // Tougher creatures have sprites of their own, wider and meaner: D is a
+  // darker shade (a mythical's second type), G gold. Eyes and feet animate.
+  const TOUGH_FRAMES = [["Xwk", ".k.k.k.k.k."], ["Xkw", "..kk...kk.."], ["Xwk", ".k.k.k.k.k."], ["Xkk", "..kk...kk.."]].map(([eye, feet]) => [
+    "k.........k", "kDk.k.k.kDk", ".kDXXXXXDk.", ".kXkkXkkXk.", `kD${eye}${eye}XDk`, "kDXXXXXXXDk", ".kkXwXwXkk.", ".kXXXXXXXk.", feet,
+  ]);
+  const CHAMPION_FRAMES = [["Gk", ".kk.k.k.kk."], ["kG", "..k.k.k.k.."], ["Gk", ".kk.k.k.kk."], ["kk", "..k.k.k.k.."]].map(([eye, feet]) => [
+    "....G.G.G....", "...kGGGGGk...", "G.kDXXXXXDk.G", "GkDXXXXXXXDkG", `.kDX${eye}X${eye}XDk.`, "GkDXXXXXXXDkG", "GkDkwXwXwkDkG", ".kDXXXXXXXDk.", "..kDXXXXXDk..", `.${feet}.`,
+  ]);
+
+  function darker(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const part = (shift) => Math.round(((n >> shift) & 255) * 0.6).toString(16).padStart(2, "0");
+    return `#${part(16)}${part(8)}${part(0)}`;
+  }
+
   function drawCritter(ctx, g, t, x, y) {
     const c = t.critter;
     const r = hashRand(t.q, t.r)();
     const frame = Math.floor(hallTime / 260 + r * 4) % CRITTER_FRAMES.length;
     const bob = Math.round(Math.abs(Math.sin(hallTime / 300 + r * 6)) * g.size * 0.12);
     const px = Math.max(2, Math.round(g.size / 7));
-    const rows = CRITTER_FRAMES[frame];
+    const rows = (c.tier === "champion" ? CHAMPION_FRAMES : c.tier === "tough" ? TOUGH_FRAMES : CRITTER_FRAMES)[frame];
     const ox = Math.round(x - (rows[0].length * px) / 2);
     const oy = Math.round(y - (rows.length * px) / 2 - bob);
     // a shadow on the ground
     ctx.fillStyle = "rgba(59, 36, 23, 0.25)";
     ctx.beginPath();
-    ctx.ellipse(x, y + rows.length * px * 0.5, g.size * 0.38, g.size * 0.1, 0, 0, 7);
+    ctx.ellipse(x, y + rows.length * px * 0.5, (rows[0].length * px) / 2.4, g.size * 0.1, 0, 0, 7);
     ctx.fill();
-    const colors = { k: "#2a1a10", X: TYPE_COLORS[c.kind], w: "#fffaf0" };
+    const second = c.mythical && TYPE_COLORS[c.second];
+    const colors = { k: "#2a1a10", X: TYPE_COLORS[c.kind], w: "#fffaf0", G: "#f2c230", D: second || darker(TYPE_COLORS[c.kind]) };
     rows.forEach((row, j) => {
       [...row].forEach((ch, i) => {
         if (ch === ".") return;
-        ctx.fillStyle = colors[ch];
+        // a plain mythical wears its second type on its lower half
+        ctx.fillStyle = second && !c.tier && ch === "X" && j >= 4 ? second : colors[ch];
         ctx.fillRect(ox + i * px, oy + j * px, px, px);
       });
     });
     // its level
-    const bx = x + g.size * 0.42;
-    const by = y - g.size * 0.42 - bob;
+    const bx = x + (rows[0].length * px) / 2 - px;
+    const by = oy + px;
     ctx.fillStyle = "#fffaf0";
     ctx.strokeStyle = "#2a1a10";
     ctx.lineWidth = 2;
@@ -799,7 +816,7 @@ const WanderMap = (() => {
     ctx.fillText(String(c.level), bx, by + 1);
     if (c.guardian) {
       ctx.fillStyle = "#b8432f";
-      ctx.fillText("!", x - g.size * 0.42, by + 1);
+      ctx.fillText("!", x - (rows[0].length * px) / 2 + px, by + 1);
     }
   }
 

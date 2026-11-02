@@ -688,6 +688,16 @@ def _genes(species: str, primary: str, secondary: str, seed: int, unlocked: set[
     return fill_missing(genes, {"primary": primary, "secondary": secondary, "unlocked": unlocked})
 
 
+def wild_rare(species: str, seed: int, families: tuple[str, ...]) -> dict:
+    """Genes in colors no ordinary one has: a tougher wild creature's. The
+    phoenix keeps to its fire, its rarest shades."""
+    if species in SPECIAL_PALETTE:
+        families = ("fire_violet", "fire_blue")
+    pool = [k for k, c in COLORS.items() if c.family in families]
+    primary, secondary = _rng(seed, "wild-rare").sample(pool, 2)
+    return _genes(species, primary, secondary, seed, set(COLORS))
+
+
 def fill_missing(genes: dict, ctx: dict | None = None) -> dict:
     """Roll any stat group these genes don't have yet (new groups added
     after the pet was adopted). Groups that need adoption context (coat)

@@ -1312,3 +1312,54 @@ main.wander {
   margin: 0.5rem 0 0;
   font-weight: bold;
 }
+
+/* What the creature will do next, above it. */
+.wander-foe-art {
+  position: relative;
+}
+
+.wander-intent {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border: 2px solid var(--outline);
+  background: var(--surface);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.wander-intent[hidden] {
+  display: none;
+}
+
+.wander-intent small {
+  margin-left: 3px;
+}
+
+
+/* a tougher creature's hard pixel outline */
+.wander-foe-art[data-tier="tough"] #battle-foe {
+  filter: drop-shadow(2px 0 0 #3b2417) drop-shadow(-2px 0 0 #3b2417) drop-shadow(0 2px 0 #3b2417) drop-shadow(0 -2px 0 #3b2417);
+}
+
+.wander-foe-art[data-tier="champion"] #battle-foe {
+  filter: drop-shadow(3px 0 0 #f2c230) drop-shadow(-3px 0 0 #f2c230) drop-shadow(0 3px 0 #f2c230) drop-shadow(0 -3px 0 #f2c230);
+}
+
+.wander-foe-art[data-tier="boss"] #battle-foe {
+  filter: drop-shadow(3px 0 0 #7c3fb0) drop-shadow(-3px 0 0 #7c3fb0) drop-shadow(0 3px 0 #7c3fb0) drop-shadow(0 -3px 0 #7c3fb0) drop-shadow(0 0 10px #f2c230);
+}
+
+/* they fill their canvas: the intent sits above */
+.wander-foe-art[data-tier="tough"] .wander-intent,
+.wander-foe-art[data-tier="champion"] .wander-intent,
+.wander-foe-art[data-tier="boss"] .wander-intent {
+  top: auto;
+  bottom: 100%;
+  margin-bottom: 4px;
+}

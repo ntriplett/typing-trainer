@@ -3,6 +3,8 @@
 import json
 import random
 import re
+from collections import Counter
+from dataclasses import replace
 import statistics
 
 import pytest
@@ -12,6 +14,7 @@ from app.wanderpaw import critters as cr
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
 from app.wanderpaw import pets as wp
+from app import pet_genes
 from app.wanderpaw import save as sv
 from app.wanderpaw import terms
 from app.wanderpaw import world as wd
@@ -31,20 +34,15 @@ def test_the_type_ring():
     assert bt.accuracy(0) == 1 and bt.accuracy(3) == pytest.approx(0.7) and bt.accuracy(20) == bt.FLOOR
 
 
-@pytest.mark.parametrize("level", [1, 3, 6])
-def test_a_fair_fight_takes_about_three_rounds_and_a_tenth_of_each_fighter(level):
-    rounds, costs = [], []
-    for s in range(200):
-        rng = random.Random(s)
-        team = [wp.starter("leaf", level), wp.starter("leaf", level)]
-        b, energy = bt.start(_critter(level), [0, 1]), [m["energy"] for m in team]
-        while not b["over"]:
-            b, energy, _ = bt.turn(b, team, energy, [{"move": "attack", "slips": rng.choice([0, 0, 1, 2])}] * 2, rng)
-        assert b["over"] == "won"
-        rounds.append(b["round"])
-        costs += [(team[i]["energy"] - energy[i]) / team[i]["energy"] for i in (0, 1)]
-    assert 2.5 <= statistics.mean(rounds) <= 3.6
-    assert 0.05 <= statistics.mean(costs) <= 0.15
+def test_creatures_level_like_pets_faster_and_a_bit_weaker():
+    assert [bt.enemy_energy(n) for n in (1, 7, 14, 21)] == [34, 126, 252, 320]
+    assert bt.enemy_energy(8) == round((126 + 179) / 2) and bt.enemy_energy(30) > bt.enemy_energy(21)
+    for level in (1, 7, 14, 21):
+        pet = wp.starter("leaf", level)
+        b = bt.start(_critter(level), [0, 1])
+        assert b["energy"] == bt.enemy_energy(level) and b["speed"] > pet["speed"]
+        assert bt.enemy_hit(level) < bt.pet_hit(pet["power"]) / 3 and bt.enemy_hit(level) < pet["energy"] * 0.12  # no one-shots
+    assert bt.enemy_hit(14) > bt.enemy_hit(7)
 
 
 def _round(b, team, picks, energy=None, mana=None, seed=1):
@@ -126,11 +124,11 @@ def test_a_daredevil_hits_twice_as_hard_for_energy_but_never_its_last():
     bold = [_focused("ember", "daredevil"), _pet("ember")]
     picks = [{"move": "attack", "slips": 0}, {"move": "attack", "slips": 0}]
     damage = lambda team, energy: next(s["damage"] for s in _round(bt.start(_critter(9, "leaf", "bunny"), [0, 1]), team, picks, energy=energy)[0]["log"] if s["who"] == 0)  # noqa: E731
-    assert damage(bold, [25, 25]) == pytest.approx(2 * damage(plain, [25, 25]), abs=1)
+    assert damage(bold, [25, 25]) == pytest.approx(bt.DAREDEVIL * damage(plain, [25, 25]), abs=1)
     step = next(s for s in _round(bt.start(_critter(9, "leaf", "bunny"), [0, 1]), bold, picks, energy=[25, 25])[0]["log"] if s["who"] == 0)
-    assert step["flash"] == [0, "daredevil"] and "double" in step["text"]
+    assert step["flash"] == [0, "daredevil"] and "1.5x" in step["text"]
     # only its own type: a second type's hit is plain
-    assert bt._daredevil_cost(wp.starter("ember", 3)) == 1 and bt._daredevil_cost(wp.starter("ember", 21)) == 2
+    assert bt._daredevil_cost(wp.starter("ember", 3)) == 1 and bt._daredevil_cost(wp.starter("ember", 21)) == 3
     b = {**bt.start(_critter(1, "leaf", "bunny"), [0, 1]), "skip": 5}  # it can't hit back
     _, energy, _ = bt.turn(b, bold, [1, 25], picks, random.Random(1), [30, 30])
     assert energy[0] == 1
@@ -140,40 +138,39 @@ def test_a_guardian_keeps_two_types_off_its_partner_for_two_rounds():
     team = [_focused("ember", "guardian"), _pet("leaf")]  # ember stops dream and leaf
     picks = [{"move": "attack", "slips": 0}] * 2
     foe = lambda: {**bt.start(_critter(3, "dream", "sheep"), [0, 1]), "energy": 9999}  # noqa: E731
-    seen = {"blocked": 0, "hit": 0}
     for seed in range(40):
         b = foe()
         energy = [25, 25]
         for r in (1, 2):
             b, energy, _ = bt.turn(b, team, energy, picks, random.Random(seed + r), [30, 30])
-        assert energy[1] == 25  # nothing got through to the partner
-        seen["blocked"] += any(s["act"] == "blocked" for s in b["log"])
-    assert seen["blocked"]
-    # the third round it's over
-    hurt = 0
-    for seed in range(40):
-        b = {**foe(), "round": bt.GUARDIAN_ROUNDS}
-        _, energy, _ = bt.turn(b, team, [25, 25], picks, random.Random(seed), [30, 30])
-        hurt += energy[1] < 25
-    assert hurt
+        assert energy[1] == 25  # nothing got through to the partner: it goes for the Guardian instead
+        assert energy[0] < 25
+    # the third round it's over, and it goes right for the pet it's strongest against
+    _, energy, _ = bt.turn({**foe(), "round": bt.GUARDIAN_ROUNDS}, team, [25, 25], picks, random.Random(1), [30, 30])
+    assert energy[1] < 25
+    # with no one else to hit, it's blocked outright
+    alone = [{**_focused("ember", "guardian"), "energy": 25}, _pet("leaf")]
+    both = [_focused("ember", "guardian"), _focused("splash", "guardian")]  # stop dream, leaf; ember, dream
+    log = bt.turn(foe(), both, [25, 25], picks, random.Random(1), [30, 30])[0]["log"]
+    assert any(s["act"] == "blocked" for s in log) and alone
     # other types get through, and a creature with a second type uses it
     b = bt.start(_critter(3, "splash", "dog"), [0, 1])
-    assert not all(bt.turn(b, team, [25, 25], picks, random.Random(s), [30, 30])[1][1] == 25 for s in range(40))
+    assert any(sum(bt.turn(b, team, [25, 25], picks, random.Random(s), [30, 30])[1]) < 50 for s in range(40))
     two = {**foe(), "second": "shock"}
     assert bt.foe_type(two, "leaf", bt.strong_against("ember")) == "shock"
     assert bt.foe_type(foe(), "leaf", bt.strong_against("ember")) is None
 
 
 def test_a_guardians_guard_is_best_against_what_beats_it():
-    team = [_focused("ember", "guardian"), _pet("leaf")]
-    plain = [_pet("ember"), _pet("leaf")]
+    team = [_focused("ember", "guardian"), _pet("ember")]
+    plain = [_pet("ember"), _pet("ember")]
     picks = [{"move": "guard", "slips": 0}, {"move": "attack", "slips": 0}]
 
     def taken(members, kind, species):
         total = 0
         for seed in range(60):
-            b = {**bt.start(_critter(5, kind, species), [0, 1]), "energy": 9999}
-            _, energy, _ = bt.turn(b, members, [60, 60], picks, random.Random(seed), [30, 30])
+            b = {**bt.start(_critter(40, kind, species), [0, 1]), "energy": 9999}
+            _, energy, _ = bt.turn(b, members, [60, 50], picks, random.Random(seed), [30, 30])  # it goes for the weaker
             total += 60 - energy[0]
         return total
 
@@ -373,7 +370,8 @@ def test_creatures_get_tougher_with_each_ring():
             continue
         for c in cr.at(SEED, big, 1).values():
             middle = depth[big] - 1 + cr.RING_LEVELS * (b.ring - 1)
-            assert max(1, middle - cr.WIGGLE) <= c.level <= min(wp.MAX_LEVEL, middle + cr.WIGGLE)
+            bump = cr.TIER_LEVELS.get(c.tier, 0)
+            assert max(1, middle - cr.WIGGLE) + bump <= c.level <= min(wp.MAX_LEVEL, middle + cr.WIGGLE + bump) or c.level == wp.MAX_LEVEL
             out_there.setdefault(b.ring, []).append(c.level)
     means = [sum(v) / len(v) for _, v in sorted(out_there.items())]
     assert means == sorted(means) and max(max(v) for v in out_there.values()) > 8
@@ -656,8 +654,9 @@ def test_scald_softens_its_hits():
     def taken(pet):
         total = 0
         for seed in range(40):
-            # a creature slower than the pets, so it lands first
-            total += 66 - sum(_mix_round(pet, foe=_critter(6, "dream", "sheep"), energy=[33, 33], seed=seed, partner_move="attack")[1])
+            # a slow, strong creature, so the Scald lands first and it shows
+            b = {**bt.start(_critter(40, "dream", "sheep"), [0, 1]), "energy": 9999, "speed": 1}
+            total += 66 - sum(_mix_round(pet, b=b, energy=[33, 33], seed=seed, partner_move="attack")[1])
         return total
     assert taken(_mixer("ember", "splash")) < taken(_mixer("ember", "leaf"))
 
@@ -675,13 +674,9 @@ def test_will_o_wisp_poppy_patch_and_living_wire_can_stop_its_attack():
 
 def test_mirror_pool_bounces_a_hit_back_once():
     pet = _mixer("dream", "splash")
-    bounced = 0
-    for seed in range(40):
-        b, energy, _ = _mix_round(pet, partner_move="attack", energy=[33, 33], seed=seed)
-        bounced += any("bounces" in s["text"] for s in b["log"])
-        if any("bounces" in s["text"] for s in b["log"]):
-            assert energy[0] == 33 and b["mirror"] is None
-    assert bounced
+    # though it's stronger against the partner, the pool draws its next attack
+    b, energy, _ = _mix_round(pet, partner_move="attack", energy=[33, 33], foe=_critter(3, "dream", "sheep"))
+    assert any("bounces" in s["text"] for s in b["log"]) and energy == [33, 33] and b["mirror"] is None
     assert _mix_round(pet, partner_move="attack", seed=1)[0]["log"][0]["who"] == 0
 
 
@@ -707,7 +702,7 @@ def test_thunder_patter_is_three_hits_and_only_the_first_sets_off_a_combo():
 def test_burning_brambles_burn_and_drain_for_three_rounds():
     pet = _mixer("leaf", "ember")
     team = [pet, _pet("leaf", 7)]
-    b, energy, mana = _mix_round(pet, foe=_critter(1, "dream", "sheep"), energy=[10, 40])
+    b, energy, mana = _mix_round(pet, b={**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "start_energy": {"0": 40, "1": 40}}, energy=[10, 40])
     burns = 1
     for _ in range(4):
         before = energy[0]
@@ -735,10 +730,10 @@ def test_lucid_spark_and_rainbow_blessing_lift_next_round():
     assert energy[0] == 10 + round(40 * 0.1) and mana == [8, 12] and b["boost"]["first"] is False
 
 
-def test_sleep_spores_are_drowsy_this_round_and_tangled_for_two():
+def test_sleep_spores_leave_drowsy_and_tangled():
     b = {**bt.start(_critter(7, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
     after = _mix_round(_mixer("dream", "leaf"), b=b)[0]
-    assert after["marks"] == {"tangled": 1}  # drowsy has already worn off
+    assert after["marks"] == {"drowsy": 1, "tangled": 1}  # each with a round to go
 
 
 def test_stormfire_breath_leaves_two_marks():
@@ -840,7 +835,7 @@ def test_rest_focus_cheer_and_guard_upgrades():
 
 def test_healer_plus_heals_more_up_to_a_higher_limit():
     team = [_nine(focus="healer"), {**_pet("leaf", 9), "energy": 60}]
-    b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 99, "start_energy": {"0": 37, "1": 60}}
+    b = {**bt.start(_critter(9, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 99, "start_energy": {"0": 37, "1": 60}}
     b, energy, mana = _round(b, team, [{"move": "attack", "slips": 0}] * 2, energy=[37, 10], mana=[30, 0])
     assert energy[1] == 10 + bt.HEAL_PLUS_ENERGY and mana[1] == bt.HEAL_PLUS_MANA
     assert (bt.HEAL_ENERGY, bt.HEAL_MANA, bt.HEAL_MAX_ENERGY, bt.HEAL_MAX_MANA) == (1, 1, 3, 3)
@@ -906,7 +901,7 @@ def test_icons_show_at_a_glance_what_a_move_does():
     flash = _mixer("ember", "shock")
     assert _icons(flash, "mix")["cost"] == {"mana": bt.MIX_MANA, "energy": round(flash["energy"] * 0.08)}
     bold = _nine(focus="daredevil")
-    assert _icons(bold, "attack")["cost"] == {"energy": bt._daredevil_cost(bold)} and _icons(bold, "attack")["hit"]["count"] == 4
+    assert _icons(bold, "attack")["cost"] == {"energy": bt._daredevil_cost(bold)} and _icons(bold, "attack")["hit"]["count"] == 3
 
 
 def _every_text():
@@ -993,7 +988,7 @@ def test_guardian_plus_lasts_longer_and_softens_other_types():
     def partner_takes(guard):
         total = 0
         for seed in range(80):
-            b = {**bt.start(_critter(30, "splash", "dog"), [0, 1]), "energy": 9999}
+            b = {**bt.start(_critter(30, "ember", "fox"), [0, 1]), "energy": 9999}  # it goes for leaf, not stopped by ember's wall
             _, energy, _ = bt.turn(b, [guard, _pet("leaf", 9)], [40, 40], picks, random.Random(seed), [30, 30])
             total += 40 - energy[1]
         return total
@@ -1188,7 +1183,7 @@ def test_reborn_is_passive_and_brings_a_worn_out_pet_back_once():
     picks = [{"move": "attack", "slips": 0}] * 2
     back = False
     for seed in range(40):
-        b = {**bt.start(_critter(50, "dream", "sheep"), [0, 1]), "energy": 9999, "reborn": [0], "start_energy": {"0": 40, "1": 40}}
+        b = {**bt.start(_critter(50, "splash", "dog"), [0, 1]), "energy": 9999, "reborn": [0], "start_energy": {"0": 40, "1": 40}}
         after, energy, _ = bt.turn(b, team, [1, 1], picks, random.Random(seed), [30, 30])
         if "reborn_used" in after:
             back = True
@@ -1355,7 +1350,7 @@ def test_clear_spring_and_steady_growth_add_up_to_their_limit():
     team = [_pet("ember", 21), _pet("leaf", 21)]
     picks = [{"move": "guard", "slips": 0}] * 2
     for key in ("clear_spring", "steady_growth"):
-        b = {**bt.start(_critter(21, "dream", "sheep"), [0, 1], (key,)), "energy": 9999, "skip": 99, "start_energy": {"0": 60, "1": 60}}
+        b = {**bt.start(_critter(9, "dream", "sheep"), [0, 1], (key,)), "energy": 9999, "skip": 99, "start_energy": {"0": 60, "1": 60}}
         energy, mana = [10, 10], [10, 10]
         for _ in range(6):
             b, energy, mana = bt.turn(b, team, energy, picks, random.Random(1), mana)
@@ -1434,3 +1429,280 @@ def test_a_used_up_passive_is_marked_as_spent():
     done = {**b, "healed": {"0:energy": bt.HEAL_PLUS_MAX_ENERGY, "0:mana": bt.HEAL_PLUS_MAX_MANA}}
     assert next(m for m in bt.battle_moves(done, 0, healer, 30) if m["id"] == "healer")["spent"]
     assert next(m for m in bt.moves(_pet("ember", 7)) if m["id"] == "guard")["note"].startswith("Takes Partner's hits")
+
+
+def test_a_creature_goes_for_the_pet_its_strongest_against_then_the_weaker():
+    team = [_pet("leaf", 7), _pet("ember", 7)]  # splash is strong against ember, weak against leaf
+    picks = [{"move": "guard", "slips": 0}, {"move": "guard", "slips": 0}]
+    b = {**bt.start(_critter(7, "splash", "dog"), [0, 1]), "energy": 9999}
+    assert bt._foe_target(b, team, [30, 30], [0, 1]) == 1
+    # even if the other is nearly out
+    assert bt._foe_target(b, team, [1, 30], [0, 1]) == 1
+    even = [_pet("ember", 7), _pet("ember", 7)]
+    assert bt._foe_target(b, even, [30, 10], [0, 1]) == 1 and bt._foe_target(b, even, [10, 30], [0, 1]) == 0
+    assert picks
+
+
+def test_the_creatures_next_move_shows_above_it():
+    team = [_pet("leaf", 7), _pet("ember", 7)]
+    b = bt.start(_critter(7, "splash", "dog"), [0, 1])
+    intent = bt.foe_intent(b, team, [30, 30])
+    assert intent["kind"] == "attack" and intent["type"] == "splash" and intent["target"] == 1 and intent["name"] == team[1]["name"]
+    assert team[1]["name"] in intent["tip"]
+    # a stronger hit shows in the circles
+    hard = bt.foe_intent(bt.start(_critter(30, "splash", "dog"), [0, 1]), team, [30, 30])
+    assert hard["count"] > intent["count"]
+    for stopped in ({**b, "skip": 1}, {**b, "effects": {"doze": 1}}):
+        skip = bt.foe_intent(stopped, team, [30, 30])
+        assert skip["name"] == "Skipping turn" and "count" not in skip
+    # what it tries, not how it turns out: a sanctuary or a mark doesn't change it
+    assert bt.foe_intent({**b, "effects": {"sanctuary": 1}}, team, [30, 30])["kind"] == "attack"
+    assert bt.foe_intent({**b, "marks": {"drowsy": 1}}, team, [30, 30])["kind"] == "attack"
+    assert bt.foe_intent({**b, "over": "won"}, team, [30, 30]) is None
+    # it says what will really happen, in a real round
+    after, _, _ = bt.turn(b, team, [30, 30], [{"move": "guard", "slips": 0}, {"move": "attack", "slips": 0}], random.Random(1), [30, 30])
+    hit = next(s for s in after["log"] if s["who"] == "foe")
+    assert hit["target"] == intent["target"] or hit["target"] == 0  # (or whoever guards)
+
+
+# --- the creature's own moves -----------------------------------------------------
+
+
+def _script_with(level, move, second=None):
+    """A battle whose creature (some seed) tries `move` in its first rounds, and the round."""
+    for seed in range(400):
+        c = cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", level, False, seed, second)
+        b = {**bt.start(c, [0, 1]), "energy": 9999, "max": 9999}
+        script = bt.foe_script(b, 8)
+        if move in script:
+            return b, script.index(move) + 1
+    raise AssertionError(move)
+
+
+def _play_to(b, team, round_no, energy=None):
+    """Up to just before a round."""
+    energy, mana = energy or [m["energy"] for m in team], [m["mana"] for m in team]
+    for _ in range(round_no - 1):
+        b, energy, mana = bt.turn(b, team, energy, [{"move": "attack", "slips": 0}] * sum(1 for e in energy if e > 0), random.Random(1), mana)
+        b = {**b, "energy": 9999}
+    return b, energy, mana
+
+
+def test_moves_come_by_level_and_never_two_in_a_row():
+    for level, move in ((8, "heavy"), (14, "harden"), (17, "lull"), (20, "sweep")):
+        assert move not in {m for s in range(40) for m in bt.foe_script(bt.start(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", level - 1, False, s), [0, 1]), 12)}
+        assert _script_with(level, move)
+    assert "mark" not in {m for s in range(40) for m in bt.foe_script(bt.start(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 12, False, s), [0, 1]), 12)}  # it has no second type
+    assert _script_with(11, "mark", "ember")
+    for seed in range(60):
+        b = bt.start(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 21, False, seed, "ember"), [0, 1])
+        script = bt.foe_script(b, 20)
+        assert script[0] == "attack" and script == bt.foe_script(b, 20) and script.count("lull") <= 1
+        assert all(a == "attack" or b_ == "attack" for a, b_ in zip(script, script[1:]))
+
+
+def test_heavy_blow_and_sweep():
+    team = [_pet("leaf", 21), _pet("leaf", 21)]
+    picks = [{"move": "guard", "slips": 0}] * 2
+    b, round_no = _script_with(8, "heavy")
+    b, energy, mana = _play_to(b, team, round_no, [90, 90])
+    intent = bt.foe_intent(b, team, energy)
+    assert intent["kind"] == "attack"
+    after, _, _ = bt.turn(b, team, energy, [{"move": "attack", "slips": 0}] * 2, random.Random(1), mana)
+    step = next(s for s in after["log"] if s["who"] == "foe" and s.get("target") in (0, 1))
+    assert "slams" in step["text"] and step["damage"] == max(1, round(bt.enemy_hit(8) * bt.matchup("dream", "leaf") * bt.HEAVY_BLOW))
+    b, round_no = _script_with(20, "sweep")
+    b, energy, mana = _play_to(b, team, round_no, [90, 90])
+    assert bt.foe_intent(b, team, energy)["name"] == "Both"
+    after, _, _ = bt.turn(b, team, energy, picks, random.Random(1), mana)
+    assert {s["target"] for s in after["log"] if "sweeps" in s["text"]} == {0, 1}
+    assert picks
+
+
+def test_mark_then_a_stronger_hit():
+    team = [_pet("leaf", 21), _pet("leaf", 21)]
+    b, round_no = _script_with(11, "mark", "ember")
+    b, energy, mana = _play_to(b, team, round_no, [90, 90])
+    assert bt.foe_intent(b, team, energy)["name"].startswith("Marking")
+    after, energy, mana = bt.turn(b, team, energy, [{"move": "attack", "slips": 0}] * 2, random.Random(1), mana)
+    assert any(s["act"] == "mark" for s in after["log"]) and after["pet_marks"]
+    aim = int(next(iter(after["pet_marks"])))
+    energy = [90, 90]
+    hit, _, _ = bt.turn({**after, "energy": 9999}, team, energy, [{"move": "attack", "slips": 0}] * 2, random.Random(1), mana)
+    step = next((s for s in hit["log"] if "Marked!" in s["text"]), None)
+    assert step and step["target"] == aim and not hit["pet_marks"]
+
+
+def test_harden_halves_hits_that_round():
+    team = [_pet("leaf", 21), _pet("leaf", 21)]
+    b, round_no = _script_with(14, "harden")
+    b, energy, mana = _play_to(b, team, round_no, [90, 90])
+    assert bt.foe_intent(b, team, energy)["name"] == "Blocking"
+    picks = [{"move": "attack", "slips": 0}] * 2
+    hard, _, _ = bt.turn(b, team, energy, picks, random.Random(1), mana)
+    soft_plain, _, _ = bt.turn({**b, "seed": b["seed"], "round": 0}, team, energy, picks, random.Random(1), mana)  # round 1: a plain attack
+    hit = lambda r: next(s["damage"] for s in r["log"] if s["who"] == 0)  # noqa: E731
+    assert hit(hard) == pytest.approx(hit(soft_plain) * bt.HARDENED, abs=1)
+    assert any("braces" in s["text"] for s in hard["log"])
+
+
+def test_lull_puts_a_pet_to_sleep_for_a_round():
+    team = [_pet("leaf", 21), _pet("leaf", 21)]
+    b, round_no = _script_with(17, "lull")
+    b, energy, mana = _play_to(b, team, round_no, [90, 90])
+    assert bt.foe_intent(b, team, energy)["name"].startswith("Lulling")
+    after, energy, mana = bt.turn(b, team, energy, [{"move": "attack", "slips": 0}] * 2, random.Random(1), mana)
+    who = after["lulled"]
+    assert who in (0, 1) and bt.asleep_now(after, energy) == who
+    other = 1 - who
+    hit, _, _ = bt.turn({**after, "energy": 9999}, team, energy, [{"move": "attack", "slips": 0}], random.Random(1), mana)
+    assert not [s for s in hit["log"] if s["who"] == who and s["act"] == "hit"] and [s for s in hit["log"] if s["who"] == other and s["act"] == "hit"]
+    assert hit["lulled"] is None or hit["lulled"] != who
+    # with no one else standing, it wakes rather than leave nothing to do
+    assert bt.asleep_now({**after, "lulled": 0}, [10, 0]) is None
+
+
+def test_strong_creatures_shake_off_losing_turn_after_turn():
+    team = [_pet("leaf", 21), _pet("leaf", 21)]
+    picks = [{"move": "guard", "slips": 0}] * 2
+    weak = {**bt.start(_critter(9, "dream", "sheep"), [0, 1]), "skip": 2, "energy": 9999}
+    strong = {**bt.start(_critter(10, "dream", "sheep"), [0, 1]), "skip": 2, "energy": 9999}
+    for b, second_lost in ((weak, True), (strong, False)):
+        first, energy, mana = bt.turn(b, team, [90, 90], picks, random.Random(1), [30, 30])
+        assert any(s["act"] == "skip" for s in first["log"])
+        then, _, _ = bt.turn(first, team, energy, picks, random.Random(1), mana)
+        assert any(s["act"] == "skip" for s in then["log"]) == second_lost
+    assert bt._lost_chance({"level": 14}, 0.5) == 0.5 and bt._lost_chance({"level": 15}, 0.5) == 0.25
+
+
+# --- XP and tougher creatures ------------------------------------------------------
+
+
+def test_harder_creatures_pay_more_xp():
+    team = [wp.starter("leaf", 7), wp.starter("ember", 7)]
+    pay = lambda level, tier="": bt.xp({"level": level, "fighters": [0, 1], "tier": tier}, team)  # noqa: E731
+    assert pay(7) == 100 and pay(14) == round(100 * 2 ** bt.XP_STEEPNESS) and pay(3) < 50
+    assert pay(7) < pay(8) < pay(10)
+    assert pay(7, "tough") == 150 and pay(7, "champion") == 300 and pay(7, "boss") == 500
+
+
+def test_tiers_are_stronger_rarer_and_keep_their_seed():
+    team = [wp.starter("leaf", 14), wp.starter("leaf", 14)]
+    plain = cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 14, False, 1)
+    energies = {t: bt.start(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 14, False, 1, None, t), [0, 1])["energy"] for t in ("", "tough", "champion", "boss")}
+    assert energies[""] < energies["tough"] < energies["champion"] < energies["boss"]
+    hits = {t: bt._foe_hit({"level": 14, "tier": t}) for t in ("", "tough", "champion", "boss")}
+    assert hits[""] < hits["tough"] < hits["champion"] < hits["boss"]
+    assert plain and team
+    seen = Counter()
+    for seed in range(4000):
+        c = cr._grown(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 8, False, seed), 0)
+        seen[c.tier] += 1
+        assert c.level == 8 + cr.TIER_LEVELS.get(c.tier, 0)
+    assert 0.1 < seen["tough"] / 4000 < 0.2 and 0.01 < seen["champion"] / 4000 < 0.05
+    assert not {cr._grown(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 3, False, s), 0).tier for s in range(300)} - {""}  # early going stays easy
+    assert bt.tier_coins({"tier": "", "level": 9}) == 0 and bt.tier_coins({"tier": "tough", "level": 9}) == 0
+    assert bt.tier_coins({"tier": "champion", "level": 9}) == 19 and bt.tier_coins({"tier": "boss", "level": 9}) == 34
+
+
+def test_a_temple_boss_guards_the_relic():
+    region = "ember"
+    temple = next(h for h, b in WORLD.hexes.items() if b.special == "temple" and b.region == region)
+    tale = sv.st.STORIES[region]
+    team = [{**wp.starter("ember", 21), "energy": 900}, {**wp.starter("leaf", 21), "energy": 900}]
+    save = sv.start_trip({**sv.new_save(SEED), "team": team, "items": {tale.key: 1}})
+    save = {**save, "at": list(temple)}
+    boss = cr.temple_boss(SEED, region, temple, 0)
+    assert boss.tier == "boss" and boss.level == cr.BOSS_LEVEL and boss.kind == region
+    assert cr.temple_boss(SEED, region, temple, 2).level == cr.BOSS_LEVEL + 2 * cr.RELIC_LEVELS
+    assert boss.id.startswith("boss:")
+    fight = sv._start_battle(save, boss)
+    assert fight["battle"]["tier"] == "boss" and fight["battle"]["energy"] == round(bt.enemy_energy(boss.level) * bt.TIERS["boss"]["energy"])
+    assert sv._critter_by_id(save, boss.id) == boss
+    b = {**fight["battle"], "energy": 1}
+    won = sv.battle_turn({**fight, "battle": b}, [{"move": "attack", "slips": 0}, {"move": "attack", "slips": 0}], random.Random(1))
+    assert won["battle"]["over"] == "won" and region in won["bosses"]
+    assert any(e["kind"] == "coins" for e in won["events"])
+    left = sv.end_battle(won)
+    assert left["at"] == list(temple) and left["battle"] is None
+
+
+def test_mythicals_turn_up_more_among_the_tougher():
+    def share(tier):
+        c = cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 8, False, 0)
+        return sum(cr._mythical(replace(c, seed=s), tier) is not None for s in range(20000)) / 20000
+    assert 0.005 < share("") < 0.015 and 0.04 < share("tough") < 0.06 and 0.17 < share("champion") < 0.23
+    for seed in range(4000):
+        c = cr._grown(cr.Critter("x", (0, 0), (0, 0), "sheep", "dream", 8, False, seed), 0)
+        if c.species != "sheep":
+            assert c.species in wp.MYTHICAL and (c.kind, c.second) == wp.SPECIES_TYPES[c.species]
+            assert sv.cr_looks({"species": c.species, "seed": seed})
+
+
+def test_each_temple_boss_is_its_types_mythical_with_a_move_of_its_own():
+    seen = set()
+    for relics, region in enumerate(wp.TYPES):
+        boss = cr.temple_boss(SEED, region, (0, 0), relics)
+        assert boss.species in wp.MYTHICAL and wp.SPECIES_TYPES[boss.species] == (boss.kind, boss.second) and boss.kind == region
+        assert boss.level == 13 + 2 * relics
+        b = bt.start(boss, [0, 1])
+        script = bt.foe_script(b, 9)
+        own = bt.BOSS_MOVES[b["species"]]
+        assert [script[i] for i in (2, 5, 8)] == [own] * 3 and own in terms.BOSS_MOVES
+        seen.add(own)
+        assert sv.cr_looks(b)  # art, or a stand-in for now
+    assert len(seen) == len(wp.TYPES)
+    assert cr.temple_boss(SEED, "leaf", (0, 0), 4).level == wp.MAX_LEVEL
+    plain = bt.start(cr.Critter("x", (0, 0), (0, 0), "dragon", "shock", 13, False, 1, "ember"), [0, 1])
+    assert "stormfire" not in bt.foe_script(plain, 30)  # only the boss has it
+
+
+def _boss_round(species, region, **b_extra):
+    boss = cr.temple_boss(SEED, region, (0, 0), 0)
+    assert boss.species == species
+    team = [wp.starter("leaf", 13), wp.starter("ember", 13)]
+    b = {**bt.start(boss, [0, 1]), "round": 2, **b_extra}
+    assert bt._foe_plan({**b, "round": 3}, 3) == bt.BOSS_MOVES[b["species"]]
+    energy, mana = [m["energy"] for m in team], [m["mana"] for m in team]
+    b = {**b, "round": 3, "log": []}
+    out = bt._foe_acts(b, team, energy, mana, [0, 1], {}, random.Random(1))
+    return b, team, energy, mana, out, bt.foe_intent({**b, "round": 2, "over": None}, team, [m["energy"] for m in team])
+
+
+def test_stormfire_hits_both_and_guard_cant_stop_it():
+    b, team, energy, _, out, intent = _boss_round("dragon", "shock")
+    assert all(energy[i] < team[i]["energy"] for i in (0, 1))
+    assert intent["name"] == "Stormfire: Both" and intent["count"]
+
+
+def test_rekindle_gives_energy_back():
+    b, team, energy, _, out, intent = _boss_round("phoenix", "ember", energy=100)
+    assert b["energy"] == 100 + round(b["max"] * bt.REKINDLE)
+    assert energy == [m["energy"] for m in team] and intent["kind"] == "boss" and not intent.get("count")
+
+
+def test_moonlight_washes_off_marks_and_effects():
+    b, team, energy, _, out, intent = _boss_round("unicorn", "dream", marks={"tangled": 2}, effects={"scalded": 2})
+    assert not b["marks"] and not b["effects"]
+    assert sum(energy) < sum(m["energy"] for m in team) and intent["name"].startswith("Moonlight")
+
+
+def test_siren_song_drains_mana():
+    b, team, energy, mana, out, intent = _boss_round("mermaid", "splash")
+    assert mana == [m["mana"] - round(m["mana"] * bt.SIREN) for m in team]
+    assert sum(energy) < sum(m["energy"] for m in team) and intent["name"].startswith("Siren Song")
+
+
+def test_wild_bloom_drinks_what_it_deals():
+    b, team, energy, _, out, intent = _boss_round("flower_fairy", "leaf", energy=100)
+    dealt = sum(m["energy"] for m in team) - sum(energy)
+    assert dealt and b["energy"] == 100 + bt.BLOOM * dealt and intent["name"].startswith("Wild Bloom")
+
+
+def test_tougher_creatures_wear_rare_colors():
+    for species in (*cr.COMMON, *cr.WILD_MYTHICAL):
+        for tier, families in wp.TIER_COLORS.items():
+            genes = pet_genes.wild_rare(species, 7, families)
+            assert pet_genes.resolve(genes) and sv.cr_looks({"species": species, "seed": 7, "tier": tier})
+            if species != "phoenix":
+                assert pet_genes.COLORS[genes["coat"]["colors"][0]].family in families

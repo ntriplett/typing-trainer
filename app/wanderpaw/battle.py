@@ -67,11 +67,10 @@ A pet's energy going into a battle is the most it can have in that battle
 there, and a percentage is of that. Mana can still go up to its full mana.
 
 Energy, not HP: battles take it out of each fighter's own trip energy
-(mana too, refilled each day). Pacing: a fair fight takes about ROUNDS
-rounds and costs each fighter about FAIR_COST of its energy, so creatures
-don't share pets' stats: a creature's energy is what two even fighters
-take off it in ROUNDS rounds, and its hits are sized to a share of the
-target's full energy.
+(mana too, refilled each day). Creatures level like pets, a bit faster and a
+bit weaker (enemy_energy, enemy_hit): a fight between equals should cost a pair
+about 15% of its energy and mana between them, and take about 5 rounds with no
+mana, fewer burning it.
 
 A battle is a plain dict (the save keeps it while it's on):
 {critter, species, kind, second, level, seed, energy, max, speed, fighters: [team
@@ -101,11 +100,38 @@ from app.wanderpaw import world as wd
 
 SLIP = 0.1
 FLOOR = 0.4
-ROUNDS = 3
-FAIR_COST = 0.1  # of a fighter's energy, over a fair fight
+ENEMY_ENERGY = {1: 34, 3: 45, 5: 78, 7: 126, 9: 179, 12: 224, 14: 252, 17: 287, 19: 305, 21: 320}  # by level, in between
+ENEMY_POWER = 3  # + its level: a pet's is about 5 + its level
+ENEMY_SPEED = 8  # + its level: it usually goes first, not always
+ENEMY_HIT = 0.18  # of a pet's hit at that power: there are two pets to wear down
+ENEMY_MOVES = {"heavy": 8, "mark": 11, "harden": 14, "lull": 17, "sweep": 20}  # the level each comes at
+ENEMY_SPECIAL = 0.5  # how often a round is one of them (after a plain attack)
+HEAVY_BLOW = 1.6
+SWEEP = 0.7  # on each pet
+ENEMY_MARK = 1.5  # its next hit on a pet it marked
+HARDENED = 0.5  # hits on it, the round it braces
+RESIST_LEVEL = 10  # from here, having lost a turn it can't lose another right away ...
+RESIST_CHANCE_LEVEL = 15  # ... and from here, chances of losing one are halved
 XP_EVEN = 100  # for a fair fight
-XP_RANGE = (25, 250)
-TYPICAL_ACCURACY = 0.85  # what a creature's energy is sized for
+XP_RANGE = (25, 400)
+XP_STEEPNESS = 1.5  # a creature twice your level pays about 2.8x
+# Tougher creatures than the rest: energy and hits compared with a plain one
+# that level, how often it uses special moves, XP and coins.
+TIERS = {
+    "tough": {"name": "Tough", "energy": 1.5, "hit": 1.1, "special": 0.5, "xp": 1.5, "coins": 0},
+    "champion": {"name": "Champion", "energy": 2.5, "hit": 1.25, "special": 0.65, "xp": 3, "coins": 10},
+    "boss": {"name": "Boss", "energy": 5.25, "hit": 1.7, "special": 0.8, "xp": 5, "coins": 25},
+}
+BOSS_ENERGY_GROWTH = 0.125  # more energy for each level past its first: pets get stronger faster than plain creatures do
+BOSS_FIRST_LEVEL = 13
+# Each boss's own move, every BOSS_MOVE_EVERY rounds.
+BOSS_MOVES = {"dragon": "stormfire", "phoenix": "rekindle", "unicorn": "moonlight", "mermaid": "siren", "flower fairy": "bloom"}
+BOSS_MOVE_EVERY = 3
+STORMFIRE = 0.8  # a hit on both
+REKINDLE = 0.06  # of its full energy, back
+BOSS_BLOW = 1.4  # the hit after Moonlight or a Siren Song
+SIREN = 0.25  # of each pet's full mana, gone
+BLOOM = 2  # energy back for each it deals
 
 BIG = 2.2
 BIG_MANA = 6
@@ -116,7 +142,7 @@ REST_COST = 1  # energy
 REST_MANA = 3
 REST_PLUS_MANA = 4
 MARK_ROUNDS = 2  # this round and the next
-DOZE = 0.5  # chance a drowsy creature dozes off
+DOZE = 0.33  # chance a drowsy creature dozes off
 TANGLED_HITS = 0.75
 BURN = 0.3  # of an even hit, each round it's glowing (doubled when it's burning)
 POP = 1.5  # the hit that pops a bubble (or wakes it from a hammock)
@@ -140,8 +166,8 @@ HEAL_MANA = 1
 HEAL_MAX_ENERGY = 3  # ... up to this in a battle
 HEAL_MAX_MANA = 3
 MARK_MANA = 1
-DAREDEVIL = 2.0
-DAREDEVIL_COST = 0.04  # of its full energy
+DAREDEVIL = 1.5
+DAREDEVIL_COST = 0.05  # of its full energy
 GUARDIAN_ROUNDS = 2
 GUARD_STRONG = 0.25
 # level 9
@@ -268,9 +294,9 @@ MIX_MOVES = {
     ("ember", "leaf"): MixMove("Fire Seed", "Hits next round.", "Hits at the start of next round.", "A seed glows in the ground.", hit=0.0, later=3.5, later_when="start"),
     ("ember", "shock"): MixMove("Flashfire", "", "", hit=2.5, first=True, self_energy=-0.08),
     # DREAM first: tricks
-    ("dream", "splash"): MixMove("Mirror Pool", "Next hit on you bounces.", "The next hit on you bounces back at Enemy.", "A still pool shines.", hit=0.0, first=True, mirror=True),
+    ("dream", "splash"): MixMove("Mirror Pool", "Enemy's next hit bounces.", "Enemy's next attack goes for you, and bounces back at it.", "A still pool shines.", hit=0.0, first=True, mirror=True),
     ("dream", "ember"): MixMove("Campfire Tale", "Enemy dozes. Both gain {energy}.", "Enemy dozes on its next turn. Both gain 2% {energy}.", "It's such a cozy story.", hit=0.5, effects=(("doze", 2),), team_energy=0.02),
-    ("dream", "leaf"): MixMove("Sleep Spores", "Drowsy just this round.", "Drowsy only lasts this round.", hit=0.5, marks=(("drowsy", 1), ("tangled", MARK_ROUNDS))),
+    ("dream", "leaf"): MixMove("Sleep Spores", "", "", hit=0.5, marks=(("drowsy", MARK_ROUNDS), ("tangled", MARK_ROUNDS))),
     ("dream", "shock"): MixMove("Deja Vu", "Partner's attack hits twice.", "If Partner attacks this round, it hits twice.", "Haven't we done this before?", hit=0.5, first=True, echo=True),
     # LEAF first: outlasts the creature
     ("leaf", "splash"): MixMove("Spring Shower", "Partner gains 15% {energy}.", "Partner gains 15% {energy}.", hit=0.5, partner_energy=0.15),
@@ -394,16 +420,39 @@ def pet_hit(power: int) -> float:
     return 3 + 0.6 * power
 
 
+def enemy_energy(level: int) -> int:
+    """A creature's energy: in between ENEMY_ENERGY's levels, and on past the last."""
+    known = sorted(ENEMY_ENERGY)
+    if level >= known[-1]:
+        return ENEMY_ENERGY[known[-1]] + 9 * (level - known[-1])
+    low = max(k for k in known if k <= max(level, known[0]))
+    high = min(k for k in known if k > low)
+    return round(ENEMY_ENERGY[low] + (ENEMY_ENERGY[high] - ENEMY_ENERGY[low]) * (max(level, 1) - low) / (high - low))
+
+
+def enemy_hit(level: int) -> float:
+    """What a plain creature's hit does, before types."""
+    return pet_hit(level + ENEMY_POWER) * ENEMY_HIT
+
+
+def _foe_hit(b: dict) -> float:
+    tier = TIERS.get(b.get("tier") or "")
+    return enemy_hit(b["level"]) * (tier["hit"] if tier else 1)
+
+
 def _even_power(level: int) -> int:
     return 5 + level  # a middling pet's power at that level
 
 
 def start(critter, fighters: list[int], bench: list[str] | tuple[str, ...] = ()) -> dict:
     """A battle against `critter` (critters.Critter) with these team places."""
-    energy = round(2 * ROUNDS * pet_hit(_even_power(critter.level)) * TYPICAL_ACCURACY)
+    tier = TIERS.get(getattr(critter, "tier", ""))
+    energy = round(enemy_energy(critter.level) * (tier["energy"] if tier else 1))
+    if getattr(critter, "tier", "") == "boss":
+        energy += round(enemy_energy(critter.level) * BOSS_ENERGY_GROWTH * max(0, critter.level - BOSS_FIRST_LEVEL))
     return {
-        "critter": critter.id, "species": critter.species, "kind": critter.kind, "second": critter.second, "level": critter.level,
-        "seed": critter.seed, "energy": energy, "max": energy, "speed": 5 + critter.level,
+        "critter": critter.id, "species": critter.species.replace("_", " "), "kind": critter.kind, "second": critter.second, "level": critter.level,
+        "seed": critter.seed, "tier": getattr(critter, "tier", ""), "energy": energy, "max": energy, "speed": ENEMY_SPEED + critter.level,
         "fighters": list(fighters), "marks": {}, "effects": {}, "focus": [], "skip": 0, "round": 0, "log": [],
         "over": None, "bench": list(bench),
     }
@@ -549,7 +598,7 @@ def described_moves(member: dict, mana: int | None = None) -> list[dict]:
         "rest": ("Rest", f"Gain {rest_mana(member)} {{mana}}."),
         "healer": (None, f"Each round, Partner gains {heal_e} {{energy}} (max {heal_max_e}) and {heal_m} {{mana}} (max {heal_max_m})."),
         "mark": (None, ""),
-        "daredevil": (None, f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits 2x, but cost {{energy}}."),
+        "daredevil": (None, f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits {DAREDEVIL}x, but cost {{energy}}."),
         "guardian": (None, f"For {guardian_rounds(member)} rounds, {a} and {b} can't hurt Partner"
                            + (f", and other types hit Partner {1 - GUARDIAN_PLUS_SOFTER:.0%} softer." if focus_plus(member, "guardian") else ".")),
     }
@@ -833,7 +882,7 @@ def _with_focus(out: list[dict], member: dict, mana: int | None) -> list[dict]:
     card = {
         "healer": {"passive": True, "note": "Partner heals each round."},
         "elementalist": {"size": "short", "cost": MARK_MANA, "note": "", "can": mana is None or mana >= MARK_MANA},
-        "daredevil": {"passive": True, "note": f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits 2x."},
+        "daredevil": {"passive": True, "note": f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits {DAREDEVIL}x."},
         "guardian": {"passive": True, "note": f"Stops {a} and {b}."},
     }[focus]
     new = {"id": FOCUS_MOVES[focus], "type": own, "label": FOCUS_NAMES[own][focus], **card}
@@ -851,13 +900,20 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         raise ValueError("The battle is over.")
     energy = list(energy)
     mana = list(mana) if mana is not None else [m["mana"] for m in team]
-    able = [i for i in battle["fighters"] if energy[i] > 0]
+    alive = [i for i in battle["fighters"] if energy[i] > 0]
+    asleep = asleep_now(battle, energy)
+    able = [i for i in alive if i != asleep]
+    if len(picks) == len(alive) and asleep is not None:  # (a caller that doesn't know: its move is lost)
+        picks = [p for i, p in zip(alive, picks) if i != asleep]
     if len(picks) != len(able):
         raise ValueError("Pick a move for each fighter that can still fight.")
     if battle["round"] == 0 and not battle.get("start_energy"):
         battle = {**battle, "start_energy": {str(i): energy[i] for i in battle["fighters"]}}
     b = {**battle, "round": battle["round"] + 1, "log": [], "marks": dict(battle.get("marks", {})),
          "effects": dict(battle.get("effects", {})), "skip": battle.get("skip", 0), "healed": dict(battle.get("healed", {}))}
+    b["lulled"] = None
+    if _foe_plan(b, b["round"]) == "harden" and not ((b["skip"] > 0 or "doze" in b["effects"]) and not _resists(b)):
+        b["effects"]["hardened"] = 1
     bench = b.get("bench") or []
     if b["round"] == 1:
         for key, mark in CAPSTONE_STARTS.items():
@@ -919,7 +975,7 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         if b["energy"] <= 0 or not any(energy[i] > 0 for i in b["fighters"]):
             break
         if who == "foe":
-            for entry in _foe_acts(b, team, energy, able, guards, rng):
+            for entry in _foe_acts(b, team, energy, mana, able, guards, rng):
                 step(entry)
             for entry in _reborn(b, team, energy):
                 step(entry)
@@ -1163,11 +1219,13 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     power = pet_hit(team[who]["power"]) * mult * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
     if "battle_cry" in (b.get("bench") or []):
         power *= BATTLE_CRY
+    if "hardened" in b["effects"]:
+        power *= HARDENED
     extra, found, flash = "", None, None
     if _doubles(team[who], kind) and not mix:
         power *= DAREDEVIL
         energy[who] = max(1, energy[who] - _daredevil_cost(team[who]))
-        extra += f" {FOCUS_NAMES[kind]['daredevil']}: double!"
+        extra += f" {FOCUS_NAMES[kind]['daredevil']}: {DAREDEVIL}x!"
         flash = [who, "daredevil"]
     if "popped" in b["effects"]:
         power *= POP
@@ -1208,27 +1266,133 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
             "text": f"{team[who]['name']}'s {what} does {dmg}.{_strength(mult)}{extra}{' ' + tail if tail else ''}"}
 
 
-def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], guards: dict, rng) -> list[dict]:
+def foe_script(b: dict, upto: int) -> list[str]:
+    """What a creature means to do, round by round (the same however often it's
+    asked, from its seed): mostly attacks, and from ENEMY_MOVES' levels its
+    special moves, never two in a row, and a Lull only once."""
+    rng = random.Random(f"wanderpaw-foe:{b['seed']}:{b['level']}")
+    unlocked = [m for m, lv in ENEMY_MOVES.items() if b["level"] >= lv and (m != "mark" or b.get("second"))]
+    own = BOSS_MOVES.get(b["species"]) if b.get("tier") == "boss" else None
+    script: list[str] = []
+    for round_no in range(1, upto + 1):
+        if own and round_no % BOSS_MOVE_EVERY == 0:
+            script.append(own)
+            continue
+        left = [m for m in unlocked if not (m == "lull" and "lull" in script)]
+        chance = TIERS[b["tier"]]["special"] if b.get("tier") else ENEMY_SPECIAL
+        special = script and script[-1] == "attack" and left and rng.random() < chance
+        script.append(rng.choice(left) if special else "attack")
+    return script
+
+
+def _foe_plan(b: dict, round_no: int) -> str:
+    return foe_script(b, round_no)[round_no - 1]
+
+
+def _resists(b: dict) -> bool:
+    """A strong creature that just lost a turn can't lose another right away."""
+    return b["level"] >= RESIST_LEVEL and bool(b.get("rested"))
+
+
+def _lost_chance(b: dict, chance: float) -> float:
+    """The chance of losing its turn: only half that for the strongest."""
+    return chance / 2 if b["level"] >= RESIST_CHANCE_LEVEL else chance
+
+
+def foe_intent(b: dict, team: list[dict], energy: list[int]) -> dict | None:
+    """What the creature means to try next round, for the page to show above
+    it: what it tries, not how it turns out."""
+    if b.get("over"):
+        return None
+    targets = [i for i in b["fighters"] if energy[i] > 0]
+    if not targets:
+        return None
+    if (b.get("skip", 0) > 0 or "doze" in b["effects"]) and not _resists(b):
+        return {"kind": "skip", "name": "Skipping turn", "tip": terms.INTENT_SKIP}
+    move = _foe_plan(b, b["round"] + 1)
+    aim = _foe_target(b, team, energy, targets)
+    who = team[aim]["name"]
+    if move == "rekindle":
+        return {"kind": "boss", "name": terms.BOSS_MOVES[move][0], "tip": terms.BOSS_MOVES[move][1]}
+    if move == "harden":
+        return {"kind": "block", "name": "Blocking", "tip": terms.INTENT_BLOCK}
+    if move == "mark":
+        return {"kind": "mark", "name": f"Marking {who}", "tip": terms.INTENT_MARK}
+    if move == "lull" and len(targets) > 1:
+        return {"kind": "sleep", "name": f"Lulling {who}", "tip": terms.INTENT_LULL}
+    kind = foe_type(b, own_type(team[aim]))
+    scale = {"heavy": HEAVY_BLOW, "sweep": SWEEP, "stormfire": STORMFIRE, "moonlight": BOSS_BLOW, "siren": BOSS_BLOW}.get(move, 1)
+    share = _foe_hit(b) * scale * matchup(kind, own_type(team[aim])) / team[aim]["energy"]
+    count = 1 if share < 0.06 else 2 if share < 0.11 else 3
+    if move in terms.BOSS_MOVES:
+        name, tip = terms.BOSS_MOVES[move]
+        return {"kind": "attack", "type": kind, "count": count, "target": aim, "tip": tip,
+                "name": f"{name}: {'Both' if move == 'stormfire' else who}"}
+    return {"kind": "attack", "type": kind, "count": count, "target": aim, "name": "Both" if move == "sweep" else who,
+            "tip": terms.intent_attack("Both" if move == "sweep" else who, count)}
+
+
+def asleep_now(b: dict, energy: list[int]) -> int | None:
+    """A pet lulled last round, losing this one (if it isn't the only one left)."""
+    who = b.get("lulled")
+    return who if who is not None and any(energy[i] > 0 for i in b["fighters"] if i != who) else None
+
+
+def _foe_target(b: dict, team: list[dict], energy: list[int], targets: list[int]) -> int:
+    """Who it goes for: a Mirror Pool it can't look away from, else the pet
+    it's strongest against, then the one with less energy."""
+    if b.get("mirror") in targets:
+        return b["mirror"]
+    def how_hard(i: int) -> float:
+        blocked = _guardian_blocks(b, team, energy, i)[0]
+        kind = foe_type(b, own_type(team[i]), blocked)
+        return matchup(kind, own_type(team[i])) if kind else 0
+    return max(targets, key=lambda i: (how_hard(i), -energy[i]))
+
+
+def _boss_move(b: dict, team: list[dict], energy: list[int], mana: list[int], aim: int, targets: list[int], guards: dict, move: str) -> list[dict]:
+    """A boss's own move: only this boss has it."""
+    foe = b["species"]
+    if move == "stormfire":
+        return [{"who": "foe", "act": "guard", "text": f"The {foe} breathes Stormfire!"},
+                *(entry for i in targets for entry in _foe_strike(b, team, energy, i, {}, STORMFIRE, "scorches"))]
+    if move == "rekindle":
+        gain = min(b["max"] - b["energy"], round(b["max"] * REKINDLE))
+        b["energy"] += gain
+        return [{"who": "foe", "act": "heal", "type": b["kind"], "text": f"The {foe} burns bright and Rekindles: {gain} energy back!"}]
+    if move == "moonlight":
+        b["marks"], b["effects"], b["skip"] = {}, {}, 0
+        return [{"who": "foe", "act": "guard", "text": f"Moonlight washes over the {foe}: every mark and effect on it is gone!"},
+                *_foe_strike(b, team, energy, aim, guards, BOSS_BLOW, "slams")]
+    if move == "siren":
+        for i in b["fighters"]:
+            mana[i] = max(0, mana[i] - round(team[i]["mana"] * SIREN))
+        return [{"who": "foe", "act": "guard", "text": f"The {foe}'s Siren Song drains your pets' mana!"},
+                *_foe_strike(b, team, energy, aim, guards, BOSS_BLOW, "slams")]
+    out = _foe_strike(b, team, energy, aim, guards, 1.0, "hits")
+    gain = BLOOM * sum(e["damage"] for e in out if e["target"] != "foe")
+    b["energy"] = min(b["max"], b["energy"] + gain)
+    return [*out, {"who": "foe", "act": "heal", "type": b["kind"], "text": f"The {foe}'s Wild Bloom drinks it in: {gain} energy back!"}]
+
+
+def _foe_acts(b: dict, team: list[dict], energy: list[int], mana: list[int], able: list[int], guards: dict, rng) -> list[dict]:
     """The creature's go: unless it loses the turn (asleep, rooted, steam)
     or dozes off, it hits one fighter (or whoever guards that one), or
     itself when it's confused; thorns hurt it back."""
     foe = b["species"]
     even = pet_hit(_even_power(b["level"]))
-    if b["skip"] > 0:
-        b["skip"] -= 1
-        return [{"who": "foe", "act": "skip", "text": f"The {foe} can't move!"}]
-    if "doze" in b["effects"] or ("drowsy" in b["marks"] and rng.random() < DOZE):
-        b["effects"].pop("doze", None)
-        return [{"who": "foe", "act": "doze", "text": f"The {foe} dozes off..."}]
     bench = b.get("bench") or []
-    if "sweet_dreams" in bench and rng.random() < SWEET_DREAMS:
-        return [{"who": "foe", "act": "doze", "text": f"The {foe} drifts off to sweet dreams."}]
+    if _resists(b):  # shaken off: it can't lose another turn right away
+        b["skip"] = 0
+        b["effects"].pop("doze", None)
+    else:
+        lost = _losing_turn(b, rng, foe, bench)
+        if lost:
+            b["rested"] = True
+            return [lost]
+    b["rested"] = False
     if "sanctuary" in b["effects"]:
         return [{"who": "foe", "act": "blocked", "target": "foe", "type": b["kind"], "text": f"The {foe} can't get past the sanctuary!"}]
-    if "poppies" in b["effects"] and rng.random() < WIRED_STOP:
-        return [{"who": "foe", "act": "doze", "text": f"The poppies get to the {foe}. It dozes off..."}]
-    if "wired" in b["effects"] and rng.random() < WIRED_STOP:
-        return [{"who": "foe", "act": "skip", "text": f"The live wire holds the {foe} still!"}]
     if "wisp" in b["effects"]:
         b["effects"].pop("wisp")
         if rng.random() < WISP_SELF_HIT:
@@ -1242,10 +1406,48 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
         b["energy"] = max(0, b["energy"] - dmg)
         return [{"who": "foe", "act": "hit", "target": "foe", "type": b["kind"], "damage": dmg,
                  "text": f"The {foe} is so dizzy it hits itself for {dmg}!"}]
-    targets = [i for i in able if energy[i] > 0]
+    targets = [i for i in b["fighters"] if energy[i] > 0]
     if not targets:
         return []
-    aim = rng.choice(targets)
+    aim = _foe_target(b, team, energy, targets)
+    move = _foe_plan(b, b["round"])
+    if move in terms.BOSS_MOVES:
+        return _boss_move(b, team, energy, mana, aim, targets, guards, move)
+    if move == "harden":
+        return [{"who": "foe", "act": "guard", "text": f"The {foe} braces itself: hits on it do half."}]
+    if move == "mark":
+        b["pet_marks"] = {**(b.get("pet_marks") or {}), str(aim): True}
+        return [{"who": "foe", "act": "mark", "target": aim, "type": b.get("second") or b["kind"], "text": f"The {foe} marks {team[aim]['name']}: its next hit there is stronger."}]
+    if move == "lull" and len(targets) > 1:
+        b["lulled"] = aim
+        return [{"who": "foe", "act": "doze", "target": aim, "text": f"The {foe} lulls {team[aim]['name']}: it'll lose its next turn."}]
+    if move == "sweep":
+        return [entry for i in targets for entry in _foe_strike(b, team, energy, i, {}, SWEEP, "sweeps")]
+    return _foe_strike(b, team, energy, aim, guards, HEAVY_BLOW if move == "heavy" else 1.0, "slams" if move == "heavy" else "hits")
+
+
+def _losing_turn(b: dict, rng, foe: str, bench: list[str]) -> dict | None:
+    """The step for a creature that loses its turn (asleep, rooted, steam, dozing, ...), if it does."""
+    if b["skip"] > 0:
+        b["skip"] -= 1
+        return {"who": "foe", "act": "skip", "text": f"The {foe} can't move!"}
+    if "doze" in b["effects"] or ("drowsy" in b["marks"] and rng.random() < _lost_chance(b, DOZE)):
+        b["effects"].pop("doze", None)
+        return {"who": "foe", "act": "doze", "text": f"The {foe} dozes off..."}
+    if "sweet_dreams" in bench and rng.random() < _lost_chance(b, SWEET_DREAMS):
+        return {"who": "foe", "act": "doze", "text": f"The {foe} drifts off to sweet dreams."}
+    if "poppies" in b["effects"] and rng.random() < _lost_chance(b, WIRED_STOP):
+        return {"who": "foe", "act": "doze", "text": f"The poppies get to the {foe}. It dozes off..."}
+    if "wired" in b["effects"] and rng.random() < _lost_chance(b, WIRED_STOP):
+        return {"who": "foe", "act": "skip", "text": f"The live wire holds the {foe} still!"}
+    return None
+
+
+def _foe_strike(b: dict, team: list[dict], energy: list[int], aim: int, guards: dict, scale: float, verb: str) -> list[dict]:
+    """The creature's hit on one fighter (or whoever guards that one)."""
+    foe = b["species"]
+    even = pet_hit(_even_power(b["level"]))
+    bench = b.get("bench") or []
     guard = guards.get(aim)
     blocked, guardian = _guardian_blocks(b, team, energy, aim)
     if blocked and foe_type(b, own_type(team[aim]), blocked) is None:
@@ -1255,8 +1457,6 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
                  "text": f"{shield} keeps the {foe} off {team[aim]['name']}!"}]
     i = guard if guard is not None and energy[guard] > 0 else aim
     m = team[i]
-    ratio = max(0.5, min(2.0, b["level"] / max(1, m["level"])))
-    share = FAIR_COST / (ROUNDS / len(b["fighters"]))  # its hits land on two fighters
     defends = own_type(m)
     blocked, guardian = _guardian_blocks(b, team, energy, i)
     kind = foe_type(b, defends, blocked)
@@ -1272,7 +1472,11 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
         b["energy"] = max(0, b["energy"] - dmg)
         return [{"who": "foe", "act": "hit", "target": "foe", "type": kind, "damage": dmg,
                  "text": f"The hit bounces off {m['name']}'s Mirror Pool! The {foe} takes {dmg}."}]
-    hit = m["energy"] * share * mult * ratio
+    hit = _foe_hit(b) * mult * scale
+    marked = str(i) in (b.get("pet_marks") or {})
+    if marked:
+        hit *= ENEMY_MARK
+        b["pet_marks"] = {k: v for k, v in b["pet_marks"].items() if k != str(i)}
     if "scalded" in b["effects"]:
         hit *= SCALDED_HITS
     softer = (HOT_SPRING if "hot_spring" in b["effects"] else 1) * (DEEP_ROOTS if "deep_roots" in bench else 1)
@@ -1282,6 +1486,7 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
         b["calm"] = [*(b.get("calm") or []), i]
     if guardian is not None and focus_plus(team[guardian], "guardian"):
         hit *= GUARDIAN_PLUS_SOFTER
+        softer *= GUARDIAN_PLUS_SOFTER
     if i != aim:
         hit *= guard_share(m, kind)
     if "tangled" in b["marks"]:
@@ -1294,7 +1499,7 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     energy[i] = max(0, energy[i] - dmg)
     guarded = f" {m['name']} guards {team[aim]['name']}!" if i != aim else ""
     out = [{"who": "foe", "act": "hit", "target": i, "type": kind, "damage": dmg,
-            "text": f"The {foe} hits {m['name']} for {dmg}.{_strength(mult)}{guarded}"}]
+            "text": f"The {foe} {verb} {m['name']} for {dmg}.{_strength(mult)}{guarded}{' Marked!' if marked else ''}"}]
     if "thorn_hedge" in bench:
         prick = max(1, round(even * THORN_HEDGE))
         b["energy"] = max(0, b["energy"] - prick)
@@ -1309,6 +1514,15 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
 
 
 def xp(battle: dict, team: list[dict]) -> int:
-    """XP for each fighter that won: more for a tougher creature."""
+    """XP for each fighter that won: more the tougher the creature, and more again for its tier."""
     levels = [team[i]["level"] for i in battle["fighters"]]
-    return max(XP_RANGE[0], min(XP_RANGE[1], round(XP_EVEN * battle["level"] / (sum(levels) / len(levels)))))
+    ratio = battle["level"] / (sum(levels) / len(levels))
+    base = max(XP_RANGE[0], min(XP_RANGE[1], round(XP_EVEN * ratio**XP_STEEPNESS)))
+    tier = TIERS.get(battle.get("tier") or "")
+    return round(base * (tier["xp"] if tier else 1))
+
+
+def tier_coins(battle: dict) -> int:
+    """Coins a win pays, on top of everything else."""
+    tier = TIERS.get(battle.get("tier") or "")
+    return tier["coins"] + battle["level"] if tier and tier["coins"] else 0

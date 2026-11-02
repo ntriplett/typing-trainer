@@ -51,6 +51,10 @@ SPECIES_TYPES: dict[str, tuple[str, str | None]] = {
     "flower_fairy": ("leaf", "splash"),  # a stub until its art is designed
 }
 MYTHICAL = frozenset(s for s, (_, second) in SPECIES_TYPES.items() if second)
+# No art yet: what a wild one of these looks like until it's designed.
+STAND_IN = {"mermaid": "turtle", "flower_fairy": "bunny"}
+# The color families a tougher creature wears, rarest for the toughest.
+TIER_COLORS = {"tough": ("bold_red", "bold_blue", "bold_purple", "bold_green", "bold_teal", "bold_pink"), "champion": ("neon",), "boss": ("metal",)}
 XP_FIRST_LEVEL = 500
 XP_GROWTH = 1.08
 MAX_LEVEL = 21
@@ -265,6 +269,11 @@ def starter(kind: str, lv: int = 1) -> dict:
 def looks(species: str, seed: int) -> dict:
     """Rolled looks for a pet that isn't anyone's (a starter, a wild creature)."""
     return pet_genes.resolve(pet_genes.roll(species, None, None, seed))
+
+
+def tier_looks(species: str, seed: int, tier: str) -> dict:
+    """A tougher creature's rare colors, so it stands out in battle."""
+    return pet_genes.resolve(pet_genes.wild_rare(species, seed, TIER_COLORS[tier]))
 
 
 def team(members: list[dict]) -> list[dict]:

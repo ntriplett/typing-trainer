@@ -354,3 +354,42 @@ def test_a_guardian_wall_shows_used_up_once_it_has_worn_off(page: Page, live_ser
     page.goto(f"{live_server}/wanderpaw")
     expect(wall.locator("s")).to_be_visible()
     expect(wall).to_contain_text("Used up")
+
+
+def test_the_creature_shows_its_next_move_and_is_drawn_on_a_clean_canvas(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    from app.wanderpaw import local as lc
+    from app.wanderpaw import world as wd
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    seed = page.request.get(f"{live_server}/api/wander-lab/world").json()["seed"]
+    day = page.request.post(f"{live_server}/api/wander/trip/start", data={}).json()["stats"]["trips"]
+    world = wd.generate(seed)
+    big, h = next((b, h) for b in sorted(world.hexes) if world.hexes[b].region == wd.HEARTLAND for h in sorted(cr.at(seed, b, day)))
+    local = lc.generate(seed, big)
+    beside = next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in cr.at(seed, big, day))
+    page.request.post(f"{live_server}/api/wander-lab/teleport", data={"q": big[0], "r": big[1], "spot": list(beside)})
+    g = lc.to_world(big, h)
+    page.request.post(f"{live_server}/api/wander/walk", data={"q": g[0], "r": g[1]})
+    page.reload()
+    intent = page.locator("#battle-intent")
+    expect(intent).to_be_visible()
+    expect(intent).to_have_attribute("title", re.compile("Enemy will attack"))
+    assert intent.locator(".wander-icon-dot").count() >= 1
+    # an old creature doesn't stay on the canvas underneath a new one
+    cleared = page.evaluate("""() => {
+      const c = document.getElementById("battle-foe");
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#ff0000";
+      ctx.fillRect(0, 0, c.width, c.height);
+      paintPet(c, { genes: state.battle.looks, growth: 10 }, 5, true);
+      return ctx.getImageData(0, 0, 1, 1).data[3];
+    }""")
+    assert cleared == 0
+    assert not errors

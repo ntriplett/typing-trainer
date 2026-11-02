@@ -171,11 +171,13 @@ function fightWords() {
 }
 
 function startRound() {
-  const able = state.battle.fighters.filter((f) => f.energy > 0);
+  const able = state.battle.fighters.filter((f) => f.energy > 0 && !f.asleep);
   fight = { round: state.battle.round, picks: able.map(() => null), able, targets: [] };
   fight.targets = fightWords();
 }
 
+
+const FOE_SIZES = { plain: { w: 220, h: 170, most: 5 }, tough: { w: 260, h: 200, most: 6 }, champion: { w: 300, h: 230, most: 7 }, boss: { w: 330, h: 260, most: 8 } };
 
 function renderBattle() {
   const box = document.getElementById("battle");
@@ -189,7 +191,17 @@ function renderBattle() {
   const petEnergy = (f) => (replay ? replay.cur.pets[f.place] : f.energy);
   const petMana = (f) => (replay ? replay.cur.mana[f.place] : f.mana);
   // the creature, on the right
-  paintPet(document.getElementById("battle-foe"), { genes: b.looks, growth: 10 }, 5, true); // facing your pets
+  // a tougher creature is drawn bigger, with an outline in its tier's color
+  const size = FOE_SIZES[b.tier] || FOE_SIZES.plain;
+  const art = document.getElementById("battle-foe");
+  [art, document.getElementById("battle-marks")].forEach((c) => {
+    if (c.width !== size.w) c.width = size.w;
+    if (c.height !== size.h) c.height = size.h;
+    c.style.width = `${size.w}px`;
+    c.style.height = `${size.h}px`;
+  });
+  art.closest(".wander-foe-art").dataset.tier = b.tier || "";
+  paintPet(art, { genes: b.looks, growth: 10 }, size.most, true); // facing your pets
   const marks = [
     ...Object.entries(b.marks || {}).map(([m, rounds]) => {
       const color = WanderMap.TYPE_COLORS[MARK_TYPE[m]];
@@ -199,11 +211,15 @@ function renderBattle() {
     ...(b.skip ? [`<span class="wander-mark effect">can't move <small>(${b.skip})</small></span>`] : []),
   ].join(" ");
   animateMarks();
+  const intent = document.getElementById("battle-intent");
+  intent.hidden = !b.intent || !!replay || !!b.over;
+  intent.innerHTML = b.intent ? intentHtml(b.intent) : "";
+  intent.title = b.intent ? wanderPlain(b.intent.tip) : "";
   document.getElementById("battle-bench").innerHTML = (b.bench_helps || []).length
     ? `<small>Helping from the bench:</small> ${b.bench_helps.map((c) => `<span class="wander-mark" title="${wanderPlain(c.says)}">${esc(c.name)}</span>`).join(" ")}`
     : "";
   document.getElementById("battle-foe-info").innerHTML = `
-    <b>Wild ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
+    <b>${b.tier ? `${b.tier[0].toUpperCase()}${b.tier.slice(1)}` : "Wild"} ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
     ${bar(foeEnergy, b.max)} <small>${foeEnergy} / ${b.max}</small>
     ${marks ? `<p>${marks}</p>` : ""}`;
   // what happened last round (during a replay: so far)
@@ -235,7 +251,7 @@ function renderBattle() {
           <div><b>${esc(f.name)}</b> <small>lv ${f.level}</small> ${chips(f.types)}<br>
           ${bar(petEnergy(f), f.max)} <small title="Energy">${petEnergy(f)} / ${f.max} ${ENERGY_ICON}</small><br>
           ${bar(petMana(f), f.max_mana, "mana")} <small class="wander-mana" title="Mana">${petMana(f)} / ${f.max_mana} ${MANA_ICON}</small>
-          ${f.focused ? `<span class="wander-mark">focused</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
+          ${f.focused ? `<span class="wander-mark">focused</span>` : ""}${f.asleep ? `<span class="wander-mark">asleep</span>` : ""}${f.marked ? `<span class="wander-mark">marked</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
         </div>
         ${moves}
       </div>`;
@@ -263,7 +279,7 @@ function renderBattle() {
 const MARK_TYPE = { soaked: "splash", glowing: "ember", drowsy: "dream", tangled: "leaf", static: "shock" };
 // What a combo leaves on it, as the labels say.
 const EFFECT_NAMES = { drenched: "drenched", thorns: "thorns", confused: "dizzy", burn: "burning", popped: "bubble", doze: "sleepy",
-  mending: "pets mending", brambles: "brambles", scalded: "scalded", wisp: "wisp", wired: "wired", poppies: "poppies", sanctuary: "sanctuary" };
+  hardened: "braced", mending: "pets mending", brambles: "brambles", scalded: "scalded", wisp: "wisp", wired: "wired", poppies: "poppies", sanctuary: "sanctuary" };
 let marksTimer = null;
 
 function animateMarks() {
@@ -944,6 +960,7 @@ function renderPicker() {
 function paintPet(canvas, p, most = 3, faceLeft = false) {
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height); // (a canvas that stays, like the creature's, keeps what was drawn before)
   const { w, h } = petSize(p.genes, p.growth);
   const scale = Math.max(1, Math.min(most, Math.floor((canvas.width - 4) / w), Math.floor((canvas.height - 4) / h)));
   const px = (x, y, pw, ph, c) => {

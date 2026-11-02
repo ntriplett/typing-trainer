@@ -51,18 +51,19 @@ MATCHUPS = ((1, 2), (3, 3), (3, 5), (5, 5), (5, 8), (8, 8), (8, 11), (10, 10), (
 
 # What the game should feel like. name -> (low, high)
 TARGETS = {
-    "even fight: rounds": (2.5, 3.6),
-    "even fight: energy % each": (7, 13),
-    "even fight: win %": (90, 100),
-    "3-4 levels up: energy % each": (15, 35),
+    "even fights from level 7, no mana: rounds": (3, 5.5),
+    "even fights from level 7, burning mana: rounds": (1.5, 5),
+    "even fights from level 7, no mana: energy %": (8, 25),
+    "even fights from level 7, burning mana: energy + mana / 2": (10, 22),
+    "even fights: lowest win %": (85, 100),
     "favorite: sessions to level 20": (35, 65),  # maxing favorites around the game's end is fine
     "other: sessions to level 20": (65, 130),  # the whole party shouldn't max out with nothing to do
     "other: sessions to level 5": (4, 12),  # the second type should come soon
     "energy loop: most energy out of a fight (from 20%)": (0, 21),  # a fight is never a refill
-    "capstones: most energy saved": (0.5, 8),  # helping, not winning fights from the bench
-    "level 9 focus: most energy saved": (1.5, 5),  # all four grow about alike
-    "level 9 focus: least energy saved": (1.5, 5),
-    "level 9 upgrade: most energy saved": (1, 3.5),  # none the obvious pick
+    "capstones: most energy saved": (0.5, 16),  # strong ones are fine this late
+    "level 9 focus: most energy saved": (1.5, 10),  # (Elementalist+ tops it: fine, long fights cost more)
+    "level 9 focus: least energy saved": (0, 5),  # (Daredevil+: a glass cannon, it pays in energy for its speed)
+    "level 9 upgrade: most energy saved": (1, 5),  # none the obvious pick
     "level 7 moves: most energy saved": (5, 20),  # roughly equal, none a must-have ...
     "level 7 moves: least energy saved": (-4, 6),  # ... and none a waste of 4 mana
 }
@@ -391,6 +392,162 @@ def capstone_table() -> tuple[list[tuple], float, float]:
     return sorted(rows, key=lambda r: r[2]), r0, c0
 
 
+# A smart player: knows Enemy's type, brings pets strong against it, and each
+# round plays whichever pair of moves does the most damage.
+SMART_LEVELS = (1, 3, 5, 7, 9, 12, 14, 17, 19, 21)
+SMART_ROUNDS = 5
+SMART_BUILDS = (("daredevil", "daredevil"), ("daredevil", "elementalist"), ("elementalist", "guardian"), ("healer", "daredevil"))
+SMART_RUNS = 12
+
+
+def _strong_against(foe_kind: str) -> tuple[str, str]:
+    """The types that hit this type hardest: x2, then x1.5."""
+    ranked = sorted(wp.TYPES, key=lambda t: -bt.matchup(t, foe_kind))
+    return ranked[0], ranked[1]
+
+
+def _smart_team(level: int, foes: tuple[str | None, str | None], foe_kind: str, rng: random.Random) -> list[dict]:
+    best, good = _strong_against(foe_kind)
+    others = [t for t in wp.TYPES if t not in (best, good)]
+    return [build_pet(level, foes[0], best, good if level >= 5 else rng.choice(others)),
+            build_pet(level, foes[1], good, best if level >= 5 else rng.choice(others))]
+
+
+def _best_round(b: dict, team: list[dict], energy: list[int], mana: list[int], use_mana: bool, rng_seed: int) -> tuple[dict, list[int], list[int]]:
+    """Try every pair of moves through the real battle, keep whichever does the most damage."""
+    def options(i: int) -> list[str]:
+        out = []
+        for m in bt.battle_moves(b, i, team[i], mana[i]):
+            costs = m["icons"]["cost"].get("mana", 0)
+            if m.get("passive") or m.get("can") is False or (costs and not use_mana):
+                continue
+            if "hit" in m["icons"] or m["icons"].get("marks") or m["id"] == "mark":
+                out.append(m["id"])
+        return out or ["attack"]
+    best = None
+    for one in options(0):
+        for two in options(1):
+            picks = [{"move": one, "slips": SLIPS}, {"move": two, "slips": SLIPS}]
+            try:
+                result = bt.turn(b, team, energy, picks, random.Random(rng_seed), mana)
+            except ValueError:
+                continue
+            dealt = b["energy"] - result[0]["energy"]
+            if best is None or dealt > best[0]:
+                best = (dealt, result)
+    return best[1]
+
+
+def smart_fight(level: int, build: tuple, use_mana: bool, seed: int) -> list[tuple[float, int]]:
+    """Damage and mana spent each round, against an Enemy that can take it all."""
+    rng = random.Random(seed)
+    foe_kind = rng.choice(wp.TYPES)
+    focuses = build if level >= 3 else (None, None)
+    team = _smart_team(level, focuses, foe_kind, rng)
+    foe = cr.Critter("x", (0, 0), (0, 0), "dog", foe_kind, level, False, rng.randrange(2**31))
+    b = {**bt.start(foe, [0, 1]), "energy": 10**6, "max": 10**6}
+    energy, mana = [m["energy"] * 3 for m in team], [m["mana"] for m in team]
+    out = []
+    for r in range(SMART_ROUNDS):
+        before, spent = b["energy"], sum(mana)
+        b, energy, mana = _best_round(b, team, energy, mana, use_mana, seed + r)
+        out.append((before - b["energy"], spent - sum(mana)))
+    return out
+
+
+def smart_table() -> list[tuple]:
+    """By level, for the strongest build: round 1, the average with and without mana."""
+    rows = []
+    for level in SMART_LEVELS:
+        best = None
+        for build in SMART_BUILDS:
+            burn = [smart_fight(level, build, True, s) for s in range(SMART_RUNS)]
+            plain = [smart_fight(level, build, False, s) for s in range(SMART_RUNS)]
+            first = statistics.mean(f[0][0] for f in burn)
+            peak = max(f[0][0] for f in burn)
+            burn_avg = statistics.mean(sum(x[0] for x in f) / SMART_ROUNDS for f in burn)
+            plain_avg = statistics.mean(sum(x[0] for x in f) / SMART_ROUNDS for f in plain)
+            mana_used = statistics.mean(sum(x[1] for x in f) for f in burn)
+            row = (level, "+".join(b[:5] for b in build), first, peak, burn_avg, plain_avg, mana_used)
+            if best is None or row[2] > best[2]:
+                best = row
+        rows.append(best)
+    return rows
+
+
+# Even fights: a pet against a creature of its own level. An even fight should
+# cost a pair about 15% as energy + mana / 2, and take about 4 rounds with no
+# mana, fewer burning it.
+EVEN_LEVELS = (1, 3, 5, 7, 9, 12, 14, 17, 19, 21)
+EVEN_RUNS = 40
+EVEN_BUILD = ("healer", "daredevil")
+
+
+def even_fight(level: int, use_mana: bool, seed: int, builds: tuple = EVEN_BUILD, tier: str = "") -> tuple[bool, int, float, float]:
+    """A smart pair (it picks the best moves, knowing Enemy's type) in an even fight."""
+    rng = random.Random(seed)
+    foe = cr.Critter("x", (0, 0), (0, 0), "dog", rng.choice(wp.TYPES), level, False, rng.randrange(2**31), rng.choice(wp.TYPES) if level > 5 else None, tier)
+    return _smart_fight(foe, level, use_mana, seed, builds)
+
+
+def boss_fight(region: str, relics: int, ahead: int, use_mana: bool, seed: int) -> tuple[bool, int, float, float]:
+    """A smart pair `ahead` levels above a temple's boss."""
+    boss = cr.temple_boss(seed, region, (0, 0), relics)
+    return _smart_fight(boss, min(wp.MAX_LEVEL, boss.level + ahead), use_mana, seed)
+
+
+def _smart_fight(foe, level: int, use_mana: bool, seed: int, builds: tuple = EVEN_BUILD) -> tuple[bool, int, float, float]:
+    rng = random.Random(seed)
+    team = _smart_team(level, builds if level >= 3 else (None, None), foe.kind, rng)
+    b = bt.start(foe, [0, 1])
+    energy, mana = [m["energy"] for m in team], [m["mana"] for m in team]
+    full, pool, rounds = sum(energy), sum(mana), 0
+    while not b["over"] and rounds < 40 and any(energy):
+        if all(energy):
+            b, energy, mana = _best_round(b, team, energy, mana, use_mana, seed + rounds)
+        else:
+            picks = [{"move": "attack", "slips": SLIPS} if energy[i] else None for i in range(2)]
+            b, energy, mana = bt.turn(b, team, energy, [p for p in picks if p], rng, mana)
+        rounds += 1
+    return b["over"] == "won", rounds, 100 * (full - sum(energy)) / full, 100 * (pool - sum(mana)) / pool
+
+
+def even_table() -> list[tuple]:
+    rows = []
+    for level in EVEN_LEVELS:
+        row = [level]
+        for use_mana in (True, False):
+            runs = [even_fight(level, use_mana, s) for s in range(EVEN_RUNS)]
+            row += [100 * statistics.mean(r[0] for r in runs), statistics.mean(r[1] for r in runs), statistics.mean(r[2] for r in runs), statistics.mean(r[3] for r in runs)]
+        rows.append(tuple(row))
+    return rows
+
+
+def tier_table() -> list[tuple]:
+    """Tough creatures, champions and bosses of a pair's own level, with and without mana."""
+    rows = []
+    for level in (7, 14, 21):
+        for tier in ("", "tough", "champion", "boss"):
+            burn = [even_fight(level, True, s, tier=tier) for s in range(EVEN_RUNS // 2)]
+            plain = [even_fight(level, False, s, tier=tier) for s in range(EVEN_RUNS // 2)]
+            mean = lambda runs, i: statistics.mean(r[i] for r in runs)  # noqa: E731
+            rows.append((level, tier or "plain", 100 * mean(burn, 0), mean(burn, 1), mean(burn, 2), mean(burn, 3),
+                         100 * mean(plain, 0), mean(plain, 1), mean(plain, 2)))
+    return rows
+
+
+def boss_table(ahead: int = 0, runs: int = EVEN_RUNS // 2) -> list[tuple]:
+    """Each boss, as the first to the last temple you'd take on."""
+    rows = []
+    for relics, region in enumerate(("shock", "ember", "dream", "splash", "leaf")):
+        burn = [boss_fight(region, relics, ahead, True, s) for s in range(runs)]
+        mean = lambda i: statistics.mean(r[i] for r in burn)  # noqa: E731
+        won = [r for r in burn if r[0]]
+        left = statistics.mean(r[2] for r in won) if won else 0
+        rows.append((region, 13 + 2 * relics, 100 * mean(0), mean(1), mean(2), mean(3), left))
+    return rows
+
+
 def fight_table() -> dict[tuple[int, int], tuple[float, float, float, int]]:
     rng = random.Random(1)
     out = {}
@@ -446,7 +603,7 @@ def energy_table() -> list[tuple[int, int, int, float]]:
     for lv in (1, 5, 10, 15, 20, wp.MAX_LEVEL):
         pet = wp.stats("dog", wp.STARTER_STATS, wp.Record(xp=wp.xp_for(lv)))["energy"]
         total = 50 + wp.PARTY_SIZE * pet
-        out.append((lv, pet, total, total / (STEPS_PER_FIGHT + 2 * pet * bt.FAIR_COST)))
+        out.append((lv, pet, total, total / (STEPS_PER_FIGHT + 5 * bt.enemy_hit(lv))))
     return out
 
 
@@ -509,6 +666,32 @@ def main() -> int:
     for name, rounds, cost in caps:
         print(f"  {name:<16}{rounds:>5.1f} rounds {cost:>6.1f}%  ({cost - cap_cost:+.1f})")
 
+    evens = even_table()
+    print(f"\nEven fights, a smart {'+'.join(EVEN_BUILD)} pair: energy and mana spent, % of the pair's")
+    print("  (target: about 15% as energy + mana / 2, and 3-5 rounds with no mana)")
+    print("           burning mana                       no mana")
+    print("  level  win% rounds energy% mana% score      win% rounds energy% score")
+    for level, w1, r1, e1, m1, w2, r2, e2, m2 in evens:
+        print(f"  {level:>5}{w1:>6.0f}{r1:>7.1f}{e1:>8.1f}{m1:>6.1f}{e1 + m1 / 2:>6.1f}{w2:>10.0f}{r2:>7.1f}{e2:>8.1f}{e2 + m2 / 2:>6.1f}")
+
+    print("\nTiers: same-level creatures, the smart pair")
+    print("           burning mana                       no mana")
+    print("  level tier      win% rounds energy% mana%    win% rounds energy%")
+    for level, tier, w1, r1, e1, m1, w2, r2, e2 in tier_table():
+        print(f"  {level:>5} {tier:<9}{w1:>5.0f}{r1:>7.1f}{e1:>8.1f}{m1:>6.1f}{w2:>8.0f}{r2:>7.1f}{e2:>8.1f}")
+
+    for ahead in (-2, 0, 2):
+        print(f"\nBosses: a smart pair {ahead:+d} levels from the boss, burning mana")
+        print("  boss    level  win% rounds energy% mana%  energy% in wins")
+        for region, level, win, rounds, energy, mana, left in boss_table(ahead):
+            print(f"  {region:<7}{level:>5}{win:>6.0f}{rounds:>7.1f}{energy:>8.1f}{mana:>6.1f}{left:>11.1f}")
+
+    print("\nA smart player's damage a round, by level (the strongest build; Enemy's own energy for scale)")
+    print("  level build            round 1  best  burning mana  no mana   mana used  Enemy now")
+    for level, build, first, peak, burn_avg, plain_avg, used in smart_table():
+        now = bt.start(cr.Critter("x", (0, 0), (0, 0), "dog", "ember", level, False, 1), [0, 1])["energy"]
+        print(f"  {level:>5} {build:<17}{first:>6.0f}{peak:>7.0f}{burn_avg:>11.0f}{plain_avg:>10.0f}{used:>10.0f}{now:>10}")
+
     print(f"\nSessions to reach a level (a party of {' + '.join(f'{n} {k}' for k, (n, _) in PARTY.items())}; favorites fight 2x)")
     print(f"  {'':<34}" + "".join(f"{'L' + str(lv):>6}" for lv in LEVELS))
     base = sessions_to_levels(wp.XP_GROWTH, pop, BASE_FIGHTS, args.relic_every)
@@ -521,10 +704,11 @@ def main() -> int:
     even = [table[lv, lv] for lv, foe in MATCHUPS if lv == foe]
     up = [table[lv, foe] for lv, foe in MATCHUPS if foe - lv in (3, 4)]
     actual = {
-        "even fight: rounds": statistics.mean(r[1] for r in even),
-        "even fight: energy % each": statistics.mean(r[2] for r in even),
-        "even fight: win %": min(r[0] for r in even),
-        "3-4 levels up: energy % each": statistics.mean(r[2] for r in up),
+        "even fights from level 7, no mana: rounds": statistics.mean(r[6] for r in evens if r[0] >= 7),
+        "even fights from level 7, burning mana: rounds": statistics.mean(r[2] for r in evens if r[0] >= 7),
+        "even fights from level 7, no mana: energy %": statistics.mean(r[7] for r in evens if r[0] >= 7),
+        "even fights from level 7, burning mana: energy + mana / 2": statistics.mean(r[3] + r[4] / 2 for r in evens if r[0] >= 7),
+        "even fights: lowest win %": min(min(r[1], r[5]) for r in evens),
         "favorite: sessions to level 20": base["favorite", 20],
         "other: sessions to level 20": base["other", 20],
         "other: sessions to level 5": base["other", 5],

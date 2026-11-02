@@ -36,6 +36,13 @@ RING_LEVELS = 2  # for each ring past the heartland
 RELIC_LEVELS = 2  # for each relic you hold
 WIGGLE = 2  # levels, either way, for one creature
 SECOND_TYPE_ABOVE = 5
+TOUGH_CHANCE = 0.15  # of the creatures past the heartland
+CHAMPION_CHANCE = 0.03
+TIERS_FROM_LEVEL = 5  # no tougher ones while it's still easy going
+BOSS_LEVEL = 13  # a temple's boss, and RELIC_LEVELS more for each relic out
+TIER_LEVELS = {"tough": 2, "champion": 4}  # on top of its own: battle.TIERS's
+MYTHICAL_CHANCE = {"": 0.01, "tough": 0.05, "champion": 0.2}
+WILD_MYTHICAL = sorted(wp.MYTHICAL - wp.STAND_IN.keys())
 COMMON = sorted(s for s, (_, second) in wp.SPECIES_TYPES.items() if not second)
 
 
@@ -50,6 +57,7 @@ class Critter:
     guardian: bool
     seed: int  # its looks (pet_genes.roll)
     second: str | None = None  # its second type, once it's strong enough (at)
+    tier: str = ""  # "", tough, champion or boss (battle.TIERS)
 
 
 def _region_species(region: str) -> list[str]:
@@ -134,13 +142,43 @@ def wanderers(seed: int, big: Hex, day: int) -> tuple[Critter, ...]:
     return tuple(_make(rng, seed, big, h, False, f"w{day}:{big[0]},{big[1]}:{h[0]},{h[1]}") for h in free[:want])
 
 
+def _tier(c: Critter) -> str:
+    """How tough this one is (from its seed, the same each time you meet it)."""
+    if c.level < TIERS_FROM_LEVEL:
+        return ""
+    roll = random.Random(f"wanderpaw-tier:{c.seed}").random()
+    return "champion" if roll < CHAMPION_CHANCE else "tough" if roll < CHAMPION_CHANCE + TOUGH_CHANCE else ""
+
+
+def _mythical(c: Critter, tier: str) -> str | None:
+    """The mythical this one turns out to be, rarely (more often the tougher it is)."""
+    rng = random.Random(f"wanderpaw-mythical:{c.seed}")
+    if rng.random() >= MYTHICAL_CHANCE[tier]:
+        return None
+    return next((s for s in WILD_MYTHICAL if wp.SPECIES_TYPES[s][0] == c.kind), rng.choice(WILD_MYTHICAL))
+
+
+def temple_boss(seed: int, region: str, big: Hex, relics: int) -> Critter:
+    """The boss guarding a temple's relic, its type the temple's: tougher the more relics are out."""
+    species = next(s for s in sorted(wp.MYTHICAL) if wp.SPECIES_TYPES[s][0] == region)
+    level = min(wp.MAX_LEVEL, BOSS_LEVEL + RELIC_LEVELS * relics)
+    boss_seed = random.Random(f"wanderpaw-boss:{seed}:{region}").randrange(2**31)
+    second = wp.SPECIES_TYPES[species][1]
+    return Critter(f"boss:{big[0]},{big[1]}:{region}", big, (0, 0), species, region, level, True, boss_seed, second, "boss")
+
+
 def _grown(c: Critter, relics: int) -> Critter:
     """A creature as strong as it is with this many relics out of their temples."""
-    lv = min(wp.MAX_LEVEL, c.level + RELIC_LEVELS * relics)
+    tier = _tier(c)
+    lv = min(wp.MAX_LEVEL, c.level + RELIC_LEVELS * relics + TIER_LEVELS.get(tier, 0))
     second = None
     if lv > SECOND_TYPE_ABOVE:
         second = random.Random(f"wanderpaw-critter-second:{c.seed}").choice([t for t in wp.TYPES if t != c.kind])
-    return replace(c, level=lv, second=second)
+    mythical = _mythical(c, tier)
+    if mythical:
+        kind, second = wp.SPECIES_TYPES[mythical]
+        return replace(c, species=mythical, kind=kind, level=lv, second=second, tier=tier)
+    return replace(c, level=lv, second=second, tier=tier)
 
 
 def at(seed: int, big: Hex, day: int, relics: int = 0) -> dict[Hex, Critter]:

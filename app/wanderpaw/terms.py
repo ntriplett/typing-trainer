@@ -39,6 +39,9 @@ TERMS = {
     "Focus": "What a pet specializes in, chosen at level 3.",
     "Mix": "A move mixing a pet's two types, from level 7.",
     "Capstone": "A pet's level 21 passive, helping the fighters whenever it's on the party and not fighting.",
+    "Tough": "A creature two levels up on the others, with more energy and harder hits. Pays more XP.",
+    "Champion": "A rare creature, far stronger than the others. Pays a lot more XP, and coins.",
+    "Boss": "The creature guarding a temple's relic. Beat it to reach the relic.",
     "Upgrade": "A stronger version of a move, shown with a +.",
     "Slot": "One of the six places a pet keeps a move.",
 }
@@ -56,7 +59,7 @@ TYPES = {
 MARKS = {
     "Soaked": "Wet. Nothing on its own.",
     "Glowing": "Enemy burns at the end of each round.",
-    "Drowsy": "Enemy has a 50% chance to doze off.",
+    "Drowsy": "Enemy has a 33% chance to doze off.",
     "Static": "Charged up. Nothing on its own.",
     "Tangled": "Enemy goes last and hits 25% softer.",
 }
@@ -72,6 +75,10 @@ EFFECTS = {
     "Bubble": "The next hit on Enemy does 1.5x damage.",
     "Sleepy": "Enemy dozes off on its next turn.",
     "Sanctuary": "Enemy can't hurt either pet.",
+    "Hardened": "Hits on Enemy do half this round.",
+    "Heavy Blow": "Enemy's big hit: 1.6x.",
+    "Sweep": "Enemy hits both pets at once, softer.",
+    "Lull": "Enemy puts one pet to sleep: it loses its next turn.",
     "Scalded": "Enemy hits 25% softer.",
     "Wired": "Enemy has a 50% chance to lose its turn.",
     "Poppies": "Enemy has a 50% chance to lose its turn.",
@@ -122,8 +129,26 @@ LANDS = {
 DAMAGE_WORDS = ("Low", "Medium", "High", "Very high", "Massive")  # by how many circles
 
 FAST_TIP = "Fast: goes first."
+# A boss's own move: its name, and what the icon above Enemy says.
+BOSS_MOVES = {
+    "stormfire": ("Stormfire", "Enemy will breathe Stormfire: a hit on both pets that Guard can't stop."),
+    "rekindle": ("Rekindle", "Enemy will Rekindle: it gets some energy back."),
+    "moonlight": ("Moonlight", "Enemy will wash away every mark and effect on it, then attack."),
+    "siren": ("Siren Song", "Enemy will drain both pets' mana, then attack."),
+    "bloom": ("Wild Bloom", "Enemy will attack, and get energy back for the damage it does."),
+}
+INTENT_SKIP = "Enemy will lose its next turn."
+INTENT_BLOCK = "Enemy will brace itself: hits on it do half."
+INTENT_MARK = "Enemy will mark a pet: its next hit there is stronger."
+INTENT_LULL = "Enemy will lull a pet: it loses its next turn."
 MANA_TIP = "Mana cost."
 ENERGY_TIP = "Energy cost."
+
+
+def intent_attack(name: str, circles: int) -> str:
+    """What the icon above Enemy says. Its circles are of the target's energy, not a hit's strength."""
+    size = ("low", "medium", "high")[circles - 1]
+    return f"Enemy will attack {name}: {size} damage."
 
 
 def damage_tip(circles: int) -> str:

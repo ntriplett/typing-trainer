@@ -61,6 +61,13 @@ function moveCosts(m) {
   return `<span class="wander-move-cost">${one(cost.mana, MANA_ICON, "mana")}${one(cost.energy, ENERGY_ICON, "energy")}</span>`;
 }
 
+// What the creature will try next, above it: circles for an attack, and who at.
+function intentHtml(i) {
+  const color = i.type ? WanderMap.TYPE_COLORS[i.type] : "";
+  const dots = Array.from({ length: i.count || 0 }, () => `<i class="wander-icon-dot" style="background:${color}"></i>`).join("");
+  return `${dots}<small>${wanderText(i.name)}</small>`;
+}
+
 // Three across for six moves; four once a pet has more slots.
 const gridSize = (moves) => (moves.length > 6 ? "wide" : "");
 

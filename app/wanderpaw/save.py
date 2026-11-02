@@ -76,7 +76,7 @@ DEFAULTS = {
     "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
     "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
     "battle": None, "fighters": None, "combos": [], "camps": [], "levelups": [],
-    "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
+    "bosses": [], "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
 
@@ -407,6 +407,8 @@ def fighters(save: dict) -> list[int]:
 
 def _critter_by_id(save: dict, cid: str) -> cr.Critter:
     big = tuple(int(v) for v in cid.split(":")[1].split(","))
+    if cid.startswith("boss:"):
+        return cr.temple_boss(save["seed"], cid.split(":")[2], big, relics_out(save))
     return next(c for c in cr.at(save["seed"], big, day(save), relics_out(save)).values() if c.id == cid)
 
 
@@ -418,8 +420,9 @@ def _start_battle(save: dict, c: cr.Critter) -> dict:
     pets = (save["trip"] or {}).get("pets") or [m["energy"] for m in save["team"]]
     battle = {**bt.start(c, who, bt.bench_keys(save["team"], who)), "start_energy": {str(i): pets[i] for i in who},
               "reborn": [i for i in who if i not in used and bt.has_reborn(save["team"][i])]}
+    title = f"{bt.TIERS[c.tier]['name']} " if c.tier else ""
     return _event({**save, "battle": battle}, kind="battle",
-                  text=f"A wild level {c.level} {c.species} blocks the way!")
+                  text=f"A level {c.level} {title.lower()}{c.species.replace('_', ' ')} blocks the way!")
 
 
 def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None) -> dict:
@@ -459,6 +462,10 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
         if "good_company" in (b.get("bench") or []):
             gain = round(gain * bt.GOOD_COMPANY)
         save = _event(save, kind="won", text=f"You won! The {b['species']} scampers off.")
+        if bt.tier_coins(b):
+            save = _event(save, kind="coins", amount=bt.tier_coins(b), text=f"It leaves behind {bt.tier_coins(b)} coins.")
+        if b.get("tier") == "boss":
+            save = {**save, "bosses": [*save["bosses"], b["critter"].split(":")[2]]}
         if b.get("coins"):
             save = _event(save, kind="coins", amount=b["coins"], text=f"Golden Flame! {b['coins']} coins.")
         if ids:
@@ -480,6 +487,8 @@ def end_battle(save: dict) -> dict:
     if not b or not b["over"]:
         raise WanderError("The battle isn't over.")
     save = {**save, "battle": None, "events": []}
+    if b["over"] == "won" and b.get("tier") == "boss":
+        return save  # it stood in the temple's door: you're still there
     if b["over"] == "won":
         c = _critter_by_id(save, b["critter"])
         save = _see({**save, "at": list(c.big), "spot": list(c.at)}, c.big, c.at)
@@ -521,11 +530,12 @@ def battle_view(save: dict) -> dict | None:
     pets, mana = save["trip"]["pets"], _mana(save)
     team = _fighting_team(save, b)
     keyed = {c.key: c for c in bt.CAPSTONES.values()}
-    return {**b, "looks": cr_looks(b), "bench_helps": [{"name": keyed[k].name, "says": keyed[k].says} for k in b.get("bench") or []], "fighters": [
+    return {**b, "looks": cr_looks(b), "intent": bt.foe_intent(b, team, pets), "bench_helps": [{"name": keyed[k].name, "says": keyed[k].says} for k in b.get("bench") or []], "fighters": [
         {"place": i, "name": save["team"][i]["name"], "species": save["team"][i]["species"], "level": save["team"][i]["level"],
          "types": save["team"][i]["types"], "energy": pets[i], "max": bt.battle_energy(b, save["team"], i),
          "mana": mana[i], "max_mana": save["team"][i]["mana"], "focused": i in b.get("focus", []),
          "genes": save["team"][i].get("genes"), "growth": save["team"][i].get("growth", 10),
+         "asleep": bt.asleep_now(b, pets) == i, "marked": str(i) in (b.get("pet_marks") or {}),
          "moves": bt.battle_moves(b, i, team[i], mana[i])}
         for i in b["fighters"]]}
 
@@ -538,7 +548,9 @@ def combo_book(save: dict) -> list[dict]:
 
 
 def cr_looks(b: dict) -> dict:
-    return wp.looks(b["species"], b["seed"])
+    species = b["species"].replace(" ", "_")
+    species = wp.STAND_IN.get(species, species)
+    return wp.tier_looks(species, b["seed"], b["tier"]) if b.get("tier") else wp.looks(species, b["seed"])
 
 
 # --- trips ----------------------------------------------------------------------
@@ -859,7 +871,9 @@ def screen(save: dict) -> dict | None:
             return {"title": f"{name} Temple", "text": f"The door is sealed. There's a little hole shaped like a {tale.key}.", "action": None}
         if not has_levels(save, (region, 1)):
             return {"title": f"{name} Temple", "text": f"The {tale.key} fits! But the door only opens for a {name} pet.", "action": None}
-        return {"title": f"{name} Temple", "text": f"The {tale.key} fits, and your {name} pet glows.", "action": "temple", "label": "Open the door"}
+        if region not in save["bosses"]:
+            return {"title": f"{name} Temple", "text": f"The {tale.key} fits, and your {name} pet glows. But something huge stands guard before the relic.", "action": "boss", "label": "Face the guardian"}
+        return {"title": f"{name} Temple", "text": f"The guardian is gone. The way to the {tale.relic} is clear.", "action": "temple", "label": "Open the door"}
     if kind == "heartstone":
         if save["finished"]:
             return {"title": "The Heartstone", "text": "The Heartstone hums happily.", "action": "credits", "label": "See the ending"}
@@ -1039,6 +1053,8 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
         gain = round(st.SHRINE_ENERGY * max(0.0, min(1.0, accuracy)))
         save = _restore({**save, "trip": {**trip, "used": [*trip["used"], pid]}}, gain)
         return _event(save, kind="found", text=f"The shrine glows. +{gain} {{energy}}.")
+    if action == "boss":
+        return _start_battle(save, cr.temple_boss(save["seed"], region, tuple(save["at"]), relics_out(save)))
     if action == "temple":
         tale = st.STORIES[region]
         save = {**save, "temples": [*save["temples"], region], "charms": save["charms"] + 1,
@@ -1533,7 +1549,7 @@ def _tile(save: dict, local: lc.LocalMap, big: Hex, h: Hex) -> dict:
         out["poi"] = "cache"
     c = critter_at(save, big, h)
     if c:
-        out["critter"] = {"species": c.species, "kind": c.kind, "second": c.second, "level": c.level, "guardian": c.guardian}
+        out["critter"] = {"species": c.species, "kind": c.kind, "second": c.second, "level": c.level, "guardian": c.guardian, "tier": c.tier, "mythical": c.species in wp.MYTHICAL}
     if out["kind"].startswith("pillar_") and out["kind"][7:] in save["temples"]:
         out["lit"] = True  # its relic is home
     return out

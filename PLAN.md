@@ -967,6 +967,18 @@ any of its 6 mixes it doesn't have, taking any slot, then a + on any move. Mixes
 capstone (battle.CAPSTONES), a passive helping the fighters while the pet's on the party and not fighting, in 20 kinds by ordered pair, a choice of
 the 3 pairs it has. Different ones stack; the same one never twice. Battle tiles strike out a passive that's used up.
 
+**Enemies (2026-11-02).** Creatures level like pets: energy by level (battle.ENEMY_ENERGY: halfway between what smart pairs need for 5 rounds and
+what they had), power level + 3, speed level + 8, so an even fight costs a pair about 15% as energy + mana / 2. It attacks the pet it's strongest against, then the one with less energy. Daredevil is 1.5x
+for 5% energy. Drowsy dozes 33% of the time. The balance report has a smart player (knows Enemy's type, plays the best moves) and even-level fights.
+An icon above Enemy shows what it'll try next (battle.foe_intent): circles for an attack and who at, or words ("Skipping turn", "Blocking", ...): what
+it tries, not how it turns out. Enemy's moves come by level (battle.foe_script, from its seed): Heavy Blow at 8 (1.6x), Mark at 11 (its next hit on that pet
+1.5x), Harden at 14 (hits on it do half that round), Lull at 17 (a pet loses its next turn, once a fight), Sweep at 20 (both pets at 0.7x). From level 10,
+having lost a turn it can't lose another right away; from 15, chances of losing a turn are halved. Enemy hits are 18% of a pet's at that power.
+XP rises steeply with a creature's level (battle.XP_STEEPNESS) and its tier. Tiers (battle.TIERS, critters): Tough (15% of creatures from base level 5: +2 levels, 1.5x energy, a grey ring), Champion (3%: +4 levels, 2.5x energy, a gold ring,
+coins). Mythical chance: 1% plain, 5% Tough, 20% Champion. Each temple's Boss guards its relic: the mythical of its type, level 13 plus 2 for each relic out, a fight meant
+to take nearly all your energy and mana. Each has its own move every third round: dragon Stormfire (hits both), phoenix Rekindle (energy back), unicorn Moonlight (clears
+marks and effects), mermaid Siren Song (drains mana), flower fairy Wild Bloom (drinks what it deals). Mermaid and flower fairy have no art yet: pets.STAND_IN draws them. Tough and Champion have wider map sprites of their own, and in battle tougher creatures are drawn bigger, outlined, in rare colors (pets.TIER_COLORS). Next: tune these in play.
+
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
 in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each
 mark; a shield for protection (solid: you, thick outline: your partner, half and half: both; colored for certain types, dark gray
