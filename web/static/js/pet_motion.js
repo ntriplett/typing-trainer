@@ -1,8 +1,8 @@
 // How pets move around a scene (PLAN.md 11i, 11j), shared by the Pets hub,
 // the habitats, and the Pet Shop's rooms. Each pet is a small state
 // machine: idle, walk (wander, go to a prop, go sit by a friend), nap, hop,
-// chase/run (play), leap (up onto a ledge or back down), swim, splash, and
-// a prop's own action (bask, nap, dig, jump in). Its personality picks what
+// chase/run (play), leap (up onto a ledge or back down), swim, splash, fly
+// (where area.sky says so), and a prop's own action (bask, nap, dig, jump in). Its personality picks what
 // it does next and how:
 //   energy   walks and animates faster, hops and leaps more, rests less
 //   sleepy   naps more often, and longer
@@ -17,7 +17,8 @@
 //   PetMotion.draw(world, px, {ctx, unit, tags});  // px(x, y, w, h, color) in scene units
 //
 // area: {left, right, top, bottom, props, terrain}. top..bottom is where
-// feet can be on the ground. props: [{id, x, y, action, ledge, who}], action
+// feet can be on the ground. sky: true lets FLIERS take to the air (habitats).
+// props: [{id, x, y, action, ledge, who}], action
 // one of look (default), bask, nap, dig, jump; ledge: the ledge it's on.
 // terrain (all optional, rects in feet coordinates):
 //   water:  [{x, y, w, h, color}]  swimmers swim in it; others go around or hop across
@@ -34,6 +35,11 @@ const PetMotion = (() => {
   const CLIMBERS = { goat: 1.4, cat: 0.9, lizard: 0.8, sheep: 0.5, llama: 0.5, fox: 0.5, dragon: 0.5, unicorn: 0.3 };
   const SWIMMERS = { turtle: 1.6, dog: 0.6, snake: 0.5, dragon: 0.2 };
   const BASKERS = { lizard: 1.5, snake: 1.4, turtle: 1.2, phoenix: 1.2, dragon: 0.9, cat: 0.6 };
+  // how much each species likes to fly (added to its odds)
+  const FLIERS = { flower_fairy: 5, dragon: 0.3, phoenix: 0.3 };
+  const FLY_FROM_GROWTH = 4; // younger ones walk
+  const FLY_HEIGHT = [10, 24]; // scene units, as the room allows
+  const FLUTTER_TICKS = 3; // a grown fairy's wings, sitting still
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const trait = (p, k) => (p.genes.personality || {})[k] ?? 0.5;
@@ -55,6 +61,7 @@ const PetMotion = (() => {
 
   const swims = (w) => (SWIMMERS[w.p.species] || 0) >= 0.5;
   const allowed = (thing, w) => !thing.who || thing.who.includes(w.p.species);
+  const canFly = (world, w) => Boolean(world.area.sky) && w.p.growth >= FLY_FROM_GROWTH && w.p.species in FLIERS;
 
   function create(pets, area, scale) {
     const world = { walkers: [], area, scale };
@@ -76,6 +83,7 @@ const PetMotion = (() => {
         ticks: 0,
         still: isPetEgg(p) || isPetRooted(p),
         sways: isPetRooted(p), // stays put, but stays alive
+        flutters: p.species === "flower_fairy", // once grown, her wings never stop
         e: trait(p, "energy"),
         s: trait(p, "sleepy"),
         f: trait(p, "friendly"),
@@ -170,6 +178,58 @@ const PetMotion = (() => {
     if (Math.abs(x - w.x) > 0.3) w.dir = x < w.x ? -1 : 1;
   }
 
+  // Up, over one or more spots with a hover at each, and down on the last.
+  function takeOff(world, w, legs, then = "idle") {
+    w.state = "fly";
+    w.ledge = null;
+    w.legs = legs;
+    w.then = then;
+    w.landing = false;
+    w.landLedge = null;
+    w.timer = 0;
+    w.cruise = rand(...FLY_HEIGHT);
+    w.speed = 0.3 + w.e * 0.3;
+    flyOn(world, w);
+  }
+
+  // The next spot: anywhere on the way, somewhere to stand on the last leg.
+  function flyOn(world, w) {
+    const a = world.area;
+    if (w.legs > 1) {
+      [w.tx, w.ty] = [rand(a.left, Math.max(a.left, a.right - w.width)), rand(a.top, a.bottom)];
+      return;
+    }
+    const ledges = (terrain(world).ledges || []).map((l, i) => [l, i]).filter(([l]) => allowed(l, w));
+    if (ledges.length && Math.random() < 0.3) {
+      const [ledge, i] = pick(ledges);
+      w.landLedge = i;
+      [w.tx, w.ty] = ledgeSpot(world, w, ledge);
+    } else [w.tx, w.ty] = groundSpot(world, w, false);
+  }
+
+  function stepFlight(world, w) {
+    w.ticks += 1;
+    if (w.ticks % 2 === 0) w.frame += 1; // flapping
+    const room = Math.max(0, w.y - w.height - 2);
+    const target = w.landing ? 0 : Math.min(room, w.cruise);
+    w.hop += Math.min(0.6, Math.max(-0.6, target - w.hop));
+    if (w.landing) {
+      if (w.hop > 0) return;
+      w.hop = 0;
+      w.ledge = w.landLedge;
+      if (w.then === "happy") startHappy(w);
+      else rest(w);
+    } else if (w.timer > 0) {
+      w.timer -= 1; // hovering
+    } else if (moveToward(world, w, w.tx, w.ty, w.speed, true)) {
+      if (w.legs > 1) {
+        w.legs -= 1;
+        w.timer = Math.floor(rand(8, 40));
+        flyOn(world, w);
+      } else w.landing = true;
+    }
+  }
+
   // --- choosing what to do next ---------------------------------------------------------
 
   function weighted(options) {
@@ -188,8 +248,8 @@ const PetMotion = (() => {
     const water = t.water || [];
     const species = w.p.species;
     const others = world.walkers.filter((o) => o !== w && !o.still && o.ledge === w.ledge);
-    const friends = others.filter((o) => o.f > 0.5 && o.state !== "walk" && o.state !== "leap");
-    const players = others.filter((o) => o.pl > 0.5 && o.state !== "nap" && o.state !== "leap");
+    const friends = others.filter((o) => o.f > 0.5 && o.state !== "walk" && o.state !== "leap" && o.state !== "fly");
+    const players = others.filter((o) => o.pl > 0.5 && o.state !== "nap" && o.state !== "leap" && o.state !== "fly");
     const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge && allowed(p, w));
     const options = [["wander", 1]];
     if (w.s > 0.3) options.push(["nap", w.s * 1.2]);
@@ -205,9 +265,12 @@ const PetMotion = (() => {
       if (swims(w)) options.push(["swim", (SWIMMERS[species] || 0) + w.pl * 0.3]);
       else options.push(["splash", w.pl * 0.5]);
     }
+    if (canFly(world, w)) options.push(["fly", FLIERS[species] + w.e * 0.5]);
     const what = weighted(options);
 
-    if (what === "nap") {
+    if (what === "fly") {
+      takeOff(world, w, 1 + Math.floor(rand(0, 3)));
+    } else if (what === "nap") {
       w.state = "nap";
       w.timer = Math.floor(rand(60, 160) * (0.5 + w.s));
     } else if (what === "hop") {
@@ -306,7 +369,7 @@ const PetMotion = (() => {
 
   // --- one tick ------------------------------------------------------------------------
 
-  function moveToward(world, w, tx, ty, speed) {
+  function moveToward(world, w, tx, ty, speed, flying = false) {
     const dx = tx - w.x;
     const dy = (ty - w.y) * 2; // depth moves at half speed
     const d = Math.hypot(dx, dy);
@@ -317,7 +380,7 @@ const PetMotion = (() => {
     }
     const nx = w.x + (dx / d) * speed;
     const ny = w.y + (dy / d) * speed * 0.5;
-    if (w.ledge === null && blocked(world, nx + w.width / 2, ny)) return null; // bumped into something
+    if (!flying && w.ledge === null && blocked(world, nx + w.width / 2, ny)) return null; // bumped into something
     w.x = nx;
     w.y = ny;
     if (Math.abs(dx) > 0.3) w.dir = dx < 0 ? -1 : 1;
@@ -328,7 +391,9 @@ const PetMotion = (() => {
     w.ticks += 1;
     const every = Math.max(1, Math.round(4 - w.e * 3)); // energetic legs go faster
     if (moving && w.ticks % every === 0) w.frame += 1;
-    if (!moving) w.frame = 0;
+    if (moving) return;
+    if (!w.flutters || w.state === "nap") w.frame = 0;
+    else if (w.ticks % FLUTTER_TICKS === 0) w.frame += 1;
   }
 
   // A treat or toy lands at (x, y): pets in `ids` run to it, then bounce
@@ -340,7 +405,13 @@ const PetMotion = (() => {
       if (w.still || !ids.includes(w.p.id)) continue;
       const tx = x - w.width / 2 + rand(-5, 5);
       const ty = y + rand(-2, 2);
-      if (w.ledge !== null) {
+      if (canFly(world, w)) {
+        takeOff(world, w, 1, "happy"); // straight there, down low
+        [w.tx, w.ty] = [tx, ty];
+        w.landLedge = null;
+        w.cruise = FLY_HEIGHT[0];
+        w.speed *= 1.5;
+      } else if (w.ledge !== null) {
         leapTo(w, tx, ty, null); // hop down first; it walks over once it lands
         w.after = { x: tx, y: ty };
       } else walkTo(world, w, tx, ty, "happy", 1.5);
@@ -370,6 +441,7 @@ const PetMotion = (() => {
       if (w.sways && ++w.ticks % SWAY_TICKS === 0) w.frame += 1;
       return;
     }
+    if (w.state === "fly") return stepFlight(world, w);
     let moving = false;
     if (RESTING.has(w.state)) {
       w.hop = 0;
@@ -457,7 +529,7 @@ const PetMotion = (() => {
       w.hop = Math.abs(Math.sin(w.phase)) * 2.5;
       const side = center(w) < center(t) ? -1 : 1;
       const r = moveToward(world, w, t.x + side * (t.width / 2 + 1), t.y, w.speed);
-      if (r === null || --w.timer <= 0 || t.state === "nap" || t.ledge !== w.ledge) {
+      if (r === null || --w.timer <= 0 || t.state === "nap" || t.state === "fly" || t.ledge !== w.ledge) {
         w.hop = 0;
         w.dir = center(t) < center(w) ? -1 : 1;
         rest(w, 0.6);
@@ -480,8 +552,14 @@ const PetMotion = (() => {
     const cx = center(w);
     const pool = w.ledge === null && w.hop === 0 && waterAt(world, cx, w.y);
     const sink = pool && swims(w) ? Math.min(3, w.height * 0.25) : 0; // swimmers sit low in the water
-    if (w.p.species !== "fish" && !pool) px(w.x + w.width * 0.15, w.y - 0.5, w.width * 0.7, 1, "rgba(40, 60, 20, 0.25)"); // shadow
-    drawPet(px, w.x, w.y - w.hop + sink, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
+    const air = w.state === "fly" ? flightPose(world, w) : null;
+    if (w.p.species !== "fish" && !pool) {
+      const shadow = air ? Math.max(0.3, 0.7 - w.hop * 0.015) : 0.7; // it shrinks as the pet climbs
+      px(cx - (w.width * shadow) / 2, w.y - 0.5, w.width * shadow, 1, "rgba(40, 60, 20, 0.25)");
+    }
+    if (air) drawPet(px, cx - (air.w * world.scale) / 2, w.y - w.hop + air.blank * world.scale, air.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
+    else drawPet(px, w.x, w.y - w.hop + sink, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
+    w.shownHeight = air ? (air.h - air.blank) * world.scale : w.height;
     if (pool) {
       const top = w.y - Math.max(1, w.height * 0.35) + sink;
       px(w.x - 1, top, w.width + 2, w.y + sink - top + 0.5, pool.color ? `${pool.color}cc` : "rgba(74, 138, 176, 0.8)");
@@ -493,6 +571,11 @@ const PetMotion = (() => {
     if (ctx && w.state === "nap") snore(ctx, unit, w);
     if (w.state === "happy") hearts(px, w);
     if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
+  }
+
+  function flightPose(world, w) {
+    w.air ||= petFlightPose(w.p.genes, w.p.growth);
+    return w.air;
   }
 
   // A few bits flying up around a pet's feet (water, dirt, leaves).
@@ -525,7 +608,7 @@ const PetMotion = (() => {
 
   function nameTag(ctx, unit, w) {
     const cx = center(w) * unit;
-    const top = (w.y - w.hop - w.height - 1) * unit;
+    const top = (w.y - w.hop - (w.shownHeight || w.height) - 1) * unit;
     ctx.font = `${Math.round(unit * 3.7)}px 'Jersey 10', sans-serif`;
     ctx.textAlign = "center";
     ctx.lineWidth = 4;

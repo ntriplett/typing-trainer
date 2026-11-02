@@ -117,3 +117,74 @@ def test_young_fairies_and_mermaids_have_their_own_stage_names(page: Page, live_
     for pid, (species, stage) in ids.items():
         page.goto(f"{live_server}/pets/care?pet={pid}")
         expect(page.locator(".detail-kind")).to_have_text(f"{g.species_name(species)} · {stage}")
+
+
+def _in_a_habitat(page, live_server, tmp_path, pets, kind="meadow"):
+    page.goto(f"{live_server}/pets/trail")
+    page.request.post(f"{live_server}/api/pets/shop/habitats/{kind}")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        for species, growth in pets:
+            pid = db.add_v3_pet(conn, 1, g.roll(species, None, None, 5), g.species_name(species), "shop")
+            db.update_v3_pet(conn, 1, pid, home="trail:0", growth=growth)
+    page.goto(f"{live_server}/pets/trail/0")
+    page.wait_for_function(f"typeof world !== 'undefined' && world && world.walkers.length === {len(pets)}")
+
+
+# Runs the scene, drawing as it goes, and reports each pet's time in the air.
+AIRTIME = """(makeWorld) => {
+  const w0 = makeWorld ? PetMotion.create(world.walkers.map((w) => w.p), { ...world.area, sky: false }, 2 / 3) : world;
+  const ticks = 12000;
+  const air = w0.walkers.map(() => 0);
+  let offscreen = 0;
+  const px = () => {};
+  for (let i = 0; i < ticks; i++) {
+    PetMotion.step(w0);
+    w0.walkers.forEach((w, k) => {
+      if (w.state === "fly") air[k] += 1;
+      if (w.hop > 0 && w.y - w.hop - w.height < 0 && w.y >= w.height + 2) offscreen += 1;
+    });
+    if (i % 50 === 0) PetMotion.draw(w0, px);
+  }
+  return { offscreen, pets: w0.walkers.map((w, k) => ({ species: w.p.species, growth: w.p.growth, air: air[k] / ticks })) };
+}"""
+
+
+def test_grown_fairies_dragons_and_phoenixes_fly_in_habitats(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _in_a_habitat(page, live_server, tmp_path, [("flower_fairy", 6), ("dragon", 6), ("phoenix", 10), ("dragon", 3), ("dog", 6)])
+    seen = page.evaluate(AIRTIME, False)
+    by = {(p["species"], p["growth"]): p["air"] for p in seen["pets"]}
+    assert by[("flower_fairy", 6)] > 0.5  # mostly in the air
+    assert 0 < by[("dragon", 6)] < 0.5 and 0 < by[("phoenix", 10)] < 0.5  # some of the time
+    assert by[("dragon", 3)] == 0 and by[("dog", 6)] == 0  # too young, and no wings
+    assert seen["offscreen"] == 0
+    assert not errors
+
+
+def test_pets_stay_on_the_ground_without_a_sky(page: Page, live_server, tmp_path):
+    _in_a_habitat(page, live_server, tmp_path, [("flower_fairy", 6), ("dragon", 6)])
+    assert all(p["air"] == 0 for p in page.evaluate(AIRTIME, True)["pets"])
+
+
+def test_flying_pets_land_somewhere_they_can_stand(page: Page, live_server, tmp_path):
+    _in_a_habitat(page, live_server, tmp_path, [("flower_fairy", 6), ("phoenix", 6)], kind="stream")
+    bad = page.evaluate("""() => {
+      const inside = (cx, y, r) => cx >= r.x && cx <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+      const t = world.area.terrain;
+      let landings = 0, wet = 0;
+      const was = world.walkers.map((w) => w.state);
+      for (let i = 0; i < 12000; i++) {
+        PetMotion.step(world);
+        world.walkers.forEach((w, k) => {
+          if (was[k] === "fly" && w.state !== "fly" && w.ledge === null) {
+            landings += 1;
+            const cx = w.x + w.width / 2;
+            if ((t.water || []).concat(t.blocks || []).some((r) => inside(cx, w.y, r))) wet += 1;
+          }
+          was[k] = w.state;
+        });
+      }
+      return { landings, wet };
+    }""")
+    assert bad["landings"] > 0 and bad["wet"] == 0

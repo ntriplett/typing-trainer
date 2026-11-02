@@ -1901,7 +1901,7 @@ const petCache = new Map();
 function petPixels(genes, growth, frame = 0) {
   const stage = petStage(growth);
   const anim = genes.face && genes.face.sparkle ? frame % 36 : `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
-  const base = `${genes.seed}|${genes.species}|${genes.variant}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
+  const base = `${genes.seed}|${genes.species}|${genes.variant}|${genes.airborne}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
   const key = `${base}|${anim}`;
   if (petCache.has(key)) return petCache.get(key);
   const { out, noShadow } = petFrame(genes, growth, frame);
@@ -1940,7 +1940,8 @@ function stableBox(base, genes, growth) {
 // One frame, uncropped: the full grid of colors.
 function petFrame(genes, growth, frame) {
   const stage = petStage(growth);
-  const design = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || speciesDesign(genes);
+  const chosen = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || speciesDesign(genes);
+  const design = genes.airborne ? PET_FLIGHT_POSES[genes.species](chosen) : chosen;
   const built = design ? buildVariant(genes, stage, frame, design) : buildPet(genes, stage, frame);
   smoothEdges(built.grid);
   const { grid, R } = built;
@@ -2121,6 +2122,34 @@ function drawPet(px, x, bottom, genes, growth, { frame = 0, faceLeft = false, sc
 function petSize(genes, growth) {
   const { w, h } = petPixels(genes, growth, 0);
   return { w, h };
+}
+
+// In the air, dragons and phoenixes of any breed spread their wings and tuck
+// their legs. Fairies are already drawn hovering, so they have no pose here.
+const PET_FLIGHT_POSES = {
+  dragon: (d) => ({ ...d, pose: "fly", wings: { type: "spread", span: d.wings.span }, tail: { ...d.tail, len: 15 } }),
+  phoenix: (d) => ({ ...d, pose: "fly", facing: "side", fold: false, wings: d.wings || 13, tail: 18 }),
+};
+
+// How a flying pet is drawn: {genes, w, h, blank}. A flight pose is built
+// lifted off the ground; `blank` is how many empty rows that leaves under it,
+// so the mover can decide the height itself.
+function petFlightPose(genes, growth) {
+  const pose = PET_FLIGHT_POSES[genes.species];
+  if (!pose) {
+    const { w, h } = petSize(genes, growth);
+    return { genes, w, h, blank: 0 };
+  }
+  const air = { ...genes, airborne: true };
+  const { w, h } = petSize(air, growth);
+  let blank = h;
+  for (const frame of [0, 1, 2, 3]) {
+    const { pix } = petPixels(air, growth, frame);
+    let rows = 0;
+    while (rows < h && pix[h - 1 - rows].every((c) => !c)) rows += 1;
+    blank = Math.min(blank, rows);
+  }
+  return { genes: air, w, h, blank };
 }
 
 // Species as people read them: flower_fairy -> "Flower fairy".
