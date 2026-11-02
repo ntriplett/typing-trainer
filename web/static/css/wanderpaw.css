@@ -1028,7 +1028,7 @@ main.wander {
   padding: 0;
   margin: 0.4rem 0 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(var(--across, 4), minmax(0, 1fr));
   gap: 0.4rem;
 }
 
@@ -1186,4 +1186,15 @@ main.wander {
 /* A type's name in text (wander_text.js). */
 .type-word {
   font-weight: bold;
+}
+
+@media (max-width: 860px) {
+  .wander-levelup-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* the new move a level brings, above where it could go */
+.wander-levelup-new {
+  grid-template-columns: minmax(0, 1fr);
 }

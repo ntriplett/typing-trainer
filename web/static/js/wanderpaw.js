@@ -266,7 +266,8 @@ function labelHtml(t) {
 
 const MARK_TYPE = { soaked: "splash", glowing: "ember", drowsy: "dream", tangled: "leaf", static: "shock" };
 // What a combo leaves on it, as the labels say.
-const EFFECT_NAMES = { drenched: "drenched", thorns: "thorns", confused: "dizzy", burn: "burning", popped: "bubble", doze: "sleepy" };
+const EFFECT_NAMES = { drenched: "drenched", thorns: "thorns", confused: "dizzy", burn: "burning", popped: "bubble", doze: "sleepy",
+  mending: "pets mending", brambles: "brambles", scalded: "scalded", wisp: "wisp", wired: "wired" };
 let marksTimer = null;
 
 function animateMarks() {
@@ -409,7 +410,7 @@ function showStep(s) {
   const color = s.type ? WanderMap.TYPE_COLORS[s.type] : "#e8b33e";
   if (s.act === "hit") {
     retrigger(actor, s.who === "foe" ? "lunge-left" : "lunge-right");
-  } else if (actor && ["guard", "focus", "cheer", "rest", "mark", "heal"].includes(s.act)) {
+  } else if (actor && ["guard", "focus", "cheer", "rest", "mark", "heal", "mix"].includes(s.act)) {
     retrigger(actor, "glow-up");
   } else if (actor && ["skip", "doze"].includes(s.act)) {
     retrigger(actor, "sway");
@@ -606,9 +607,13 @@ const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="wid
 function moveCard(m, word, fresh = false) {
   const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
   const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
+  // a mix is half and half
+  const mixed = m.type2
+    ? `background:linear-gradient(135deg, ${tint} 50%, ${TYPE_TINT[m.type2]} 50%);border-image:linear-gradient(135deg, ${color} 50%, ${WanderMap.TYPE_COLORS[m.type2]} 50%) 1`
+    : `border-color:${color};background:${tint}`;
   const always = `<span class="wander-move-always">Always on</span>`;
   const slot = word === undefined ? (m.passive ? always : "") : `<span class="wander-move-word">${m.passive ? always : word ? labelHtml(word) : "&nbsp;"}</span>`;
-  return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""}" data-move="${m.id}" style="border-color:${color};background:${tint}">
+  return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""}" data-move="${m.id}" style="${mixed}">
     <b style="color:${color}">${wanderText(m.label)}</b>
     ${slot}
     <span class="wander-move-note">${wanderText(m.note)}</span></li>`;
@@ -1103,7 +1108,8 @@ function renderLevelup() {
     </div>`;
   document.getElementById("levelup-choice").innerHTML = options.length
     ? `<h3 class="wander-levelup-ask">${wanderText(up.choose.ask)}</h3>
-       <ul class="wander-levelup-options">${options.map((o, i) => levelOption(o, i)).join("")}</ul>`
+       ${up.choose.new ? `<ul class="wander-moves wander-levelup-new">${moveCard(up.choose.new)}</ul>` : ""}
+       <ul class="wander-levelup-options" style="--across:${options.length === 6 ? 3 : options.length}">${options.map((o, i) => levelOption(o, i)).join("")}</ul>`
     : "";
   const more = state.levelups.length - 1;
   const left = more ? ` &nbsp; <small>${more} more to celebrate</small>` : "";

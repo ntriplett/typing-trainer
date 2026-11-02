@@ -1,5 +1,6 @@
 """Wanderpaw battles and wild creatures (PLAN.md 11n phase 5a)."""
 
+import json
 import random
 import statistics
 
@@ -128,8 +129,6 @@ def test_a_daredevil_hits_twice_as_hard_for_energy_but_never_its_last():
     step = next(s for s in _round(bt.start(_critter(9, "leaf", "bunny"), [0, 1]), bold, picks, energy=[25, 25])[0]["log"] if s["who"] == 0)
     assert step["flash"] == [0, "daredevil"] and "double" in step["text"]
     # only its own type: a second type's hit is plain
-    two = {**bold[0], "types": {"ember": 3, "splash": 1}}
-    assert bt.best_type(two, "ember") == "ember"  # splash is x2 here but ember's doubled to match, and comes first
     assert bt._daredevil_cost(wp.starter("ember", 3)) == 1 and bt._daredevil_cost(wp.starter("ember", 21)) == 2
     b = {**bt.start(_critter(1, "leaf", "bunny"), [0, 1]), "skip": 5}  # it can't hit back
     _, energy, _ = bt.turn(b, bold, [1, 25], picks, random.Random(1), [30, 30])
@@ -198,8 +197,8 @@ def test_moves_away_from_battle_say_just_what_they_do():
     assert str(round(hit * bt.BIG)) in moves["big"]["note"] and "Glowing" in moves["big"]["note"]
     assert moves["big"]["can"] is False  # not enough mana
     both = {m["id"]: m for m in bt.described_moves({**pet, "types": {"shock": 3, "ember": 3}})}
-    assert both["attack"]["label"] == "{shock} attack" and "Static or Glowing" in both["big"]["note"]
-    assert both["big"]["label"] == "Big {shock} or {ember}"
+    assert both["attack"]["label"] == "{shock} attack" and "Static" in both["big"]["note"] and "Glowing" not in both["big"]["note"]
+    assert both["big"]["label"] == "Big {shock}"
 
 
 def test_six_moves_each_with_a_note():
@@ -211,11 +210,11 @@ def test_six_moves_each_with_a_note():
     assert moves[1]["can"] is False  # not enough mana
     with pytest.raises(ValueError, match="mana"):
         _round(bt.start(_critter(3), [0, 1]), [pet, pet], [{"move": "big", "slips": 0}] * 2, mana=[2, 2])
-    # with two types, its big move uses the better one; Attack stays its first
+    # with two types, its Attack and Big stay its first
     dragon = {**pet, "types": {"shock": 3, "ember": 3}}
-    assert bt.best_type(dragon, "splash") == "shock" and bt.best_type(dragon, "dream") == "ember"
     by_id = {m["id"]: m for m in bt.moves(dragon, "dream")}
-    assert by_id["big"]["type"] == "ember" and by_id["attack"]["type"] == "shock"
+    assert by_id["big"]["type"] == "shock" and by_id["attack"]["type"] == "shock"
+    assert by_id["big"]["label"] == "Big {shock}" and "Static" in by_id["big"]["note"]
 
 
 def test_a_second_attack_takes_a_grey_moves_slot_and_hits_in_its_type():
@@ -525,3 +524,259 @@ def test_a_new_combo_goes_in_the_combo_book_once():
     assert not any(e["kind"] == "combo" for e in again["events"])
     book = sv.combo_book(once)
     assert len(book) == 20 and sum(1 for e in book if e["name"]) == 1
+
+
+# --- level 7: mixed moves ---------------------------------------------------------
+
+
+def _mixer(first="ember", second="leaf", species=None, swap="rest", level=7):
+    m = {**wp.starter(first, level), "types": {first: level, second: 3}, "swaps": {swap: "mix"}, "mana": 30}
+    return {**m, "species": species} if species else m
+
+
+def _mix_round(pet, foe=None, partner_move="guard", energy=None, mana=None, seed=1, b=None, partner=None):
+    team = [pet, partner or _pet("leaf", 7)]
+    b = b or {**bt.start(foe or _critter(7, "dream", "sheep"), [0, 1]), "energy": 9999, "max": 9999}
+    return _round(b, team, [{"move": "mix", "slips": 0}, {"move": partner_move, "slips": 0}], energy=energy or [40, 40], mana=mana or [30, 30], seed=seed)
+
+
+def test_every_pair_and_mythical_has_a_move_at_one_price():
+    pairs = {(a, b) for a in wd.REGIONS for b in wd.REGIONS if a != b}
+    assert set(bt.MIX_MOVES) == pairs and len(pairs) == 20
+    assert set(bt.MYTHICAL_MOVES) == set(wp.MYTHICAL)
+    every = [*bt.MIX_MOVES.values(), *bt.MYTHICAL_MOVES.values()]
+    assert len({m.name for m in every}) == 25 and all(m.short and m.says and len(m.short) <= 28 for m in every)
+    assert not {m.name for m in every} & {c.name for c in bt.COMBOS.values()}
+    # a mythical uses its own, though others can have its type pair
+    assert bt.mix_move(_mixer("shock", "ember")).name == "Ball Lightning"
+    assert bt.mix_move(_mixer("shock", "ember", "dragon")).name == "Stormfire Breath"
+
+
+@pytest.mark.parametrize("pair", sorted(bt.MIX_MOVES))
+def test_every_mix_plays_through_a_whole_battle(pair):
+    _plays_through(_mixer(*pair))
+
+
+@pytest.mark.parametrize("species", sorted(bt.MYTHICAL_MOVES))
+def test_every_mythical_mix_plays_through_a_whole_battle(species):
+    first, second = wp.SPECIES_TYPES[species]
+    _plays_through(_mixer(first, second, species))
+
+
+def _plays_through(pet):
+    for seed in range(12):
+        rng = random.Random(seed)
+        b = bt.start(_critter(7, rng.choice(wd.REGIONS), "sheep"), [0, 1])
+        team, energy, mana = [pet, _pet("leaf", 7)], [40, 40], [30, 30]
+        for _ in range(40):
+            if b["over"]:
+                break
+            picks = [{"move": "mix" if i == 0 and mana[0] >= bt.MIX_MANA else "attack", "slips": 0} for i in b["fighters"] if energy[i] > 0]
+            if energy[0] <= 0:
+                picks = [{"move": "attack", "slips": 0}]
+            b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+            assert 0 <= b["energy"] <= b["max"] and all(0 <= e <= 40 for e in energy)
+            json.dumps(b)  # the save keeps it
+        assert b["over"]
+
+
+def test_a_mix_is_a_slot_with_a_card_costing_mana_and_hits_with_its_better_type():
+    pet = _mixer("ember", "leaf")
+    card = next(m for m in bt.moves(pet, "shock") if m["id"] == "mix")
+    assert card["type"] == "ember" and card["type2"] == "leaf" and card["cost"] == bt.MIX_MANA and card["label"] == "Fire Seed"
+    assert "rest" not in [m["id"] for m in bt.moves(pet)]
+    with pytest.raises(ValueError, match="mana"):
+        _mix_round(pet, mana=[3, 30])
+    _, _, mana = _mix_round(pet)
+    assert mana[0] == 30 - bt.MIX_MANA
+    assert bt._mix_kind(_mixer("shock", "splash"), "ember") == "splash" and bt._mix_kind(_mixer("shock", "splash"), "splash") == "shock"
+    # a mix can set off a combo for either of its types; a daredevil doesn't double it
+    marked = {**bt.start(_critter(7, "dream", "sheep"), [0, 1]), "energy": 9999, "marks": {"soaked": 2}}
+    step = next(s for s in _mix_round(_mixer("shock", "leaf"), b=marked)[0]["log"] if s["who"] == 0)
+    assert step["combo"] == "Chain Zap"
+    bold = {**_mixer("shock", "leaf", swap="guard"), "focus": "daredevil"}
+    assert bt.focus_active(bold, "daredevil")
+    plain_hit = next(s for s in _mix_round(_mixer("shock", "leaf"))[0]["log"] if s["who"] == 0)["damage"]
+    assert next(s for s in _mix_round(bold, partner_move="attack")[0]["log"] if s["who"] == 0)["damage"] == plain_hit
+
+
+def test_a_slot_can_change_hands_and_giving_up_a_focus_ends_it():
+    pet = {**_mixer("ember", "leaf"), "swaps": {"rest": "attack2", "attack2": "mix"}}
+    assert [m["id"] for m in bt.moves(pet)] == ["attack", "big", "guard", "focus", "cheer", "mix"]
+    healer = {**_mixer("ember", "leaf", swap="healer"), "focus": "healer"}
+    assert "healer" not in [m["id"] for m in bt.moves(healer)] and not bt.focus_active(healer, "healer")
+    b, energy, _ = _mix_round(healer, energy=[40, 10])
+    assert not any(s["act"] == "heal" and s.get("flash") for s in b["log"])
+    keeps = {**wp.starter("ember", 7), "focus": "healer", "mana": 30}
+    assert bt.focus_active(keeps, "healer")
+
+
+def test_fire_seed_bursts_at_the_start_of_next_round():
+    pet = _mixer("ember", "leaf")
+    b, energy, mana = _mix_round(pet)
+    assert b["energy"] == 9999 - sum(s["damage"] for s in b["log"] if s["who"] == 1) and b["later"]
+    b2, _, _ = _round(b, [pet, _pet("leaf", 7)], [{"move": "guard", "slips": 0}, {"move": "guard", "slips": 0}], energy=[40, 40], mana=[26, 30])
+    burst = b2["log"][0]
+    assert "bursts" in burst["text"] and burst["damage"] == round(bt.pet_hit(pet["power"]) * bt.matchup("ember", "dream") * 3.5) and not b2["later"]
+
+
+def test_ball_lightning_hits_again_at_the_end_of_the_round_and_goes_first():
+    b = _mix_round(_mixer("shock", "ember"), foe=_critter(99, "dream", "sheep"))[0]
+    mine = [s for s in b["log"] if s["who"] == 0 and s["act"] == "hit"]
+    assert len(mine) == 2 and "bursts" in mine[1]["text"] and b["log"][0]["who"] == 0
+    assert mine[1]["damage"] == pytest.approx(mine[0]["damage"] * 0.8, abs=1)
+
+
+def test_flashfire_is_big_and_costs_energy_but_never_its_last():
+    pet = _mixer("ember", "shock")
+    _, energy, _ = _mix_round(pet, foe=_critter(1, "dream", "sheep"), energy=[40, 40], seed=3)
+    assert energy[0] <= 40 - round(pet["energy"] * 0.08)
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    assert _mix_round(pet, b=b, energy=[1, 40])[1][0] == 1
+
+
+def test_power_sprout_and_spring_shower_give_energy_back():
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    sprout = _mixer("shock", "leaf")
+    assert _mix_round(sprout, b=b, energy=[10, 10])[1][0] == 10 + round(sprout["energy"] * 0.08)
+    shower = _mixer("leaf", "splash")
+    assert _mix_round(shower, b=b, energy=[10, 10], partner=_pet("leaf", 7))[1][1] == 10 + round(_pet("leaf", 7)["energy"] * 0.25)
+
+
+def test_moon_tide_gives_both_pets_mana():
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    _, _, mana = _mix_round(_mixer("splash", "dream"), b=b, mana=[10, 10])
+    assert mana == [10 - bt.MIX_MANA + 2, 12]
+
+
+def test_steam_veil_makes_the_next_attack_miss():
+    b = _mix_round(_mixer("splash", "ember"))[0]
+    assert b["skip"] == 1 or any(s["act"] == "skip" for s in b["log"])
+
+
+def test_scald_softens_its_hits():
+    def taken(pet):
+        total = 0
+        for seed in range(40):
+            # a creature slower than the pets, so it lands first
+            total += 66 - sum(_mix_round(pet, foe=_critter(6, "dream", "sheep"), energy=[33, 33], seed=seed, partner_move="attack")[1])
+        return total
+    assert taken(_mixer("ember", "splash")) < taken(_mixer("ember", "leaf"))
+
+
+def test_will_o_wisp_poppy_patch_and_living_wire_can_stop_its_attack():
+    for pair, word in ((("ember", "dream"), "wisp"), (("leaf", "dream"), "poppies"), (("leaf", "shock"), "wire")):
+        seen = 0
+        for seed in range(30):
+            b = _mix_round(_mixer(*pair), seed=seed)[0]
+            if not any(word in s["text"] for s in b["log"]):
+                b = _round(b, [_mixer(*pair), _pet("leaf", 7)], [{"move": "guard", "slips": 0}] * 2 if False else [{"move": "attack", "slips": 0}] * 2, energy=[40, 40], mana=[26, 30], seed=seed)[0]
+            seen += any(word in s["text"] for s in b["log"])
+        assert 5 < seed + 1 and seen > 5, word
+
+
+def test_mirror_pool_bounces_a_hit_back_once():
+    pet = _mixer("dream", "splash")
+    bounced = 0
+    for seed in range(40):
+        b, energy, _ = _mix_round(pet, partner_move="attack", energy=[33, 33], seed=seed)
+        bounced += any("bounces" in s["text"] for s in b["log"])
+        if any("bounces" in s["text"] for s in b["log"]):
+            assert energy[0] == 33 and b["mirror"] is None
+    assert bounced
+    assert _mix_round(pet, partner_move="attack", seed=1)[0]["log"][0]["who"] == 0
+
+
+def test_deja_vu_makes_its_partners_attack_happen_twice():
+    pet = _mixer("dream", "shock")
+    b = _mix_round(pet, partner_move="attack")[0]
+    theirs = [s for s in b["log"] if s["who"] == 1 and s["act"] == "hit"]
+    assert len(theirs) == 2 and "again" in theirs[1]["text"] and theirs[0]["damage"] == theirs[1]["damage"]
+    assert b["log"][0]["who"] == 0
+    big = _mix_round(pet, partner_move="big", mana=[30, 30])
+    assert big[2][1] == 30 - bt.BIG_MANA  # the repeat is free
+    assert len([s for s in big[0]["log"] if s["who"] == 1 and s["act"] == "hit"]) == 2
+    guard = _mix_round(pet, partner_move="guard")[0]
+    assert not [s for s in guard["log"] if s["who"] == 1 and s["act"] == "hit"]
+
+
+def test_thunder_patter_is_three_hits_and_only_the_first_sets_off_a_combo():
+    b = {**bt.start(_critter(7, "dream", "sheep"), [0, 1]), "energy": 9999, "marks": {"static": 2, "soaked": 2}}
+    hits = [s for s in _mix_round(_mixer("shock", "splash"), b=b)[0]["log"] if s["who"] == 0 and s["act"] == "hit"]
+    assert len(hits) == 3 and hits[0]["combo"] and not hits[1]["combo"] and not hits[2]["combo"]
+
+
+def test_burning_brambles_burn_and_drain_for_three_rounds():
+    pet = _mixer("leaf", "ember")
+    team = [pet, _pet("leaf", 7)]
+    b, energy, mana = _mix_round(pet, foe=_critter(1, "dream", "sheep"), energy=[10, 40])
+    burns = 1
+    for _ in range(4):
+        before = energy[0]
+        b, energy, mana = _round(b, team, [{"move": "guard", "slips": 0}] * 2, energy=energy, mana=mana)
+        step = [s for s in b["log"] if "brambles" in s["text"]]
+        burns += bool(step)
+        if step:
+            burn = max(1, round(bt.pet_hit(5 + 1) * bt.BRAMBLES_BURN))
+            assert step[0]["damage"] == burn and "drains" in step[0]["text"]
+    assert burns == 3
+
+
+def test_lucid_spark_and_rainbow_blessing_lift_next_round():
+    spark = _mixer("shock", "dream")
+    b = _mix_round(spark, foe=_critter(99, "dream", "sheep"))[0]
+    team = [spark, _pet("leaf", 7)]
+    next_round = _round(b, team, [{"move": "attack", "slips": 0}] * 2, energy=[40, 40], mana=[26, 30])[0]
+    assert next_round["log"][0]["who"] in (0, 1)  # before even a very fast creature
+    plain = _round({**b, "boost": None}, team, [{"move": "attack", "slips": 0}] * 2, energy=[40, 40], mana=[26, 30])[0]
+    assert plain["log"][0]["who"] == "foe"
+    damage = lambda r: next(s["damage"] for s in r["log"] if s["who"] == 0)  # noqa: E731
+    assert damage(next_round) == pytest.approx(damage(plain) * 1.25, abs=1)
+    blessing = _mixer("dream", "leaf", "unicorn")
+    b, energy, mana = _mix_round(blessing, b={**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}, energy=[10, 10], mana=[10, 10])
+    assert energy[0] == 10 + round(blessing["energy"] * 0.15) and mana == [8, 12] and b["boost"]["first"] is False
+
+
+def test_sleep_spores_are_drowsy_this_round_and_tangled_for_two():
+    b = {**bt.start(_critter(7, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    after = _mix_round(_mixer("dream", "leaf"), b=b)[0]
+    assert after["marks"] == {"tangled": 1}  # drowsy has already worn off
+
+
+def test_stormfire_breath_leaves_two_marks():
+    b = _mix_round(_mixer("shock", "ember", "dragon"))[0]
+    assert {"static", "glowing"} <= set(b["marks"])
+
+
+def test_rising_ash_brings_back_a_worn_out_partner_or_else_hits_hard():
+    pet = _mixer("ember", "dream", "phoenix")
+    team = [pet, _pet("leaf", 7)]
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    back, energy, _ = bt.turn(b, team, [40, 0], [{"move": "mix", "slips": 0}], random.Random(1), [30, 30])
+    assert energy[1] == round(team[1]["energy"] * bt.REVIVE) and "back on its feet" in back["log"][0]["text"]
+    assert back["energy"] == 9999
+    # and it fights on
+    _round(back, team, [{"move": "attack", "slips": 0}] * 2, energy=energy, mana=[26, 30])
+    hit = next(s for s in _mix_round(pet, b=b)[0]["log"] if s["who"] == 0)
+    assert hit["damage"] == round(bt.pet_hit(pet["power"]) * bt.matchup("ember", "dream") * 2)
+
+
+def test_siren_song_makes_it_hit_itself():
+    pet = _mixer("splash", "shock", "mermaid")
+    b = _mix_round(pet, foe=_critter(1, "dream", "sheep"))[0]
+    assert "soaked" in b["marks"] and any("hits itself" in s["text"] for s in b["log"])
+
+
+def test_blooming_circle_and_rain_garden_mend_both_pets_for_three_rounds():
+    for pet in (_mixer("leaf", "splash", "flower_fairy"), _mixer("splash", "leaf")):
+        team = [pet, _pet("leaf", 7)]
+        foe = bt.start(_critter(1, "dream", "sheep"), [0, 1])
+        b, energy, mana = _mix_round(pet, b={**foe, "energy": 9999, "skip": 9}, energy=[10, 10])
+        rounds = 1
+        for _ in range(4):
+            b, energy, mana = _round(b, team, [{"move": "guard", "slips": 0}] * 2, energy=energy, mana=mana)
+            rounds += any("mending" in s["text"] for s in b["log"])
+        assert rounds == 3
+        assert energy[0] > 10 and energy[1] > 10
+    tangled = _mix_round(_mixer("leaf", "splash", "flower_fairy"))[0]
+    assert tangled["marks"]["tangled"] >= 2

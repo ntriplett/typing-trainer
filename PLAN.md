@@ -925,9 +925,16 @@ over" now sends pets back to level 1 (stars stay).
 
 **Level 5 (2026-11-01).** The second type brings a plain attack in that type (`attack2`), taking the slot of a grey move
 the player picks (`Record.swaps`: gave up -> got; a Guardian's colored Guard doesn't count). Two steps on one page, each saved,
-so a reload keeps its place: the type, then the slot. Attack is now first type only; Big still uses whichever type does best;
+so a reload keeps its place: the type, then the slot. Attack and Big are first type only (Big picking a type was confusing);
 a Daredevil's double stays on its first type. Mythicals skip the type pick. Next: level 7, a mixed-type move replacing any of
-the six (20 ordered type pairs: first type sets how it behaves, second its flavor; first draft discussed 2026-11-01).
+the six.
+
+**Level 7 (2026-11-01).** A mix of the pet's two types, taking any of its six slots (`swaps` chains: rest -> attack2 -> mix;
+giving up a focus's passive ends it, battle.focus_active). The move is fixed by the pair, so the only choice is the slot.
+battle.MIX_MOVES has all 20 ordered pairs (first type sets how it behaves: SPLASH weakens and supports, EMBER raw power with a
+catch, DREAM tricks, LEAF outlasts, SHOCK fast and often; second its flavor); MYTHICAL_MOVES gives each mythical its own, a bit
+stronger. All cost 4 mana, so about 4 uses a day at level 7. A mix hits with its better type, can set off a combo for either, and
+a Daredevil doesn't double it. `tools/wander_balance.py` measures each in the real battle code, used once a fight.
 
 **Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
 it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;

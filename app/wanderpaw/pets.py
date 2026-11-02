@@ -56,6 +56,7 @@ XP_GROWTH = 1.08
 MAX_LEVEL = 21
 FOCUS_LEVEL = 3
 SECOND_TYPE_LEVEL = 5
+MIX_LEVEL = 7
 PARTY_SIZE = 5
 STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
             "dream": ("Fluff", "sheep"), "shock": ("Zip", "cat")}

@@ -58,6 +58,8 @@ TARGETS = {
     "favorite: sessions to level 20": (35, 65),  # maxing favorites around the game's end is fine
     "other: sessions to level 20": (65, 130),  # the whole party shouldn't max out with nothing to do
     "other: sessions to level 5": (4, 12),  # the second type should come soon
+    "level 7 moves: most energy saved": (5, 20),  # roughly equal, none a must-have ...
+    "level 7 moves: least energy saved": (-4, 6),  # ... and none a waste of 4 mana
 }
 
 
@@ -86,6 +88,43 @@ def fight(level: int, foe_level: int, rng: random.Random) -> tuple[bool, int, fl
         b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
         rounds += 1
     return b["over"] == "won", rounds, (full - sum(energy)) / full, bt.xp(b, team)
+
+
+def mix_fight(first: str, second: str, species: str | None, level: int, foe_level: int, rng: random.Random, use_it: bool = True) -> tuple[int, float]:
+    """A pet using its level 7 move once (the day's mana won't stretch further) beside a plain partner."""
+    pet = wp.starter(first, level)
+    pet = {**pet, "types": {first: level, second: max(1, level - 4)}, "swaps": {"rest": "mix"}, "species": species or pet["species"]}
+    move = bt.mix_move(pet)
+    # moves that give energy back wait until there's some to give
+    wait = 1 if move.team_energy or move.partner_energy or move.self_energy > 0 or ("mending", 3) in move.effects else 0
+    team = [pet, wp.starter(rng.choice(wp.TYPES), level)]
+    foe = cr._grown(cr.Critter("x", (0, 0), (0, 0), "dog", rng.choice(wp.TYPES), foe_level, False, rng.randrange(2**31)), 0)
+    b = bt.start(foe, [0, 1])
+    energy, mana = [m["energy"] for m in team], [m["mana"] for m in team]
+    full, rounds, used = sum(energy), 0, False
+    while not b["over"] and rounds < 40:
+        able = [i for i in range(2) if energy[i] > 0]
+        picks = []
+        for i in able:
+            use = use_it and i == 0 and not used and rounds >= wait and mana[0] >= bt.MIX_MANA
+            used = used or use
+            picks.append({"move": "mix" if use else "attack", "slips": SLIPS})
+        b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+        rounds += 1
+    return rounds, 100 * (full - sum(energy)) / full
+
+
+def mix_table(level: int = 7, foe_level: int = 10) -> tuple[list[tuple[str, float, float]], float, float]:
+    """Every level 7 move: rounds and energy each, and the same for plain attacks."""
+    rng = random.Random(1)
+    plain = [mix_fight(*rng.sample(wp.TYPES, 2), None, level, foe_level, rng, use_it=False) for _ in range(FIGHT_RUNS * 5)]
+    rows = []
+    every = [(pair, None, m.name) for pair, m in bt.MIX_MOVES.items()]
+    every += [(wp.SPECIES_TYPES[sp], sp, m.name + "*") for sp, m in bt.MYTHICAL_MOVES.items()]
+    for (first, second), species, name in every:
+        runs = [mix_fight(first, second, species, level, foe_level, rng) for _ in range(FIGHT_RUNS)]
+        rows.append((name, statistics.mean(r[0] for r in runs), statistics.mean(r[1] for r in runs)))
+    return sorted(rows, key=lambda r: r[2]), statistics.mean(p[0] for p in plain), statistics.mean(p[1] for p in plain)
 
 
 def fight_table() -> dict[tuple[int, int], tuple[float, float, float, int]]:
@@ -176,6 +215,11 @@ def main() -> int:
     for (level, foe), (win, rounds, cost, xp) in table.items():
         print(f"  {level:>4}{foe:>5}{win:>7.0f}{rounds:>8.1f}{cost:>14.1f}{xp:>9}")
 
+    mixes, plain_rounds, plain_cost = mix_table()
+    print(f"\nLevel 7 moves, used once a fight (level 7 pets, level 10 creature; * mythical)\n  plain attacks: {plain_rounds:.1f} rounds, {plain_cost:.1f}% energy each")
+    for name, rounds, cost in mixes:
+        print(f"  {name:<20}{rounds:>5.1f} rounds {cost:>6.1f}%  ({cost - plain_cost:+.1f})")
+
     print(f"\nSessions to reach a level (a party of {' + '.join(f'{n} {k}' for k, (n, _) in PARTY.items())}; favorites fight 2x)")
     print(f"  {'':<34}" + "".join(f"{'L' + str(lv):>6}" for lv in LEVELS))
     base = sessions_to_levels(wp.XP_GROWTH, pop, BASE_FIGHTS, args.relic_every)
@@ -195,6 +239,8 @@ def main() -> int:
         "favorite: sessions to level 20": base["favorite", 20],
         "other: sessions to level 20": base["other", 20],
         "other: sessions to level 5": base["other", 5],
+        "level 7 moves: most energy saved": plain_cost - mixes[0][2],
+        "level 7 moves: least energy saved": plain_cost - mixes[-1][2],
     }
     print(f"\nTargets ({BASE_FIGHTS} fights a session)")
     off = 0

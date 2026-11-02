@@ -205,6 +205,35 @@ def test_level_five_has_to_choose_a_type_and_it_counts_at_once():
         assert db.get_wander_pets(conn, 1)[fox]["swaps"] == {"cheer": "attack2"}
 
 
+def test_level_seven_brings_a_mix_that_can_replace_any_of_the_six():
+    fox = _add_pet("fox")
+    client.post("/api/wander/trip/start", json={})
+    ups = _level_to(fox, 7)
+    _finish(None, "healer", None)
+    five = client.get("/api/wander").json()["levelups"][0]
+    data = _finish(five["choose"]["options"][0]["id"], "rest", None)
+    step = data["levelups"][0]
+    assert step["level"] == 7 and step["choose"]["kind"] == "mix"
+    second = five["choose"]["options"][0]["id"]
+    assert step["choose"]["new"]["type"] == "ember" and step["choose"]["new"]["type2"] == second
+    assert [o["id"] for o in step["choose"]["options"]] == ["attack", "big", "healer", "focus", "cheer", "attack2"]  # all six, typed too
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    data = _finish("attack2")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert [m["id"] for m in me["moves"]] == ["attack", "big", "healer", "focus", "cheer", "mix"]
+    assert me["swaps"] == {"rest": "attack2", "attack2": "mix"}
+    assert len(ups) == 6
+
+
+def test_a_mythical_gets_its_own_mix():
+    unicorn = _add_pet("unicorn", 5)
+    _level_to(unicorn, 7)
+    data = _finish(None, "healer", None, "focus", None)
+    step = data["levelups"][0]
+    assert step["choose"]["new"]["label"] == "Rainbow Blessing"
+
+
 def test_mythicals_focus_in_their_first_type_and_only_choose_what_their_second_attack_replaces():
     unicorn = _add_pet("unicorn", 5)
     ups = _level_to(unicorn, 5)

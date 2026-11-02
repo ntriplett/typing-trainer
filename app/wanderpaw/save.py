@@ -1130,6 +1130,8 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
     name = pet["name"]
     if lv == wp.FOCUS_LEVEL and not rec.focus:
         return {"kind": "focus", "ask": f"What will {name} focus on?", "options": [bt.focus_option(member, f) for f in bt.FOCUSES]}
+    if lv == wp.MIX_LEVEL and len(member["types"]) > 1 and "mix" not in rec.swaps.values():
+        return _mix_choice(name, member)
     if lv != wp.SECOND_TYPE_LEVEL:
         return None
     offered = wp.second_choices(pet["seed"], pet["species"], rec)
@@ -1143,14 +1145,26 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
     return {"kind": "second", "ask": f"{name} can learn a second type!", "options": options}
 
 
+def _swap_options(member: dict, gives_up: list[dict], gets: str) -> list[dict]:
+    """A new move's choices of slot, each showing the six moves it would make."""
+    swaps = member.get("swaps") or {}
+    return [{**m, "title": "Replace", "moves": bt.described_moves({**member, "swaps": {**swaps, m["id"]: gets}})} for m in gives_up]
+
+
 def _attack2_choice(name: str, member: dict) -> dict:
     """Which grey move a pet's new second-type attack takes the place of."""
     second = list(member["types"])[1]
-    options = []
-    for m in bt.grey_moves(member):
-        swaps = {**(member.get("swaps") or {}), m["id"]: "attack2"}
-        options.append({**m, "title": "Replace", "moves": bt.described_moves({**member, "swaps": swaps})})
-    return {"kind": "attack2", "ask": f"{name} learns a {wd.tw(second)} attack! Which move does it replace?", "options": options}
+    return {"kind": "attack2", "ask": f"{name} learns a {wd.tw(second)} attack! Which move does it replace?",
+            "options": _swap_options(member, bt.grey_moves(member), "attack2")}
+
+
+def _mix_choice(name: str, member: dict) -> dict:
+    """Which of its six moves a pet's new mix of its two types takes the place of."""
+    a, b = list(member["types"])[:2]
+    move = bt.mix_move(member)
+    new = {**bt.mix_card(member), "note": f"{move.says} Costs {bt.MIX_MANA} mana."}
+    return {"kind": "mix", "ask": f"{name} learns {move.name}, a mix of {wd.tw(a)} and {wd.tw(b)}! Which move does it replace?",
+            "new": new, "options": _swap_options(member, bt.described_moves(member), "mix")}
 
 
 def _redo_waiting(save: dict, pet: dict, rec: wp.Record) -> dict:
@@ -1178,7 +1192,7 @@ def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
             raise WanderError("Pick one of the choices.")
         kind = first["choose"]["kind"]
         learn = {"focus": lambda r: wp.learn_focus(r, choice), "second": lambda r: wp.learn_second(r, choice, first["level"]),
-                 "attack2": lambda r: wp.learn_swap(r, choice, "attack2")}[kind]
+                 "attack2": lambda r: wp.learn_swap(r, choice, "attack2"), "mix": lambda r: wp.learn_swap(r, choice, "mix")}[kind]
         rec = learn(pet[1])
         db.save_wander_pet(conn, learner_id, first["pet"], wp.record_json(rec))
         save = _redo_waiting(_refresh_member(save, pet[0], rec), pet[0], rec)  # one choice can bring the next

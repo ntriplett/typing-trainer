@@ -171,3 +171,36 @@ def test_level_ups_pop_up_in_turn_and_level_five_asks_for_a_type(page: Page, liv
     expect(word).to_have_text("EMBER")
     expect(word).to_have_css("color", "rgb(200, 67, 47)")
     expect(page.locator('#party-detail [data-move="attack2"]')).to_be_visible()
+
+
+def test_level_seven_shows_the_mix_and_lets_it_replace_any_move(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import pets as wp
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    page.request.post(f"{live_server}/api/wander-lab/xp", data={"pet_id": fox, "xp": wp.xp_for(7)})
+    finish = lambda choice=None: page.request.post(f"{live_server}/api/wander/levelup", data={"choice": choice}).json()  # noqa: E731
+    finish()
+    data = finish("healer")
+    data = finish()
+    data = finish(data["levelups"][0]["choose"]["options"][0]["id"])
+    data = finish("rest")
+    data = finish()
+    assert data["levelups"][0]["choose"]["kind"] == "mix"
+    page.reload()
+    choice = page.locator("#levelup-choice")
+    expect(choice.locator(".wander-levelup-new [data-move='mix']")).to_be_visible()
+    expect(choice.locator(".wander-levelup-option")).to_have_count(6)
+    page.keyboard.press("Enter")  # it has to be chosen
+    expect(page.locator("#levelup")).to_be_visible()
+    page.keyboard.press("1")
+    expect(page.locator("#levelup-detail [data-move='mix'].fresh")).to_be_visible()
+    expect(page.locator("#levelup-detail [data-move='attack']")).to_have_count(0)
+    page.keyboard.press("3")  # changed its mind: a different slot
+    expect(page.locator("#levelup-detail [data-move='attack']")).to_have_count(1)
+    page.keyboard.press("Enter")
+    expect(page.locator("#levelup")).to_be_hidden()
+    me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
+    assert "mix" in me["swaps"].values()
