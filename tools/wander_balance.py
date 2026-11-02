@@ -59,6 +59,7 @@ TARGETS = {
     "other: sessions to level 20": (65, 130),  # the whole party shouldn't max out with nothing to do
     "other: sessions to level 5": (4, 12),  # the second type should come soon
     "energy loop: most energy out of a fight (from 20%)": (0, 21),  # a fight is never a refill
+    "capstones: most energy saved": (0.5, 8),  # helping, not winning fights from the bench
     "level 9 focus: most energy saved": (1.5, 5),  # all four grow about alike
     "level 9 focus: least energy saved": (1.5, 5),
     "level 9 upgrade: most energy saved": (1, 3.5),  # none the obvious pick
@@ -216,15 +217,25 @@ def build_pet(level: int, focus: str | None, first: str, second: str, species: s
         swaps[grey.pop(0)] = "mix2"
     upgrades = ["attack"] * (level >= 9) + ["big"] * (level >= 11)
     kinds = {first: level, **({second: level - 4} if level >= 5 else {})}
+    extra: list[str] = []
+    if level >= 15:  # rest, a slot it can spare, goes for the third type's attack+
+        third = next(t for t in wp.TYPES if t not in kinds)
+        kinds[third] = level - 14
+        swaps["rest"] = "attack3"
+        upgrades.append("attack3")
+    if level >= 17:
+        extra.append(bt.mix_id((first, third)))
+    if level >= 19:  # guard, or whatever's left, for one more mix
+        swaps["guard" if "guard" not in swaps and (not focus or bt.FOCUS_REPLACES[focus] != "guard") else "attack2"] = bt.mix_id((third, first))
     return {**pet, "types": kinds, "focus": focus if level >= 3 else None, "swaps": swaps, "upgrades": upgrades,
-            "extra": [], **({"species": species} if species else {})}
+            "extra": extra, **({"species": species} if species else {})}
 
 
 def _smart_pick(pet: dict, foe_kind: str, energy: int, mana: int, used: set[str], b: dict, place: int, round_no: int) -> str:
     """A sensible player: each mix and Big once a fight, an Elementalist's mark on
     odd rounds, otherwise whichever attack hits hardest."""
     ids = {m["id"]: m for m in bt.moves(pet, foe_kind, mana)}
-    for move in ("mix", "mix2", "big"):
+    for move in (*(i for i in ids if bt.is_mix(i)), "big"):
         m = ids.get(move)
         if m and move not in used and m.get("can") is not False and not m.get("passive") and not bt.used_up(b, place, pet, move):
             used.add(move)
@@ -256,7 +267,7 @@ def level_fight(level: int, focus: str | None, foe_level: int, rng: random.Rando
 def level_table() -> list[tuple]:
     """How strong a pair is at each level: against an even creature and one 3 up."""
     rows = []
-    for level in (1, 3, 5, 7, 9, 11, 13):
+    for level in (1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21):
         for focus in (None, *bt.FOCUSES) if level >= 3 else (None,):
             if focus is None and level >= 3:
                 continue
@@ -350,6 +361,34 @@ def loop_table() -> list[tuple]:
             rows.append((build[0], level, name, 100 * statistics.mean(r[0] for r in runs), statistics.mean(r[1] for r in wins),
                          statistics.mean(r[2] for r in wins), statistics.mean(r[3] for r in wins)))
     return rows
+
+
+def capstone_fight(bench: tuple[str, ...], rng: random.Random, level: int = 21, foe_level: int = 21) -> tuple[bool, int, float]:
+    """Two full-grown pets, attacks only so a bench's help shows, with these capstones helping."""
+    a, c = rng.sample(wp.TYPES, 2)
+    team = [build_pet(level, None, a, c), build_pet(level, None, c, a)]
+    team = [{**m, "bright": "bright_idea" in bench} for m in team]
+    foe = cr._grown(cr.Critter("x", (0, 0), (0, 0), "dog", rng.choice(wp.TYPES), foe_level, False, rng.randrange(2**31)), 0)
+    b = bt.start(foe, [0, 1], bench)
+    energy, mana = [m["energy"] for m in team], [m["mana"] for m in team]
+    full, rounds = sum(energy), 0
+    while not b["over"] and rounds < 40:
+        picks = [{"move": "attack2" if "attack2" in {m["id"] for m in bt.moves(team[i])} else "attack", "slips": SLIPS} for i in range(2) if energy[i] > 0]
+        b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+        rounds += 1
+    return b["over"] == "won", rounds, 100 * (full - sum(energy)) / full
+
+
+def capstone_table() -> tuple[list[tuple], float, float]:
+    """Each capstone against no bench, then three together."""
+    runs = lambda bench: [capstone_fight(bench, random.Random(i)) for i in range(FIGHT_RUNS * 2)]  # noqa: E731
+    base = runs(())
+    r0, c0 = statistics.mean(r[1] for r in base), statistics.mean(r[2] for r in base)
+    rows = []
+    for cap in bt.CAPSTONES.values():
+        now = runs((cap.key,))
+        rows.append((cap.name, statistics.mean(r[1] for r in now), statistics.mean(r[2] for r in now)))
+    return sorted(rows, key=lambda r: r[2]), r0, c0
 
 
 def fight_table() -> dict[tuple[int, int], tuple[float, float, float, int]]:
@@ -465,6 +504,11 @@ def main() -> int:
     for name, level, foe, win, rounds, out, mana_out in loops:
         print(f"  {name:<26}{level:>6} {foe:<6}{win:>6.0f}{rounds:>7.1f}{out:>10.0f}%{mana_out:>9.0f}%")
 
+    caps, cap_rounds, cap_cost = capstone_table()
+    print(f"\nCapstones (level 21 pets, even creature, plain attacks): none helping: {cap_rounds:.1f} rounds, {cap_cost:.1f}% energy each")
+    for name, rounds, cost in caps:
+        print(f"  {name:<16}{rounds:>5.1f} rounds {cost:>6.1f}%  ({cost - cap_cost:+.1f})")
+
     print(f"\nSessions to reach a level (a party of {' + '.join(f'{n} {k}' for k, (n, _) in PARTY.items())}; favorites fight 2x)")
     print(f"  {'':<34}" + "".join(f"{'L' + str(lv):>6}" for lv in LEVELS))
     base = sessions_to_levels(wp.XP_GROWTH, pop, BASE_FIGHTS, args.relic_every)
@@ -486,6 +530,7 @@ def main() -> int:
         "other: sessions to level 5": base["other", 5],
         "level 7 moves: most energy saved": plain_cost - mixes[0][2],
         "energy loop: most energy out of a fight (from 20%)": max(r[5] for r in loops),
+        "capstones: most energy saved": cap_cost - caps[0][2],
         "level 9 focus: most energy saved": max(c0 - c1 for _, _, c0, _, c1 in nines[:4]),
         "level 9 focus: least energy saved": min(c0 - c1 for _, _, c0, _, c1 in nines[:4]),
         "level 9 upgrade: most energy saved": max(c0 - c1 for _, _, c0, _, c1 in nines[4:]),

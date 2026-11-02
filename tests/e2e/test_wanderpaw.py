@@ -322,3 +322,35 @@ def test_mix_moves_are_two_colored_as_level_up_choices(page: Page, live_server):
     mixes = page.locator(".move-lab-group", has_text="Mixes").first
     style = mixes.locator(".wander-levelup-option").first.get_attribute("style")
     assert "linear-gradient" in style
+
+
+def test_a_guardian_wall_shows_used_up_once_it_has_worn_off(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    from app.wanderpaw import local as lc
+    from app.wanderpaw import pets as wp
+    from app.wanderpaw import world as wd
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+        db.add_v3_pet(conn, 1, pet_genes.roll("bunny", None, None, 2), "Clover", "shop")
+        db.save_wander_pet(conn, 1, fox, {"xp": wp.xp_for(4), "second": None, "second_at": None, "partners": {}, "starred": False, "focus": "guardian"})
+    seed = page.request.get(f"{live_server}/api/wander-lab/world").json()["seed"]
+    day = page.request.post(f"{live_server}/api/wander/trip/start", data={}).json()["stats"]["trips"]
+    world = wd.generate(seed)
+    big, h = next((b, h) for b in sorted(world.hexes) if world.hexes[b].region == wd.HEARTLAND for h in sorted(cr.at(seed, b, day)))
+    local = lc.generate(seed, big)
+    beside = next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in cr.at(seed, big, day))
+    page.request.post(f"{live_server}/api/wander-lab/teleport", data={"q": big[0], "r": big[1], "spot": list(beside)})
+    g = lc.to_world(big, h)
+    page.request.post(f"{live_server}/api/wander/walk", data={"q": g[0], "r": g[1]})
+    wall = page.locator('#battle-team [data-move="guardian"]')
+    # Guarding, the fight lasts: past round 2 its wall is used up
+    for _ in range(2):
+        moves = [{"move": "guard", "slips": 0}] * 2
+        page.request.post(f"{live_server}/api/wander/battle/turn", data={"moves": [{"move": "guard", "slips": 0}, {"move": "focus", "slips": 0}]})
+    page.goto(f"{live_server}/wanderpaw")
+    expect(wall.locator("s")).to_be_visible()
+    expect(wall).to_contain_text("Used up")

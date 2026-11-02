@@ -82,3 +82,22 @@ def test_records_round_trip():
     rec = wp.Record(xp=900, second="leaf", second_at=5, partners={"leaf": 2}, starred=True)
     assert wp.record_from(wp.record_json(rec)) == rec
     assert wp.record_from(None) == wp.Record()
+
+
+def test_a_third_type_counts_from_one_and_is_offered_at_fifteen():
+    rec = wp.Record(xp=wp.xp_for(15), second="splash", second_at=5)
+    offered = wp.third_choices(1, "bunny", rec)
+    assert len(set(offered)) == 2 and not {"leaf", "splash"} & set(offered)
+    assert wp.third_choices(1, "bunny", wp.Record(xp=wp.xp_for(14), second="splash", second_at=5)) is None
+    fought = wp.Record(xp=wp.xp_for(15), second="splash", second_at=5, partners={"dream": 3, "leaf": 9})
+    assert wp.third_choices(1, "bunny", fought)[0] == "dream"  # not its own type
+    has = wp.learn_third(rec, offered[0], 15)
+    assert wp.type_levels("bunny", has)[offered[0]] == 1 and wp.third_choices(1, "bunny", has) is None
+    assert wp.type_levels("bunny", wp.gain_xp(has, wp.xp_for(16) - has.xp))[offered[0]] == 2
+    # a mythical's third is on top of the two it was born with
+    assert len(wp.third_choices(1, "dragon", wp.Record(xp=wp.xp_for(15)))) == 2
+
+
+def test_a_record_round_trips_the_new_fields():
+    rec = wp.Record(xp=9, third="leaf", third_at=15, pending="mix:a:b", done=["mix19"], extra=["rest"], upgrades=["big"])
+    assert wp.record_from(wp.record_json(rec)) == rec

@@ -961,6 +961,12 @@ Moves that gain energy were cut back: Spring Shower 15%, Rain Garden and Bloomin
 drains a quarter, Campfire Tale 2%, Rainbow Blessing 10%, Rising Ash revives at 20%, Undertow drains half, Meadow Nap 5%. Healer is left
 as the focus for it: gaining energy should take specializing.
 
+**Levels 15-19 (2026-11-01).** Level 15: a third type (from the three it doesn't have, like level 5), mostly for flavor and later combos, with an
+Attack+ in it, taking any slot. Level 17: an 8th slot holding a mix with that type (if its types came A, B, C: AC, CA, BC or CB). Level 19:
+any of its 6 mixes it doesn't have, taking any slot, then a + on any move. Mixes for any pair are move ids "mix:first:second". Level 21: a
+capstone (battle.CAPSTONES), a passive helping the fighters while the pet's on the party and not fighting, in 20 kinds by ordered pair, a choice of
+the 3 pairs it has. Different ones stack; the same one never twice. Battle tiles strike out a passive that's used up.
+
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
 in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each
 mark; a shield for protection (solid: you, thick outline: your partner, half and half: both; colored for certain types, dark gray

@@ -199,6 +199,9 @@ function renderBattle() {
     ...(b.skip ? [`<span class="wander-mark effect">can't move <small>(${b.skip})</small></span>`] : []),
   ].join(" ");
   animateMarks();
+  document.getElementById("battle-bench").innerHTML = (b.bench_helps || []).length
+    ? `<small>Helping from the bench:</small> ${b.bench_helps.map((c) => `<span class="wander-mark" title="${wanderPlain(c.says)}">${esc(c.name)}</span>`).join(" ")}`
+    : "";
   document.getElementById("battle-foe-info").innerHTML = `
     <b>Wild ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
     ${bar(foeEnergy, b.max)} <small>${foeEnergy} / ${b.max}</small>
@@ -658,6 +661,7 @@ function partyPetDetail(m, i) {
         </div>
       </div>
       <ul class="wander-moves ${gridSize(m.moves)}">${m.moves.map((move) => moveCard(move)).join("")}</ul>
+      ${m.capstone_card ? `<p class="wander-capstone-title">Capstone: helps the party when ${esc(m.name)} isn't fighting</p><ul class="wander-moves wander-levelup-new">${moveCard(m.capstone_card)}</ul>` : ""}
     </div>`;
 }
 

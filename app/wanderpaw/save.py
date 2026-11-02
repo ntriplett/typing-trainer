@@ -416,7 +416,7 @@ def _start_battle(save: dict, c: cr.Critter) -> dict:
         raise WanderError("Your pets are too tired to fight. Rest at a campfire, or go round.")
     used = (save["trip"] or {}).get("reborn", [])
     pets = (save["trip"] or {}).get("pets") or [m["energy"] for m in save["team"]]
-    battle = {**bt.start(c, who), "start_energy": {str(i): pets[i] for i in who},
+    battle = {**bt.start(c, who, bt.bench_keys(save["team"], who)), "start_energy": {str(i): pets[i] for i in who},
               "reborn": [i for i in who if i not in used and bt.has_reborn(save["team"][i])]}
     return _event({**save, "battle": battle}, kind="battle",
                   text=f"A wild level {c.level} {c.species} blocks the way!")
@@ -430,7 +430,7 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
     save = {**save, "events": []}
     rng = rng or random.Random()
     try:
-        b, pets, mana = bt.turn(b, save["team"], save["trip"]["pets"], picks, rng, _mana(save))
+        b, pets, mana = bt.turn(b, _fighting_team(save, b), save["trip"]["pets"], picks, rng, _mana(save))
     except ValueError as exc:
         raise WanderError(str(exc)) from exc
     trip = save["trip"]
@@ -456,6 +456,8 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
         save = {**save, "trip": {**save["trip"], "beaten": [*save["trip"].get("beaten", []), c.id]}}
         ids = [save["team"][i]["id"] for i in b["fighters"] if save["team"][i]["id"]]
         gain = bt.xp(b, save["team"])
+        if "good_company" in (b.get("bench") or []):
+            gain = round(gain * bt.GOOD_COMPANY)
         save = _event(save, kind="won", text=f"You won! The {b['species']} scampers off.")
         if b.get("coins"):
             save = _event(save, kind="coins", amount=b["coins"], text=f"Golden Flame! {b['coins']} coins.")
@@ -505,17 +507,26 @@ def pick_fighters(save: dict, slots: list[int]) -> dict:
     return {**save, "fighters": list(slots), "events": []}
 
 
+def _fighting_team(save: dict, b: dict) -> list[dict]:
+    """The team, as a Bright Idea on the bench makes it for this battle."""
+    if "bright_idea" not in (b.get("bench") or []):
+        return save["team"]
+    return [{**m, "bright": True} for m in save["team"]]
+
+
 def battle_view(save: dict) -> dict | None:
     b = save.get("battle")
     if not b:
         return None
     pets, mana = save["trip"]["pets"], _mana(save)
-    return {**b, "looks": cr_looks(b), "fighters": [
+    team = _fighting_team(save, b)
+    keyed = {c.key: c for c in bt.CAPSTONES.values()}
+    return {**b, "looks": cr_looks(b), "bench_helps": [{"name": keyed[k].name, "says": keyed[k].says} for k in b.get("bench") or []], "fighters": [
         {"place": i, "name": save["team"][i]["name"], "species": save["team"][i]["species"], "level": save["team"][i]["level"],
          "types": save["team"][i]["types"], "energy": pets[i], "max": bt.battle_energy(b, save["team"], i),
          "mana": mana[i], "max_mana": save["team"][i]["mana"], "focused": i in b.get("focus", []),
          "genes": save["team"][i].get("genes"), "growth": save["team"][i].get("growth", 10),
-         "moves": bt.battle_moves(b, i, save["team"][i], mana[i])}
+         "moves": bt.battle_moves(b, i, team[i], mana[i])}
         for i in b["fighters"]]}
 
 
@@ -641,6 +652,10 @@ def apply_walk(save: dict, to: Hex) -> dict:
     cost = 1
     if local.tiles[h] == "ford":
         cost = st.FORD_ENERGY_SWIM if levels(save, "splash") >= st.SWIM_LEVELS else st.FORD_ENERGY
+    trip = save["trip"]
+    if trip.get("free_steps", 0) < bt.TRAIL_RUNNER_STEPS and any(bt.capstone_of(m).key == "trail_runner" for m in save["team"] if bt.capstone_of(m)):
+        save = {**save, "trip": {**trip, "free_steps": trip.get("free_steps", 0) + 1}}
+        cost = 0
     save = _spend(save, cost)
     save = {**save, "stats": {**save["stats"], "steps": save["stats"]["steps"] + 1}}
     return nap(save) if save["trip"]["energy"] <= 0 else save
@@ -1150,6 +1165,14 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
         return _seventh_slot_choice(name, rec, member)
     if lv == wp.REVERSE_MIX_LEVEL and len(member["types"]) > 1 and "mix2" not in [*rec.swaps.values(), *rec.extra]:
         return _reverse_mix_choice(name, member)
+    if lv == wp.THIRD_TYPE_LEVEL:
+        return _third_type_choice(name, pet, rec, member)
+    if lv == wp.EIGHTH_SLOT_LEVEL:
+        return _eighth_slot_choice(name, rec, member)
+    if lv == wp.ANY_MIX_LEVEL:
+        return _any_mix_choice(name, rec, member)
+    if lv == wp.CAPSTONE_LEVEL and not rec.capstone:
+        return _capstone_choice(name, member)
     if lv != wp.SECOND_TYPE_LEVEL:
         return None
     offered = wp.second_choices(pet["seed"], pet["species"], rec)
@@ -1224,6 +1247,72 @@ def _reverse_mix_choice(name: str, member: dict) -> dict:
             "new": new, "options": options}
 
 
+def _third_type_choice(name: str, pet: dict, rec: wp.Record, member: dict) -> dict | None:
+    """Level 15: a third type, then its upgraded attack, in any slot."""
+    offered = wp.third_choices(pet["seed"], pet["species"], rec)
+    if offered:
+        options = []
+        for t in offered:
+            beats = " and ".join(wd.tw(x) for x in bt.strong_against(t))
+            options.append({"id": t, "type": t, "label": wd.tw(t), "title": "Third type", "note": f"Strong against {beats}.",
+                            "moves": bt.described_moves({**member, "types": {**member["types"], t: 1}})})
+        return {"kind": "third", "ask": f"{name} can learn a third type!", "options": options}
+    if not rec.third or "attack3" in [*rec.swaps.values(), *rec.extra]:
+        return None
+    plus = {**member, "upgrades": [*rec.upgrades, "attack3"]}
+    options = []
+    for m in bt.described_moves(member):
+        options.append({**m, "title": "Replace", "moves": bt.described_moves(_with_move(plus, m["id"], "attack3"))})
+    return {"kind": "attack3", "ask": f"{name} learns a {wd.tw(rec.third)} attack+! Which move gets replaced?", "options": options}
+
+
+def _eighth_slot_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
+    """Level 17: an 8th slot, holding a mix with its third type."""
+    if not rec.third or len(rec.extra) >= 2:
+        return None
+    options = []
+    for move in bt.mixes_missing(member, rec.third):
+        preview = bt.described_moves({**member, "extra": [*rec.extra, move]})
+        options.append({**preview[-1], "id": move, "title": "New mix", "moves": preview})
+    return {"kind": "mix_slot", "ask": f"{name} opens an 8th slot! Which mix does it learn?", "options": options} if options else None
+
+
+def _any_mix_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
+    """Level 19: any mix it doesn't have, then the slot it takes, then an upgrade."""
+    if rec.pending:
+        new = {**bt.mix_card(member, None, rec.pending), "note": bt.mix_move(member, rec.pending).says, "icons": bt.move_icons(member, rec.pending)}
+        options = []
+        current = {**member, "pending": None}
+        for m in bt.described_moves(current):
+            options.append({**m, "title": "Replace", "moves": bt.described_moves(_with_move(current, m["id"], rec.pending))})
+        return {"kind": "place", "ask": f"{bt.mix_move(member, rec.pending).name} needs a slot. Which move gets replaced?", "new": new, "options": options}
+    if "mix19" not in rec.done:
+        options = []
+        for move in bt.mixes_missing(member):
+            card = {**bt.mix_card({**member, "pending": move}, None, move), "note": bt.mix_move(member, move).says}
+            options.append({**card, "icons": bt.move_icons(member, move), "title": "New mix", "moves": bt.described_moves(member)})
+        if options:
+            return {"kind": "pick_mix", "ask": f"{name} can learn any mix of its types!", "options": options}
+    if "plus19" not in rec.done:
+        options = []
+        for m in bt.can_upgrade(member):
+            preview = bt.described_moves({**member, "upgrades": [*rec.upgrades, m["id"]]})
+            options.append({**next(p for p in preview if p["id"] == m["id"]), "title": "Upgrade", "moves": preview})
+        if options:
+            return {"kind": "plus19", "ask": f"{name} can upgrade a move!", "options": options}
+    return None
+
+
+def _capstone_choice(name: str, member: dict) -> dict | None:
+    """Level 21: a passive for a pair of its types, helping when it isn't fighting."""
+    options = []
+    for pair in bt.capstone_pairs(member):
+        cap = bt.CAPSTONES[pair]
+        options.append({"id": f"{pair[0]}:{pair[1]}", "type": pair[0], "type2": pair[1], "label": cap.name, "note": cap.says,
+                        "title": "Capstone", "moves": bt.described_moves(member)})
+    return {"kind": "capstone", "ask": f"{name} is fully grown! What will it do for the party when it isn't fighting?", "options": options} if options else None
+
+
 def _with_move(member: dict, gives_up: str, gets: str) -> dict:
     """A team member with a new move in a slot, as wp.learn_move would have it."""
     extra = member.get("extra") or []
@@ -1281,6 +1370,13 @@ def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
         learn = {"focus": lambda r: wp.learn_focus(r, choice), "second": lambda r: wp.learn_second(r, choice, first["level"]),
                  "attack2": lambda r: wp.learn_swap(r, choice, "attack2"), "mix": lambda r: wp.learn_swap(r, choice, "mix"),
                  "slot": lambda r: wp.learn_slot(r, choice),
+                 "third": lambda r: wp.learn_third(r, choice, first["level"]),
+                 "capstone": lambda r: wp.learn_capstone(r, choice),
+                 "attack3": lambda r: wp.learn_upgrade(wp.learn_move(r, choice, "attack3"), "attack3"),
+                 "mix_slot": lambda r: wp.learn_slot(r, choice),
+                 "pick_mix": lambda r: wp.pick_move(r, choice, "mix19"),
+                 "place": lambda r: wp.place_pending(r, choice),
+                 "plus19": lambda r: wp.note_done(wp.learn_upgrade(r, choice), "plus19"),
                  "mix2": lambda r: wp.learn_move(r, choice, "mix2"),
                  "upgrade": lambda r: wp.take_back(r, bt.FOCUS_MOVES[r.focus]) if choice == "refocus" else wp.learn_upgrade(r, choice)}[kind]
         rec = learn(pet[1])
@@ -1533,7 +1629,12 @@ def clues_view(save: dict) -> list[dict]:
 def team_view(save: dict) -> list[dict]:
     """The team for the party book: how far along each is, and its moves."""
     mana = _mana(save) if save["trip"] else [m["mana"] for m in save["team"]]
-    return [{**m, "progress": wp.progress(m["xp"]), "moves": bt.described_moves(m, mana[i])} for i, m in enumerate(save["team"])]
+    out = []
+    for i, m in enumerate(save["team"]):
+        cap = bt.capstone_of(m)
+        card = {"id": "capstone", "type": m["capstone"].split(":")[0], "type2": m["capstone"].split(":")[1], "label": cap.name, "note": cap.says} if cap else None
+        out.append({**m, "progress": wp.progress(m["xp"]), "moves": bt.described_moves(m, mana[i]), "capstone_card": card})
+    return out
 
 
 def view(save: dict) -> dict:

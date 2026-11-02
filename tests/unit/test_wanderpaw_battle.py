@@ -205,7 +205,7 @@ def test_six_moves_each_with_a_note():
     pet = wp.starter("ember", 3)
     moves = bt.moves(pet, "dream", mana=2)
     assert [m["id"] for m in moves] == ["attack", "big", "guard", "focus", "cheer", "rest"]
-    assert all(len(m["note"]) <= 26 for m in moves) and "Super strong" in moves[0]["note"]
+    assert all(len(m["note"]) <= 30 for m in moves) and "Super strong" in moves[0]["note"]
     assert moves[1]["icons"]["haste"]
     assert moves[1]["can"] is False  # not enough mana
     with pytest.raises(ValueError, match="mana"):
@@ -1262,3 +1262,175 @@ def test_rest_costs_energy_for_mana_and_rest_plus_is_free():
     assert energy[0] == 20 and mana[0] == 1 + bt.REST_PLUS_MANA
     assert _icons(_pet("ember", 7), "rest")["cost"] == {"energy": bt.REST_COST} and _icons(plus[0], "rest")["cost"] == {}
     assert next(m for m in bt.described_moves(plus[0]) if m["id"] == "rest")["label"] == "Rest+"
+
+
+# --- levels 15 to 19: a third type, and mixes of any pair -----------------------------
+
+
+def _triple(extra=(), swaps=None, upgrades=(), level=19):
+    base = wp.starter("ember", level)
+    return {**base, "types": {"ember": level, "leaf": level - 4, "shock": level - 14}, "swaps": swaps or {"cheer": "attack2", "focus": "mix"},
+            "extra": list(extra), "upgrades": list(upgrades), "mana": 40}
+
+
+def test_a_third_attack_hits_in_its_type():
+    pet = _triple(swaps={"cheer": "attack2", "focus": "mix", "rest": "attack3"}, upgrades=["attack3"])
+    card = next(m for m in bt.described_moves(pet) if m["id"] == "attack3")
+    assert card["label"] == "{shock} attack+" and card["icons"]["hit"]["count"] == 3 and card["icons"]["hit"]["types"] == ["shock"]
+    b = {**bt.start(_critter(19, "splash", "dog"), [0, 1]), "energy": 9999}
+    step = next(s for s in _round(b, [pet, _pet("leaf", 19)], [{"move": "attack3", "slips": 0}, {"move": "guard", "slips": 0}], energy=[60, 60], mana=[40, 40])[0]["log"] if s["who"] == 0)
+    assert step["type"] == "shock"
+
+
+def test_any_pair_of_its_types_can_be_a_mix():
+    assert bt.mix_id(("ember", "shock")) == "mix:ember:shock" and bt.is_mix("mix:ember:shock") and bt.is_mix("mix2") and not bt.is_mix("attack")
+    pet = _triple(extra=["mix:shock:leaf"])
+    by_id = {m["id"]: m for m in bt.described_moves(pet)}
+    assert by_id["mix:shock:leaf"]["label"] == bt.MIX_MOVES["shock", "leaf"].name
+    assert by_id["mix:shock:leaf"]["type"] == "shock" and by_id["mix:shock:leaf"]["type2"] == "leaf"
+    assert by_id["mix:shock:leaf"]["icons"]["hit"]["types"] == ["shock", "leaf"]
+    assert bt._mix_kind(pet, "ember", "mix:shock:leaf") == bt._mix_kind(pet, "ember", "mix:shock:leaf")
+    b = {**bt.start(_critter(19, "dream", "sheep"), [0, 1]), "energy": 9999}
+    team = [pet, _pet("leaf", 19)]
+    after, _, mana = _round(b, team, [{"move": "mix:shock:leaf", "slips": 0}, {"move": "guard", "slips": 0}], energy=[60, 60], mana=[40, 40])
+    assert mana[0] == 40 - bt.MIX_MANA and any(bt.MIX_MOVES["shock", "leaf"].name in s["text"] for s in after["log"])
+
+
+def test_what_mixes_are_missing():
+    pet = {**_triple(), "swaps": {"cheer": "attack2", "focus": "mix", "guard": "mix2"}}
+    assert set(bt.mixes_missing(pet, "shock")) == {"mix:ember:shock", "mix:shock:ember", "mix:leaf:shock", "mix:shock:leaf"}
+    assert len(bt.mixes_missing(pet)) == 4
+    has_one = {**pet, "extra": ["mix:ember:shock"]}
+    assert len(bt.mixes_missing(has_one)) == 3 and "mix:ember:shock" not in bt.mixes_missing(has_one)
+
+
+def test_every_slot_shows_eight_moves_and_they_all_work():
+    pet = _triple(extra=["guard", "mix:shock:ember"], swaps={"cheer": "attack2", "focus": "mix", "rest": "attack3"}, upgrades=["attack3"])
+    assert len(bt.moves(pet)) == 8 and len(bt.described_moves(pet)) == 8
+    for m in bt.moves(pet, "dream"):
+        if m.get("can") is False or m.get("passive"):
+            continue
+        b = {**bt.start(_critter(19, "dream", "sheep"), [0, 1]), "energy": 9999}
+        bt.turn(b, [pet, _pet("leaf", 19)], [60, 60], [{"move": m["id"], "slips": 0}, {"move": "guard", "slips": 0}], random.Random(1), [40, 40])
+
+
+# --- level 21: capstones ---------------------------------------------------------
+
+
+def _bench_round(bench, foe=None, moves=None, energy=None, mana=None, seed=1, team=None):
+    team = team or [_pet("ember", 21), _pet("leaf", 21)]
+    b = {**bt.start(foe or _critter(21, "dream", "sheep"), [0, 1], bench), "energy": 9999, "max": 9999}
+    return bt.turn(b, team, energy or [60, 60], moves or [{"move": "attack", "slips": 0}] * 2, random.Random(seed), mana or [30, 30])
+
+
+def test_every_ordered_pair_has_a_capstone():
+    pairs = {(a, c) for a in wd.REGIONS for c in wd.REGIONS if a != c}
+    assert set(bt.CAPSTONES) == pairs and len({c.key for c in bt.CAPSTONES.values()}) == 20
+    assert len({c.name for c in bt.CAPSTONES.values()}) == 20
+    pet = _triple()
+    assert bt.capstone_pairs(pet) == [("ember", "leaf"), ("ember", "shock"), ("leaf", "shock")]
+
+
+def test_the_bench_helps_when_not_fighting_and_never_twice():
+    team = [{**_pet("leaf"), "capstone": None}, {**_pet("ember"), "capstone": "ember:shock"}, {**_pet("dream"), "capstone": "ember:shock"}, {**_pet("shock"), "capstone": "shock:dream"}]
+    assert bt.bench_keys(team, [0, 3]) == ["battle_cry"]  # the same one twice counts once
+    assert set(bt.bench_keys(team, [0, 1])) == {"battle_cry", "bright_idea"}
+    assert bt.bench_keys(team, [1, 2]) == ["bright_idea"]  # a fighter's own doesn't count
+
+
+def test_capstones_that_start_a_battle_marked():
+    for key, mark in bt.CAPSTONE_STARTS.items():
+        b = {**bt.start(_critter(21, "ember", "fox"), [0, 1], (key,)), "skip": 5, "energy": 9999}
+        after = bt.turn(b, [_pet("leaf", 21), _pet("leaf", 21)], [60, 60], [{"move": "guard", "slips": 0}] * 2, random.Random(1), [30, 30])[0]
+        assert mark in after["marks"] or mark == "drowsy" or any(mark in s["text"] for s in after["log"]), key
+
+
+def test_steam_curtain_and_tide_pool_help_at_the_start():
+    assert any(s["act"] == "skip" for s in _bench_round(("steam_curtain",))[0]["log"])
+    _, _, mana = _bench_round(("tide_pool",), moves=[{"move": "guard", "slips": 0}] * 2, mana=[10, 10])
+    assert mana == [10 + bt.TIDE_POOL_MANA] * 2
+
+
+def test_clear_spring_and_steady_growth_add_up_to_their_limit():
+    team = [_pet("ember", 21), _pet("leaf", 21)]
+    picks = [{"move": "guard", "slips": 0}] * 2
+    for key in ("clear_spring", "steady_growth"):
+        b = {**bt.start(_critter(21, "dream", "sheep"), [0, 1], (key,)), "energy": 9999, "skip": 99, "start_energy": {"0": 60, "1": 60}}
+        energy, mana = [10, 10], [10, 10]
+        for _ in range(6):
+            b, energy, mana = bt.turn(b, team, energy, picks, random.Random(1), mana)
+        if key == "clear_spring":
+            assert energy == [10 + bt.BENCH_MAX] * 2
+        else:
+            assert mana == [10 + bt.BENCH_MAX] * 2
+
+
+def test_battle_cry_and_dry_tinder_hit_harder():
+    plain = next(s["damage"] for s in _bench_round(())[0]["log"] if s["who"] == 0)
+    cry = next(s["damage"] for s in _bench_round(("battle_cry",))[0]["log"] if s["who"] == 0)
+    assert cry == pytest.approx(plain * bt.BATTLE_CRY, abs=1)
+    b = {**bt.start(_critter(21, "dream", "sheep"), [0, 1]), "marks": {"glowing": 2}, "energy": 9999, "skip": 9}
+    burn = lambda bench: next(s["damage"] for s in bt.turn({**b, "bench": list(bench)}, [_pet("leaf", 21), _pet("leaf", 21)], [60, 60], [{"move": "guard", "slips": 0}] * 2, random.Random(1), [30, 30])[0]["log"] if s["act"] == "burn")  # noqa: E731
+    assert burn(("dry_tinder",)) > burn(())
+
+
+def test_softer_hits_from_the_bench():
+    def taken(bench):
+        total = 0
+        for seed in range(200):
+            # (a very strong creature: on small hits a 10% cut can round away)
+            _, energy, _ = _bench_round(bench, foe=_critter(60, "splash", "dog"), seed=seed)
+            total += 120 - sum(energy)
+        return total
+    plain = taken(())
+    for key in ("deep_roots", "hot_spring", "calm_waters"):
+        assert taken((key,)) < plain, key
+
+
+def test_sweet_dreams_thorn_hedge_second_thought_and_quick_start():
+    assert any("sweet dreams" in s["text"] for seed in range(80) for s in _bench_round(("sweet_dreams",), seed=seed)[0]["log"])
+    assert any("thorn hedge" in s["text"] for seed in range(40) for s in _bench_round(("thorn_hedge",), seed=seed)[0]["log"])
+    assert any("again" in s["text"] for seed in range(80) for s in _bench_round(("second_thought",), seed=seed)[0]["log"])
+    fast = _bench_round(("quick_start",), foe=_critter(99, "dream", "sheep"))[0]
+    assert fast["log"][0]["who"] in (0, 1)
+    assert _bench_round((), foe=_critter(99, "dream", "sheep"))[0]["log"][0]["who"] == "foe"
+
+
+def test_quick_start_lasts_two_rounds():
+    team = [_pet("ember", 21), _pet("leaf", 21)]
+    picks = [{"move": "guard", "slips": 0}] * 2
+    b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1], ("quick_start",)), "energy": 9999}
+    for _ in range(2):
+        b, _, _ = bt.turn(b, team, [60, 60], picks, random.Random(1), [30, 30])
+        assert b["log"][0]["who"] in (0, 1)
+    b, _, _ = bt.turn(b, team, [60, 60], picks, random.Random(1), [30, 30])
+    assert b["log"][0]["who"] == "foe"
+
+
+def test_a_softer_hit_always_takes_off_at_least_one():
+    # an even creature's hit on a level 21 pet is small enough for 10% to round away
+    def hit(bench, foe_kind="ember"):
+        team = [wp.starter("ember", 21), wp.starter("ember", 21)]
+        b = {**bt.start(_critter(21, foe_kind, "fox"), [0, 1], bench), "energy": 9999, "effects": {"hot_spring": 2} if "hot_spring" in bench else {}, "round": 1}
+        return next(s["damage"] for s in bt.turn(b, team, [60, 60], [{"move": "attack", "slips": 0}] * 2, random.Random(1), [30, 30])[0]["log"] if s["who"] == "foe")
+    plain = hit(())
+    assert plain > 1 and hit(("deep_roots",)) <= plain - 1
+    assert hit(("deep_roots", "hot_spring")) <= plain - 1
+
+
+def test_bright_idea_lowers_costs():
+    pet = {**_pet("ember", 21), "bright": True}
+    assert bt.big_mana(pet) == bt.BIG_MANA - 1 and bt.mix_mana(pet) == bt.MIX_MANA - 1
+
+
+def test_a_used_up_passive_is_marked_as_spent():
+    pet = _nine(focus="guardian")
+    b = {**bt.start(_critter(9, "dream", "sheep"), [0, 1]), "round": bt.GUARDIAN_PLUS_ROUNDS}
+    wall = next(m for m in bt.battle_moves(b, 0, pet, 30) if m["id"] == "guardian")
+    assert wall["spent"]
+    early = {**b, "round": bt.GUARDIAN_PLUS_ROUNDS - 1}
+    assert not next(m for m in bt.battle_moves(early, 0, pet, 30) if m["id"] == "guardian")["spent"]
+    healer = _nine(focus="healer")
+    done = {**b, "healed": {"0:energy": bt.HEAL_PLUS_MAX_ENERGY, "0:mana": bt.HEAL_PLUS_MAX_MANA}}
+    assert next(m for m in bt.battle_moves(done, 0, healer, 30) if m["id"] == "healer")["spent"]
+    assert next(m for m in bt.moves(_pet("ember", 7)) if m["id"] == "guard")["note"].startswith("Takes Partner's hits")

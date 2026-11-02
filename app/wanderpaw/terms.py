@@ -38,6 +38,7 @@ TERMS = {
     "Passive": "A move that's always on: it fills a slot, with nothing to type.",
     "Focus": "What a pet specializes in, chosen at level 3.",
     "Mix": "A move mixing a pet's two types, from level 7.",
+    "Capstone": "A pet's level 21 passive, helping the fighters whenever it's on the party and not fighting.",
     "Upgrade": "A stronger version of a move, shown with a +.",
     "Slot": "One of the six places a pet keeps a move.",
 }

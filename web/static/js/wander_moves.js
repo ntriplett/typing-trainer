@@ -81,7 +81,7 @@ function moveCard(m, word, fresh = false) {
   return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""} ${paid}" data-move="${m.id}" style="${tileStyle(m)}">
     <div class="wander-move-head"><b class="wander-move-name" style="color:${color}">${wanderText(m.label)}</b>${moveIcons(m)}</div>
     ${slot}
-    <span class="wander-move-note">${wanderText(m.note)}</span>
+    <span class="wander-move-note">${m.spent ? `<s>${wanderText(m.note)}</s> <b class="wander-used-up">Used up</b>` : wanderText(m.note)}</span>
     ${moveCosts(m)}</li>`;
 }
 

@@ -60,6 +60,10 @@ MIX_LEVEL = 7
 UPGRADE_LEVEL = 9
 SEVENTH_SLOT_LEVEL = 11
 REVERSE_MIX_LEVEL = 13
+THIRD_TYPE_LEVEL = 15
+EIGHTH_SLOT_LEVEL = 17
+ANY_MIX_LEVEL = 19
+CAPSTONE_LEVEL = 21
 PARTY_SIZE = 5
 STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
             "dream": ("Fluff", "sheep"), "shock": ("Zip", "cat")}
@@ -77,6 +81,11 @@ class Record:
     swaps: dict[str, str] = field(default_factory=dict)  # move id it gave up -> move id it got (level choices)
     upgrades: list[str] = field(default_factory=list)  # move ids made "+" ("refocus": took a focus back instead)
     extra: list[str] = field(default_factory=list)  # move ids in the slots past six
+    third: str | None = None
+    third_at: int | None = None
+    pending: str | None = None  # a move picked at a level, waiting for its slot
+    done: list[str] = field(default_factory=list)  # choices made that leave no other trace
+    capstone: str | None = None  # "first:second", chosen at CAPSTONE_LEVEL (battle.CAPSTONES)
 
 
 def can_go(species: str) -> bool:
@@ -114,6 +123,8 @@ def type_levels(species: str, rec: Record) -> dict[str, int]:
         out[born_second] = lv
     elif rec.second:
         out[rec.second] = lv - rec.second_at + 1
+    if rec.third:
+        out[rec.third] = lv - rec.third_at + 1
     return out
 
 
@@ -149,6 +160,24 @@ def pick_second(seed: int, species: str, rec: Record, choice: str) -> Record:
     return learn_second(rec, choice, level(rec.xp))
 
 
+def third_choices(seed: int, species: str, rec: Record) -> tuple[str, str] | None:
+    """The two types offered at THIRD_TYPE_LEVEL (None: nothing to pick): the
+    type it has fought beside most that it doesn't have (else a random one), and another."""
+    if rec.third or level(rec.xp) < THIRD_TYPE_LEVEL:
+        return None
+    others = [t for t in TYPES if t not in type_levels(species, rec)]
+    if len(others) < 2:
+        return None
+    rng = random.Random(f"wanderpaw-third:{seed}")
+    fought = [t for t in others if rec.partners.get(t)]
+    best = max(fought, key=lambda t: (rec.partners[t], -others.index(t))) if fought else rng.choice(others)
+    return best, rng.choice([t for t in others if t != best])
+
+
+def learn_third(rec: Record, choice: str, at: int) -> Record:
+    return replace(rec, third=choice, third_at=at)
+
+
 def learn_second(rec: Record, choice: str, at: int) -> Record:
     return replace(rec, second=choice, second_at=at)
 
@@ -170,6 +199,23 @@ def learn_move(rec: Record, gives_up: str, gets: str) -> Record:
     if gives_up in rec.extra:
         return replace(rec, extra=[gets if m == gives_up else m for m in rec.extra])
     return learn_swap(rec, gives_up, gets)
+
+
+def learn_capstone(rec: Record, capstone: str) -> Record:
+    return replace(rec, capstone=capstone)
+
+
+def note_done(rec: Record, what: str) -> Record:
+    return replace(rec, done=[*rec.done, what])
+
+
+def pick_move(rec: Record, move: str, what: str) -> Record:
+    """A move picked, waiting for its slot."""
+    return replace(rec, pending=move, done=[*rec.done, what])
+
+
+def place_pending(rec: Record, gives_up: str) -> Record:
+    return replace(learn_move(rec, gives_up, rec.pending), pending=None)
 
 
 def learn_slot(rec: Record, move: str) -> Record:
@@ -203,7 +249,7 @@ def gain_xp(rec: Record, amount: int) -> Record:
 
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
-    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra,
+    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra, "capstone": rec.capstone,
             "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
             "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
@@ -237,7 +283,8 @@ def team_energy(members: list[dict]) -> int:
 
 
 def record_json(rec: Record) -> dict:
-    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra}
+    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra, "third": rec.third, "third_at": rec.third_at,
+            "pending": rec.pending, "done": rec.done, "capstone": rec.capstone}
 
 
 def record_from(data: dict | None) -> Record:

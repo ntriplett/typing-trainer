@@ -31,7 +31,7 @@ def _seed():
 def test_the_move_lab_lists_every_move_tile():
     assert client.get("/move-lab").status_code == 200
     groups = {g["name"]: g["tiles"] for g in client.get("/api/move-lab").json()["groups"]}
-    assert len(groups["Mixes"]) == 40 and len(groups["Mythical mixes"]) == 20 and len(groups["Focus moves"]) == 40
+    assert len(groups["Mixes"]) == 40 and len(groups["Capstones"]) == 20 and len(groups["Mythical mixes"]) == 20 and len(groups["Focus moves"]) == 40
     names = {t["name"] for t in groups["Mixes"]}
     assert "Fire Seed" in names and "Fire Seed+" in names
     for tiles in groups.values():
@@ -394,6 +394,93 @@ def test_reborn_is_once_a_day_across_battles():
     c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "sheep", "dream", 2, True, 1)
     assert sv._start_battle(save, c)["battle"]["reborn"] == [0]
     assert sv._start_battle({**save, "trip": {**save["trip"], "reborn": [0]}}, c)["battle"]["reborn"] == []
+
+
+REC_14 = {"xp": wp.xp_for(14), "second": "leaf", "second_at": 5, "partners": {}, "starred": False, "focus": "healer",
+          "swaps": {"rest": "attack2", "attack2": "mix", "focus": "mix2"}, "upgrades": ["big", "attack"], "extra": ["guard"]}
+
+
+def test_levels_fifteen_to_nineteen():
+    fox = _add_pet("fox")
+    with db.open_db(main.DB_PATH) as conn:
+        db.save_wander_pet(conn, 1, fox, REC_14)
+    client.post("/api/wander/trip/start", json={})
+    ups = _level_to(fox, 19)
+    assert [u["level"] for u in ups] == [15, 16, 17, 18, 19]
+    # 15: a third type, then its attack+, in any slot
+    third = ups[0]["choose"]
+    assert third["kind"] == "third" and len(third["options"]) == 2
+    kind = third["options"][0]["id"]
+    assert kind not in ("ember", "leaf")
+    data = _finish(kind)
+    step = data["levelups"][0]
+    assert step["level"] == 15 and step["choose"]["kind"] == "attack3" and len(step["choose"]["options"]) == 7
+    preview = next(m for m in step["choose"]["options"][0]["moves"] if m["id"] == "attack3")
+    assert preview["label"].endswith("attack+")
+    data = _finish("cheer")
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert me["types"][kind] == 5 and "attack3" in me["upgrades"] and "attack3" in {m["id"] for m in me["moves"]}
+    assert [u["level"] for u in data["levelups"]] == [16, 17, 18, 19]
+    # 17: an 8th slot, for a mix with the third type
+    data = _finish(None)
+    step = data["levelups"][0]
+    assert step["level"] == 17 and step["choose"]["kind"] == "mix_slot"
+    ids = {o["id"] for o in step["choose"]["options"]}
+    assert ids == {f"mix:ember:{kind}", f"mix:{kind}:ember", f"mix:leaf:{kind}", f"mix:{kind}:leaf"}
+    data = _finish(f"mix:ember:{kind}")
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert len(me["moves"]) == 8 and me["moves"][-1]["id"] == f"mix:ember:{kind}"
+    # 19: any mix it doesn't have, then its slot, then an upgrade
+    data = _finish(None)
+    step = data["levelups"][0]
+    assert step["level"] == 19 and step["choose"]["kind"] == "pick_mix"
+    assert {o["id"] for o in step["choose"]["options"]} == {f"mix:{kind}:ember", f"mix:leaf:{kind}", f"mix:{kind}:leaf"}
+    data = _finish(f"mix:{kind}:leaf")
+    step = data["levelups"][0]
+    assert step["choose"]["kind"] == "place" and len(step["choose"]["options"]) == 8
+    assert client.get("/api/wander").json()["levelups"][0]["choose"]["kind"] == "place"  # a reload keeps its place
+    data = _finish("big")
+    me = next(m for m in data["team"] if m["id"] == fox)
+    ids = [m["id"] for m in me["moves"]]
+    assert "big" not in ids and f"mix:{kind}:leaf" in ids and len(ids) == 8
+    step = data["levelups"][0]
+    assert step["choose"]["kind"] == "plus19"
+    data = _finish(f"mix:{kind}:leaf")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert next(m for m in me["moves"] if m["id"] == f"mix:{kind}:leaf")["cost"] == 3
+    with db.open_db(main.DB_PATH) as conn:
+        rec = db.get_wander_pets(conn, 1)[fox]
+    assert rec["third"] == kind and rec["third_at"] == 15 and rec["pending"] is None and {"mix19", "plus19"} <= set(rec["done"])
+
+
+def test_level_twenty_one_chooses_a_capstone_that_helps_from_the_bench():
+    fox, bunny = _add_pet("fox"), _add_pet("bunny", 2)
+    with db.open_db(main.DB_PATH) as conn:
+        db.save_wander_pet(conn, 1, fox, {**REC_14, "xp": wp.xp_for(20), "third": "shock", "third_at": 15, "done": ["mix19", "plus19"], "extra": ["guard", "mix:ember:shock"]})
+    step = _level_to(fox, 21)[0]
+    assert step["level"] == 21 and step["max"] and step["choose"]["kind"] == "capstone"
+    assert [o["id"] for o in step["choose"]["options"]] == ["ember:leaf", "ember:shock", "leaf:shock"]
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    data = _finish("ember:shock")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert me["capstone"] == "ember:shock" and me["capstone_card"]["label"] == "Battle Cry"
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.get_wander_pets(conn, 1)[fox]["capstone"] == "ember:shock"
+    assert bunny
+
+
+def test_trail_runner_makes_the_first_steps_free():
+    from app.wanderpaw import save as sv
+    team = [{**wp.starter("shock", 21), "capstone": "shock:leaf", "id": None}, wp.starter("leaf", 21)]
+    save = sv.start_trip({**sv.new_save(5), "team": team})
+    before = save["trip"]["energy"]
+    for step in sv.steps(save)[:1]:
+        big, h = lc.owner(step)
+        after = sv.apply_walk(save, h) if big == tuple(save["at"]) else save
+        if after is not save and not after.get("battle"):
+            assert after["trip"]["energy"] == before and after["trip"]["free_steps"] == 1
 
 
 def test_a_guardian_plus_cant_also_upgrade_its_guard():

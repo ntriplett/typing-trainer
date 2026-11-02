@@ -1298,3 +1298,17 @@ main.wander {
   outline-offset: 1px;
 }
 
+
+/* A passive that's done all it can this battle. */
+.wander-used-up {
+  color: #a0321f;
+}
+
+.wander-bench {
+  margin-top: 0.5rem;
+}
+
+.wander-capstone-title {
+  margin: 0.5rem 0 0;
+  font-weight: bold;
+}

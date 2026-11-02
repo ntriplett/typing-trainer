@@ -46,7 +46,13 @@ says how), and it upgrades one other move (`upgrades`): names get a "+".
 At level 11 it gets a 7th slot (`extra`), which a move it gave up comes back
 to, and one more upgrade. At level 13 it learns its pair's mix the other way
 around (mix2: second type first), taking any slot. Each mythical has its own
-for this too (MYTHICAL_REVERSE).
+for this too (MYTHICAL_REVERSE). At level 15 it learns a third type, with an
+upgraded attack in it (attack3), taking any slot. At level 17 an 8th slot holds a
+mix with that type (a move id "mix:first:second"). At level 19 it learns any
+mix of its three types it doesn't have, taking any slot, and upgrades a move.
+At level 21 it chooses a capstone (CAPSTONES, for a pair of its types): a
+passive that helps the fighters whenever it's on the party and not fighting
+(`bench` in a battle: their keys, the same one never twice).
 
 Marks (MARKS: soaked, glowing, drowsy, static, tangled) last this round
 and the next (MARK_ROUNDS). On their own: glowing burns, drowsy may doze
@@ -203,7 +209,7 @@ COMBOS = {
 
 MARK_TYPES = {mark: kind for kind, mark in MARKS.items()}
 MIX_MANA = 4
-MIX_IDS = ("mix", "mix2")
+ATTACKS = ("attack", "attack2", "attack3")
 REVIVE = 0.2  # of its battle energy
 MENDING = 0.03  # of each pet's battle energy, each round it lasts
 BRAMBLES_BURN = 0.35  # of an even hit, each round ...
@@ -296,6 +302,84 @@ MYTHICAL_REVERSE = {
 
 
 
+@dataclass(frozen=True, slots=True)
+class Capstone:
+    key: str
+    name: str
+    says: str
+
+
+# Level 21: helps the fighters while this pet isn't fighting.
+CAPSTONES = {
+    ("splash", "ember"): Capstone("steam_curtain", "Steam Curtain", "Enemy's first attack each battle misses."),
+    ("splash", "dream"): Capstone("tide_pool", "Tide Pool", "Fighters start each battle with +3 {mana}."),
+    ("splash", "leaf"): Capstone("clear_spring", "Clear Spring", "Fighters gain 1 {energy} each round (max 3)."),
+    ("splash", "shock"): Capstone("wet_ground", "Wet Ground", "Enemy starts each battle Soaked."),
+    ("ember", "splash"): Capstone("hot_spring", "Hot Spring", "Enemy hits 10% softer for the first 2 rounds."),
+    ("ember", "dream"): Capstone("fever_heat", "Fever Heat", "Enemy starts each battle Glowing."),
+    ("ember", "leaf"): Capstone("dry_tinder", "Dry Tinder", "Burns do 50% more damage."),
+    ("ember", "shock"): Capstone("battle_cry", "Battle Cry", "Fighters' hits do 10% more damage."),
+    ("dream", "splash"): Capstone("calm_waters", "Calm Waters", "Each fighter's first hit taken each battle is halved."),
+    ("dream", "ember"): Capstone("campfire_song", "Campfire Song", "Enemy starts each battle Drowsy."),
+    ("dream", "leaf"): Capstone("sweet_dreams", "Sweet Dreams", "Enemy has a 10% chance to lose each turn."),
+    ("dream", "shock"): Capstone("second_thought", "Second Thought", "Fighters' attacks have a 10% chance to hit twice."),
+    ("leaf", "splash"): Capstone("deep_roots", "Deep Roots", "Fighters take 10% less damage."),
+    ("leaf", "ember"): Capstone("thorn_hedge", "Thorn Hedge", "Enemy takes a little damage each time it attacks."),
+    ("leaf", "dream"): Capstone("good_company", "Good Company", "Fighters earn 10% more {xp}."),
+    ("leaf", "shock"): Capstone("steady_growth", "Steady Growth", "Fighters gain 1 {mana} each round (max 3)."),
+    ("shock", "splash"): Capstone("charged_air", "Charged Air", "Enemy starts each battle Static."),
+    ("shock", "ember"): Capstone("quick_start", "Quick Start", "Fighters go first in rounds 1 and 2."),
+    ("shock", "dream"): Capstone("bright_idea", "Bright Idea", "Fighters' Big and mix moves cost 1 less {mana}."),
+    ("shock", "leaf"): Capstone("trail_runner", "Trail Runner", "The first 10 steps each day cost no {energy}."),
+}
+CAPSTONE_STARTS = {"wet_ground": "soaked", "fever_heat": "glowing", "campfire_song": "drowsy", "charged_air": "static"}
+TIDE_POOL_MANA = 3
+BENCH_MAX = 3  # energy or mana a round's gain adds up to, in a battle
+HOT_SPRING = 0.9
+DRY_TINDER = 1.5
+BATTLE_CRY = 1.1
+CALM_WATERS = 0.5
+SWEET_DREAMS = 0.1
+SECOND_THOUGHT = 0.1
+DEEP_ROOTS = 0.9
+THORN_HEDGE = 0.25  # of an even hit
+GOOD_COMPANY = 1.1
+TRAIL_RUNNER_STEPS = 10
+QUICK_START_ROUNDS = 2
+
+
+def capstone_of(member: dict) -> Capstone | None:
+    pair = member.get("capstone")
+    return CAPSTONES[tuple(pair.split(":"))] if pair else None
+
+
+def capstone_pairs(member: dict) -> list[tuple[str, str]]:
+    """The pairs of its types: earlier-learned first."""
+    kinds = list(member["types"])
+    return [(kinds[i], kinds[j]) for i in range(len(kinds)) for j in range(i + 1, len(kinds))]
+
+
+def bench_keys(team: list[dict], fighters: list[int]) -> list[str]:
+    """The capstones helping now, the same one never twice."""
+    caps = [capstone_of(m) for i, m in enumerate(team) if i not in fighters]
+    return list(dict.fromkeys(c.key for c in caps if c))
+
+
+def spent_now(b: dict, place: int, member: dict, move: str) -> bool:
+    """A passive move that's done all it can for this battle, or a once-a-battle one that's used."""
+    if used_up(b, place, member, move):
+        return True
+    if move == "guardian":
+        return b["round"] >= guardian_rounds(member)
+    if move == "healer":
+        energy, mana = heal_amounts(member)[1], heal_amounts(member)[3]
+        healed = b.get("healed") or {}
+        return healed.get(f"{place}:energy", 0) >= energy and healed.get(f"{place}:mana", 0) >= mana
+    if is_mix(move) and mix_move(member, move).reborn:
+        return place in (b.get("reborn_used") or [])
+    return False
+
+
 def matchup(move: str, target: str) -> float:
     """How strong a move of type `move` is against a `target` type."""
     gap = (wd.REGIONS.index(target) - wd.REGIONS.index(move)) % len(wd.REGIONS)
@@ -314,14 +398,14 @@ def _even_power(level: int) -> int:
     return 5 + level  # a middling pet's power at that level
 
 
-def start(critter, fighters: list[int]) -> dict:
+def start(critter, fighters: list[int], bench: list[str] | tuple[str, ...] = ()) -> dict:
     """A battle against `critter` (critters.Critter) with these team places."""
     energy = round(2 * ROUNDS * pet_hit(_even_power(critter.level)) * TYPICAL_ACCURACY)
     return {
         "critter": critter.id, "species": critter.species, "kind": critter.kind, "second": critter.second, "level": critter.level,
         "seed": critter.seed, "energy": energy, "max": energy, "speed": 5 + critter.level,
         "fighters": list(fighters), "marks": {}, "effects": {}, "focus": [], "skip": 0, "round": 0, "log": [],
-        "over": None,
+        "over": None, "bench": list(bench),
     }
 
 
@@ -361,15 +445,15 @@ def big_strength(member: dict) -> float:
 
 
 def big_mana(member: dict) -> int:
-    return BIG_PLUS_MANA if upgraded(member, "big") else BIG_MANA
+    return (BIG_PLUS_MANA if upgraded(member, "big") else BIG_MANA) - (1 if member.get("bright") else 0)
 
 
 def mix_mana(member: dict, move: str = "mix") -> int:
-    return MIX_PLUS_MANA if upgraded(member, move) else MIX_MANA
+    return (MIX_PLUS_MANA if upgraded(member, move) else MIX_MANA) - (1 if member.get("bright") else 0)
 
 
 def attack_strength(member: dict, move: str) -> float:
-    return ATTACK_PLUS if move in ("attack", "attack2") and upgraded(member, move) else 1.0
+    return ATTACK_PLUS if move in ATTACKS and upgraded(member, move) else 1.0
 
 
 def focus_strength(member: dict) -> float:
@@ -456,7 +540,8 @@ def described_moves(member: dict, mana: int | None = None) -> list[dict]:
     says = {
         "attack": (f"{wd.tw(own)} attack", ""),
         "attack2": (None, ""),
-        **{move: (None, mix_move(member, move).says) for move in MIX_IDS if _has_learned(member, move)},
+        "attack3": (None, ""),
+        **{move: (None, mix_move(member, move).says) for move in learned_mixes(member)},
         "big": (f"Big {wd.tw(own)}", ""),
         "guard": ("Guard", guard),
         "focus": ("Focus", f"Your next move is {focus_strength(member)}x."),
@@ -516,6 +601,10 @@ def move_catalog() -> list[dict]:
     for species, mix in MYTHICAL_REVERSE.items():
         first, second = wp.SPECIES_TYPES[species]
         groups["Mythical mixes"] += both(lambda plus, f=first, s=second, sp=species: pet(f, s, species=sp, swaps={"rest": "mix2"}, upgrades=["mix2"] if plus and not mix.passive else []), "mix2", mix.name)
+    groups["Capstones"] = []
+    for (first, second), cap in CAPSTONES.items():
+        card = {"id": "capstone", "type": first, "type2": second, "label": cap.name, "note": cap.says, "icons": {"cost": {}}}
+        groups["Capstones"].append({"name": cap.name, "party": card, "battle": card})
     return [{"name": name, "tiles": tiles} for name, tiles in groups.items()]
 
 
@@ -546,7 +635,7 @@ def moves(member: dict, foe: str | None = None, mana: int | None = None) -> list
          "note": strength},
         {"id": "big", "type": own, "label": f"Big {wd.tw(own)}", "size": "phrase", "cost": big_mana(member),
          "note": strength, "can": mana is None or mana >= big_mana(member)},
-        {"id": "guard", "type": None, "label": "Guard", "size": "short", "note": f"Partner's hits at {guard_share(member, None):.0%}."},
+        {"id": "guard", "type": None, "label": "Guard", "size": "short", "note": f"Takes Partner's hits at {guard_share(member, None):.0%}."},
         {"id": "focus", "type": None, "label": "Focus", "size": "short", "note": f"Your next move: {focus_strength(member)}x."},
         {"id": "cheer", "type": None, "label": "Cheer", "size": "short", "note": f"Partner's move: {cheer_strength(member)}x."},
         {"id": "rest", "type": None, "label": "Rest", "size": "short", "note": f"Gain {rest_mana(member)} {{mana}}."},
@@ -588,8 +677,8 @@ def move_icons(member: dict, move: str) -> dict:
         icons["shield"] = {"types": types or [], "double": double, "who": who, "tip": terms.shield_tip(who, double, types)}
 
     doubled = lambda kind: DAREDEVIL if _doubles(member, kind) else 1.0  # noqa: E731
-    if move in ("attack", "attack2"):
-        kind = own if move == "attack" else second
+    if move in ATTACKS:
+        kind = kinds[ATTACKS.index(move)] if ATTACKS.index(move) < len(kinds) else own
         hit(attack_strength(member, move) * doubled(kind), [kind])
         if _doubles(member, kind):
             icons["cost"]["energy"] = _daredevil_cost(member)
@@ -613,11 +702,11 @@ def move_icons(member: dict, move: str) -> dict:
             icons["cost"]["energy"] = mark_energy(member)
     elif move == "guardian":
         shield("partner", list(strong_against(own)), double=True)
-    elif move in MIX_IDS:
+    elif is_mix(move):
         m = mix_move(member, move)
         total = m.hit * m.times + m.later
         if total:
-            hit(total, kinds[:2])
+            hit(total, list(mix_pair(member, move)))
         if m.first:
             haste()
         if m.marks:
@@ -643,14 +732,42 @@ def _later_moves(member: dict, foe: str | None, mana: int | None) -> dict[str, d
     second = kinds[1] if len(kinds) > 1 else kinds[0]
     strength = _strength(matchup(second, foe)).strip() if foe else ""
     got = {"attack2": {"id": "attack2", "type": second, "label": f"{wd.tw(second)} attack", "size": "medium", "note": strength}}
-    for move in MIX_IDS:
-        if _has_learned(member, move):
-            got[move] = mix_card(member, mana, move)
+    if len(kinds) > 2:
+        third = _strength(matchup(kinds[2], foe)).strip() if foe else ""
+        got["attack3"] = {"id": "attack3", "type": kinds[2], "label": f"{wd.tw(kinds[2])} attack", "size": "medium", "note": third}
+    for move in learned_mixes(member):
+        got[move] = mix_card(member, mana, move)
     return got
 
 
-def _has_learned(member: dict, move: str) -> bool:
-    return move in (member.get("swaps") or {}).values() or move in (member.get("extra") or [])
+def is_mix(move: str) -> bool:
+    return move in ("mix", "mix2") or move.startswith("mix:")
+
+
+def learned_mixes(member: dict) -> list[str]:
+    """The mixes it has picked up, now or before."""
+    return [m for m in dict.fromkeys([*(member.get("swaps") or {}).values(), *(member.get("extra") or []), member.get("pending") or ""]) if is_mix(m)]
+
+
+def mix_pair(member: dict, move: str = "mix") -> tuple[str, str]:
+    """The types a mix mixes, first first."""
+    if move.startswith("mix:"):
+        _, first, second = move.split(":")
+        return first, second
+    a, b = list(member["types"])[:2]
+    return (b, a) if move == "mix2" else (a, b)
+
+
+def mix_id(pair: tuple[str, str]) -> str:
+    return f"mix:{pair[0]}:{pair[1]}"
+
+
+def mixes_missing(member: dict, with_type: str | None = None) -> list[str]:
+    """Mixes of its types it doesn't have right now (only ones `with_type`, if given)."""
+    now = {mix_pair(member, m["id"]) for m in moves(member) if is_mix(m["id"])}
+    kinds = list(member["types"])
+    pairs = [(a, b) for a in kinds for b in kinds if a != b and (not with_type or with_type in (a, b))]
+    return [mix_id(p) for p in pairs if p not in now]
 
 
 def _with_swaps(out: list[dict], member: dict, foe: str | None, mana: int | None = None) -> list[dict]:
@@ -686,14 +803,15 @@ def mix_move(member: dict, move: str = "mix") -> MixMove:
     """The mixed move its two types make (a mythical has its own), or, as
     mix2, the one they make the other way around."""
     kinds = list(member["types"])
+    if move.startswith("mix:"):
+        return MIX_MOVES[mix_pair(member, move)]
     if move == "mix2":
         return MYTHICAL_REVERSE.get(member.get("species")) or MIX_MOVES[kinds[1], kinds[0]]
     return MYTHICAL_MOVES.get(member.get("species")) or MIX_MOVES[kinds[0], kinds[1]]
 
 
 def mix_card(member: dict, mana: int | None = None, move: str = "mix") -> dict:
-    kinds = list(member["types"])[:2]
-    first, second = reversed(kinds) if move == "mix2" else kinds
+    first, second = mix_pair(member, move)
     m = mix_move(member, move)
     card = {"id": move, "type": first, "type2": second, "label": m.name, "size": "long", "cost": mix_mana(member, move),
             "note": m.short, "says": m.says, "can": mana is None or mana >= mix_mana(member, move)}
@@ -721,7 +839,7 @@ def _with_focus(out: list[dict], member: dict, mana: int | None) -> list[dict]:
     new = {"id": FOCUS_MOVES[focus], "type": own, "label": FOCUS_NAMES[own][focus], **card}
     out = [new if m["id"] == FOCUS_REPLACES[focus] else m for m in out]
     if focus == "guardian":
-        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": f"Partner's hits at {guard_share(member, None):.0%}." if focus_plus(member, "guardian") else f"{GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
+        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": f"Takes Partner's hits at {guard_share(member, None):.0%}." if focus_plus(member, "guardian") else f"{GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
     return out
 
 
@@ -740,6 +858,18 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         battle = {**battle, "start_energy": {str(i): energy[i] for i in battle["fighters"]}}
     b = {**battle, "round": battle["round"] + 1, "log": [], "marks": dict(battle.get("marks", {})),
          "effects": dict(battle.get("effects", {})), "skip": battle.get("skip", 0), "healed": dict(battle.get("healed", {}))}
+    bench = b.get("bench") or []
+    if b["round"] == 1:
+        for key, mark in CAPSTONE_STARTS.items():
+            if key in bench:
+                b["marks"][mark] = MARK_ROUNDS
+        if "steam_curtain" in bench:
+            b["skip"] = max(b["skip"], 1)
+        if "hot_spring" in bench:
+            b["effects"]["hot_spring"] = 2
+        if "tide_pool" in bench:
+            for i in able:
+                mana[i] = min(team[i]["mana"], mana[i] + TIDE_POOL_MANA)
     chosen = {}
     for i, pick in zip(able, picks):
         options = {m["id"]: m for m in moves(team[i], b["kind"], mana[i])}
@@ -776,9 +906,10 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         if w == "foe":
             return -1 if "tangled" in b["marks"] else b["speed"]
         early = {"mark": 2000, "big": 1000}.get(chosen[w]["move"], 0)
-        if chosen[w]["move"] in MIX_IDS and mix_move(team[w], chosen[w]["move"]).first:
+        if is_mix(chosen[w]["move"]) and mix_move(team[w], chosen[w]["move"]).first:
             early = 2000
-        return team[w]["speed"] + max(early, 1500 if lift and lift["first"] else 0)
+        fast = (lift and lift["first"]) or ("quick_start" in bench and b["round"] <= QUICK_START_ROUNDS)
+        return team[w]["speed"] + max(early, 1500 if fast else 0)
 
     order = sorted([*able, "foe"], key=lambda w: -speed(w) + rng.random() * 0.1)
     for entry in _landing(b, team, "start"):
@@ -796,12 +927,14 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         if energy[who] <= 0:
             continue
         move = chosen[who]["move"]
-        if move in ("attack", "attack2", "big"):
+        if move in (*ATTACKS, "big"):
             strength = accuracy(chosen[who].get("slips", 0)) * boost[who]
             step(_hit(b, team, who, move, strength, energy, mana))
             if echo == who and b["energy"] > 0:
                 step(_hit(b, team, who, move, strength, energy, mana, free=True, again=True))
-        elif move in MIX_IDS:
+            if "second_thought" in bench and b["energy"] > 0 and rng.random() < SECOND_THOUGHT:
+                step(_hit(b, team, who, move, strength, energy, mana, free=True, again=True))
+        elif is_mix(move):
             if _mix(b, team, who, move, accuracy(chosen[who].get("slips", 0)) * boost[who], energy, mana, step):
                 echo = partner[who]
         elif move == "mark":
@@ -827,13 +960,13 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
     # it burns at the end of the round (twice as hard after a Blaze or a Wildfire)
     hot = 2 if "burn" in b["effects"] else 1 if "glowing" in b["marks"] else 0
     if b["energy"] > 0 and hot:
-        burn = max(1, round(pet_hit(_even_power(b["level"])) * BURN * hot))
+        burn = max(1, round(pet_hit(_even_power(b["level"])) * BURN * hot * (DRY_TINDER if "dry_tinder" in bench else 1)))
         b["energy"] = max(0, b["energy"] - burn)
         step({"who": "foe", "act": "burn", "target": "foe", "type": "ember", "damage": burn, "text": f"The {foe} burns for {burn}."})
     for entry in _landing(b, team, "end"):
         step(entry)
     if b["energy"] > 0 and "brambles" in b["effects"]:
-        burn = max(1, round(pet_hit(_even_power(b["level"])) * BRAMBLES_BURN))
+        burn = max(1, round(pet_hit(_even_power(b["level"])) * BRAMBLES_BURN * (DRY_TINDER if "dry_tinder" in bench else 1)))
         b["energy"] = max(0, b["energy"] - burn)
         who = b.get("drainer")
         gain = 0
@@ -849,6 +982,17 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         if any(gains.values()):
             step({"who": next(iter(gains)), "act": "heal", "target": next(iter(gains)), "type": "leaf", "gain": max(gains.values()),
                   "text": "A gentle mending: " + ", ".join(f"{name(i)} +{g}" for i, g in gains.items() if g) + "."})
+    for key, what in (("clear_spring", "energy"), ("steady_growth", "mana")):
+        if b["energy"] > 0 and key in bench:
+            for i in b["fighters"]:
+                given = b["healed"].get(f"{key}:{i}", 0)
+                if energy[i] > 0 and given < BENCH_MAX:
+                    if what == "energy":
+                        gain = _gain(b, team, energy, i, 1)
+                    else:
+                        gain = min(1, team[i]["mana"] - mana[i])
+                        mana[i] += gain
+                    b["healed"][f"{key}:{i}"] = given + gain
     for i in able:  # healers, once the creature's still standing
         p = partner[i]
         if b["energy"] > 0 and focus_active(team[i], "healer") and p is not None and energy[i] > 0 and energy[p] > 0:
@@ -895,16 +1039,20 @@ def _guardian_blocks(b: dict, team: list[dict], energy: list[int], target: int) 
 
 def used_up(b: dict, place: int, member: dict, move: str) -> bool:
     """A move that's once a battle, already used in this one."""
-    return move in MIX_IDS and mix_move(member, move).once and f"{place}:{move}" in (b.get("once") or {})
+    return is_mix(move) and mix_move(member, move).once and f"{place}:{move}" in (b.get("once") or {})
 
 
 def battle_moves(b: dict, place: int, member: dict, mana: int) -> list[dict]:
     """A fighter's moves right now: a once-a-battle move it's used can't be picked."""
-    return [{**m, "can": False} if used_up(b, place, member, m["id"]) else m for m in moves(member, b["kind"], mana)]
+    out = []
+    for m in moves(member, b["kind"], mana):
+        spent = spent_now(b, place, member, m["id"])
+        out.append({**m, "spent": spent, **({"can": False} if spent and not m.get("passive") else {})})
+    return out
 
 
 def has_reborn(member: dict) -> bool:
-    return any(m["id"] in MIX_IDS and mix_move(member, m["id"]).reborn for m in moves(member))
+    return any(is_mix(m["id"]) and mix_move(member, m["id"]).reborn for m in moves(member))
 
 
 def _reborn(b: dict, team: list[dict], energy: list[int]) -> list[dict]:
@@ -936,8 +1084,8 @@ def _landing(b: dict, team: list[dict], when: str) -> list[dict]:
     return out
 
 
-def _mix_kind(member: dict, foe_kind: str) -> str:
-    kinds = list(member["types"])[:2]
+def _mix_kind(member: dict, foe_kind: str, move: str = "mix") -> str:
+    kinds = list(mix_pair(member, move))
     return max(kinds, key=lambda t: (matchup(t, foe_kind), -kinds.index(t)))
 
 
@@ -951,7 +1099,7 @@ def _mix(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     other = next((j for j in b["fighters"] if j != who), None)
     if m.revive and other is not None and energy[other] <= 0:
         energy[other] = max(1, _share(b, team, other, REVIVE))
-        step({"who": who, "act": "heal", "target": other, "type": _mix_kind(me, b["kind"]), "gain": energy[other],
+        step({"who": who, "act": "heal", "target": other, "type": _mix_kind(me, b["kind"], move), "gain": energy[other],
               "text": f"{me['name']}'s {m.name}: {team[other]['name']} is back on its feet!"})
     if m.hit:
         for n in range(m.times):
@@ -965,13 +1113,13 @@ def _mix(b: dict, team: list[dict], who: int, move: str, strength: float, energy
                     landed = {**landed, "text": f"{landed['text']} Both drain {each} {{energy}}."}
                 step(landed)
     else:
-        step({"who": who, "act": "mix", "target": "foe", "type": _mix_kind(me, b["kind"]), "text": f"{me['name']}'s {m.name}! {m.line}"})
+        step({"who": who, "act": "mix", "target": "foe", "type": _mix_kind(me, b["kind"], move), "text": f"{me['name']}'s {m.name}! {m.line}"})
     if m.coins and b["energy"] <= 0:
         b["coins"] = GOLDEN_COINS + b["level"]
     if m.partner_xp and other is not None and team[other].get("progress"):
         amount = max(1, round(team[other]["progress"][1] * m.partner_xp))
         b["gift_xp"] = [other, amount]
-        step({"who": who, "act": "heal", "target": other, "type": _mix_kind(me, b["kind"]), "text": f"{team[other]['name']} gains {amount} {{xp}}."})
+        step({"who": who, "act": "heal", "target": other, "type": _mix_kind(me, b["kind"], move), "text": f"{team[other]['name']} gains {amount} {{xp}}."})
     if m.safe:
         b["effects"]["sanctuary"] = m.safe
     for mark, rounds in m.marks:
@@ -986,9 +1134,9 @@ def _mix(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     if m.lift:
         b["boost"] = {"round": b["round"] + 1, "mult": m.lift, "first": m.lift_first}
     if m.later:
-        power = pet_hit(me["power"]) * matchup(_mix_kind(me, b["kind"]), b["kind"]) * strength * m.later
+        power = pet_hit(me["power"]) * matchup(_mix_kind(me, b["kind"], move), b["kind"]) * strength * m.later
         at = b["round"] + (1 if m.later_when == "start" else 0)
-        b["later"] = [*(b.get("later") or []), {"who": who, "kind": _mix_kind(me, b["kind"]), "power": power, "name": m.name, "at": at, "when": m.later_when}]
+        b["later"] = [*(b.get("later") or []), {"who": who, "kind": _mix_kind(me, b["kind"], move), "power": power, "name": m.name, "at": at, "when": m.later_when}]
     if m.self_energy > 0:
         _gain(b, team, energy, who, _share(b, team, who, m.self_energy))
     elif m.self_energy < 0:
@@ -1009,10 +1157,12 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     free: no mana (a Deja Vu's repeat, `again`); scale: of a plain hit; combos:
     whether this one can set any off; tail: a line to add."""
     foe = b["species"]
-    mix = move in MIX_IDS
-    kind = _mix_kind(team[who], b["kind"]) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
+    mix = is_mix(move)
+    kind = _mix_kind(team[who], b["kind"], move) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
     mult = matchup(kind, b["kind"])
     power = pet_hit(team[who]["power"]) * mult * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
+    if "battle_cry" in (b.get("bench") or []):
+        power *= BATTLE_CRY
     extra, found, flash = "", None, None
     if _doubles(team[who], kind) and not mix:
         power *= DAREDEVIL
@@ -1023,7 +1173,7 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
         power *= POP
         b["effects"].pop("popped")
         extra += " Pop!"
-    both = list(team[who]["types"])[:2] if mix else [kind]
+    both = list(mix_pair(team[who], move)) if mix else [kind]
     for mark in list(b["marks"]) if combos else []:
         combo = next((COMBOS[mark, t] for t in [kind, *both] if (mark, t) in COMBOS), None)
         if not combo:
@@ -1070,6 +1220,9 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     if "doze" in b["effects"] or ("drowsy" in b["marks"] and rng.random() < DOZE):
         b["effects"].pop("doze", None)
         return [{"who": "foe", "act": "doze", "text": f"The {foe} dozes off..."}]
+    bench = b.get("bench") or []
+    if "sweet_dreams" in bench and rng.random() < SWEET_DREAMS:
+        return [{"who": "foe", "act": "doze", "text": f"The {foe} drifts off to sweet dreams."}]
     if "sanctuary" in b["effects"]:
         return [{"who": "foe", "act": "blocked", "target": "foe", "type": b["kind"], "text": f"The {foe} can't get past the sanctuary!"}]
     if "poppies" in b["effects"] and rng.random() < WIRED_STOP:
@@ -1122,6 +1275,11 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     hit = m["energy"] * share * mult * ratio
     if "scalded" in b["effects"]:
         hit *= SCALDED_HITS
+    softer = (HOT_SPRING if "hot_spring" in b["effects"] else 1) * (DEEP_ROOTS if "deep_roots" in bench else 1)
+    hit *= softer
+    if "calm_waters" in bench and i not in (b.get("calm") or []):
+        hit *= CALM_WATERS
+        b["calm"] = [*(b.get("calm") or []), i]
     if guardian is not None and focus_plus(team[guardian], "guardian"):
         hit *= GUARDIAN_PLUS_SOFTER
     if i != aim:
@@ -1131,10 +1289,17 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     if "drenched" in b["effects"]:
         hit *= 0.5
     dmg = max(1, round(hit))
+    if softer < 1:  # a small hit shouldn't round the softening away
+        dmg = max(1, min(dmg, round(hit / softer) - 1))
     energy[i] = max(0, energy[i] - dmg)
     guarded = f" {m['name']} guards {team[aim]['name']}!" if i != aim else ""
     out = [{"who": "foe", "act": "hit", "target": i, "type": kind, "damage": dmg,
             "text": f"The {foe} hits {m['name']} for {dmg}.{_strength(mult)}{guarded}"}]
+    if "thorn_hedge" in bench:
+        prick = max(1, round(even * THORN_HEDGE))
+        b["energy"] = max(0, b["energy"] - prick)
+        out.append({"who": "foe", "act": "burn", "target": "foe", "type": "leaf", "damage": prick,
+                    "text": f"The thorn hedge pricks the {foe} for {prick}."})
     if "thorns" in b["effects"]:
         prick = max(1, round(even * 0.5))
         b["energy"] = max(0, b["energy"] - prick)
