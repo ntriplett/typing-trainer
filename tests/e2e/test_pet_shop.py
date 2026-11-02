@@ -102,7 +102,7 @@ def test_the_habitat_gallery(page: Page, live_server, tmp_path):
     page.get_by_role("button", name="Cozy Corner").click()
     expect(page.locator("#dept-title")).to_have_text("Habitats: Cozy Corner")
     page.get_by_role("button", name="Magical Wing").click()
-    expect(page.locator(".gallery-frame.locked")).to_have_count(5)
+    expect(page.locator(".gallery-frame.locked")).to_have_count(6)
     page.get_by_role("button", name="Cozy Corner").click()
     page.locator("[data-kind='cottage']").click()
     expect(page.locator("#pet-detail")).to_contain_text("Cozy Cottage")

@@ -217,7 +217,7 @@ def test_a_mermaid_stays_in_her_pool_in_every_water_habitat(page: Page, live_ser
       const inWater = (cx, y) => w.pool.some((r) => cx >= r.x - 1 && cx <= r.x + r.w + 1 && y >= r.y - 1 && y <= r.y + r.h + 1);
       for (let i = 0; i < 6000; i++) {
         PetMotion.step(world);
-        if (!inWater(w.x + w.width / 2, w.y)) dry += 1;
+        if (w.ledge === null && w.state !== "leap" && !inWater(w.x + w.width / 2, w.y)) dry += 1;
         moved ||= w.x !== was[0];
         if (i % 40 === 0) PetMotion.draw(world, () => {});
       }
@@ -279,3 +279,56 @@ def test_the_move_list_only_offers_a_mermaid_water(page: Page, live_server, tmp_
     page.get_by_role("button", name="🏡 Move to a habitat").click()
     expect(page.locator("#detail-picker")).to_contain_text("Pond & Marsh")
     expect(page.locator("#detail-picker")).not_to_contain_text("Meadow")
+
+
+def test_only_mermaids_climb_the_lagoons_rocks(page: Page, live_server):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/pets/trail")
+    pets = [{"id": i, "species": sp, "growth": 10, "genes": g.resolve(g.roll(sp, None, None, 20 + i))} for i, sp in enumerate(("mermaid", "goat", "flower_fairy", "dragon", "turtle"))]
+    seen = page.evaluate("""(pets) => {
+      const look = HABITAT_LOOKS.lagoon;
+      const world = PetMotion.create(pets, { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, sky: true, props: look.props, terrain: look.terrain }, 2 / 3);
+      const onRock = pets.map(() => 0);
+      let dove = 0, wasUp = false;
+      for (let i = 0; i < 30000; i++) {
+        PetMotion.step(world);
+        world.walkers.forEach((w, k) => { if (w.ledge !== null) onRock[k] += 1; });
+        const up = world.walkers[0].ledge !== null;
+        if (wasUp && !up) dove += 1;
+        wasUp = up;
+        if (i % 40 === 0) PetMotion.draw(world, () => {});
+      }
+      // called down from her rock for a treat
+      const her = world.walkers[0];
+      her.ledge = 0; her.state = "idle"; her.timer = 99;
+      let ate = 0;
+      PetMotion.attract(world, [0], 80, 70, () => (ate += 1));
+      for (let i = 0; i < 3000 && !ate; i++) PetMotion.step(world);
+      return { onRock, dove, ate, ledge: her.ledge };
+    }""", pets)
+    assert seen["onRock"][0] > 0 and seen["dove"] > 0
+    assert seen["onRock"][1:] == [0, 0, 0, 0]
+    assert seen["ate"] == 1 and seen["ledge"] is None
+    assert not errors
+
+
+def test_a_swimming_mermaid_stays_in_the_picture_with_water_under_her_tail(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    genes = g.resolve(g.roll("mermaid", None, None, 3))
+    seen = page.evaluate("""(genes) => {
+      const look = HABITAT_LOOKS.lagoon;
+      const world = PetMotion.create([{ id: 1, species: "mermaid", growth: 10, genes }], { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, sky: true, props: [], terrain: look.terrain }, 2 / 3);
+      const w = world.walkers[0];
+      let left = 999, right = -999, low = -999;
+      for (let i = 0; i < 20000; i++) {
+        PetMotion.step(world);
+        if (w.ledge !== null || w.state === "leap") continue;
+        left = Math.min(left, w.x);
+        right = Math.max(right, w.x + w.width);
+        low = Math.max(low, w.y);
+      }
+      return { left, right, low, tail: w.height * (0.28 / 0.72) };
+    }""", genes)
+    assert seen["left"] >= 2 and seen["right"] <= 158
+    assert seen["low"] <= 48 + 27 - seen["tail"] + 0.01

@@ -1,6 +1,6 @@
 // The magical habitats (PLAN.md 11j), open with the Mythical department:
 // Crystal Cave, Cloud Kingdom, Volcano Rim, Enchanted Grove, Starry
-// Observatory. Shared helpers are in habitats.js.
+// Observatory, Foggy Lagoon. Shared helpers are in habitats.js.
 
 function drawCrystal(r, x, y, h, color, light) {
   for (let k = 0; k < h; k++) {
@@ -178,7 +178,77 @@ function drawObservatoryHabitat(r) {
   for (let x = 14; x < 38; x += 4) r(x, 74, 2, 8, "#9a7ac0");
 }
 
+// --- Foggy Lagoon --------------------------------------------------------------------
+
+function drawLagoonRock(r, x, y, w, h) {
+  drawHabitatDisc(r, x + w / 2, y + h / 2 + 1, w / 2 + 1, h / 2 + 1, "#2e3e48");
+  drawHabitatDisc(r, x + w / 2, y + h / 2, w / 2, h / 2, "#4a5e68");
+  drawHabitatDisc(r, x + w / 2 - 1, y + h / 3, w / 2 - 3, h / 3, "#64787e");
+  r(x + 2, y + h, w - 4, 0.8, "#b8dce0"); // where it meets the water
+}
+
+function drawLagoonCoral(r, x, y, color, light) {
+  for (const [dx, h] of [[-3, 4], [-1, 7], [1, 5], [3, 6]]) {
+    r(x + dx, y - h, 1.2, h, color);
+    r(x + dx - 0.4, y - h - 0.8, 2, 1, light);
+  }
+}
+
+function drawLagoonHabitat(r) {
+  for (let y = 0; y < 48; y++) r(0, y, HABITAT_W, 1, y < 14 ? "#8a9aac" : y < 30 ? "#a4b4bc" : "#bfcccc");
+  for (let k = 0; k < 4; k++) drawHabitatDisc(r, 118, 16, 11 - k * 2, 11 - k * 2, `rgba(248, 244, 224, ${0.25 + k * 0.2})`); // a pale moon in the mist
+  // sea stacks fading away
+  for (const [x, w, top, color] of [[10, 16, 22, "#8c9ca6"], [46, 10, 30, "#9aaab0"], [132, 20, 18, "#84949e"], [100, 9, 33, "#a0aeb4"]]) {
+    for (let y = top; y < 48; y++) r(x + Math.sin(y * 0.7 + x) * 1.2 - (y - top) * 0.08, y, w + (y - top) * 0.16, 1, color);
+    drawHabitatDisc(r, x + w / 2, top, w / 2, 2.5, color);
+  }
+  // the water, lighter toward the shore
+  for (let y = 48; y < 75; y++) r(0, y, HABITAT_W, 1, y < 54 ? "#5a98a4" : y < 62 ? "#468a98" : y < 70 ? "#3a7c8c" : "#3f8a94");
+  const rand = habitatSeeded(91);
+  for (let i = 0; i < 26; i++) r(rand() * HABITAT_W, 50 + rand() * 24, 3 + rand() * 5, 0.5, "#8cc8cc");
+  // the sand
+  r(0, 75, HABITAT_W, HABITAT_H - 75, "#d0c6a6");
+  for (let x = 0; x < HABITAT_W; x += 2) r(x, 74 + Math.sin(x * 0.18) * 0.8, 2, 2, "#e4dcc0");
+  for (let i = 0; i < 70; i++) r(rand() * HABITAT_W, 77 + rand() * 12, 0.7, 0.7, i % 3 ? "#b8ae8e" : "#e8e0c8");
+  // rocks to sit on
+  drawLagoonRock(r, 20, 57, 26, 9);
+  drawLagoonRock(r, 112, 52, 30, 10);
+  // things that glow
+  for (let i = 0; i < 20; i++) r(rand() * HABITAT_W, 52 + rand() * 22, 0.7, 0.7, i % 2 ? "#a8f0e0" : "#c8b0f4");
+  drawLagoonCoral(r, 12, 82, "#d0607a", "#f49ab0");
+  drawLagoonCoral(r, 146, 85, "#8a60c0", "#c0a0ec");
+  drawLagoonCoral(r, 84, 86, "#d8824a", "#f4b47a");
+  // shells
+  for (const [x, y, c] of [[38, 80, "#f4d8d8"], [64, 85, "#f8ecd0"], [118, 81, "#e8d0f0"]]) {
+    drawHabitatDisc(r, x, y, 1.6, 1, c);
+    r(x - 0.3, y - 1, 0.6, 2, "#c8a8a8");
+  }
+  // the fog, lying in bands
+  for (const [y, h, a] of [[34, 8, 0.28], [44, 7, 0.4], [51, 4, 0.3], [60, 2, 0.12]]) {
+    for (let x = -10; x < HABITAT_W; x += 18) drawHabitatDisc(r, x + (y * 3) % 18, y + h / 2, 14, h / 2, `rgba(236, 242, 242, ${a / 2})`);
+  }
+}
+
 Object.assign(HABITAT_LOOKS, {
+  lagoon: {
+    name: "Foggy Lagoon",
+    draw: drawLagoonHabitat,
+    groundTop: 48,
+    groundBottom: 88,
+    props: [
+      { id: "warm sand", x: 50, y: 82, action: "dig", color: "#e4dcc0" },
+      { id: "coral", x: 12, y: 84 },
+      { id: "shell", x: 118, y: 83, action: "bask" },
+    ],
+    terrain: {
+      water: [{ x: 0, y: 48, w: 160, h: 27, color: "#3a7c8c" }],
+      // only mermaids climb up here
+      ledges: [
+        { x0: 22, x1: 44, y: 60, who: ["mermaid"] },
+        { x0: 115, x1: 139, y: 56, who: ["mermaid"] },
+      ],
+    },
+  },
   crystalcave: {
     name: "Crystal Cave",
     draw: drawCrystalCaveHabitat,

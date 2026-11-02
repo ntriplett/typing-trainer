@@ -550,14 +550,14 @@ and the `owned_pet` table are gone.
 
 ## 11j. Pets v3: many habitats and how pets move in them (agreed 2026-10-28)
 
-**26 habitats** in three price tiers (`app/pet_care.py` TIER_PRICE; a player's first habitat is
+**27 habitats** in three price tiers (`app/pet_care.py` TIER_PRICE; a player's first habitat is
 free only if it's an everyday one; the same kind can be bought again, "Forest 2"):
 - **Everyday / Outdoors, 1,500:** Meadow, Forest, Stream, Mountain, Farmyard, Backyard, Beach,
   Desert, Jungle, Snowy Tundra, Autumn Orchard, Pond & Marsh, Savanna.
 - **Cozy, 2,500:** Cozy Cottage, Greenhouse, Treehouse Village, Library Nook, Playroom, Hay Loft,
   Attic Hideaway, Sunny Porch.
 - **Magical, 5,000 (open with the Mythical department):** Crystal Cave, Cloud Kingdom, Volcano
-  Rim, Enchanted Grove, Starry Observatory.
+  Rim, Enchanted Grove, Starry Observatory, Foggy Lagoon (mostly water, with rocks only mermaids climb).
 
 A kind is sold once `habitats.js` HABITAT_LOOKS has its look. Trail spots stay 10 for now (later:
 buy more spots). Not now: favorite habitats, day/night looks.

@@ -63,6 +63,7 @@ HABITAT_KINDS: dict[str, HabitatKind] = {
         HabitatKind("volcano", "Volcano Rim", "magical"),
         HabitatKind("grove", "Enchanted Grove", "magical", water=True),
         HabitatKind("observatory", "Starry Observatory", "magical"),
+        HabitatKind("lagoon", "Foggy Lagoon", "magical", water=True),
     ]
 }
 

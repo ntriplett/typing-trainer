@@ -242,4 +242,9 @@ def test_mermaids_can_still_come_along():
 
 
 def test_the_water_habitats_are_the_agreed_ones():
-    assert {k for k, h in pet_care.HABITAT_KINDS.items() if h.water} == {"stream", "beach", "jungle", "pond", "savanna", "crystalcave", "grove"}
+    assert {k for k, h in pet_care.HABITAT_KINDS.items() if h.water} == {"stream", "beach", "jungle", "pond", "savanna", "crystalcave", "grove", "lagoon"}
+
+
+def test_the_foggy_lagoon_is_a_magical_habitat_for_mermaids():
+    lagoon = pet_care.HABITAT_KINDS["lagoon"]
+    assert (lagoon.name, lagoon.tier, lagoon.water) == ("Foggy Lagoon", "magical", True)
