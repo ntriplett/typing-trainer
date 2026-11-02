@@ -825,7 +825,7 @@ the old genes `element` is gone, Pet Battles keeps its own 3-type map until it's
 farm/household species per type: Splash dog, turtle; Ember fox, lizard; Leaf bunny, goat; Dream llama,
 sheep; Shock cat, snake. Mythicals are born with both types, equal from level 1, each pair unique:
 dragon Shock/Ember, phoenix Ember/Dream, unicorn Dream/Leaf, mermaid Splash/Shock, flower fairy
-Leaf/Splash (flower fairy is a stub until its art is designed). Fish stay home. Type
+Leaf/Splash. Fish stay home. Type
 levels: first type = level; at level 5 a pet picks a second type from two (the type it has fought
 beside most, from `partners`, a per-type count bumped each battle; random until battles) which counts
 from 1 (picked with left/right in the party list). 500 XP a level; XP for now from quests (150), temples (300), caches (25), and the first search
@@ -977,7 +977,7 @@ having lost a turn it can't lose another right away; from 15, chances of losing 
 XP rises steeply with a creature's level (battle.XP_STEEPNESS) and its tier. Tiers (battle.TIERS, critters): Tough (15% of creatures from base level 5: +2 levels, 1.5x energy, a grey ring), Champion (3%: +4 levels, 2.5x energy, a gold ring,
 coins). Mythical chance: 1% plain, 5% Tough, 20% Champion. Each temple's Boss guards its relic: the mythical of its type, level 13 plus 2 for each relic out, a fight meant
 to take nearly all your energy and mana. Each has its own move every third round: dragon Stormfire (hits both), phoenix Rekindle (energy back), unicorn Moonlight (clears
-marks and effects), mermaid Siren Song (drains mana), flower fairy Wild Bloom (drinks what it deals). Flower fairy has no art yet: pets.STAND_IN draws it. Tough and Champion have wider map sprites of their own, and in battle tougher creatures are drawn bigger, outlined, in rare colors (pets.TIER_COLORS). Next: tune these in play.
+marks and effects), mermaid Siren Song (drains mana), flower fairy Wild Bloom (drinks what it deals). Tough and Champion have wider map sprites of their own, and in battle tougher creatures are drawn bigger, outlined, in rare colors (pets.TIER_COLORS). Next: tune these in play.
 
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
 in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each

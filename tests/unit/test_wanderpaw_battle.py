@@ -1650,7 +1650,7 @@ def test_each_temple_boss_is_its_types_mythical_with_a_move_of_its_own():
         own = bt.BOSS_MOVES[b["species"]]
         assert [script[i] for i in (2, 5, 8)] == [own] * 3 and own in terms.BOSS_MOVES
         seen.add(own)
-        assert sv.cr_looks(b)  # art, or a stand-in for now
+        assert sv.cr_looks(b)["species"] == boss.species  # its own art, not another animal's
     assert len(seen) == len(wp.TYPES)
     assert cr.temple_boss(SEED, "leaf", (0, 0), 4).level == wp.MAX_LEVEL
     plain = bt.start(cr.Critter("x", (0, 0), (0, 0), "dragon", "shock", 13, False, 1, "ember"), [0, 1])
@@ -1697,6 +1697,18 @@ def test_wild_bloom_drinks_what_it_deals():
     b, team, energy, _, out, intent = _boss_round("flower_fairy", "leaf", energy=100)
     dealt = sum(m["energy"] for m in team) - sum(energy)
     assert dealt and b["energy"] == 100 + bt.BLOOM * dealt and intent["name"].startswith("Wild Bloom")
+
+
+def test_every_mythical_can_be_met_in_the_wild_in_its_own_art():
+    assert cr.WILD_MYTHICAL == sorted(wp.MYTHICAL)
+    for species in wp.MYTHICAL:
+        fought = species.replace("_", " ")  # how a battle names it
+        assert sv.cr_looks({"species": fought, "seed": 7})["species"] == species
+        for tier in wp.TIER_COLORS:
+            assert sv.cr_looks({"species": fought, "seed": 7, "tier": tier})["species"] == species
+    # a mythical turns up by its first type: in leaf country, that's the fairy
+    leaf = next(c for c in (cr.Critter("x", (0, 0), (0, 0), "bunny", "leaf", 5, False, seed) for seed in range(2000)) if cr._mythical(c, "champion"))
+    assert cr._mythical(leaf, "champion") == "flower_fairy"
 
 
 def test_tougher_creatures_wear_rare_colors():

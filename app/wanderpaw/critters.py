@@ -42,7 +42,7 @@ TIERS_FROM_LEVEL = 5  # no tougher ones while it's still easy going
 BOSS_LEVEL = 13  # a temple's boss, and RELIC_LEVELS more for each relic out
 TIER_LEVELS = {"tough": 2, "champion": 4}  # on top of its own: battle.TIERS's
 MYTHICAL_CHANCE = {"": 0.01, "tough": 0.05, "champion": 0.2}
-WILD_MYTHICAL = sorted(wp.MYTHICAL - wp.STAND_IN.keys())
+WILD_MYTHICAL = sorted(wp.MYTHICAL)
 COMMON = sorted(s for s, (_, second) in wp.SPECIES_TYPES.items() if not second)
 
 

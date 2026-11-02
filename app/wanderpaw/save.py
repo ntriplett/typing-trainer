@@ -549,7 +549,6 @@ def combo_book(save: dict) -> list[dict]:
 
 def cr_looks(b: dict) -> dict:
     species = b["species"].replace(" ", "_")
-    species = wp.STAND_IN.get(species, species)
     return wp.tier_looks(species, b["seed"], b["tier"]) if b.get("tier") else wp.looks(species, b["seed"])
 
 

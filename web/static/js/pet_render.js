@@ -69,7 +69,7 @@ const FUR = new Set(["thin", "coilbase", "hood", "farleg", "limb", "tail", "body
 // Parts that cover what's behind them with a line (inside the silhouette).
 const FRONT = new Set(["hshell", "hshell2", "hface", "hbody", "hneck", "body", "wool", "head", "face", "cap", "neck", "chest", "shell", "rim", "fbody", "fhead", "lip", "pectoral", "belly", "egg", "eggspot", "eggspot2", "breast", "pegg", "ash"]);
 // Parts in front of the body that grow out of it (no line where they meet).
-const BLENDS_IN = new Set(["hpearl", "hinner", "hhair", "hback", "htop", "harm", "hfin", "thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2", "gill", "fhead"]);
+const BLENDS_IN = new Set(["hwing", "hwing2", "hskirt", "hskirt2", "hleaf", "hspot", "hpearl", "hinner", "hhair", "hback", "htop", "harm", "hfin", "thin", "leg", "skin", "beard", "sock", "hoof", "ear", "farear", "eartip", "fold", "fluff", "belly", "eggspot", "eggspot2", "breast", "crack", "crack2", "gill", "fhead"]);
 // The head stands apart from the body with a shade line and a chin shadow.
 const HEADISH = new Set(["head", "face", "snout", "cap"]);
 const BODYISH = new Set(["thin", "body", "wool", "chest", "neck", "leg", "tail", "fluff"]);
@@ -602,6 +602,7 @@ function paintCoat(out, grid, genes, built, hex) {
   if (built.fire) return paintFire(out, grid, genes, built, hex);
   if (built.fish) return paintFish(out, grid, genes, built, hex);
   if (built.mermaid) return paintMermaid(out, grid, genes, built, hex);
+  if (built.fairy) return paintFairy(out, grid, genes, built, hex);
   // species with their own real-life coats paint them (patterns can share names)
   const own = {
     cat: [CAT_PATTERNS, paintCat], bunny: [BUNNY_PATTERNS, paintBunny], fox: [FOX_PATTERNS, paintFox],
@@ -2095,6 +2096,7 @@ function petFrame(genes, growth, frame) {
     }
   }
 
+  applyGlass(out, built);
   return { out, noShadow: !!built.noShadow };
 }
 
@@ -2605,6 +2607,7 @@ const PET_DESIGNS = {
   // chosen in the pet lab, 2026-10-27: seven unicorn breeds, foal to grown;
   // a mix borrows another breed's wings, horn or neck
   mermaid: { get breeds() { return MERMAID_BREEDS; } },
+  flower_fairy: { get breeds() { return FAIRY_BREEDS; } },
   unicorn: {
     get breeds() {
       return UNICORN_BREEDS;
@@ -3019,7 +3022,24 @@ const MERMAID_BREEDS = {
   frill: MERMAID({ name: "Frilled: fins at the hips", frills: true, bangs: "side" }),
 };
 
+// Flower fairy trial designs: skirts from flowers, wings from insects.
+function FAIRY(over) {
+  return { fairy: true, facing: "front", ears: true, wings: "butterfly", hair: "wavy", bangs: "part", ...over };
+}
+
+const FAIRY_BREEDS = {
+  classic: FAIRY({ name: "Classic: flower skirt, flitting", lean: 0.32, arms: "out", bloom: true }),
+  rose: FAIRY({ name: "Rose: a rose for a skirt, round wings", skirtType: "rose", lean: 0.2, wings: "round", arms: "out", hair: "pixie" }),
+  tulip: FAIRY({ name: "Tulip: a cup of pointed petals", lean: 0.32, wings: "teardrop", hair: "bun", bangs: "fringe", arms: "out", pointed: true, layers: [{ n: 3, spread: 0.62, len: 9, w: 3.2 }, { n: 2, spread: 0.26, len: 7.6, w: 3 }] }),
+  daisy: FAIRY({ name: "Daisy: a fan of thin petals, a gold heart", lean: 0.2, wings: "round", arms: "out", hair: "pixie", heart: true, layers: [{ n: 9, spread: 1.55, len: 8, w: 1.5 }] }),
+  bluebell: FAIRY({ name: "Bluebell: a bell hat, dragonfly wings", pose: "twirl", lean: -0.12, armUp: true, wings: "dragonfly", hat: "bell", hair: "tails", bangs: "fringe", layers: [{ n: 5, spread: 0.72, len: 7.6, w: 2.7 }] }),
+  lily: FAIRY({ name: "Lily: long pointed petals, darting", pose: "dart", lean: 0.72, wings: "dragonfly", arms: "reach", hair: "pixie", pointed: true, layers: [{ n: 5, spread: 1, len: 9.5, w: 2.1 }] }),
+  sprite: FAIRY({ name: "Sprite: an acorn cap, leafy petals", lean: 0.32, wings: "teardrop", arms: "out", hat: "acorn", hair: "pixie", pointed: true, layers: [{ n: 5, spread: 1.1, len: 7.6, w: 2.4 }, { n: 2, spread: 0.3, len: 5.6, w: 2.2 }] }),
+  dance: FAIRY({ name: "Dancing: an arm raised, twirling, big wings", pose: "twirl", lean: -0.15, armUp: true, wings: "big", hair: "bun", bangs: "fringe", bloom: true }),
+};
+
 const PET_VARIANTS = {
+  flower_fairy: Object.values(FAIRY_BREEDS),
   mermaid: Object.values(MERMAID_BREEDS),
   // the breeds, one lab row each
   dog: Object.values(PET_DESIGNS.dog.breeds),
@@ -3050,6 +3070,7 @@ function buildVariant(genes, stage, frame, V) {
   if (V.unicorn) return buildUnicorn(genes, stage, frame, V);
   if (V.phoenix) return buildPhoenix(genes, stage, frame, V);
   if (V.mermaid) return buildMermaid(genes, stage, frame, V);
+  if (V.fairy) return buildFairy(genes, stage, frame, V);
   if (V.fish) return buildFish(genes, stage, frame, V);
   if (V.lizard && V.view === "top") return buildLizardTop(genes, stage, frame, V);
   if (V.lizard) return buildLizard(genes, stage, frame, V);
@@ -5001,19 +5022,23 @@ function hornAt(grid, a, b, hs) {
 // Big head, small body like the pets: a face toward us, duo eyes, soft outline.
 // Skin comes from the player's table (sprites.js SKIN_TONES); hair is the second
 // color and the covered top the first.
-function humanSkin(genes) {
-  return SKIN_TONES[genes.face && genes.face.skin] || SKIN_TONES.light;
+function humanSkin(genes, tint = null) {
+  const tone = SKIN_TONES[genes.face && genes.face.skin] || SKIN_TONES.light;
+  if (!tint) return tone;
+  return luminance(tone[0]) < 0.55 ? tone.map((c) => blend(c, tint[1], 0.34)) : tone.map((c) => blend(c, tint[0], 0.42));
 }
 
 function paintHuman(out, grid, genes, built, hex) {
   built.coatDone = true;
-  built.painted = new Set(["hface", "hbody", "harm", "hneck", "hhair", "hback", "htop", "htail", "hfin", "hrock", "hshell", "hshell2", "hinner", "hpearl"]);
-  const [skin, shade] = humanSkin(genes);
+  built.painted = new Set(["hface", "hbody", "harm", "hneck", "hhair", "hback", "htop", "htail", "hfin", "hrock", "hshell", "hshell2", "hinner", "hpearl", "hskirt", "hskirt2", "hwing", "hwing2", "hstem", "hspot", "hleaf"]);
+  const [skin, shade] = humanSkin(genes, built.tint);
   const hair = hex[1] || hex[0];
   const colors = {
     hface: skin, hbody: skin, harm: skin, hneck: shade, hhair: hair, hback: blend(hair, SHADOW_TINT, 0.14),
     htop: blend(hex[0], "#ffffff", 0.14), htail: hex[0], hfin: blend(hex[0], "#ffffff", 0.32), hrock: "#8e8a80",
     hshell: blend(hex[0], "#f8ecdc", 0.84), hshell2: blend(hex[0], "#e0c8b4", 0.78), hinner: blend(hex[0], "#6a4a50", 0.7), hpearl: blend(hair, "#fffaf0", 0.82),
+    hskirt: hex[0], hskirt2: blend(hex[0], SHADOW_TINT, 0.24), hwing: blend(luminance(hair) < 0.35 ? hex[0] : hair, "#ffffff", 0.62), hwing2: blend(luminance(hair) < 0.35 ? hex[0] : hair, "#ffffff", 0.45), hleaf: "#6aa84a",
+    hstem: "#a0703c", hspot: "#f8e070",
   };
   grid.forEach((row, y) => row.forEach((c, x) => {
     if (c && colors[c.l]) out[y][x] = colors[c.l];
@@ -5022,14 +5047,16 @@ function paintHuman(out, grid, genes, built, hex) {
 
 // The upper body with its waist at (cx, wy). `behind` draws what sits behind the
 // torso but in front of the back hair (a tail). Returns the face and geometry.
-function humanTop(grid, genes, frame, V, { cx, wy, s, hs, behind }) {
-  const th = 11 * s;
+function humanTop(grid, genes, frame, V, { cx, wy, s, hs, behind, lean = 0, torso = 1, tint = null }) {
+  const th = 11 * s * torso;
   const sy = wy - th; // the shoulders
-  const sw = 4.4 * s;
-  const ww = 3.1 * s;
+  const sw = 4.4 * s * (torso < 1 ? 0.8 : 1);
+  const ww = 3.1 * s * (torso < 1 ? 0.8 : 1);
+  const sx = cx + lean * th; // leaning: the shoulders and head shift along
   const hrx = 7 * hs;
   const hry = 6.3 * hs;
   const hy = sy - 1 - hry * 0.8;
+  const hx = Math.round(sx + lean * 2);
   const sway = frame % 2;
   const hairStyle = V.hair || "long";
 
@@ -5037,64 +5064,90 @@ function humanTop(grid, genes, frame, V, { cx, wy, s, hs, behind }) {
   if (hairStyle === "long" || hairStyle === "wavy") {
     for (const side of [-1, 1]) {
       const pts = hairStyle === "wavy"
-        ? [[cx + side * 4 * hs, hy], [cx + side * 7.6 * hs, hy + 5 * hs], [cx + side * 6 * hs, hy + 9 * hs], [cx + side * 7.2 * hs, hy + 13 * hs], [cx + side * 6.2 * hs - sway * 0.5, wy - 2 * s]]
-        : [[cx + side * 4 * hs, hy], [cx + side * 6.8 * hs, hy + 5 * hs], [cx + side * 6.6 * hs, hy + 9 * hs], [cx + side * 6.4 * hs, hy + 13 * hs], [cx + side * 6 * hs - sway * 0.5, wy - 3 * s]];
+        ? [[hx + side * 4 * hs, hy], [hx + side * 7.6 * hs, hy + 5 * hs], [hx + side * 6 * hs, hy + 9 * hs], [hx + side * 7.2 * hs, hy + 13 * hs], [hx + side * 6.2 * hs - sway * 0.5, wy - 2 * s]]
+        : [[hx + side * 4 * hs, hy], [hx + side * 6.8 * hs, hy + 5 * hs], [hx + side * 6.6 * hs, hy + 9 * hs], [hx + side * 6.4 * hs, hy + 13 * hs], [hx + side * 6 * hs - sway * 0.5, wy - 3 * s]];
       taper(grid, pts, [4.2 * hs, 2.8 * hs, 2.2 * hs, 1.9 * hs, 1], "hback");
     }
   } else if (hairStyle === "tails") {
     for (const side of [-1, 1]) {
-      taper(grid, [[cx + side * (hrx - 0.5), hy - 3 * hs], [cx + side * (hrx + 2.4 * hs), hy + 3 * hs], [cx + side * (hrx + 2 * hs), hy + 9 * hs], [cx + side * (hrx + 2.6 * hs) - sway * 0.5, hy + 14 * hs]], [1.8 * hs, 2.6 * hs, 2.2 * hs, 1], "hback");
+      taper(grid, [[hx + side * (hrx - 0.5), hy - 3 * hs], [hx + side * (hrx + 2.4 * hs), hy + 3 * hs], [hx + side * (hrx + 2 * hs), hy + 9 * hs], [hx + side * (hrx + 2.6 * hs) - sway * 0.5, hy + 14 * hs]], [1.8 * hs, 2.6 * hs, 2.2 * hs, 1], "hback");
     }
   } else if (hairStyle === "bun") {
-    fillEllipse(grid, cx, hy - hry - 1.4 * hs, 3.3 * hs, 2.9 * hs, "hhair");
+    fillEllipse(grid, hx, hy - hry - 1.4 * hs, 3.3 * hs, 2.9 * hs, "hhair");
+  } else if (hairStyle === "pixie") {
+    // short and tufty: a few spikes off the crown, swept back from the way she's going
+    const back = lean > 0 ? -1 : lean < 0 ? 1 : 0;
+    for (const [dx, up] of [[-4.5, 2.4], [-1.5, 3.4], [2, 3], [5, 2]]) {
+      taper(grid, [[hx + dx * hs, hy - hry * 0.6], [hx + (dx * 1.2 + back * 1.6) * hs, hy - hry - up * hs]], [1.9 * hs, 0.55], "hhair");
+    }
   }
-  if (behind) behind();
+  if (behind) behind({ sx, sy, hx, hy });
 
   // the torso, tapering to the waist, a covered top from the chest down
   const topY = sy + 2 * s;
   for (let y = Math.floor(sy); y <= wy; y++) {
     const t = (y - sy) / th;
     const hw = sw + (ww - sw) * t;
-    for (let x = Math.floor(cx - hw); x < cx + hw; x++) {
-      put(grid, x, y, { l: y >= topY ? "htop" : "hbody", nx: (x + 0.5 - cx) / (hw + 1), ny: ((y - sy) / th - 0.5) * 1.1 });
+    const mx = Math.round(cx + lean * (wy - y));
+    for (let x = Math.floor(mx - hw); x < mx + hw; x++) {
+      put(grid, x, y, { l: y >= topY ? "htop" : "hbody", nx: (x + 0.5 - mx) / (hw + 1), ny: ((y - sy) / th - 0.5) * 1.1 });
     }
   }
-  fillRect(grid, cx - 1.5 * hs, sy - 1.5, 3 * hs, 2.5, "hneck");
-  for (const side of [-1, 1]) {
-    taper(grid, [[cx + side * (sw + 0.2), sy + 1.2 * s], [cx + side * (sw + 1.2 * s), sy + 5.5 * s], [cx + side * (sw + 1.6 * s), sy + 9.5 * s]], [1.2 * s, 1.1 * s, 1.15 * s], "harm");
-  }
+  fillRect(grid, sx - 1.5 * hs, sy - 1.5, 3 * hs, 2.5, "hneck");
+  const sh = (side) => [sx + side * (sw + 0.2), sy + 1.2 * s];
+  const arm = (side) => {
+    const [ax, ay] = sh(side);
+    if (V.armUp && side > 0) return [[ax, ay], [ax + 3.2 * s, ay - 2.7 * s], [ax + 3.6 * s, ay - 7.2 * s]];
+    if (V.arms === "out") return side > 0 ? [[ax, ay], [ax + 3 * s, ay + 2.4 * s], [ax + 5.8 * s, ay + 1.6 * s]] : [[ax, ay], [ax - 2.2 * s, ay + 3 * s], [ax - 3.8 * s, ay + 5.6 * s]];
+    if (V.arms === "reach") {
+      return side > 0 ? [[ax, ay], [ax + 4 * s, ay - 0.6 * s], [ax + 8 * s, ay - 2.2 * s]] : [[ax, ay], [ax - 2.6 * s, ay + 2.4 * s], [ax - 5.4 * s, ay + 3.6 * s]];
+    }
+    return [[ax, ay], [cx + lean * (wy - ay) + side * (sw + 1.2 * s), sy + 5.5 * s], [cx + lean * 1.5 * s + side * (sw + 1.6 * s), sy + 9.5 * s]];
+  };
+  for (const side of [-1, 1]) taper(grid, arm(side), [1.2 * s, 1.1 * s, 1.15 * s], "harm");
 
   // the head and the hair on it
-  fillEllipse(grid, cx, hy, hrx, hry, "hface");
+  fillEllipse(grid, hx, hy, hrx, hry, "hface");
+  // lit nearly flat: full shading on a face this small looks like stubble
+  grid.forEach((row) => row.forEach((c) => {
+    if (c && c.l === "hface") {
+      c.nx *= 0.45;
+      c.ny *= 0.45;
+    }
+  }));
   const capX = hrx + 0.8;
   const capY = hry + 0.9;
   const capC = hy - 0.5;
   for (let y = Math.floor(capC - capY); y <= Math.ceil(capC + capY); y++) {
-    for (let x = Math.floor(cx - capX); x <= Math.ceil(cx + capX); x++) {
-      const nx = (x + 0.5 - cx) / capX;
+    for (let x = Math.floor(hx - capX); x <= Math.ceil(hx + capX); x++) {
+      const nx = (x + 0.5 - hx) / capX;
       const ny = (y + 0.5 - capC) / capY;
       if (nx * nx + ny * ny > 1) continue;
-      const d = (x + 0.5 - cx) / hrx;
+      const d = (x + 0.5 - hx) / hrx;
       const yy = (y + 0.5 - hy) / hs;
       const edge = Math.abs(d) > 0.88 ? 2.6 : V.bangs === "fringe" ? -2 : V.bangs === "side" ? -4 + Math.max(0, 0.25 - d) * 2.8 : -3.8 + Math.abs(d) * 3.6;
       if (yy < edge) put(grid, x, y, { l: "hhair", nx, ny });
     }
   }
+  if (V.ears) {
+    // pointed ears, poking out through the hair
+    for (const side of [-1, 1]) taper(grid, [[hx + side * (hrx - 1), hy + 1.4 * hs], [hx + side * (hrx + 0.6 * hs), hy + 0.2 * hs], [hx + side * (hrx + 1.9 * hs), hy - 1.6 * hs]], [1.2 * hs, 0.8 * hs, 0.5], "hface");
+  }
 
-  const skin = humanSkin(genes)[0];
+  const skin = humanSkin(genes, tint)[0];
   const ey = Math.round(hy + hs);
   const deep = luminance(skin) < 0.55; // darker skin: lighter eyes, a rosy mouth and cheeks
   const iris = blend((genes.face && genes.face.eyes) || "#3a5a8a", "#ffffff", deep ? 0.4 : 0);
   const ex = Math.round(4 * hs);
   const cheek = blend(skin, deep ? "#f08080" : "#e86a6a", deep ? 0.5 : 0.4);
   const lip = deep ? blend(skin, "#f07a80", 0.8) : blend(skin, PET_OUTLINE, 0.55);
-  const mouth = V.sing && frame % 2 ? [[cx - 1, ey + 3, lip], [cx, ey + 3, lip], [cx - 1, ey + 4, lip], [cx, ey + 4, lip]] : [[cx - 1, ey + 3, lip], [cx, ey + 3, lip]];
+  const mouth = V.sing && frame % 2 ? [[hx - 1, ey + 3, lip], [hx, ey + 3, lip], [hx - 1, ey + 4, lip], [hx, ey + 4, lip]] : [[hx - 1, ey + 3, lip], [hx, ey + 3, lip]];
   const face = {
-    eyes: [{ x: cx - ex - 1, y: ey, size: "duo", iris }, { x: cx + ex - 1, y: ey, size: "duo", iris }],
+    eyes: [{ x: hx - ex - 1, y: ey, size: "duo", iris }, { x: hx + ex - 1, y: ey, size: "duo", iris }],
     nose: null, pink: [], noseDark: [], mouth: [], smile: [], tongue: [], tufts: [],
-    glints: [[cx - ex - 2, ey + 2, cheek], [cx + ex, ey + 2, cheek], ...mouth],
+    glints: [[hx - ex - 2, ey + 2, cheek], [hx + ex, ey + 2, cheek], ...mouth],
   };
-  return { face, hy, hrx, hry, sy, th, sw };
+  return { face, hx, hy, hrx, hry, sx, sy, th, sw };
 }
 
 // --- mermaid coats: real fish markings -----------------------------------------------
@@ -5347,6 +5400,327 @@ function buildMermaid(genes, stage, frame, V) {
   });
   const geo = { cx, cy: wy, rx: top.sw, ry: top.th / 2, legTop: wy, legH: 0, tail: [cx, wy, 0], head: [cx, top.hy, top.hrx, top.hry], faceBox: null, muzzle: null };
   return { grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: top.face, center: [cx, top.hy], scale: s, softOutline: true, softNeck: true, geo, mermaid: true, shortTail: (V.tailLen || 1) < 1, tailPath: pts, tailEnd: pts[pts.length - 1] };
+}
+
+// --- flower fairies -----------------------------------------------------------------------
+// Tiny and quick: a small body under a big head, in a flower instead of a dress,
+// big wings, pointed ears and a skin with a tint of leaf or sky. She darts about,
+// leaning the way she's going, legs trailing, pixie dust falling behind.
+const FAIRY_GROWTH = {
+  mid: { body: 0.74, head: 0.84 },
+  big: { body: 0.92, head: 0.94 },
+  grown: { body: 1.12, head: 1.04 },
+};
+const BODY_SIZE = 0.8; // of a mermaid's, under the same head
+// Each tint: [on light skin, on deep skin]. Green turns muddy on deep skin, so "leaf" is a rich red there.
+const FAIRY_TINTS = { leaf: ["#7ee8a0", "#b02a3a"], sky: ["#86c4f8", "#2a6ab0"], lilac: ["#c8a8f8", "#6a3ab0"] };
+
+// One lobe of a wing from (x, y) along `angle`: narrow at the root, widest past
+// the middle. Each cell keeps where it sits on the wing for the painter.
+function wingLobe(grid, x, y, angle, len, w, label) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const reach = Math.ceil(len + w + 1);
+  for (let j = Math.floor(y - reach); j <= y + reach; j++) {
+    for (let i = Math.floor(x - reach); i <= x + reach; i++) {
+      const dx = i + 0.5 - x;
+      const dy = j + 0.5 - y;
+      const along = dx * cos + dy * sin;
+      const across = -dx * sin + dy * cos;
+      const t = along / len;
+      if (t < 0 || t > 1) continue;
+      const W = Math.max(0.6, w * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.72)), 0.7));
+      const v = across / W;
+      if (Math.abs(v) > 1) continue;
+      put(grid, i, j, { l: label, nx: (t - 0.5) * 0.5, ny: v * 0.4, t, v, u: Math.max(0, (t - 0.72) / 0.28), across, W, dist: along });
+    }
+  }
+}
+
+// Each wing's lobes as [angle (0 level, negative up), length, half width].
+const FAIRY_WINGS = {
+  butterfly: [[0.72, 16, 6, "hwing2"], [-0.7, 25, 8, "hwing"]],
+  big: [[0.78, 19, 7, "hwing2"], [-0.75, 30, 9.6, "hwing"]],
+  round: [[0.9, 13, 5.4, "hwing2"], [-0.82, 20, 7, "hwing"]],
+  teardrop: [[0.8, 13, 3.8, "hwing2"], [-1, 26, 6, "hwing"]],
+  dragonfly: [[0.2, 24, 3.2, "hwing2"], [-0.42, 28, 3.8, "hwing"]],
+};
+
+// Swept back from the way she's going: the wing behind her is the bigger.
+function fairyWings(grid, sx, y, type, s, beat, lean) {
+  for (const side of [-1, 1]) {
+    const size = 1 - side * Math.min(0.3, lean * 0.4);
+    for (const [angle, len, w, label] of FAIRY_WINGS[type]) {
+      const a = angle + beat * 0.2 + (side < 0 ? lean * 0.35 : -lean * 0.2);
+      wingLobe(grid, sx + side * 1.2 * s, y, side > 0 ? a : Math.PI - a, len * s * size * (beat ? 0.92 : 1), w * s * size, label);
+    }
+  }
+}
+
+// One petal from (x, y), `a` the angle from straight down. Each cell keeps where it
+// sits on the petal, so the painter can shade it like one.
+function petal(grid, x, y, a, len, w, label, pointed) {
+  const cos = Math.sin(a);
+  const sin = Math.cos(a);
+  const reach = Math.ceil(len + w + 1);
+  for (let j = Math.floor(y - reach); j <= y + reach; j++) {
+    for (let i = Math.floor(x - reach); i <= x + reach; i++) {
+      const dx = i + 0.5 - x;
+      const dy = j + 0.5 - y;
+      const t = (dx * cos + dy * sin) / len;
+      if (t < 0 || t > 1) continue;
+      const W = Math.max(0.5, w * (pointed ? Math.pow(Math.sin(Math.PI * Math.pow(t, 0.8)), 0.9) : Math.pow(Math.sin(Math.PI * Math.pow(t, 1.5)), 0.55)));
+      const v = (-dx * sin + dy * cos) / W;
+      if (Math.abs(v) <= 1) put(grid, i, j, { l: label, nx: v * 0.7, ny: t - 0.5, t, v });
+    }
+  }
+}
+
+// A flower around her hips: a back layer of petals (the deeper color), a front layer
+// over it, the outer ones first in each so the middle lies on top, and little green
+// sepals where they join her waist.
+function flowerSkirt(grid, cx, wy, s, V, flutter) {
+  const lean = V.lean || 0;
+  const layers = V.layers || [{ n: 5, spread: 1.25, len: 7.5, w: 2.8 }, { n: 3, spread: 0.6, len: 5.5, w: 2.6 }];
+  layers.forEach((L, li) => {
+    const order = [...Array(L.n).keys()].sort((a, b) => Math.abs(b - (L.n - 1) / 2) - Math.abs(a - (L.n - 1) / 2));
+    for (const i of order) {
+      const f = L.n > 1 ? (i / (L.n - 1)) * 2 - 1 : 0;
+      petal(grid, cx, wy, f * L.spread - lean * 0.9 + flutter * 0.05 * f, L.len * s * 1.18, L.w * s * 1.12, li === layers.length - 1 ? "hskirt2" : "hskirt", V.pointed);
+    }
+  });
+  if (V.heart) fillEllipse(grid, cx - lean * 2 * s, wy + 1.6 * s, 2 * s, 1.5 * s, "hspot");
+  for (const side of [-1, 1]) taper(grid, [[cx + side * 1.4 * s, wy], [cx + side * 3.8 * s, wy + 0.6 * s]], [0.9 * s, 0.5], "hleaf");
+}
+
+// A rose: a ring of round petals all the way round, a smaller ring on it, a tight heart.
+function roseSkirt(grid, cx, wy, s, lean) {
+  const c = [cx - lean * 2 * s, wy + 3 * s];
+  for (let k = 0; k < 7; k++) petal(grid, c[0], c[1], (k / 7) * Math.PI * 2, 7.4 * s, 3.2 * s, "hskirt");
+  for (let k = 0; k < 5; k++) petal(grid, c[0], c[1], (k / 5) * Math.PI * 2 + 0.5, 4.6 * s, 2.6 * s, "hskirt2");
+  fillEllipse(grid, c[0], c[1], 1.4 * s, 1.4 * s, "hskirt");
+}
+
+// How she holds her legs: each [knee, foot] from the hip, in body sizes.
+const FAIRY_LEGS = {
+  flit: [[[-3.6, 5.4], [-9.5, 8.4]], [[0.6, 6.4], [-1.6, 12.6]]],
+  dart: [[[-5.4, 3], [-12, 3.6]], [[-4.8, 5.4], [-11, 8.6]]],
+  twirl: [[[-2.2, 6.4], [-3.4, 12.6]], [[5.6, 4], [3.4, 9]]],
+};
+
+// A fairy starts as a closed bud on a stem (baby), then the flower opens with her
+// sitting up in it, small wings showing (small). Every breed starts the same.
+function fairyStem(grid, cx, top, sway) {
+  taper(grid, [[cx, GROUND - 1], [cx + sway * 0.4, (GROUND + top) / 2], [cx + sway, top]], [0.9, 0.85, 0.85], "hleaf");
+  for (const side of [-1, 1]) petal(grid, cx, GROUND - 1, side * 2.05, 8, 2, "hleaf", true);
+}
+
+function buildFairyBud(genes, frame) {
+  const grid = makeGrid();
+  const cx = 46;
+  const sway = frame % 4 < 2 ? 0 : 1;
+  const y0 = GROUND - 8;
+  fairyStem(grid, cx, y0, sway);
+  const bx = cx + sway;
+  for (const a of [-0.3, 0.3]) petal(grid, bx, y0, Math.PI + a, 11, 3, "hskirt", true);
+  petal(grid, bx, y0, Math.PI, 12, 3.2, "hskirt2", true);
+  for (const a of [-0.55, 0.55]) petal(grid, bx, y0 + 1, Math.PI + a, 5.5, 1.9, "hleaf", true);
+  return {
+    grid, R: { ears: { type: "variant" } }, innerEars: false, headX: cx, face: EMPTY_FACE(), center: [cx, y0], scale: 0.5, softOutline: true, softNeck: true,
+    geo: { cx, cy: y0, rx: 3, ry: 6, legTop: GROUND, legH: 0, tail: [cx, y0, 0], head: [cx, y0 - 6, 1, 1], faceBox: null, muzzle: null },
+    fairy: true, tint: null, wingType: "round",
+  };
+}
+
+function buildFairyBloom(genes, frame, V) {
+  const grid = makeGrid();
+  const cx = 46;
+  const s = 0.5;
+  const hs = 0.72;
+  const y0 = GROUND - 8;
+  const beat = frame % 2;
+  const tint = FAIRY_TINTS[genes.face && genes.face.tint] || null;
+  fairyStem(grid, cx, y0, 0);
+  // the back petals, open wide behind her
+  for (const a of [-2.25, -1.45, 1.45, 2.25]) petal(grid, cx, y0, a, 11, 3.2, "hskirt", V.pointed);
+  const top = humanTop(grid, genes, frame, V, {
+    cx, wy: y0 - 1, s, hs, torso: 0.78, tint,
+    behind: ({ sx, sy }) => fairyWings(grid, sx, sy + 1, V.wings || "butterfly", 0.5, beat, 0),
+  });
+  // the front petals, cupping her waist
+  for (const a of [-1.95, 1.95, -2.5, 2.5]) petal(grid, cx, y0 + 1.5, a, 8, 2.8, "hskirt2", V.pointed);
+  for (const side of [-1, 1]) petal(grid, cx, y0 + 2, side * 1.5, 4.5, 1.5, "hleaf", true);
+  const geo = { cx, cy: y0 - 1, rx: top.sw, ry: top.th / 2, legTop: y0, legH: 0, tail: [cx, y0, 0], head: [top.hx, top.hy, top.hrx, top.hry], faceBox: null, muzzle: null };
+  return { grid, R: { ears: { type: "variant" } }, innerEars: false, headX: top.hx, face: top.face, center: [top.hx, top.hy], scale: s, softOutline: true, softNeck: true, geo, fairy: true, tint, wingType: V.wings || "butterfly" };
+}
+
+function buildFairy(genes, stage, frame, V) {
+  if (stage.id === "baby") return buildFairyBud(genes, frame);
+  if (stage.id === "small") return buildFairyBloom(genes, frame, V);
+  const grid = makeGrid();
+  const G = FAIRY_GROWTH[stage.id];
+  const big = G.body;
+  const s = big * BODY_SIZE;
+  const hs = G.head * (V.head || 1);
+  const cx = 44;
+  const lean = V.lean || 0;
+  const beat = frame % 2;
+  const bob = frame % 4 < 2 ? 0 : 1;
+  const flutter = frame % 4 < 2 ? 1 : -1;
+  const pose = V.pose || "flit";
+  const wy = Math.round(GROUND - (V.lift || 16) * big) - bob;
+  const tint = FAIRY_TINTS[genes.face && genes.face.tint] || null;
+
+  const top = humanTop(grid, genes, frame, V, {
+    cx, wy, s, hs, lean, torso: 0.78, tint,
+    behind: ({ sx, sy }) => {
+      fairyWings(grid, sx, sy + 2 * s, V.wings || "butterfly", big, beat, lean);
+      const hip = [cx, wy + 1];
+      FAIRY_LEGS[pose].forEach(([knee, foot], i) => {
+        const kick = (i ? beat : 1 - beat) * 0.5 * s;
+        taper(grid, [[hip[0] + (i ? 1 : -1) * s, hip[1]], [hip[0] + knee[0] * s, hip[1] + knee[1] * s], [hip[0] + foot[0] * s - kick, hip[1] + foot[1] * s + kick]], [1.1 * s, 0.95 * s, 0.55], "harm");
+      });
+    },
+  });
+  if (V.skirtType === "rose") roseSkirt(grid, cx, wy, s, lean);
+  else flowerSkirt(grid, cx, wy, s, V, flutter);
+  if (V.hat === "bell") {
+    // a flower for a hat, its hem curling up over the hair
+    bellHat(grid, top.hx, top.hy, top.hrx, top.hry, hs);
+  } else if (V.hat === "acorn") {
+    fillEllipse(grid, top.hx, top.hy - top.hry * 0.72, top.hrx * 0.92, 3.4 * hs, "hstem");
+    fillRect(grid, top.hx - 0.6, top.hy - top.hry - 3.6 * hs, 1.3, 2.4 * hs, "hstem");
+  } else if (V.bloom) {
+    // a flower tucked in her hair
+    const fx = Math.round(top.hx + top.hrx * 0.62);
+    const fy = Math.round(top.hy - top.hry * 0.72);
+    for (const [dx, dy] of [[-1.6, 0], [1.6, 0], [0, -1.6], [0, 1.6]]) fillEllipse(grid, fx + dx * hs, fy + dy * hs, 1.4 * hs, 1.4 * hs, "hskirt");
+    fillEllipse(grid, fx, fy, 1, 1, "hspot");
+  }
+  // pixie dust falling behind her, each mote twinkling in turn
+  const dustC = blend(genes.hex[1] || genes.hex[0], "#fffbe0", 0.7);
+  const dust = [[-15, 9], [-19, 14], [-12, 16], [-22, 7], [-16, 21]].filter((_, i) => (i + frame) % 2).map(([dx, dy]) => [Math.round(cx + dx * big), Math.round(wy - 6 * big + dy * big) + bob, dustC]);
+  top.face.glints.push(...dust);
+  const geo = { cx, cy: wy, rx: top.sw, ry: top.th / 2, legTop: wy, legH: 0, tail: [cx, wy, 0], head: [top.hx, top.hy, top.hrx, top.hry], faceBox: null, muzzle: null };
+  return { grid, R: { ears: { type: "variant" } }, innerEars: false, headX: top.hx, face: top.face, center: [top.hx, top.hy], scale: s, softOutline: true, softNeck: true, geo, fairy: true, tint, wingType: V.wings || "butterfly" };
+}
+
+function bellHat(grid, x, y, rx, ry, hs) {
+  const lobes = 5;
+  for (let j = Math.floor(y - ry - 1.5); j <= y + 1; j++) {
+    for (let i = Math.floor(x - rx - 2); i <= x + rx + 2; i++) {
+      const nx = (i + 0.5 - x) / (rx + 1);
+      const ny = (j + 0.5 - y) / (ry + 1.1);
+      if (nx * nx + ny * ny > 1) continue;
+      const hem = -1.4 * hs + 1.6 * hs * Math.abs(Math.sin(((nx + 1) / 2) * lobes * Math.PI));
+      if (j + 0.5 - y > hem) continue;
+      put(grid, i, j, { l: Math.floor(((nx + 1) / 2) * lobes) % 2 ? "hskirt2" : "hskirt", nx, ny });
+    }
+  }
+  taper(grid, [[x, y - ry - 0.5], [x + 1.2 * hs, y - ry - 2.4 * hs], [x + 2.8 * hs, y - ry - 3 * hs]], [0.8, 0.7, 0.5], "hleaf");
+}
+
+// Wings are see-through, with their details painted on. Each kind says how:
+//   veins      lines fanning from the root, as a fraction of the wing's width
+//   cross      rings of little veins across them (a dragonfly's net), this far apart
+//   rim        how thick a border, as a share of the way to the edge
+//   soft       how far the veins fade toward the wing: the more of them, the softer
+//   eye        a spot near the tip, like a butterfly's
+const WING_DETAILS = {
+  butterfly: { veins: [-0.5, 0, 0.5], rim: 0.1, eye: true, soft: 0.3 },
+  big: { veins: [-0.5, 0, 0.5], rim: 0.09, eye: true, soft: 0.35 },
+  round: { veins: [-0.4, 0.4], rim: 0.08, soft: 0.12 },
+  teardrop: { veins: [-0.3, 0.3], rim: 0.07, soft: 0.12 },
+  dragonfly: { veins: [0], rim: 0.05, cross: 8, soft: 0.6 },
+};
+const WING_ALPHA = 0.5;
+
+// The wing color that stands out most from her skin: from her two colors, some
+// shade of them, never so dark that the veins are lost.
+function wingColor(skin, colors) {
+  const dist = (a, b) => {
+    const [x, y] = [hexRgb(a), hexRgb(b)];
+    return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) / 255 + Math.abs(luminance(a) - luminance(b)) * 1.4;
+  };
+  let best = null;
+  let score = -1;
+  for (const c of colors) {
+    for (const white of [0, 0.25, 0.5, 0.72]) {
+      const w = blend(c, "#ffffff", white);
+      if (luminance(w) < 0.28) continue;
+      const d = dist(w, skin);
+      if (d > score) [best, score] = [w, d];
+    }
+  }
+  return best || blend(colors[0], "#ffffff", 0.6);
+}
+
+function paintFairy(out, grid, genes, built, hex) {
+  paintHuman(out, grid, genes, built, hex);
+  const hair = hex[1] || hex[0];
+  const skin = humanSkin(genes, built.tint)[0];
+  const base = wingColor(skin, [hex[0], hair]);
+  const lower = blend(base, SHADOW_TINT, 0.08);
+  const D = WING_DETAILS[built.wingType] || WING_DETAILS.butterfly;
+  // the third color, always a bright one, draws the wing's lines
+  const rimC = hex[2] || (luminance(base) > 0.72 ? blend(hex[0], SHADOW_TINT, 0.2) : blend(base, PET_OUTLINE, 0.36));
+  const vein = blend(rimC, base, D.soft);
+  built.glass = [];
+  grid.forEach((row, y) => row.forEach((c, x) => {
+    if (!c || (c.l !== "hwing" && c.l !== "hwing2") || c.t === undefined) return;
+    const edge = Math.hypot(c.u, c.v);
+    const mem = c.l === "hwing" ? base : lower;
+    const rim = edge > 1 - D.rim;
+    let line = false;
+    for (const k of D.veins) if (Math.abs(c.across - k * c.W) < 0.42 && c.t > 0.12) line = true;
+    if (D.cross && c.t > 0.08 && (c.dist % D.cross) < 0.7) line = true;
+    if (D.eye && c.l === "hwing" && Math.hypot(c.t - 0.72, c.v * 0.42) < 0.13) {
+      out[y][x] = rimC;
+      return;
+    }
+    out[y][x] = rim ? rimC : line ? vein : mem;
+    if (!rim && !line) built.glass.push([x, y]);
+  }));
+  // petals: the flower's marking, then a crease down the middle, deeper at the root
+  // and edges, light at the tip
+  const pattern = genes.coat.pattern;
+  const c2 = hair;
+  const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  const marked = (c, x, y) => {
+    if (pattern === "picotee") return Math.abs(c.v) > 0.5 || c.t > 0.8;
+    if (pattern === "flamed") return c.t > 0.42 + 0.42 * Math.abs(Math.sin(c.v * 5.2 + (genes.seed % 7)));
+    if (pattern === "freckled") return c.t > 0.18 && c.t < 0.78 && tick(x, y) < 0.2;
+    if (pattern === "pansy") return c.t < 0.52 && Math.abs(c.v) < 1 - c.t * 0.9;
+    if (pattern === "blush") return c.t + ((x + y) & 1 ? 0.1 : -0.1) < 0.5;
+    if (pattern === "eyed") return c.t > 0.28 && c.t < 0.5;
+    return false; // bloom: all one color
+  };
+  grid.forEach((row, y) => row.forEach((c, x) => {
+    if (!c || c.t === undefined || (c.l !== "hskirt" && c.l !== "hskirt2")) return;
+    const main = marked(c, x, y) ? c2 : hex[0];
+    let k = c.l === "hskirt" ? blend(main, SHADOW_TINT, 0.16) : main;
+    if (c.t > 0.6) k = blend(k, "#ffffff", 0.16);
+    if (c.t < 0.28) k = blend(k, SHADOW_TINT, 0.2);
+    if (Math.abs(c.v) < 0.16 && c.t < 0.82) k = blend(k, SHADOW_TINT, 0.12);
+    if (Math.abs(c.v) > 0.74 || c.t > 0.95) k = blend(k, SHADOW_TINT, 0.36);
+    out[y][x] = k;
+  }));
+}
+
+// Flower coats, from real blooms; the second color (also her hair) is the marking:
+//   bloom     one clear color
+//   picotee   a margin of the second color round each petal
+//   flamed    feathered flames from the tip, like a broken tulip
+//   freckled  speckles, like a tiger lily
+//   pansy     a dark blotch at the heart
+//   blush     the second color at the root, fading out
+//   eyed      a ring round the heart, like a hibiscus
+// See-through cells, done last: everything before this works in plain hex.
+function applyGlass(out, built) {
+  for (const [x, y] of built.glass || []) {
+    const [r, g, b] = hexRgb(out[y][x]);
+    out[y][x] = `rgba(${r}, ${g}, ${b}, ${WING_ALPHA})`;
+  }
 }
 
 // --- phoenixes -------------------------------------------------------------------------

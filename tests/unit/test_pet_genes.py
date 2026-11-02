@@ -551,3 +551,17 @@ def test_a_rare_mermaid_wears_one_bright_color_and_no_metal():
         g.roll("mermaid", "neon_blue", None, 1, {"neon_blue"})
     bright = next(g.roll("mermaid", None, None, s) for s in range(4000) if g._is_bright(g.roll("mermaid", None, None, s)["coat"]["colors"][0]))
     assert bright["coat"]["colors"][0] not in g.new_to_player(bright, set())
+
+
+def test_flower_fairies_roll_breeds_skin_and_a_bright_third_color_for_their_wings():
+    fairies = [g.roll("flower_fairy", None, None, seed) for seed in range(600)]
+    assert {f["shape"]["breed"] for f in fairies} == set(g.BREEDS["flower_fairy"])
+    assert {f["face"]["skin"] for f in fairies} == set(SKIN_TONES)
+    assert {f["face"]["tint"] for f in fairies} == set(g.SKIN_TINTS["flower_fairy"])
+    assert {f["coat"]["pattern"] for f in fairies} == set(g.SPECIES_PATTERNS["flower_fairy"])
+    for f in fairies:
+        main, second, third = f["coat"]["colors"]
+        assert g._is_bright(third) and abs(sum(f["coat"]["shares"]) - 1) < 0.01
+        assert min(g._distance(third, main), g._distance(third, second)) >= g.MIN_THIRD_DISTANCE
+    # it can't be picked or unlocked, and doesn't count as new to the player
+    assert fairies[0]["coat"]["colors"][2] not in g.new_to_player(fairies[0], set())

@@ -48,11 +48,9 @@ SPECIES_TYPES: dict[str, tuple[str, str | None]] = {
     "phoenix": ("ember", "dream"),
     "unicorn": ("dream", "leaf"),
     "mermaid": ("splash", "shock"),
-    "flower_fairy": ("leaf", "splash"),  # a stub until its art is designed
+    "flower_fairy": ("leaf", "splash"),
 }
 MYTHICAL = frozenset(s for s, (_, second) in SPECIES_TYPES.items() if second)
-# No art yet: what a wild one of these looks like until it's designed.
-STAND_IN = {"flower_fairy": "bunny"}
 # The color families a tougher creature wears, rarest for the toughest.
 TIER_COLORS = {"tough": ("bold_red", "bold_blue", "bold_purple", "bold_green", "bold_teal", "bold_pink"), "champion": ("neon",), "boss": ("metal",)}
 XP_FIRST_LEVEL = 500
