@@ -1901,7 +1901,7 @@ const petCache = new Map();
 function petPixels(genes, growth, frame = 0) {
   const stage = petStage(growth);
   const anim = genes.face && genes.face.sparkle ? frame % 36 : `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
-  const base = `${genes.seed}|${genes.species}|${genes.variant}|${genes.airborne}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
+  const base = `${genes.seed}|${genes.species}|${genes.variant}|${genes.scene}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
   const key = `${base}|${anim}`;
   if (petCache.has(key)) return petCache.get(key);
   const { out, noShadow } = petFrame(genes, growth, frame);
@@ -1941,7 +1941,8 @@ function stableBox(base, genes, growth) {
 function petFrame(genes, growth, frame) {
   const stage = petStage(growth);
   const chosen = (genes.variant && (PET_VARIANTS[genes.species] || [])[genes.variant - 1]) || speciesDesign(genes);
-  const design = genes.airborne ? PET_FLIGHT_POSES[genes.species](chosen) : chosen;
+  const inScene = genes.scene && PET_SCENE_POSES[genes.scene][genes.species];
+  const design = inScene ? inScene(chosen) : chosen;
   const built = design ? buildVariant(genes, stage, frame, design) : buildPet(genes, stage, frame);
   smoothEdges(built.grid);
   const { grid, R } = built;
@@ -2124,33 +2125,47 @@ function petSize(genes, growth) {
   return { w, h };
 }
 
-// In the air, dragons and phoenixes of any breed spread their wings and tuck
-// their legs. Fairies are already drawn hovering, so they have no pose here.
-const PET_FLIGHT_POSES = {
-  dragon: (d) => ({ ...d, pose: "fly", wings: { type: "spread", span: d.wings.span }, tail: { ...d.tail, len: 15 } }),
-  phoenix: (d) => ({ ...d, pose: "fly", facing: "side", fold: false, wings: d.wings || 13, tail: 18 }),
+// Poses a breed takes on for where it is, set by genes.scene.
+//   air    dragons and phoenixes of any breed spread their wings and tuck their
+//          legs (fairies are always drawn hovering)
+//   water  mermaids of any breed swim, tail streaming behind
+//   land   a mermaid who isn't drawn sitting sits
+const PET_SCENE_POSES = {
+  air: {
+    dragon: (d) => ({ ...d, pose: "fly", wings: { type: "spread", span: d.wings.span }, tail: { ...d.tail, len: 15 } }),
+    phoenix: (d) => ({ ...d, pose: "fly", facing: "side", fold: false, wings: d.wings || 13, tail: 18 }),
+  },
+  water: { mermaid: (d) => ({ ...d, pose: "swim" }) },
+  land: { mermaid: (d) => (d.pose === "swim" || d.pose === "crescent" ? { ...d, pose: "sit" } : d) },
 };
 
-// How a flying pet is drawn: {genes, w, h, blank}. A flight pose is built
-// lifted off the ground; `blank` is how many empty rows that leaves under it,
-// so the mover can decide the height itself.
-function petFlightPose(genes, growth) {
-  const pose = PET_FLIGHT_POSES[genes.species];
+// A pet as drawn in a scene: {genes, w, h, blank, headX, headW}. Scene poses can
+// be built lifted off the ground; `blank` is how many empty rows that leaves
+// under it, so the mover can decide the height itself. headX and headW are the
+// middle and width of its top quarter, to steer by the body and not the tail.
+function petScenePose(genes, growth, scene) {
+  const pose = PET_SCENE_POSES[scene][genes.species];
   if (!pose) {
     const { w, h } = petSize(genes, growth);
-    return { genes, w, h, blank: 0 };
+    return { genes, w, h, blank: 0, headX: w / 2, headW: w };
   }
-  const air = { ...genes, airborne: true };
-  const { w, h } = petSize(air, growth);
+  const placed = { ...genes, scene };
+  const { w, h } = petSize(placed, growth);
   let blank = h;
   for (const frame of [0, 1, 2, 3]) {
-    const { pix } = petPixels(air, growth, frame);
+    const { pix } = petPixels(placed, growth, frame);
     let rows = 0;
     while (rows < h && pix[h - 1 - rows].every((c) => !c)) rows += 1;
     blank = Math.min(blank, rows);
   }
-  return { genes: air, w, h, blank };
+  const top = petPixels(placed, growth, 0).pix.slice(0, Math.ceil((h - blank) / 4));
+  const filled = top.flatMap((row) => row.flatMap((c, i) => (c ? [i] : [])));
+  const [left, right] = [Math.min(...filled), Math.max(...filled) + 1];
+  return { genes: placed, w, h, blank, headX: (left + right) / 2, headW: right - left };
 }
+
+// A pet's genes for standing around on dry land.
+const petOnLand = (genes) => (PET_SCENE_POSES.land[genes.species] ? { ...genes, scene: "land" } : genes);
 
 // Species as people read them: flower_fairy -> "Flower fairy".
 function petSpeciesName(species) {

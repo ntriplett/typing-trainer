@@ -571,6 +571,8 @@ turtles). Wandering stays within ~45 units.
 
 **Flying** (added 2026-11-02): where `area.sky` is set (habitats and their Trailhead previews), grown (growth 4+) `FLIERS` take off, visit 1-3 spots with a hover at each, and land on open ground or a ledge; fairies spend about 70% of their time in the air, dragons and phoenixes about 25%. Dragons and phoenixes of any breed use a flight pose in the air (`PET_FLIGHT_POSES`). Fairies are always drawn hovering.
 
+**Mermaids** (added 2026-11-02): they only move into habitats with enough water (`HabitatKind.water`: Pond, Beach, Stream, Jungle, Savanna, Crystal Cave, Enchanted Grove; a test keeps it in step with the drawings). In a habitat a grown one stays in the biggest pool (`area.sky`), waist-deep in a swim pose, the tail dimmed and shown only over water; anywhere else she sits and flicks her tail (`PET_SCENE_POSES`, which also holds the flight poses). Pearls and clams wait at the water's edge.
+
 **Batches**: (1) engine + Forest, Stream, Mountain; (3-5) all the rest, done 2026-10-28 (looks
 in `habitats_outdoors.js`, `habitats_cozy.js`, `habitats_magic.js`; the shop groups habitat
 cards by tier); (2) the Pet Shop's Habitats department is a gallery: framed pictures, 8 to a room

@@ -17,7 +17,9 @@
 //   PetMotion.draw(world, px, {ctx, unit, tags});  // px(x, y, w, h, color) in scene units
 //
 // area: {left, right, top, bottom, props, terrain}. top..bottom is where
-// feet can be on the ground. sky: true lets FLIERS take to the air (habitats).
+// feet can be on the ground. sky: true is a pet's real home (a habitat): FLIERS
+// take to the air there, and mermaids live in its biggest pool. Anywhere else
+// a grown mermaid just sits and flicks her tail.
 // props: [{id, x, y, action, ledge, who}], action
 // one of look (default), bask, nap, dig, jump; ledge: the ledge it's on.
 // terrain (all optional, rects in feet coordinates):
@@ -40,6 +42,8 @@ const PetMotion = (() => {
   const FLY_FROM_GROWTH = 4; // younger ones walk
   const FLY_HEIGHT = [10, 24]; // scene units, as the room allows
   const FLUTTER_TICKS = 3; // a grown fairy's wings, sitting still
+  const ABOVE_WATER = 0.72; // how much of a swimming mermaid's height shows
+  const SWIM_REACH = 40; // she swims this far at a go
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const trait = (p, k) => (p.genes.personality || {})[k] ?? 0.5;
@@ -66,11 +70,19 @@ const PetMotion = (() => {
   function create(pets, area, scale) {
     const world = { walkers: [], area, scale };
     world.walkers = pets.map((p, i) => {
-      const size = petSize(p.genes, p.growth);
+      const settled = p.species === "mermaid" && !isPetRooted(p);
+      const pool = settled && area.sky ? biggestPool(area) : null;
+      const swimPose = pool && petScenePose(p.genes, p.growth, "water");
+      const genes = settled && !pool ? petOnLand(p.genes) : p.genes;
+      const size = petSize(genes, p.growth);
       const w = {
         p,
-        width: size.w * scale,
-        height: size.h * scale,
+        genes,
+        settled, // doesn't walk anywhere
+        pool, // the water she stays in
+        swimPose,
+        width: (swimPose ? swimPose.headW : size.w) * scale, // a swimmer goes by her body: the tail just trails
+        height: swimPose ? (swimPose.h - swimPose.blank) * ABOVE_WATER * scale : size.h * scale,
         x: 0,
         y: 0,
         dir: i % 2 ? -1 : 1,
@@ -90,7 +102,7 @@ const PetMotion = (() => {
         c: trait(p, "curious"),
         pl: trait(p, "playful"),
       };
-      const [x, y] = groundSpot(world, w, false);
+      const [x, y] = w.pool ? poolSpot(w) : isPetRooted(p) && p.species === "mermaid" && area.sky ? shoreSpot(world, w) : groundSpot(world, w, false);
       w.x = x;
       w.y = y;
       return w;
@@ -114,6 +126,56 @@ const PetMotion = (() => {
       break;
     }
     return best || [a.left, a.bottom];
+  }
+
+  // The biggest stretch of connected water: its rects, or null if there's none.
+  function biggestPool(area) {
+    const rects = (area.terrain && area.terrain.water) || [];
+    const touch = (a, b) => a.x <= b.x + b.w && b.x <= a.x + a.w && a.y <= b.y + b.h && b.y <= a.y + a.h;
+    const size = (pool) => pool.reduce((t, r) => t + r.w * r.h, 0);
+    const left = [...rects];
+    let best = null;
+    while (left.length) {
+      const pool = [left.pop()];
+      for (let i = 0; i < pool.length; i++) {
+        for (let k = left.length - 1; k >= 0; k--) if (touch(pool[i], left[k])) pool.push(...left.splice(k, 1));
+      }
+      if (!best || size(pool) > size(best)) best = pool;
+    }
+    return best;
+  }
+
+  const inPool = (pool, cx, y) => pool.some((r) => inside(cx, y, r));
+
+  // A random spot in her water, by the size of its parts.
+  function poolSpot(w) {
+    let r = Math.random() * w.pool.reduce((t, p) => t + p.w * p.h, 0);
+    const rect = w.pool.find((p) => (r -= p.w * p.h) <= 0) || w.pool[0];
+    return [rand(rect.x, rect.x + rect.w) - w.width / 2, rand(rect.y, rect.y + rect.h)];
+  }
+
+  // Somewhere near that she can swim straight to, or null. A winding stream
+  // rules out most spots, so she goes a bit at a time.
+  function swimSpot(w) {
+    for (let k = 0; k < 12; k++) {
+      const [x, y] = poolSpot(w);
+      if (Math.hypot(x - w.x, y - w.y) > SWIM_REACH) continue;
+      let clear = true;
+      for (let t = 0.1; t < 1 && clear; t += 0.1) clear = inPool(w.pool, w.x + (x - w.x) * t + w.width / 2, w.y + (y - w.y) * t);
+      if (clear) return [x, y];
+    }
+    return null;
+  }
+
+  // A pearl or clam waits at the water's edge.
+  function shoreSpot(world, w) {
+    const pool = biggestPool(world.area);
+    if (!pool) return groundSpot(world, w, false);
+    const rect = pool.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+    const y = Math.min(rect.y + rect.h + 1, world.area.bottom);
+    const x = rand(rect.x, rect.x + rect.w) - w.width / 2;
+    const cx = x + w.width / 2;
+    return blocked(world, cx, y) || waterAt(world, cx, y) ? groundSpot(world, w, false) : [x, y];
   }
 
   function ledgeSpot(world, w, ledge) {
@@ -242,14 +304,36 @@ const PetMotion = (() => {
     return options[0][0];
   }
 
+  // A mermaid: swims about her pool if she has one, and otherwise stays put.
+  function chooseSettled(w) {
+    const options = [["flick", 1], ["idle", 1.5]];
+    if (w.s > 0.3) options.push(["nap", w.s * 0.8]);
+    if (w.pool) options.push(["swim", 1.5 + w.e]);
+    const what = weighted(options);
+    const spot = what === "swim" && swimSpot(w);
+    if (spot) {
+      [w.tx, w.ty] = spot;
+      w.state = "paddle";
+      w.then = "idle";
+      w.speed = 0.14 + w.e * 0.2;
+    } else if (what === "flick") {
+      w.state = "flick";
+      w.timer = Math.floor(rand(6, 18));
+    } else if (what === "nap") {
+      w.state = "nap";
+      w.timer = Math.floor(rand(60, 160) * (0.5 + w.s));
+    } else rest(w, 1.5);
+  }
+
   function choose(world, w) {
+    if (w.settled) return chooseSettled(w);
     const t = terrain(world);
     const ledges = t.ledges || [];
     const water = t.water || [];
     const species = w.p.species;
     const others = world.walkers.filter((o) => o !== w && !o.still && o.ledge === w.ledge);
-    const friends = others.filter((o) => o.f > 0.5 && o.state !== "walk" && o.state !== "leap" && o.state !== "fly");
-    const players = others.filter((o) => o.pl > 0.5 && o.state !== "nap" && o.state !== "leap" && o.state !== "fly");
+    const friends = others.filter((o) => o.f > 0.5 && !o.pool && o.state !== "walk" && o.state !== "leap" && o.state !== "fly");
+    const players = others.filter((o) => o.pl > 0.5 && !o.settled && o.state !== "nap" && o.state !== "leap" && o.state !== "fly");
     const props = (world.area.props || []).filter((p) => (p.ledge ?? null) === w.ledge && allowed(p, w));
     const options = [["wander", 1]];
     if (w.s > 0.3) options.push(["nap", w.s * 1.2]);
@@ -405,6 +489,21 @@ const PetMotion = (() => {
       if (w.still || !ids.includes(w.p.id)) continue;
       const tx = x - w.width / 2 + rand(-5, 5);
       const ty = y + rand(-2, 2);
+      w.arrive = first ? onArrive : null;
+      first = false;
+      if (w.settled) {
+        if (w.pool) {
+          // as near as the water goes
+          const cx = x;
+          const rect = w.pool.reduce((a, b) => (Math.hypot(cx - mid(b)[0], y - mid(b)[1]) < Math.hypot(cx - mid(a)[0], y - mid(a)[1]) ? b : a));
+          w.tx = Math.min(Math.max(cx, rect.x), rect.x + rect.w) - w.width / 2;
+          w.ty = Math.min(Math.max(y, rect.y), rect.y + rect.h);
+          w.state = "paddle";
+          w.then = "happy";
+          w.speed = 0.3 + w.e * 0.2;
+        } else startHappy(w); // can't come, but pleased all the same
+        continue;
+      }
       if (canFly(world, w)) {
         takeOff(world, w, 1, "happy"); // straight there, down low
         [w.tx, w.ty] = [tx, ty];
@@ -416,8 +515,6 @@ const PetMotion = (() => {
         w.after = { x: tx, y: ty };
       } else walkTo(world, w, tx, ty, "happy", 1.5);
       w.running = true;
-      w.arrive = first ? onArrive : null;
-      first = false;
     }
   }
 
@@ -432,6 +529,8 @@ const PetMotion = (() => {
     }
   }
 
+  const mid = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+
   const RESTING = new Set(["idle", "nap", "look", "cuddle", "bask"]);
 
   const SWAY_TICKS = 3; // a rooted pet's frames: slower than walking legs
@@ -443,7 +542,18 @@ const PetMotion = (() => {
     }
     if (w.state === "fly") return stepFlight(world, w);
     let moving = false;
-    if (RESTING.has(w.state)) {
+    if (w.state === "paddle") {
+      moving = true;
+      if (moveToward(world, w, w.tx, w.ty, w.speed, true)) {
+        if (w.then === "happy") startHappy(w);
+        else rest(w);
+      }
+    } else if (w.state === "flick") {
+      w.ticks += 1;
+      if (w.ticks % 2 === 0) w.frame += 1;
+      if (--w.timer <= 0) rest(w, 1.5);
+      return;
+    } else if (RESTING.has(w.state)) {
       w.hop = 0;
       if (--w.timer <= 0) choose(world, w);
     } else if (w.state === "hop") {
@@ -548,7 +658,39 @@ const PetMotion = (() => {
     for (const w of [...world.walkers].sort((a, b) => a.y - b.y)) drawOne(world, w, px, opts);
   }
 
+  // Her waist at the waterline: the tail shows, dimmed, only where there's water under it.
+  function drawSwimmer(world, w, px) {
+    const { genes, h, blank } = w.swimPose;
+    const color = (w.pool[0].color || "#4a8ab0") + "99";
+    const line = w.y;
+    const body = center(w);
+    const under = (x, y, pw, ph, c) => {
+      const [mx, my] = [x + pw / 2, y + ph / 2];
+      const above = my <= line;
+      if (!(above && Math.abs(mx - body) <= w.width * 0.75) && !inPool(w.pool, mx, my)) return; // no stray fluke on dry land
+      px(x, y, pw, ph, c);
+      if (!above) px(x, y, pw, ph, color);
+    };
+    const bottom = line + (h - blank) * (1 - ABOVE_WATER) * world.scale + blank * world.scale - w.hop;
+    const cx = center(w);
+    const faceLeft = w.dir < 0;
+    const fromLeft = (faceLeft ? w.swimPose.w - w.swimPose.headX : w.swimPose.headX) * world.scale;
+    drawPet(under, cx - fromLeft, bottom, genes, w.p.growth, { frame: w.frame, faceLeft, scale: world.scale, shadow: false });
+    // the ripple around her, a little wider every other frame
+    const span = w.width * (0.55 + (w.frame % 2) * 0.1);
+    px(cx - span, line - 0.25, span * 0.7, 0.5, "rgba(220, 240, 250, 0.85)");
+    px(cx + span * 0.3, line - 0.25, span * 0.7, 0.5, "rgba(220, 240, 250, 0.85)");
+    if (w.state === "flick" || w.state === "paddle") droplets(px, { ...w, y: line + 1 }, "rgba(220, 240, 250, 0.8)");
+  }
+
   function drawOne(world, w, px, { ctx, unit, tags = false } = {}) {
+    if (w.pool) {
+      drawSwimmer(world, w, px);
+      if (ctx && w.state === "nap") snore(ctx, unit, w);
+      if (w.state === "happy") hearts(px, w);
+      if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
+      return;
+    }
     const cx = center(w);
     const pool = w.ledge === null && w.hop === 0 && waterAt(world, cx, w.y);
     const sink = pool && swims(w) ? Math.min(3, w.height * 0.25) : 0; // swimmers sit low in the water
@@ -558,7 +700,7 @@ const PetMotion = (() => {
       px(cx - (w.width * shadow) / 2, w.y - 0.5, w.width * shadow, 1, "rgba(40, 60, 20, 0.25)");
     }
     if (air) drawPet(px, cx - (air.w * world.scale) / 2, w.y - w.hop + air.blank * world.scale, air.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
-    else drawPet(px, w.x, w.y - w.hop + sink, w.p.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
+    else drawPet(px, w.x, w.y - w.hop + sink, w.genes, w.p.growth, { frame: w.frame, faceLeft: w.dir < 0, scale: world.scale, shadow: false });
     w.shownHeight = air ? (air.h - air.blank) * world.scale : w.height;
     if (pool) {
       const top = w.y - Math.max(1, w.height * 0.35) + sink;
@@ -574,7 +716,7 @@ const PetMotion = (() => {
   }
 
   function flightPose(world, w) {
-    w.air ||= petFlightPose(w.p.genes, w.p.growth);
+    w.air ||= petScenePose(w.p.genes, w.p.growth, "air");
     return w.air;
   }
 

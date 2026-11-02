@@ -212,3 +212,34 @@ def test_the_lab_only_adopts_real_pets():
     assert client.post("/api/pet-lab/adopt", json={"genes": good, "growth": 11}).status_code == 422
     client.cookies.clear()
     assert client.post("/api/pet-lab/adopt", json={"genes": good, "growth": 2}).status_code == 401
+
+
+def _adopt(species, growth=6):
+    genes = g.roll(species, None, None, 7)
+    return client.post("/api/pet-lab/adopt", json={"genes": genes, "growth": growth}).json()["id"]
+
+
+def test_mermaids_only_move_into_habitats_with_enough_water():
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_coins(conn, 1, 100000, "test")
+    assert client.post("/api/pets/shop/habitats/meadow").status_code == 200
+    assert client.post("/api/pets/shop/habitats/pond").status_code == 200
+    for growth in (0, 2, 6):
+        mermaid = _adopt("mermaid", growth)
+        dry = client.put(f"/api/care/{mermaid}/home", json={"spot": 0})
+        assert dry.status_code == 400 and "water" in dry.json()["detail"]
+        assert client.put(f"/api/care/{mermaid}/home", json={"spot": 1}).status_code == 200
+        assert client.put(f"/api/care/{mermaid}/home", json={"spot": None}).status_code == 200
+    assert client.put(f"/api/care/{_adopt('dog')}/home", json={"spot": 0}).status_code == 200  # others go anywhere
+    care = client.get("/api/care").json()
+    assert {h["kind"]: h["water"] for h in care["habitats"]} == {"meadow": False, "pond": True}
+    assert {p["species"]: p["swimmer"] for p in care["pets"]} == {"mermaid": True, "dog": False}
+
+
+def test_mermaids_can_still_come_along():
+    mermaid = _adopt("mermaid")
+    assert client.put(f"/api/care/{mermaid}/along", json={"slot": 1}).status_code == 200
+
+
+def test_the_water_habitats_are_the_agreed_ones():
+    assert {k for k, h in pet_care.HABITAT_KINDS.items() if h.water} == {"stream", "beach", "jungle", "pond", "savanna", "crystalcave", "grove"}

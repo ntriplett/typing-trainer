@@ -40,10 +40,11 @@ function drawAvatar(canvas, equipped, opts = {}) {
 const ALONG_PET_SCALE = 0.5;
 
 function drawAlongPet(px, pet) {
-  const { w } = petSize(pet.genes, pet.growth);
+  const genes = petOnLand(pet.genes);
+  const { w } = petSize(genes, pet.growth);
   const width = w * ALONG_PET_SCALE;
   const x = pet.slot === 1 ? 47 - width : 1;
-  drawPet(px, x, 47, pet.genes, pet.growth, { faceLeft: pet.slot === 1, scale: ALONG_PET_SCALE });
+  drawPet(px, x, 47, genes, pet.growth, { faceLeft: pet.slot === 1, scale: ALONG_PET_SCALE });
 }
 
 // The same drawing through any pixel-fill function, so other scenes (the

@@ -18,6 +18,7 @@ MAX_NAME = 16
 TRAIL_SPOTS = 10
 HABITAT_PETS = 6
 WATER_ONLY = {"fish"}  # they wait for the Aquarium
+SWIMMERS_ONLY = {"mermaid"}  # habitats with enough water to swim in, and nowhere else
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,7 @@ class HabitatKind:
     id: str
     name: str
     tier: str  # TIER_PRICE; magical ones open with the Mythical department
+    water: bool = False  # a pool big enough for a grown mermaid (habitats.js draws it)
 
 
 TIER_PRICE = {"everyday": 1500, "cozy": 2500, "magical": 5000}
@@ -37,17 +39,17 @@ HABITAT_KINDS: dict[str, HabitatKind] = {
     for h in [
         HabitatKind("meadow", "Meadow", "everyday"),
         HabitatKind("forest", "Forest", "everyday"),
-        HabitatKind("stream", "Stream", "everyday"),
+        HabitatKind("stream", "Stream", "everyday", water=True),
         HabitatKind("mountain", "Mountain", "everyday"),
         HabitatKind("farmyard", "Farmyard", "everyday"),
         HabitatKind("backyard", "Backyard", "everyday"),
-        HabitatKind("beach", "Beach", "everyday"),
+        HabitatKind("beach", "Beach", "everyday", water=True),
         HabitatKind("desert", "Desert", "everyday"),
-        HabitatKind("jungle", "Jungle", "everyday"),
+        HabitatKind("jungle", "Jungle", "everyday", water=True),
         HabitatKind("tundra", "Snowy Tundra", "everyday"),
         HabitatKind("orchard", "Autumn Orchard", "everyday"),
-        HabitatKind("pond", "Pond & Marsh", "everyday"),
-        HabitatKind("savanna", "Savanna", "everyday"),
+        HabitatKind("pond", "Pond & Marsh", "everyday", water=True),
+        HabitatKind("savanna", "Savanna", "everyday", water=True),
         HabitatKind("cottage", "Cozy Cottage", "cozy"),
         HabitatKind("greenhouse", "Greenhouse", "cozy"),
         HabitatKind("treehouse", "Treehouse Village", "cozy"),
@@ -56,10 +58,10 @@ HABITAT_KINDS: dict[str, HabitatKind] = {
         HabitatKind("hayloft", "Hay Loft", "cozy"),
         HabitatKind("attic", "Attic Hideaway", "cozy"),
         HabitatKind("porch", "Sunny Porch", "cozy"),
-        HabitatKind("crystalcave", "Crystal Cave", "magical"),
+        HabitatKind("crystalcave", "Crystal Cave", "magical", water=True),
         HabitatKind("cloudkingdom", "Cloud Kingdom", "magical"),
         HabitatKind("volcano", "Volcano Rim", "magical"),
-        HabitatKind("grove", "Enchanted Grove", "magical"),
+        HabitatKind("grove", "Enchanted Grove", "magical", water=True),
         HabitatKind("observatory", "Starry Observatory", "magical"),
     ]
 }
@@ -95,6 +97,7 @@ def view(pet: dict, today: date) -> dict:
         "rarity": round(g.rarity(pet["genes"]), 3),
         "rare": g.rare_features(pet["genes"]),
         "water": pet["species"] in WATER_ONLY,
+        "swimmer": pet["species"] in SWIMMERS_ONLY,
         "joy": pet_supplies.joy(pet, today),
     }
 
@@ -169,6 +172,8 @@ def set_home(conn, learner_id: int, pet_id: int, spot: int | None) -> None:
             raise CareError("There's no habitat there yet.")
         if pet["species"] in WATER_ONLY:
             raise CareError("Fish need water! They'll live in the Aquarium.")
+        if pet["species"] in SWIMMERS_ONLY and not HABITAT_KINDS[habitat["kind"]].water:
+            raise CareError(f"{habitat['name']} doesn't have enough water for a {pet['species']}.")
         living = [p for p in db.list_v3_pets(conn, learner_id) if p["home"] == home_id(spot) and p["id"] != pet_id]
         if len(living) >= HABITAT_PETS:
             raise CareError(f"{habitat['name']} is full ({HABITAT_PETS} pets).")
@@ -284,7 +289,7 @@ def care_state(conn, learner_id: int, today: date) -> dict:
     return {
         "pets": pets,
         "habitats": [
-            {**h, "count": sum(1 for p in pets if p["spot"] == h["spot"]), "capacity": HABITAT_PETS}
+            {**h, "count": sum(1 for p in pets if p["spot"] == h["spot"]), "capacity": HABITAT_PETS, "water": HABITAT_KINDS[h["kind"]].water}
             for h in db.list_habitats(conn, learner_id)
         ],
         "tanks": [

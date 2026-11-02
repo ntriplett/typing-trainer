@@ -188,3 +188,94 @@ def test_flying_pets_land_somewhere_they_can_stand(page: Page, live_server, tmp_
       return { landings, wet };
     }""")
     assert bad["landings"] > 0 and bad["wet"] == 0
+
+
+def test_the_server_and_the_drawings_agree_on_which_habitats_have_water(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    widest = page.evaluate("""(kinds) => Object.fromEntries(kinds.map((k) => {
+      const water = (HABITAT_LOOKS[k].terrain || {}).water || [];
+      const left = Math.min(...water.map((r) => r.x)), right = Math.max(...water.map((r) => r.x + r.w));
+      return [k, water.length ? right - left : 0];
+    }))""", list(pet_care.HABITAT_KINDS))
+    for kind, h in pet_care.HABITAT_KINDS.items():
+        assert (widest[kind] >= 36) == h.water, kind
+
+
+def test_a_mermaid_stays_in_her_pool_in_every_water_habitat(page: Page, live_server):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/pets/trail")
+    genes = g.resolve(g.roll("mermaid", None, None, 3))
+    kinds = [k for k, h in pet_care.HABITAT_KINDS.items() if h.water]
+    seen = page.evaluate("""([kinds, genes]) => Object.fromEntries(kinds.map((kind) => {
+      const look = HABITAT_LOOKS[kind];
+      const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, sky: true, props: look.props, terrain: look.terrain };
+      const world = PetMotion.create([{ id: 1, species: "mermaid", growth: 10, genes }], area, 2 / 3);
+      const w = world.walkers[0];
+      const was = [w.x, w.y];
+      let dry = 0, moved = false;
+      const inWater = (cx, y) => w.pool.some((r) => cx >= r.x - 1 && cx <= r.x + r.w + 1 && y >= r.y - 1 && y <= r.y + r.h + 1);
+      for (let i = 0; i < 6000; i++) {
+        PetMotion.step(world);
+        if (!inWater(w.x + w.width / 2, w.y)) dry += 1;
+        moved ||= w.x !== was[0];
+        if (i % 40 === 0) PetMotion.draw(world, () => {});
+      }
+      return [kind, { dry, moved }];
+    }))""", [kinds, genes])
+    for kind, s in seen.items():
+        assert s["dry"] == 0 and s["moved"], kind
+    assert not errors
+
+
+def test_a_mermaid_on_land_sits_and_flicks_her_tail(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    genes = g.resolve({**g.roll("mermaid", None, None, 3)})
+    genes["shape"] = {**genes["shape"], "breed": "swim", "mix": {}}
+    seen = page.evaluate("""(genes) => {
+      const world = PetMotion.create([{ id: 1, species: "mermaid", growth: 10, genes }], { left: 2, right: 158, top: 50, bottom: 88, props: [] }, 0.5);
+      const w = world.walkers[0];
+      const was = [w.x, w.y];
+      let flicked = false;
+      for (let i = 0; i < 4000; i++) {
+        PetMotion.step(world);
+        flicked ||= w.frame > 0;
+      }
+      let arrived = 0;
+      PetMotion.attract(world, [1], 80, 70, () => (arrived += 1));
+      return { moved: w.x !== was[0] || w.y !== was[1], flicked, happy: w.state, arrived, scene: w.genes.scene, pool: w.pool };
+    }""", genes)
+    assert not seen["moved"] and seen["flicked"] and seen["scene"] == "land" and seen["pool"] is None
+    assert seen["happy"] == "happy" and seen["arrived"] == 1  # she can't come over for a treat, but she gets it
+
+
+def test_a_mermaid_swims_over_for_a_treat(page: Page, live_server):
+    page.goto(f"{live_server}/pets/trail")
+    genes = g.resolve(g.roll("mermaid", None, None, 3))
+    seen = page.evaluate("""(genes) => {
+      const look = HABITAT_LOOKS.pond;
+      const world = PetMotion.create([{ id: 1, species: "mermaid", growth: 10, genes }], { left: 2, right: 158, top: look.groundTop, bottom: look.groundBottom, sky: true, props: [], terrain: look.terrain }, 2 / 3);
+      const w = world.walkers[0];
+      let arrived = 0;
+      PetMotion.attract(world, [1], 150, 85, () => (arrived += 1));
+      for (let i = 0; i < 3000 && !arrived; i++) PetMotion.step(world);
+      return { arrived, state: w.state, inPool: w.pool.some((r) => w.x + w.width / 2 >= r.x && w.x + w.width / 2 <= r.x + r.w) };
+    }""", genes)
+    assert seen["arrived"] == 1 and seen["inPool"]
+
+
+def test_the_move_list_only_offers_a_mermaid_water(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/trail")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_coins(conn, 1, 100000, "test")
+        mermaid = db.add_v3_pet(conn, 1, g.roll("mermaid", None, None, 3), "Marina", "shop", growth=6)
+    page.goto(f"{live_server}/pets/care?pet={mermaid}")
+    page.request.post(f"{live_server}/api/pets/shop/habitats/meadow")
+    page.reload()
+    page.get_by_role("button", name="🏡 Move to a habitat").click()
+    expect(page.locator("#detail-picker")).to_contain_text("needs a habitat with plenty of water")
+    page.request.post(f"{live_server}/api/pets/shop/habitats/pond")
+    page.reload()
+    page.get_by_role("button", name="🏡 Move to a habitat").click()
+    expect(page.locator("#detail-picker")).to_contain_text("Pond & Marsh")
+    expect(page.locator("#detail-picker")).not_to_contain_text("Meadow")

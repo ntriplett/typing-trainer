@@ -326,12 +326,13 @@ function renderPicker(p) {
     );
   } else if (mode === "move") {
     const picks = care.habitats
-      .filter((h) => h.spot !== p.spot)
+      .filter((h) => h.spot !== p.spot && (!p.swimmer || h.water))
       .map((h) => {
         const full = h.count >= h.capacity;
         return button(`${h.name} (${h.count}/${h.capacity})${full ? " full" : ""}`, "", () => move(p, h.spot), full);
       });
     if (p.spot !== null) picks.push(button("Back to the Care Center", "", () => move(p, null)));
+    if (p.swimmer && !picks.length) picks.push(Object.assign(document.createElement("p"), { textContent: `${p.name} needs a habitat with plenty of water, like a Pond or a Beach.` }));
     box.replaceChildren(...picks);
     if (!care.habitats.length)
       box.innerHTML = `<p>You don't have a habitat yet. Get one in the <a href="/pets/shop?dept=habitats">Pet Shop</a>!</p>`;
