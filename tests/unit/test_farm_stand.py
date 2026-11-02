@@ -134,7 +134,7 @@ def test_buy_saves(conn, learner_id):
 
 def test_customers_are_grown_land_animals_with_favorites():
     land = {sp for d in ("household", "farm", "reptiles") for sp in pet_shop.DEPARTMENTS[d].species}
-    mythical = set(pet_shop.DEPARTMENTS["mythical"].species)
+    mythical = {*pet_shop.DEPARTMENTS["mythical"].species, "flower_fairy"}
     people = f.customers(set(), random.Random(3), count=40)
     assert len(people) == 40
     assert all(p["growth"] == f.CUSTOMER_GROWTH and p["genes"]["hex"][0] for p in people)
@@ -238,3 +238,9 @@ def test_every_upgrade_opens_in_order_and_costs_more_each_level():
     for u in f.UPGRADES.values():
         assert len(u.values) == len(u.costs) + 1 == len(u.rep) + 1, u.id
         assert list(u.costs) == sorted(u.costs) and list(u.rep) == sorted(u.rep), u.id
+
+
+def test_fairies_can_visit_the_stall_but_mermaids_cant():
+    people = f.customers(set(), random.Random(3), count=3000)
+    kinds = {p["species"] for p in people}
+    assert "flower_fairy" in kinds and "mermaid" not in kinds

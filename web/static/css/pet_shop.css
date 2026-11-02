@@ -466,3 +466,16 @@
     height: auto;
   }
 }
+
+/* A friend's letter on the shop's desk */
+.friend-letter {
+  background: #fbf1dc;
+  border: 2px solid #c8b48c;
+  box-shadow: 3px 3px 0 rgba(59, 36, 23, 0.25);
+  padding: 0.6rem 1rem;
+  margin: 0.4rem 0;
+  text-align: left;
+}
+.friend-letter p { margin: 0.35rem 0; }
+.letter-sign { text-align: right; }
+.letter-portrait { display: flex; justify-content: center; }

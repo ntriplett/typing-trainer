@@ -15,6 +15,7 @@ stored in app/db.py: departments opening as rows are learned, buying
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
@@ -48,6 +49,7 @@ DEPARTMENTS: dict[str, Department] = {
         Department("farm", "Farm Pets", ("goat", "sheep", "llama", "fox"), 12, 2000, TOP_ROW),
         Department("reptiles", "Reptiles & Amphibians", ("turtle", "lizard", "snake"), 8, 3000, BOTTOM_ROW),
         Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 10000, NUMBERS),
+        Department("companions", "Companions", ("flower_fairy", "mermaid"), 1, 10000, NUMBERS),  # one letter at a time, on the desk
         Department("orders", "Special Orders", (), 4, 0, HOME_ROW),
         Department("habitats", "Habitats", (), 0, 0, ""),  # sold by app/pet_care.py
         Department("aqua", "Aquarium Supplies", (), 0, 0, ""),  # sold by app/aquarium.py
@@ -108,6 +110,8 @@ def nice_price(amount: float) -> int:
 
 def price(genes: dict, unlocked: set[str], price_roll: float) -> int:
     """Worked out when shown, so unlocking a color makes its pets cheaper."""
+    if genes["species"] in g.COMPANIONS:
+        return BASE_PRICE[genes["species"]]  # getting a place ready for a guest: she has no price
     amount = BASE_PRICE[genes["species"]] * g.rarity(genes) * price_roll
     if g.new_to_player(genes, unlocked):
         amount *= NEW_COLOR_PRICE
@@ -170,10 +174,50 @@ def sell(slot: Slot, today: date) -> Slot:
     return replace(slot, saved=False, sold=True, leaves_on=today + timedelta(days=1))
 
 
+# What a friend says about herself, by the side of her personality that's strongest.
+LETTER_OPENING = {
+    "flower_fairy": "The flowers here say you are kind to your friends. I would love to come and stay for a while.",
+    "mermaid": "The tide brought me news of you, and of how kind you are to your friends. I would love to come and stay for a while.",
+}
+LETTER_TRAIT = {
+    "energy": {"flower_fairy": "I can hardly keep still, so I hope there's plenty of room to fly.", "mermaid": "I can hardly keep still, so I hope there's plenty of room to swim."},
+    "friendly": "I love meeting new friends, and I can't wait to meet yours.",
+    "curious": "I want to see everything, so please show me around!",
+    "playful": "I know lots of games, and I'd be glad to teach you some.",
+    "sleepy": "I do like a long rest in a quiet spot, if you know of one.",
+}
+LETTER_HOME = {
+    "flower_fairy": "Any home will do for me, as long as there's room for my wings.",
+    "mermaid": "I will need a home with plenty of water, of course.",
+}
+
+
+def friend_names_used(conn, learner_id: int, species: str) -> Counter:
+    """The names friends of this kind came with (renaming one doesn't free hers up)."""
+    return Counter(p["genes"].get("friend_name", p["name"]) for p in db.list_v3_pets(conn, learner_id) if p["species"] == species)
+
+
+def friend_letter(species: str, genes: dict, used: Counter | None = None) -> dict:
+    """Her letter: who she is and what she'd like."""
+    personality = genes["personality"]
+    strongest = max(LETTER_TRAIT, key=lambda trait: personality.get(trait, 0))
+    about = LETTER_TRAIT[strongest]
+    return {
+        "name": g.companion_name(species, genes["seed"], used),
+        "lines": [LETTER_OPENING[species], about[species] if isinstance(about, dict) else about, LETTER_HOME[species]],
+    }
+
+
 def view(slot: Slot, today: date, unlocked: set[str]) -> dict:
     """What the shop page draws for one slot."""
     if slot.sold:
         return {"dept": slot.dept, "index": slot.index, "sold": True}
+    if slot.species in g.COMPANIONS:
+        return {
+            "dept": slot.dept, "index": slot.index, "sold": False, "species": slot.species, "genes": g.resolve(slot.genes),
+            "price": price(slot.genes, unlocked, slot.price_roll), "new_colors": [], "rare": {}, "saved": False,
+            "last_day": last_day(slot, today), "days_left": (slot.leaves_on - today).days,
+        }
     return {
         "dept": slot.dept,
         "index": slot.index,
@@ -308,8 +352,10 @@ def shop_state(conn, learner_id: int, today: date) -> dict:
     taught = lessons.taught_keys(conn, learner_id)
     saved = _saved(conn, learner_id)
     unlocked = db.list_pet_color_unlocks(conn, learner_id)
+    letter = is_open(DEPARTMENTS["companions"], taught) and any(not s.sold for s in stock(conn, learner_id, "companions", today))
     return {
         "departments": [_dept_info(d, taught) for d in DEPARTMENTS.values()],
+        "friend": letter,
         "saved": view(saved, today, unlocked) if saved else None,
         "coupon": has_coupon(conn, learner_id),
     }
@@ -326,6 +372,10 @@ def department_state(conn, learner_id: int, dept_id: str, today: date, rng: rand
         "saved": view(saved, today, unlocked) if saved else None,
         "coupon": dept_id == COUPON_DEPT and has_coupon(conn, learner_id),
     }
+    if dept_id == "companions":
+        for slot in out["slots"]:
+            if not slot["sold"]:
+                slot["letter"] = friend_letter(slot["species"], slot["genes"], friend_names_used(conn, learner_id, slot["species"]))
     if dept_id == "orders":
         out |= {
             "order": _order_view(conn, learner_id, today),
@@ -366,9 +416,15 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
         cost = price(slot.genes, unlocked, slot.price_roll)
         balance = db.get_coin_balance(conn, learner_id)
         if balance < cost:
-            raise ShopError(f"You need {cost - balance:,} more coins for this {g.species_name(slot.species).lower()}.")
+            what = "to get a place ready for her" if slot.species in g.COMPANIONS else f"for this {g.species_name(slot.species).lower()}"
+            raise ShopError(f"You need {cost - balance:,} more coins {what}.")
         db.add_coins(conn, learner_id, -cost, "purchase", ref=f"pet:{dept_id}:{slot.seed}")
     db.put_shop_slot(conn, learner_id, _to_row(sold))
+    if slot.species in g.COMPANIONS:  # she's herself: her colors aren't for your pets
+        name = g.companion_name(slot.species, slot.genes["seed"], friend_names_used(conn, learner_id, slot.species))
+        pet_id = db.add_v3_pet(conn, learner_id, {**slot.genes, "friend_name": name}, name, "letter", growth=pet_care.MAX_GROWTH)
+        pet = db.get_v3_pet(conn, learner_id, pet_id)
+        return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": []}
     new = g.new_to_player(slot.genes, unlocked)
     db.unlock_pet_colors(conn, learner_id, [c for c in slot.genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
     source = "order" if dept_id == "orders" else "shop"
@@ -405,6 +461,8 @@ def buy_fish_copy(conn, learner_id: int, pet_id: int) -> dict:
 def save_pet(conn, learner_id: int, dept_id: str, index: int, today: date) -> None:
     if dept_id == "orders":
         raise ShopError("Special order pets are already waiting just for you!")
+    if dept_id == "companions":
+        raise ShopError("She'll wait a few days for your answer, but she's not yours to save.")
     slot = _slot(conn, learner_id, dept_id, index, today)
     db.put_shop_slot(conn, learner_id, _to_row(save(slot, _saved(conn, learner_id))))
 
@@ -444,7 +502,7 @@ def order_choices(conn, learner_id: int) -> list[dict]:
             "colors": [_color(c) for c in g.available_colors(sp, unlocked)],
         }
         for d in DEPARTMENTS.values()
-        if d.id in STOCKED and is_open(d, taught)
+        if d.id in STOCKED and d.id != "companions" and is_open(d, taught)
         for sp in d.species
     ]
 

@@ -8,7 +8,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, lessons, main, pet_genes
+from app import db, lessons, main, pet_genes, pet_shop
+from app import pet_genes as g
 from app.activities.teach_curriculum import PAIR_ID
 from app.brain import lesson_ref
 
@@ -185,3 +186,97 @@ def test_the_hub_tells_the_shop_door_about_coupons_and_orders(clock):
     client.post("/api/pets/shop/orders", json={"species": "cat", "primary": "black"})
     clock["days"] = 1
     assert client.get("/api/pets/hub").json()["order"]["status"] == "ready"
+
+
+# --- a friend writes (companions) ----------------------------------------------------
+
+
+def _open_the_desk(monkeypatch):
+    monkeypatch.setattr(pet_shop.lessons, "taught_keys", lambda conn, learner: set(pet_shop.NUMBERS))
+
+
+def test_the_desk_opens_with_the_numbers(monkeypatch):
+    assert not depts()["companions"]["open"]
+    assert client.get("/api/pets/shop").json()["friend"] is False
+    assert client.get("/api/pets/shop/companions").status_code != 200
+    _open_the_desk(monkeypatch)
+    assert client.get("/api/pets/shop").json()["friend"] is True
+
+
+def test_a_friend_writes_one_at_a_time(monkeypatch):
+    _open_the_desk(monkeypatch)
+    slots = client.get("/api/pets/shop/companions").json()["slots"]
+    assert len(slots) == 1
+    her = slots[0]
+    assert her["species"] in g.COMPANIONS and her["price"] == 10000
+    assert her["new_colors"] == [] and her["rare"] == {}
+    assert her["letter"]["name"] in g.COMPANION_NAMES[her["species"]] and len(her["letter"]["lines"]) == 3
+    assert her["days_left"] >= 1
+
+
+def test_inviting_a_friend_brings_her_fully_grown_under_her_own_name(monkeypatch):
+    _open_the_desk(monkeypatch)
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_coins(conn, 1, 15000 - db.get_coin_balance(conn, 1), "test")
+        before = db.list_pet_color_unlocks(conn, 1)
+    her = client.get("/api/pets/shop/companions").json()["slots"][0]
+    r = client.post("/api/pets/shop/companions/0/buy", json={"coupon": False})
+    assert r.status_code == 200
+    friend = r.json()["bought"]
+    assert friend["name"] == her["letter"]["name"] and friend["growth"] == 10 and friend["source"] == "letter"
+    assert r.json()["coins"] == 5000
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.list_pet_color_unlocks(conn, 1) == before  # her colors stay hers
+    assert client.get("/api/pets/shop").json()["friend"] is False
+    assert client.get("/api/pets/shop/companions").json()["slots"][0]["sold"]
+
+
+def test_you_need_the_coins_to_get_a_place_ready(monkeypatch):
+    _open_the_desk(monkeypatch)
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_coins(conn, 1, 100 - db.get_coin_balance(conn, 1), "test")
+    r = client.post("/api/pets/shop/companions/0/buy", json={"coupon": False})
+    assert r.status_code == 400 and "place ready for her" in r.json()["detail"]
+
+
+def test_a_friend_cant_be_saved_or_ordered(monkeypatch):
+    _open_the_desk(monkeypatch)
+    client.get("/api/pets/shop/companions")
+    assert client.put("/api/pets/shop/save", json={"dept": "companions", "index": 0}).status_code == 400
+    with db.open_db(main.DB_PATH) as conn:
+        choices = {c["species"] for c in pet_shop.order_choices(conn, 1)}
+    assert not (choices & g.COMPANIONS)
+
+
+def test_every_letter_reads_right():
+    for species in g.COMPANIONS:
+        for seed in range(60):
+            letter = pet_shop.friend_letter(species, g.roll(species, None, None, seed))
+            assert letter["name"] and all(isinstance(line, str) and line for line in letter["lines"])
+            if species == "mermaid":
+                assert "water" in letter["lines"][-1]
+
+
+def test_a_new_friend_doesnt_share_a_name_with_one_you_have(monkeypatch):
+    _open_the_desk(monkeypatch)
+    her = client.get("/api/pets/shop/companions").json()["slots"][0]
+    species, names = her["species"], g.COMPANION_NAMES[her["species"]]
+    last = names[-1]
+    with db.open_db(main.DB_PATH) as conn:  # everyone but one has already come
+        for i, name in enumerate(names[:-1]):
+            db.add_v3_pet(conn, 1, g.roll(species, None, None, 500 + i), name, "letter", growth=10)
+        db.add_coins(conn, 1, 20000, "test")
+    assert client.get("/api/pets/shop/companions").json()["slots"][0]["letter"]["name"] == last
+    friend = client.post("/api/pets/shop/companions/0/buy", json={"coupon": False}).json()["bought"]
+    assert friend["name"] == last and friend["genes"]["friend_name"] == last
+
+
+def test_renaming_a_friend_doesnt_free_up_her_old_name(monkeypatch):
+    _open_the_desk(monkeypatch)
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_coins(conn, 1, 20000, "test")
+    friend = client.post("/api/pets/shop/companions/0/buy", json={"coupon": False}).json()["bought"]
+    assert client.put(f"/api/care/{friend['id']}/name", json={"name": "Bob"}).status_code == 200
+    with db.open_db(main.DB_PATH) as conn:
+        used = pet_shop.friend_names_used(conn, 1, friend["species"])
+    assert used[friend["genes"]["friend_name"]] == 1 and "Bob" not in used

@@ -18,7 +18,7 @@ def _give_coins(tmp_path, amount: int) -> None:
 def test_a_new_player_walks_in_shops_for_fish_and_saves_one(page: Page, live_server):
     page.goto(f"{live_server}/pets/shop")
     expect(page.locator("#dept-title")).to_have_text("Welcome to the Pet Shop!")
-    expect(page.locator(".shop-spot")).to_have_count(6)  # 5 departments and the stairs
+    expect(page.locator(".shop-spot")).to_have_count(7)  # 6 departments and the stairs
     expect(page.locator("[data-dept='household']")).to_contain_text("Learn")
     page.locator("[data-dept='household']").click()
     expect(page.locator("#shop-message")).to_contain_text("opens when you learn")
@@ -137,3 +137,48 @@ def test_aquarium_supplies_upstairs(page: Page, live_server, tmp_path):
     page.get_by_role("button", name="Upstairs").click()
     page.locator("[data-stairs='down']").click()
     expect(page.locator("#dept-title")).to_have_text("Welcome to the Pet Shop!")
+
+
+def _open_the_desk(tmp_path, coins=20000):
+    from app import lessons, pet_shop
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        lessons.record_placement(conn, 1, set(pet_shop.HOME_ROW + pet_shop.TOP_ROW + pet_shop.BOTTOM_ROW + pet_shop.NUMBERS))
+        db.add_coins(conn, 1, coins, "test")
+
+
+def test_a_friend_writes_and_you_invite_her(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/pets/shop")
+    expect(page.locator("[data-dept='companions']")).to_contain_text("Learn the numbers")
+    _open_the_desk(tmp_path)
+    page.reload()
+    desk = page.locator("[data-dept='companions']")
+    expect(desk).to_contain_text("A letter for you!")
+    desk.click()
+    letter = page.locator("#pet-detail")
+    expect(letter).to_contain_text("A friend would like to visit you")
+    expect(letter).to_contain_text("Dear friend,")
+    expect(letter).to_contain_text("Your friend,")
+    expect(letter).not_to_contain_text("Buy")
+    expect(letter).not_to_contain_text("Save for me")
+    page.get_by_role("button", name="Maybe another time").click()
+    expect(letter).not_to_be_visible()
+    desk.click()
+    page.get_by_role("button", name="Invite").click()
+    expect(letter).to_contain_text("is here!")
+    name = letter.locator("h2").inner_text().replace("🎉 ", "").replace(" is here!", "")
+    page.get_by_role("button", name=f"Welcome, {name}!").click()
+    expect(desk).to_contain_text("No letters today")
+    desk.click()
+    expect(letter).to_contain_text("Check back tomorrow")
+    page.goto(f"{live_server}/pets/care")
+    expect(page.locator(".book-pet")).to_contain_text(name)
+    assert not errors
+
+
+def test_the_desk_link_opens_the_letter(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/shop")
+    _open_the_desk(tmp_path)
+    page.goto(f"{live_server}/pets/shop?dept=companions")
+    expect(page.locator("#pet-detail")).to_contain_text("Dear friend,")

@@ -45,6 +45,7 @@ const SHOP_SPOTS = {
   reptiles: { x: 74, y: 12, w: 32, h: 34 },
   mythical: { x: 109, y: 12, w: 32, h: 34 },
   orders: { x: 6, y: 56, w: 46, h: 26 },
+  companions: { x: 104, y: 50, w: 34, h: 24 }, // its sign clears the stairs'
   stairs: { x: 144, y: 6, w: 16, h: 80 }, // up to Fish, Homes & Supplies (the part on screen)
   // upstairs: fish and their supplies side by side
   fish: { x: 8, y: 10, w: 32, h: 40 },
@@ -53,6 +54,7 @@ const SHOP_SPOTS = {
   supplies: { x: 122, y: 10, w: 32, h: 40 },
   down: { x: 4, y: 58, w: 36, h: 28 }, // back down the stairs
 };
+const SHOP_DESK_ART = { x: 104, y: 56, w: 34, h: 26 };
 // The spiral stairs as drawn: a third of them past the right edge.
 const SHOP_STAIRS_ART = { x: 144, y: 6, w: 24, h: 80 };
 const SHOP_TOP_SIGNS = new Set(["household", "farm", "reptiles", "mythical", "fish", "aqua", "habitats", "supplies"]);
@@ -123,6 +125,33 @@ function drawShopArch(r, spot, id, open) {
   }
 }
 
+// A little writing desk: ink and a quill, and a letter when a friend has written.
+function drawLetterDesk(r, { x, y, w, h }, letter) {
+  r(x + 2, y + 9, 2, h - 9, "#6e4420"); // legs
+  r(x + w - 4, y + 9, 2, h - 9, "#6e4420");
+  r(x + 2, y + 9, w - 4, 6, "#8b5a2b"); // a drawer
+  r(x + w / 2 - 4, y + 11, 8, 2, "#6e4420");
+  r(x + w / 2 - 1, y + 11, 2, 2, "#e8b33e");
+  r(x, y + 6, w, 3, "#a87a44"); // the top
+  r(x, y + 6, w, 1, "#c89a60");
+  r(x + 3, y + 2, 4, 4, "#3a3a5a"); // the inkwell
+  r(x + 4, y + 1, 2, 1, "#5a5a7a");
+  for (let k = 0; k < 6; k++) r(x + 6 + k * 0.6, y + 1 - k, 1.4, 1, k > 2 ? "#f4f0e4" : "#d8d0c0"); // its quill
+  if (!letter) {
+    r(x + 14, y + 4.5, 12, 1.5, "#e8dcc0"); // blank paper, put away
+    return;
+  }
+  r(x + 11, y + 0, 15, 6, "#fbf1dc"); // the letter
+  r(x + 11, y + 5, 15, 1, "#d8c8a4");
+  for (let k = 0; k < 7; k++) {
+    r(x + 11 + k, y + k * 0.42, 1, 0.8, "#c8b48c"); // the envelope's flap
+    r(x + 25 - k, y + k * 0.42, 1, 0.8, "#c8b48c");
+  }
+  r(x + 17, y + 2, 3, 3, "#c83a4a"); // a wax seal
+  r(x + 18, y + 2, 1, 1, "#e87a84");
+  for (const [sx, sy] of [[x + 9, y - 2], [x + 28, y - 1], [x + 19, y - 4]]) r(sx, sy, 1, 1, "#f8e08a"); // it's new!
+}
+
 function drawOrdersCorner(r, { x, y, w, h }) {
   r(x, y + 8, w, h - 8, "#8b5a2b"); // the counter
   r(x - 1, y + 6, w + 2, 3, "#a87a44");
@@ -145,12 +174,13 @@ function drawShopEntrance(r, open) {
   r(0, 40, SHOP_W, 1, "#c89a60");
   shopPlanks(r, 46, 44, "#c89a60", "#b0844c");
   r(0, 46, SHOP_W, 1, "#8b5a2b");
-  r(54, 52, 52, 36, "#b8432f"); // a welcome rug
-  r(56, 54, 48, 32, "#c85a3a");
-  r(58, 56, 44, 28, "#b8432f");
+  r(54, 52, 46, 36, "#b8432f"); // a welcome rug
+  r(56, 54, 42, 32, "#c85a3a");
+  r(58, 56, 38, 28, "#b8432f");
   for (const x of [20, 55, 90, 125]) shopLamp(r, x, "#f8e08a"); // one over each archway
   for (const id of ["household", "farm", "reptiles", "mythical"]) drawShopArch(r, SHOP_SPOTS[id], id, open[id]);
   drawOrdersCorner(r, SHOP_SPOTS.orders);
+  drawLetterDesk(r, SHOP_DESK_ART, open.friend);
   drawSpiralStairs(r, SHOP_STAIRS_ART);
 }
 

@@ -73,7 +73,7 @@ const FARM_SKIES = [
 
 const SPECIES_NAMES = {
   dog: "Dog", cat: "Cat", bunny: "Bunny", fox: "Fox", sheep: "Sheep", goat: "Goat", llama: "Llama",
-  turtle: "Turtle", lizard: "Lizard", snake: "Snake", dragon: "Dragon", unicorn: "Unicorn", phoenix: "Phoenix",
+  turtle: "Turtle", lizard: "Lizard", snake: "Snake", dragon: "Dragon", unicorn: "Unicorn", phoenix: "Phoenix", flower_fairy: "Flower fairy",
 };
 
 class FarmStand {

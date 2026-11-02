@@ -31,6 +31,7 @@ from __future__ import annotations
 import colorsys
 import math
 import random
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -843,8 +844,6 @@ def color_catalog(unlocked: set[str], species: str | None = None) -> list[dict]:
 
 # Species whose colors the game always picks by its own rules (shop or not).
 GAME_PICKED = {"dragon", "unicorn", "phoenix", "fish", "mermaid", "flower_fairy"}
-# Being designed in the lab: not in the Pet Shop yet.
-NOT_SOLD_YET = {"mermaid", "flower_fairy"}
 # Of the shop's pets, this share keep a traditional main color (when there's
 # anything fancy to pick instead).
 TRADITIONAL_SHARE = 0.5
@@ -989,6 +988,26 @@ def rare_multiplier(odds: dict, outcome: object) -> float:
 # Not pets: friends who come to stay, always grown up. Eggs just sit there until they hatch.
 COMPANIONS = {"mermaid", "flower_fairy"}
 EGG_SPECIES = {"dragon", "phoenix"}
+
+
+COMPANION_NAMES = {
+    "flower_fairy": (
+        "Fern", "Clover", "Briar", "Poppy", "Wren", "Lily", "Bluebell", "Tansy", "Hazel", "Marigold", "Primrose", "Willow",
+        "Daisy", "Juniper", "Rosemary", "Sorrel", "Aster", "Yarrow", "Heather", "Iris", "Meadow", "Bramble", "Thistle", "Posy",
+    ),
+    "mermaid": (
+        "Marina", "Coral", "Pearl", "Isla", "Nerissa", "Delphine", "Shelly", "Ondine", "Maren", "Cordelia", "Tide", "Sirena",
+        "Mira", "Lorelei", "Sandy", "Cove", "Serena", "Oceana", "Thalassa", "Undine", "Naia", "Azura", "Misty", "Sapphire",
+    ),
+}
+
+
+def companion_name(species: str, seed: int, used: Counter | None = None) -> str:
+    """She has a name of her own when she writes to you: one you haven't met
+    yet, or once you've met them all, one of the least used."""
+    used = used or Counter()
+    order = _rng(seed, "companion-name").sample(COMPANION_NAMES[species], len(COMPANION_NAMES[species]))
+    return min(order, key=lambda name: used[name])
 
 
 def species_name(species: str) -> str:

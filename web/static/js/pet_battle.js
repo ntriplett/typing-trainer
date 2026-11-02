@@ -34,9 +34,9 @@ const TYPES = {
 // Each species' type here (only three; Wanderpaw, which replaces this game,
 // has its own five in app/wanderpaw/pets.py).
 const SPECIES_TYPE = {
-  bunny: "leaf", goat: "leaf", sheep: "leaf", snake: "leaf",
+  bunny: "leaf", goat: "leaf", sheep: "leaf", snake: "leaf", flower_fairy: "leaf",
   fox: "ember", cat: "ember", lizard: "ember", dragon: "ember", phoenix: "ember",
-  dog: "splash", llama: "splash", turtle: "splash", unicorn: "splash", fish: "splash",
+  dog: "splash", llama: "splash", turtle: "splash", unicorn: "splash", fish: "splash", mermaid: "splash",
 };
 const typeOf = (pet) => SPECIES_TYPE[pet.genes.species];
 // Pets are v3 pets (pet_render.js), fit into this box in the arena.

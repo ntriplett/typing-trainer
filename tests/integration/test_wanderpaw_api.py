@@ -373,7 +373,7 @@ def test_golden_flame_pays_its_coins_and_nectar_its_xp():
 
 
 def test_nectar_gives_partner_its_xp():
-    # (not in the Pet Shop yet, so no real one to adopt: this is where the battle hands the save its XP)
+    # (a stand-in fairy on the team: this is where the battle hands the save its XP)
     from app.wanderpaw import critters as cr
     from app.wanderpaw import save as sv
     fairy = {**wp.starter("leaf", 13), "species": "flower_fairy", "types": {"leaf": 13, "splash": 9}, "swaps": {"rest": "mix2"}, "id": 1}

@@ -30,9 +30,9 @@ const RARE_LABEL = {
   "main color": "Rare color",
 };
 // The row of keys each locked department waits for (app/pet_shop.py needs).
-const DEPT_ROW = { household: "home row", orders: "home row", farm: "top row", reptiles: "bottom row", mythical: "numbers" };
+const DEPT_ROW = { companions: "numbers", household: "home row", orders: "home row", farm: "top row", reptiles: "bottom row", mythical: "numbers" };
 const TIER_NAME = { everyday: "Outdoors", cozy: "Cozy", magical: "Magical" };
-const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", orders: "📋", habitats: "🌳", aqua: "🌊", supplies: "🦴" };
+const DEPT_ICON = { fish: "🐠", household: "🐱", farm: "🐐", reptiles: "🐢", mythical: "🐉", companions: "✉️", orders: "📋", habitats: "🌳", aqua: "🌊", supplies: "🦴" };
 
 let front = null; // /api/pets/shop
 let dept = null; // /api/pets/shop/{id}
@@ -124,6 +124,10 @@ async function loadFront() {
 
 async function openDept(id, toPage = 0) {
   say("");
+  if (id === "companions") {
+    goEntrance(0); // the desk is right here in the hall
+    return openLetter();
+  }
   deptId = id;
   floor = SHOP_UPSTAIRS.has(id) ? 1 : 0;
   page = toPage;
@@ -161,10 +165,10 @@ function renderEntrance() {
   $("dept-title").textContent = floor ? "Upstairs: Fish, Homes & Supplies" : "Welcome to the Pet Shop!";
   $("dept-hint").textContent = floor
     ? "Fish, homes for your pets, and everything for your fish tanks."
-    : "Click a department to look around. New pets arrive every night. Fish, homes and supplies are up the stairs!";
+    : "Click a department to look around. New pets arrive every night. Fish, homes and supplies are up the stairs, and friends leave letters on the desk!";
   $("shop-grid").replaceChildren();
   $("shop-scene").hidden = false;
-  const open = Object.fromEntries(front.departments.map((d) => [d.id, d.open]));
+  const open = { ...Object.fromEntries(front.departments.map((d) => [d.id, d.open])), friend: front.friend };
   const bg = sceneCanvas();
   (floor ? drawShopUpstairs : drawShopEntrance)(habitatPainter(bg.getContext("2d"), SCENE_PX), open);
   scene = { bg, front: null, pets: [] };
@@ -188,11 +192,90 @@ function renderEntrance() {
       const lock = d.soon ? "Coming soon" : `🔒 Learn the ${DEPT_ROW[d.id] || "keys"}`;
       btn.setAttribute("aria-label", d.open ? d.name : `${d.name}: ${lock}`);
       btn.innerHTML = `<span class="spot-sign">${DEPT_ICON[d.id] || "🐾"} <span class="spot-name">${d.name}</span>${d.open ? "" : `<small>${lock}</small>`}</span>`;
+      if (d.id === "companions" && d.open) btn.querySelector(".spot-sign").insertAdjacentHTML("beforeend", `<small>${front.friend ? "A letter for you!" : "No letters today"}</small>`);
       btn.onclick = () =>
         d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${keys}.`);
       return btn;
     })
   );
+}
+
+// --- the letter desk: a friend writes to ask if she can visit ----------------------------
+
+async function openLetter() {
+  try {
+    const data = await call("/api/pets/shop/companions");
+    const slot = data.slots[0];
+    showLetter(slot && !slot.sold ? slot : null, data.coins);
+  } catch (err) {
+    say(err.message);
+  }
+}
+
+function letterPortrait(body, genes) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 220;
+  canvas.height = 160;
+  body.querySelector(".letter-portrait").appendChild(canvas);
+  paint(canvas, genes, GROWN, fitScale([genes], GROWN, 220, 160, 6));
+}
+
+function showLetter(slot, coinsLeft) {
+  const body = $("detail-body");
+  detailIndex = null;
+  if (!slot) {
+    body.innerHTML = `<h2 class="panel-title">✉️ No letters today</h2><p>Nobody has written just now. Check back tomorrow!</p>`;
+    $("pet-detail").showModal();
+    return;
+  }
+  const { name, lines } = slot.letter;
+  const colors = slot.genes.color_names
+    .map((n, i) => (n ? `<li><span class="swatch" style="background:${slot.genes.hex[i]}"></span>${n}</li>` : ""))
+    .join("");
+  body.innerHTML = `
+    <h2 class="panel-title">✉️ A friend would like to visit you</h2>
+    <div class="friend-letter">
+      <div class="letter-portrait"></div>
+      <p>Dear friend,</p>
+      ${lines.map((line) => `<p>${line}</p>`).join("")}
+      <p class="letter-sign">Your friend,<br><b>${name}</b>, a ${speciesName(slot.species).toLowerCase()}</p>
+    </div>
+    <ul class="detail-colors">${colors}</ul>
+    <p class="hint">Getting a place ready for a guest costs ${coins(slot.price)}.
+      ${slot.last_day ? `This is her last day to hear from you.` : `She'll wait ${slot.days_left} days for your answer.`}</p>
+    <div class="detail-actions"></div>`;
+  letterPortrait(body, slot.genes);
+  const short = coinsLeft < slot.price;
+  const invite = document.createElement("button");
+  invite.className = "button-gold big-button";
+  invite.textContent = short ? `Need ${(slot.price - coinsLeft).toLocaleString()} more coins` : `Invite ${name} for ${slot.price.toLocaleString()} coins`;
+  invite.disabled = short;
+  invite.onclick = () => inviteFriend(slot);
+  const later = document.createElement("button");
+  later.textContent = "Maybe another time";
+  later.onclick = () => $("pet-detail").close();
+  body.querySelector(".detail-actions").append(invite, later);
+  if (!$("pet-detail").open) $("pet-detail").showModal();
+}
+
+async function inviteFriend(slot) {
+  try {
+    const data = await call(`/api/pets/shop/companions/${slot.index}/buy`, "POST", { coupon: false });
+    const friend = data.bought;
+    await loadFront();
+    renderEntrance();
+    const body = $("detail-body");
+    body.innerHTML = `
+      <h2 class="panel-title">🎉 ${friend.name} is here!</h2>
+      <div class="letter-portrait"></div>
+      <p>She's waiting for you at the <b>Pet Care Center</b>, ready to choose a home${friend.species === "mermaid" ? " with plenty of water" : ""}.</p>
+      <div class="detail-actions"><button class="button-go big-button">Welcome, ${friend.name}!</button></div>`;
+    letterPortrait(body, friend.genes);
+    body.querySelector("button").onclick = () => $("pet-detail").close();
+  } catch (err) {
+    $("pet-detail").close();
+    say(err.message);
+  }
 }
 
 // Lays an element over the scene at a 160x90 box.

@@ -363,8 +363,8 @@ def finish_day(conn, learner_id: int, served: int, missed: int, sold: dict[str, 
 
 def customers(unlocked: set[str], rng: random.Random, count: int = CUSTOMERS_PER_DAY) -> list[dict]:
     """Today's customers: grown animals rolled like the Pet Shop's."""
-    land = [sp for d in pet_shop.STOCKED if d not in ("fish", "mythical") for sp in pet_shop.DEPARTMENTS[d].species]
-    mythical = pet_shop.DEPARTMENTS["mythical"].species
+    land = [sp for d in pet_shop.STOCKED if d not in ("fish", "mythical", "companions") for sp in pet_shop.DEPARTMENTS[d].species]
+    mythical = (*pet_shop.DEPARTMENTS["mythical"].species, "flower_fairy")  # a mermaid can't walk up to the stall
     out = []
     for _ in range(count):
         sp = rng.choice(mythical if rng.random() < MYTHICAL_CHANCE else land)

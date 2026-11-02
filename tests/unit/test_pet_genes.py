@@ -570,3 +570,35 @@ def test_flower_fairies_roll_breeds_skin_and_a_bright_third_color_for_their_wing
 def test_species_names_read_like_words():
     assert g.species_name("flower_fairy") == "Flower fairy"
     assert g.species_name("dog") == "Dog"
+
+
+def test_every_companion_kind_has_24_names_all_different():
+    for species in g.COMPANIONS:
+        assert len(set(g.COMPANION_NAMES[species])) == 24
+    every = [n for names in g.COMPANION_NAMES.values() for n in names]
+    assert len(set(every)) == len(every) and max(map(len, every)) <= 16  # pet_care.MAX_NAME
+
+
+def test_a_friends_name_doesnt_repeat_until_every_name_is_used():
+    from collections import Counter
+    for species in g.COMPANIONS:
+        names = g.COMPANION_NAMES[species]
+        used = Counter()
+        for seed in range(len(names)):
+            name = g.companion_name(species, seed, used)
+            assert used[name] == 0
+            used[name] += 1
+        assert set(used) == set(names)
+        # all met: names come round again, still evenly
+        for seed in range(100, 100 + len(names)):
+            name = g.companion_name(species, seed, used)
+            assert used[name] == 1
+            used[name] += 1
+        assert set(used.values()) == {2}
+
+
+def test_a_friends_name_is_steady_until_someone_new_comes():
+    assert g.companion_name("mermaid", 5) == g.companion_name("mermaid", 5)
+    first = g.companion_name("mermaid", 5)
+    from collections import Counter
+    assert g.companion_name("mermaid", 5, Counter({first: 1})) != first

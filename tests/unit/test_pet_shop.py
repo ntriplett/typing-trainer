@@ -24,12 +24,13 @@ def test_departments_match_the_plan():
         "farm": (12, 2000, {"goat", "sheep", "llama", "fox"}),
         "reptiles": (8, 3000, {"turtle", "lizard", "snake"}),
         "mythical": (2, 10000, {"dragon", "unicorn", "phoenix"}),
+        "companions": (1, 10000, {"flower_fairy", "mermaid"}),
     }
     for dept_id, (slots, base, species) in expect.items():
         d = shop.DEPARTMENTS[dept_id]
         assert (d.slots, d.base_price, set(d.species)) == (slots, base, species)
     assert set(shop.STOCKED) == set(expect)
-    assert set(shop.BASE_PRICE) == set(g.SPECIES_COLORS) - g.NOT_SOLD_YET  # every finished species is sold somewhere
+    assert set(shop.BASE_PRICE) == set(g.SPECIES_COLORS)  # every species comes from somewhere
 
 
 def test_departments_open_as_rows_are_learned():
