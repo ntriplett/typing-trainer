@@ -871,8 +871,10 @@ class WanderResetRequest(BaseModel):
 def _wander_words(conn, learner_id: int) -> dict[str, list[str]]:
     """Words to label the places you can walk to, from the letters you've
     learned (home row until there are enough), by length: single letters
-    for paths, longer words for harder ground (save.STEP_WORDS)."""
+    for paths, longer words for harder ground (save.STEP_WORDS). Never numbers:
+    those open the bag, journal and party."""
     _, allowed, key_stats = _lab_letters(conn, learner_id, "mine", "")
+    allowed = [k for k in allowed if not k.isdigit()]
     if len(allowed) - 1 < MIN_LETTERS:
         allowed = [" ", *PRACTICE_KEY_SETS["home"]]
     skill = snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id))
@@ -1056,6 +1058,20 @@ def wander_lab_gallery(seed: int = 0) -> list[dict]:
 def wander_lab_teleport(body: WanderTeleportRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     try:
         wander.teleport(conn, learner_id, (body.q, body.r), tuple(body.spot) if body.spot else None)
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_lab_world(None, conn, learner_id)
+
+
+class WanderBossRequest(BaseModel):
+    region: str
+
+
+@app.post("/api/wander-lab/boss")
+def wander_lab_boss(body: WanderBossRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Stand at a temple's door with its key, to try its boss."""
+    try:
+        wander.to_temple(conn, learner_id, body.region)
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return wander_lab_world(None, conn, learner_id)

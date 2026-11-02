@@ -132,7 +132,7 @@ FAST_TIP = "Fast: goes first."
 # A boss's own move: its name, and what the icon above Enemy says.
 BOSS_MOVES = {
     "stormfire": ("Stormfire", "Enemy will breathe Stormfire: a hit on both pets that Guard can't stop."),
-    "rekindle": ("Rekindle", "Enemy will Rekindle: it gets some energy back."),
+    "rekindle": ("Rekindle", "Enemy will Rekindle: it gets some energy back, and hits you too."),
     "moonlight": ("Moonlight", "Enemy will wash away every mark and effect on it, then attack."),
     "siren": ("Siren Song", "Enemy will drain both pets' mana, then attack."),
     "bloom": ("Wild Bloom", "Enemy will attack, and get energy back for the damage it does."),

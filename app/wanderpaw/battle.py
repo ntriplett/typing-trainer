@@ -124,13 +124,21 @@ TIERS = {
 }
 BOSS_ENERGY_GROWTH = 0.125  # more energy for each level past its first: pets get stronger faster than plain creatures do
 BOSS_FIRST_LEVEL = 13
+# Win rates fall off a cliff here: 10% more energy can take a smart pair from
+# winning nearly every time to rarely. These put each boss just on the safe
+# side of it (measured with tools/wander_balance.py), so every boss is about
+# as hard at every level, and BOSS_EASE moves them all together.
+BOSS_EASE = 0.83
+BOSS_TYPE_EDGE = 0.6  # of a strong type's extra damage (x2 is x1.6): levels and good play can stand in for the right types
+BOSS_SPECIES_ENERGY = {"dragon": 0.96, "phoenix": 0.99, "unicorn": 1.0, "mermaid": 1.15, "flower_fairy": 0.95}
+BOSS_LEVEL_ENERGY = {13: 1.03, 15: 1.0, 17: 0.95, 19: 1.0, 21: 1.02}  # pets don't gain evenly: level 17 is a lean one
 # Each boss's own move, every BOSS_MOVE_EVERY rounds.
 BOSS_MOVES = {"dragon": "stormfire", "phoenix": "rekindle", "unicorn": "moonlight", "mermaid": "siren", "flower fairy": "bloom"}
 BOSS_MOVE_EVERY = 3
 STORMFIRE = 0.8  # a hit on both
 REKINDLE = 0.06  # of its full energy, back
 BOSS_BLOW = 1.4  # the hit after Moonlight or a Siren Song
-SIREN = 0.25  # of each pet's full mana, gone
+SIREN = 0.15  # of each pet's full mana, gone
 BLOOM = 2  # energy back for each it deals
 
 BIG = 2.2
@@ -412,6 +420,13 @@ def matchup(move: str, target: str) -> float:
     return {0: 1.0, 1: 2.0, 2: 1.5, 3: 2 / 3, 4: 0.5}[gap]
 
 
+def against(b: dict, kind: str) -> float:
+    """A hit's type multiplier on this creature. A boss takes less of a strong
+    type's extra: the right types help a lot, but levels and play count too."""
+    mult = matchup(kind, b["kind"])
+    return 1 + (mult - 1) * BOSS_TYPE_EDGE if b.get("tier") == "boss" and mult > 1 else mult
+
+
 def accuracy(slips: int) -> float:
     return max(FLOOR, 1 - SLIP * slips)
 
@@ -450,6 +465,7 @@ def start(critter, fighters: list[int], bench: list[str] | tuple[str, ...] = ())
     energy = round(enemy_energy(critter.level) * (tier["energy"] if tier else 1))
     if getattr(critter, "tier", "") == "boss":
         energy += round(enemy_energy(critter.level) * BOSS_ENERGY_GROWTH * max(0, critter.level - BOSS_FIRST_LEVEL))
+        energy = round(energy * BOSS_EASE * BOSS_SPECIES_ENERGY.get(critter.species, 1) * BOSS_LEVEL_ENERGY.get(critter.level, 1))
     return {
         "critter": critter.id, "species": critter.species.replace("_", " "), "kind": critter.kind, "second": critter.second, "level": critter.level,
         "seed": critter.seed, "tier": getattr(critter, "tier", ""), "energy": energy, "max": energy, "speed": ENEMY_SPEED + critter.level,
@@ -1190,7 +1206,7 @@ def _mix(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     if m.lift:
         b["boost"] = {"round": b["round"] + 1, "mult": m.lift, "first": m.lift_first}
     if m.later:
-        power = pet_hit(me["power"]) * matchup(_mix_kind(me, b["kind"], move), b["kind"]) * strength * m.later
+        power = pet_hit(me["power"]) * against(b, _mix_kind(me, b["kind"], move)) * strength * m.later
         at = b["round"] + (1 if m.later_when == "start" else 0)
         b["later"] = [*(b.get("later") or []), {"who": who, "kind": _mix_kind(me, b["kind"], move), "power": power, "name": m.name, "at": at, "when": m.later_when}]
     if m.self_energy > 0:
@@ -1215,8 +1231,8 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     foe = b["species"]
     mix = is_mix(move)
     kind = _mix_kind(team[who], b["kind"], move) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
-    mult = matchup(kind, b["kind"])
-    power = pet_hit(team[who]["power"]) * mult * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
+    mult = matchup(kind, b["kind"])  # for what it says; what it does is against()
+    power = pet_hit(team[who]["power"]) * against(b, kind) * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
     if "battle_cry" in (b.get("bench") or []):
         power *= BATTLE_CRY
     if "hardened" in b["effects"]:
@@ -1359,7 +1375,8 @@ def _boss_move(b: dict, team: list[dict], energy: list[int], mana: list[int], ai
     if move == "rekindle":
         gain = min(b["max"] - b["energy"], round(b["max"] * REKINDLE))
         b["energy"] += gain
-        return [{"who": "foe", "act": "heal", "type": b["kind"], "text": f"The {foe} burns bright and Rekindles: {gain} energy back!"}]
+        return [{"who": "foe", "act": "heal", "type": b["kind"], "text": f"The {foe} burns bright and Rekindles: {gain} energy back!"},
+                *_foe_strike(b, team, energy, aim, guards, 1.0, "hits")]
     if move == "moonlight":
         b["marks"], b["effects"], b["skip"] = {}, {}, 0
         return [{"who": "foe", "act": "guard", "text": f"Moonlight washes over the {foe}: every mark and effect on it is gone!"},

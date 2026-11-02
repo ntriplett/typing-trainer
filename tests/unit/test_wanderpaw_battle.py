@@ -1617,7 +1617,7 @@ def test_a_temple_boss_guards_the_relic():
     assert cr.temple_boss(SEED, region, temple, 2).level == cr.BOSS_LEVEL + 2 * cr.RELIC_LEVELS
     assert boss.id.startswith("boss:")
     fight = sv._start_battle(save, boss)
-    assert fight["battle"]["tier"] == "boss" and fight["battle"]["energy"] == round(bt.enemy_energy(boss.level) * bt.TIERS["boss"]["energy"])
+    assert fight["battle"]["tier"] == "boss" and fight["battle"]["energy"] == bt.start(boss, [0, 1])["energy"] > bt.enemy_energy(boss.level) * 4
     assert sv._critter_by_id(save, boss.id) == boss
     b = {**fight["battle"], "energy": 1}
     won = sv.battle_turn({**fight, "battle": b}, [{"move": "attack", "slips": 0}, {"move": "attack", "slips": 0}], random.Random(1))
@@ -1675,10 +1675,29 @@ def test_stormfire_hits_both_and_guard_cant_stop_it():
     assert intent["name"] == "Stormfire: Both" and intent["count"]
 
 
+def test_each_boss_has_its_own_energy_at_each_level():
+    energy = lambda species, kind, level: bt.start(cr.Critter("x", (0, 0), (0, 0), species, kind, level, True, 1, None, "boss"), [0, 1])["energy"]  # noqa: E731
+    assert energy("mermaid", "splash", 15) > energy("unicorn", "dream", 15) > energy("flower_fairy", "leaf", 15)
+    lean = energy("unicorn", "dream", 17) / energy("unicorn", "dream", 15)
+    full = energy("unicorn", "dream", 19) / energy("unicorn", "dream", 15)
+    assert lean < full  # pets gain little at 17, so the boss there holds back
+    plain = cr.Critter("x", (0, 0), (0, 0), "mermaid", "splash", 15, False, 1, None, "tough")
+    assert bt.start(plain, [0, 1])["energy"] == round(bt.enemy_energy(15) * bt.TIERS["tough"]["energy"])  # only bosses
+
+
+def test_a_boss_takes_less_from_a_strong_type_but_the_rest_dont():
+    boss, tough = {"kind": "ember", "tier": "boss"}, {"kind": "ember", "tier": "tough"}
+    assert bt.matchup("splash", "ember") == 2 == bt.against(tough, "splash")
+    assert 1 < bt.against(boss, "splash") < 2
+    assert bt.against(boss, "ember") == 1  # nothing changes for neutral ...
+    assert bt.against(boss, "dream") == bt.matchup("dream", "ember") == 0.5  # ... or weak hits
+
+
 def test_rekindle_gives_energy_back():
     b, team, energy, _, out, intent = _boss_round("phoenix", "ember", energy=100)
     assert b["energy"] == 100 + round(b["max"] * bt.REKINDLE)
-    assert energy == [m["energy"] for m in team] and intent["kind"] == "boss" and not intent.get("count")
+    assert sum(energy) < sum(m["energy"] for m in team)  # and it hits you: no boss spends a turn doing nothing to you
+    assert intent["kind"] == "boss" and not intent.get("count")
 
 
 def test_moonlight_washes_off_marks_and_effects():

@@ -1698,6 +1698,23 @@ def teleport(conn, learner_id: int, big: Hex, spot: Hex | None = None) -> dict:
     return save
 
 
+def to_temple(conn, learner_id: int, region: str) -> dict:
+    """The lab's way to a boss: at this temple's door, on a trip, with its key."""
+    save = load(conn, learner_id)
+    if region not in st.STORIES:
+        raise WanderError("There's no temple like that.")
+    big = next((h for h, x in world_of(save).hexes.items() if x.special == "temple" and x.region == region), None)
+    if big is None:
+        raise WanderError("That temple isn't on the map.")
+    local = local_of(save, big)
+    door = next(spot for spot, tile in local.tiles.items() if tile == "temple")
+    save = start_trip(save) if not save["trip"] else save
+    save = {**save, "items": {**save["items"], st.STORIES[region].key: 1}, "at": list(big), "spot": list(door), "events": []}
+    save = _see(save, big, door)
+    db.save_wander(conn, learner_id, save)
+    return save
+
+
 def refill(conn, learner_id: int) -> dict:
     """Full energy (starting a trip where you are if you're not on one)."""
     def change(s: dict) -> dict:

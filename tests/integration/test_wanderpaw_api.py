@@ -641,3 +641,25 @@ def test_the_battle_shows_and_keeps_to_energy_going_in():
     g = lc.to_world(big, h)
     data = client.post("/api/wander/walk", json={"q": g[0], "r": g[1]}).json()
     assert [f["max"] for f in data["battle"]["fighters"]] == [9, 9] and fox
+
+
+def test_numbers_never_label_a_step():
+    # they open the bag, journal and party, however many keys you've learned
+    from app import lessons, pet_shop
+    with db.open_db(main.DB_PATH) as conn:
+        lessons.record_placement(conn, 1, set(pet_shop.HOME_ROW + pet_shop.TOP_ROW + pet_shop.BOTTOM_ROW + pet_shop.NUMBERS))
+    words = client.get("/api/wander").json()["words"]
+    assert words["letter"] and "a" in words["letter"]
+    assert not [w for group in words.values() for w in group if any(c.isdigit() for c in w)]
+
+
+def test_the_lab_takes_you_to_a_boss_at_its_door():
+    _add_pet("fox", 1)
+    client.post("/api/wander-lab/boss", json={"region": "ember"})
+    state = client.get("/api/wander").json()
+    assert state["trip"] and state["screen"]
+    screen = client.get("/api/wander").json()["screen"]
+    assert screen["action"] == "boss" and screen["label"] == "Face the guardian"
+    fight = client.post("/api/wander/act", json={"action": "boss"}).json()
+    assert fight["battle"]["tier"] == "boss" and fight["battle"]["kind"] == "ember"
+    assert client.post("/api/wander-lab/boss", json={"region": "nope"}).status_code == 400
