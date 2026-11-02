@@ -91,7 +91,7 @@ def test_tough_creatures_show_both_types_and_the_party_book_shows_this_levels_xp
     expect(page.locator("#wander-local")).to_be_hidden()
     page.keyboard.press("ArrowDown")
     detail = page.locator("#party-detail")
-    expect(detail).to_contain_text(f"10 / {wp.xp_for(4) - wp.xp_for(3)} xp")
+    expect(detail).to_contain_text(f"10 / {wp.xp_for(4) - wp.xp_for(3)}")
     expect(detail.locator(".wander-level")).to_have_text("Level 3")
     expect(detail.locator(".wander-move")).to_have_count(6)
     page.keyboard.press("Escape")
@@ -252,9 +252,33 @@ def test_move_cards_show_icons_with_tooltips(page: Page, live_server, tmp_path):
     expect(detail.locator('[data-move="attack"] .wander-icon-dot')).to_have_count(2)
     big = detail.locator('[data-move="big"]')
     expect(big.locator(".wander-icon-dot")).to_have_count(4)
-    expect(big.locator('[data-icon="haste"]')).to_have_attribute("title", "Goes first.")
-    expect(big.locator('[data-icon="mark"]')).to_have_attribute("title", "Leaves it Glowing.")
+    expect(big.locator('[data-icon="haste"]')).to_have_attribute("title", "Fast: goes first.")
+    expect(big.locator('[data-icon="hit"]')).to_have_attribute("title", "Very high damage.")
+    expect(big.locator('[data-icon="mark"]')).to_have_attribute("title", "Leaves Enemy Glowing.")
     expect(big.locator(".wander-move-cost")).to_have_text("6")
-    expect(big.locator('[data-icon="mana"]')).to_have_attribute("title", "Costs 6 mana.")
+    expect(big.locator('[data-icon="mana"]')).to_have_attribute("title", "Mana cost.")
     expect(detail.locator('[data-move="guard"] [data-icon="shield"]')).to_be_visible()
     expect(detail.locator('[data-move="focus"] .wander-move-icons')).to_have_count(0)
+
+
+def test_the_move_lab_draws_every_tile(page: Page, live_server):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/move-lab")
+    tiles = page.locator("#lab-groups .wander-moves > li")
+    expect(page.locator("#lab-count")).to_contain_text("tiles")
+    every = page.request.get(f"{live_server}/api/move-lab").json()["groups"]
+    count = sum(len(g["tiles"]) for g in every)
+    assert tiles.count() == count > 130
+    for view in ("party", "battle", "choice"):
+        for across in ("3", "4"):
+            page.select_option("#opt-view", view)
+            page.select_option("#opt-across", across)
+            expect(tiles).to_have_count(count)
+            expect(page.locator("#lab-count")).to_contain_text("tiles")
+            assert not errors, (view, across, errors)
+    # today's sizes all fit: anything flagged here is a tile to fix
+    for view in ("party", "battle", "choice"):
+        page.select_option("#opt-view", view)
+        page.select_option("#opt-across", "3")
+        expect(page.locator("#lab-count")).to_contain_text("They all fit")

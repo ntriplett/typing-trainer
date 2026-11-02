@@ -1205,17 +1205,38 @@ main.wander {
   position: relative;
 }
 
+/* The name, with the icons to its right. If they won't both fit, the icons
+   stay on top at the right and the name drops below them. */
+.wander-move-head {
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: center;
+  gap: 0.1rem 0.5rem;
+}
+
 .wander-move-icons {
-  position: absolute;
-  top: 0.3rem;
-  right: 0.4rem;
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  margin-left: auto;
 }
 
-.wander-move-name {
-  padding-right: 5.5rem;
+/* room for the cost in the bottom right corner */
+.paid .wander-move-note {
+  padding-right: 3.8rem;
+}
+
+.wander-move.paid {
+  min-height: 4.4rem;
+}
+
+.wander-stat-word {
+  white-space: nowrap;
+}
+
+.wander-levelup-option.paid small:last-of-type,
+.wander-levelup-option.paid {
+  padding-bottom: 1.3rem;
 }
 
 .wander-move-cost {
@@ -1238,10 +1259,9 @@ main.wander {
 
 .wander-icon-dot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.45);
 }
 
 .wander-icon-haste {
@@ -1255,3 +1275,28 @@ main.wander {
   vertical-align: -2px;
 }
 
+
+/* The move lab: every tile in a grid (a tile hidden here: it fits). */
+.move-lab {
+  max-width: 1240px;
+  margin: 1rem auto;
+  padding: 0 16px;
+}
+
+.move-lab-group {
+  margin-top: 1rem;
+}
+
+.move-lab .wander-moves > li[hidden] {
+  display: none;
+}
+
+.move-lab-trouble {
+  outline: 4px dashed #d11f1f;
+  outline-offset: 1px;
+}
+
+.move-lab #lab-groups:not(.in-battle) .wander-move-note {
+  overflow: visible;
+  white-space: normal;
+}

@@ -63,8 +63,8 @@ A battle is a plain dict (the save keeps it while it's on):
 places], marks: {mark: rounds}, effects: {effect: rounds}, focus: [places],
 skip: turns the creature loses, round, log: [steps], healed: {"place:energy"
 or "place:mana": given so far}, later: [hits still to land: {who, kind, power,
-name, at: round, when}], mirror: a place the next hit bounces off, poppy:
-attacks that may doze off, drainer: the place a Burning Brambles feeds, boost:
+name, at: round, when}], mirror: a place the next hit bounces off, drainer:
+the place a Burning Brambles feeds, boost:
 {round, mult, first}, over: None | "won" | "lost"}.
 A step (for playing the round back): {text, who (a team place or "foe"),
 act (hit, rest, guard, focus, cheer, mark, heal, blocked, skip, doze, burn),
@@ -78,6 +78,8 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+from app.wanderpaw import pets as wp
+from app.wanderpaw import terms
 from app.wanderpaw import world as wd
 
 SLIP = 0.1
@@ -160,31 +162,31 @@ class Combo:
 # in the order Splash, Ember, Dream, Shock, Leaf; the gaps run just under
 # the diagonal (and Soaked/Leaf).
 COMBOS = {
-    ("soaked", "splash"): Combo("Drenched", "Soaked through: it hits for half, 3 rounds.", effects=(("drenched", 3),)),
-    ("soaked", "ember"): Combo("Steam Cloud", "Fire on a wet one: steam! It misses its next attack.", skip=1),
-    ("soaked", "dream"): Combo("Bubble Trap", "It floats off in a dream bubble: it loses a turn, and the hit that pops it is stronger.",
+    ("soaked", "splash"): Combo("Drenched", "Enemy hits for half, 3 rounds.", effects=(("drenched", 3),)),
+    ("soaked", "ember"): Combo("Steam Cloud", "Enemy's next attack misses.", skip=1),
+    ("soaked", "dream"): Combo("Bubble Trap", "Enemy loses a turn, and the hit that pops it does more damage.",
                                skip=1, effects=(("popped", 3),)),
-    ("soaked", "shock"): Combo("Chain Zap", "Lightning on a wet one: double damage!", mult=2.0),
-    ("glowing", "ember"): Combo("Blaze", "More fire on the fire: it burns twice as hard.", effects=(("burn", 2),)),
-    ("glowing", "dream"): Combo("Fever Dream", "Hot and dizzy: its next attack hits itself.", effects=(("confused", 3),)),
-    ("glowing", "shock"): Combo("Flare", "Lightning on the flames: it flares up for big damage.", mult=1.75),
-    ("glowing", "leaf"): Combo("Wildfire", "The fire spreads: it burns twice as hard, for longer.", effects=(("burn", 3),)),
-    ("drowsy", "splash"): Combo("Sleepy Rain", "Soft rain keeps it drowsy, and it dozes off for sure.", keep=2,
+    ("soaked", "shock"): Combo("Chain Zap", "Double damage.", mult=2.0),
+    ("glowing", "ember"): Combo("Blaze", "Enemy burns twice as hard.", effects=(("burn", 2),)),
+    ("glowing", "dream"): Combo("Fever Dream", "Enemy's next attack hits itself.", effects=(("confused", 3),)),
+    ("glowing", "shock"): Combo("Flare", "1.75x damage.", mult=1.75),
+    ("glowing", "leaf"): Combo("Wildfire", "Enemy burns twice as hard, for longer.", effects=(("burn", 3),)),
+    ("drowsy", "splash"): Combo("Sleepy Rain", "Enemy stays Drowsy and dozes for sure.", keep=2,
                                 effects=(("doze", 2),)),
-    ("drowsy", "dream"): Combo("Fast Asleep", "So sleepy: it falls fast asleep for two turns.", skip=2),
-    ("drowsy", "shock"): Combo("Rude Awakening", "A jolt wakes it up: double damage!", mult=2.0),
-    ("drowsy", "leaf"): Combo("Meadow Nap", "It naps in the grass, and your pets catch their breath.", skip=1,
+    ("drowsy", "dream"): Combo("Fast Asleep", "Enemy loses 2 turns.", skip=2),
+    ("drowsy", "shock"): Combo("Rude Awakening", "Double damage.", mult=2.0),
+    ("drowsy", "leaf"): Combo("Meadow Nap", "Enemy loses a turn. Both gain 10% {energy}.", skip=1,
                               pets_energy=0.1),
-    ("static", "splash"): Combo("Thunderstorm", "Rain and static: double damage, and it's soaked.", mult=2.0, mark="soaked"),
-    ("static", "ember"): Combo("Sparkler", "Sparks and fire: fireworks! Stronger, and it's glowing.", mult=1.5, mark="glowing"),
-    ("static", "shock"): Combo("Overcharge", "Static and more lightning: huge damage!", mult=2.5),
-    ("static", "leaf"): Combo("Lightning Rod", "The leaves ground the static: your pets get mana.", pets_mana=3),
-    ("tangled", "splash"): Combo("Thorns", "The vines drink the water and grow thorns: it hurts itself when it attacks.",
+    ("static", "splash"): Combo("Thunderstorm", "Double damage, and Enemy is Soaked.", mult=2.0, mark="soaked"),
+    ("static", "ember"): Combo("Sparkler", "1.5x damage, and Enemy is Glowing.", mult=1.5, mark="glowing"),
+    ("static", "shock"): Combo("Overcharge", "2.5x damage.", mult=2.5),
+    ("static", "leaf"): Combo("Lightning Rod", "Both gain 3 {mana}.", pets_mana=3),
+    ("tangled", "splash"): Combo("Thorns", "Enemy hurts itself when it attacks, 3 rounds.",
                                  effects=(("thorns", 3),)),
-    ("tangled", "ember"): Combo("Bonfire", "Fire on the vines: double damage!", mult=2.0),
-    ("tangled", "dream"): Combo("Hammock", "The vines make a hammock: it naps, and the hit that wakes it is stronger.",
+    ("tangled", "ember"): Combo("Bonfire", "Double damage.", mult=2.0),
+    ("tangled", "dream"): Combo("Hammock", "Enemy loses a turn, and the hit that wakes it does more damage.",
                                 skip=1, effects=(("popped", 3),)),
-    ("tangled", "leaf"): Combo("Rooted", "More vines: it's rooted to the spot and loses a turn.", skip=1),
+    ("tangled", "leaf"): Combo("Rooted", "Enemy loses a turn.", skip=1),
 }
 
 
@@ -195,8 +197,7 @@ MENDING = 0.04  # of each pet's full energy, each round it lasts
 BRAMBLES_BURN = 0.35  # of an even hit, each round; the caster drains half
 SCALDED_HITS = 0.75
 WISP_SELF_HIT = 0.75
-POPPY_DOZE = 0.5
-WIRED_STOP = 0.5
+WIRED_STOP = 0.5  # the chance to lose its turn, from a Living Wire or a Poppy Patch
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +220,6 @@ class MixMove:
     later_when: str = "end"  # ... at the end of this round, or the "start" of the next
     mirror: bool = False
     echo: bool = False  # its partner's attack this round happens twice
-    poppy: int = 0
     drain: bool = False
     lift: float = 0.0  # both pets' strength next round
     lift_first: bool = False  # ... and they go first
@@ -228,37 +228,37 @@ class MixMove:
 
 MIX_MOVES = {
     # SPLASH first: weakens the creature and supports
-    ("splash", "ember"): MixMove("Steam Veil", "Next attack misses.", "Its next attack misses.", "Steam hides everyone!", skip=1),
-    ("splash", "dream"): MixMove("Moon Tide", "Pets +2 mana.", "Both pets get back 2 mana.", "The tide brings mana.", team_mana=2),
-    ("splash", "leaf"): MixMove("Rain Garden", "Pets mend 3 rounds.", "Both pets get back 4% energy each round, for 3 rounds.", "A garden grows.", hit=0.5, effects=(("mending", 3),)),
+    ("splash", "ember"): MixMove("Steam Veil", "Enemy's next attack misses.", "Enemy's next attack misses.", "Steam hides everyone!", skip=1),
+    ("splash", "dream"): MixMove("Moon Tide", "Both gain 2 {mana}.", "Both gain 2 {mana}.", "The tide brings mana.", team_mana=2),
+    ("splash", "leaf"): MixMove("Rain Garden", "Both gain 4% {energy}, 3 rounds.", "Both gain 4% {energy} each round, for 3 rounds.", "A garden grows.", hit=0.5, effects=(("mending", 3),)),
     ("splash", "shock"): MixMove("Riptide Zap", "", "", hit=1.5, marks=(("soaked", MARK_ROUNDS),)),
     # EMBER first: raw power, with a catch
-    ("ember", "splash"): MixMove("Scald", "", "", hit=1.5, effects=(("scalded", 2),)),
-    ("ember", "dream"): MixMove("Will-o'-Wisp", "It may hit itself.", "Its next attack has a 75% chance of hitting itself.", "A wisp dances by.", effects=(("wisp", 3),)),
-    ("ember", "leaf"): MixMove("Fire Seed", "Bursts next round.", "No hit now: it bursts at the start of next round.", "A seed glows in the ground.", hit=0.0, later=3.5, later_when="start"),
+    ("ember", "splash"): MixMove("Scald", "Enemy hits softer.", "Enemy hits 25% softer, this round and next.", hit=1.5, effects=(("scalded", 2),)),
+    ("ember", "dream"): MixMove("Will-o'-Wisp", "Enemy may hit itself.", "Enemy's next attack has a 75% chance to hit itself.", "A wisp dances by.", effects=(("wisp", 3),)),
+    ("ember", "leaf"): MixMove("Fire Seed", "Hits next round.", "Hits at the start of next round.", "A seed glows in the ground.", hit=0.0, later=3.5, later_when="start"),
     ("ember", "shock"): MixMove("Flashfire", "", "", hit=2.5, first=True, self_energy=-0.08),
     # DREAM first: tricks
-    ("dream", "splash"): MixMove("Mirror Pool", "", "", "A still pool shines.", hit=0.0, first=True, mirror=True),
-    ("dream", "ember"): MixMove("Campfire Tale", "It dozes. Pets +3%.", "It dozes through its next turn, and both pets get back 3% energy.", "It's such a cozy story.", hit=0.5, effects=(("doze", 2),), team_energy=0.03),
-    ("dream", "leaf"): MixMove("Sleep Spores", "Drowsy just this round.", "It's only Drowsy this round.", hit=0.5, marks=(("drowsy", 1), ("tangled", MARK_ROUNDS))),
-    ("dream", "shock"): MixMove("Deja Vu", "Partner hits twice.", "If its partner attacks this round, that attack happens twice.", "Haven't we done this before?", hit=0.5, first=True, echo=True),
+    ("dream", "splash"): MixMove("Mirror Pool", "Next hit on you bounces.", "The next hit on you bounces back at Enemy.", "A still pool shines.", hit=0.0, first=True, mirror=True),
+    ("dream", "ember"): MixMove("Campfire Tale", "Enemy dozes. Both gain {energy}.", "Enemy dozes on its next turn. Both gain 3% {energy}.", "It's such a cozy story.", hit=0.5, effects=(("doze", 2),), team_energy=0.03),
+    ("dream", "leaf"): MixMove("Sleep Spores", "Drowsy just this round.", "Drowsy only lasts this round.", hit=0.5, marks=(("drowsy", 1), ("tangled", MARK_ROUNDS))),
+    ("dream", "shock"): MixMove("Deja Vu", "Partner's attack hits twice.", "If Partner attacks this round, it hits twice.", "Haven't we done this before?", hit=0.5, first=True, echo=True),
     # LEAF first: outlasts the creature
-    ("leaf", "splash"): MixMove("Spring Shower", "Partner +25% energy.", "Its partner gets back 25% of its energy.", hit=0.5, partner_energy=0.25),
-    ("leaf", "ember"): MixMove("Burning Brambles", "Burns and drains.", "It burns for 3 rounds, and this pet drains half of what it burns.", hit=0.5, effects=(("brambles", 3),), drain=True),
-    ("leaf", "dream"): MixMove("Poppy Patch", "It may doze off.", "Its next two attacks each have a 50% chance of dozing off instead.", poppy=2),
-    ("leaf", "shock"): MixMove("Living Wire", "It may freeze.", "For 2 rounds it has a 50% chance of losing its turn.", effects=(("wired", 2),)),
+    ("leaf", "splash"): MixMove("Spring Shower", "Partner gains 25% {energy}.", "Partner gains 25% {energy}.", hit=0.5, partner_energy=0.25),
+    ("leaf", "ember"): MixMove("Burning Brambles", "Burns; you drain half.", "Enemy burns for 3 rounds. You drain half that damage.", hit=0.5, effects=(("brambles", 3),), drain=True),
+    ("leaf", "dream"): MixMove("Poppy Patch", "Enemy may lose its turn.", "For 2 rounds, Enemy has a 50% chance to lose its turn.", effects=(("poppies", 2),)),
+    ("leaf", "shock"): MixMove("Living Wire", "Enemy may lose its turn.", "For 2 rounds, Enemy has a 50% chance to lose its turn.", effects=(("wired", 2),)),
     # SHOCK first: fast, with lots of small hits
-    ("shock", "splash"): MixMove("Thunder Patter", "Three quick hits.", "Three quick hits. Only the first can set off a combo.", hit=0.6, times=3),
-    ("shock", "ember"): MixMove("Ball Lightning", "Hits again later.", "Hits again at the end of the round.", first=True, later=0.8),
-    ("shock", "dream"): MixMove("Lucid Spark", "Next round: all faster.", "Next round both pets go first, 1.25x as strong.", first=True, lift=1.25, lift_first=True),
-    ("shock", "leaf"): MixMove("Power Sprout", "Energy back.", "This pet gets back 8% of its energy.", self_energy=0.08),
+    ("shock", "splash"): MixMove("Thunder Patter", "Three quick hits.", "Three quick hits.", hit=0.6, times=3),
+    ("shock", "ember"): MixMove("Ball Lightning", "Hits again this round.", "Hits again at the end of the round.", first=True, later=0.8),
+    ("shock", "dream"): MixMove("Lucid Spark", "Next round: both hit 1.25x.", "Next round both hit 1.25x and Enemy goes last.", first=True, lift=1.25, lift_first=True),
+    ("shock", "leaf"): MixMove("Power Sprout", "You gain 8% {energy}.", "You gain 8% {energy}.", self_energy=0.08),
 }
 MYTHICAL_MOVES = {
     "dragon": MixMove("Stormfire Breath", "", "", hit=2.0, first=True, marks=(("static", MARK_ROUNDS), ("glowing", MARK_ROUNDS))),
-    "phoenix": MixMove("Rising Ash", "Or revives its partner.", "If its partner is worn out in this battle, brings it back with 25% energy instead of hitting.", hit=2.0, revive=True),
-    "unicorn": MixMove("Rainbow Blessing", "Pets mend. Next round +.", "Both pets get back 15% energy and 2 mana, and their moves next round are 1.25x as strong.", "A rainbow arcs over your pets!", hit=0.0, team_energy=0.15, team_mana=2, lift=1.25),
-    "mermaid": MixMove("Siren Song", "It hits itself next.", "Its next attack is sure to hit itself.", "It can't help but listen.", hit=0.5, first=True, marks=(("soaked", MARK_ROUNDS),), effects=(("confused", 3),)),
-    "flower_fairy": MixMove("Blooming Circle", "Pets mend. Tangled.", "For 3 rounds both pets get back 4% energy each round and it stays Tangled.", "Flowers ring your pets.", marks=(("tangled", 3),), effects=(("mending", 3),)),
+    "phoenix": MixMove("Rising Ash", "Revives Partner if out.", "Also revives a worn out Partner with 25% {energy}.", hit=2.0, revive=True),
+    "unicorn": MixMove("Rainbow Blessing", "Both gain {energy} {mana}, hit 1.25x.", "Both gain 15% {energy} and 2 {mana}, and hit 1.25x next round.", "A rainbow arcs over your pets!", hit=0.0, team_energy=0.15, team_mana=2, lift=1.25),
+    "mermaid": MixMove("Siren Song", "Enemy hits itself next.", "Enemy's next attack hits itself.", "It can't help but listen.", hit=0.5, first=True, marks=(("soaked", MARK_ROUNDS),), effects=(("confused", 3),)),
+    "flower_fairy": MixMove("Blooming Circle", "Both gain 4% {energy}, 3 rounds.", "Both gain 4% {energy} each round, for 3 rounds.", "Flowers ring your pets.", marks=(("tangled", 3),), effects=(("mending", 3),)),
 }
 
 
@@ -388,11 +388,6 @@ def beaten_by(kind: str) -> str:
     return wd.REGIONS[wd.REGIONS.index(kind) - 1]
 
 
-def no_combo_with(kind: str) -> str:
-    """The partner type whose hits set off nothing on this type's mark."""
-    return next(t for t in wd.REGIONS if (MARKS[kind], t) not in COMBOS)
-
-
 def _doubles(member: dict, kind: str) -> bool:
     return focus_active(member, "daredevil") and (kind == own_type(member) or focus_plus(member, "daredevil"))
 
@@ -402,9 +397,7 @@ def described_moves(member: dict, mana: int | None = None) -> list[dict]:
     own = own_type(member)
     rest_energy, rest_mana = rest_gains(member)
     a, b = (wd.tw(t) for t in strong_against(own))
-    beats_it = wd.tw(beaten_by(own))
-    plus_daredevil = focus_plus(member, "daredevil")
-    guard = f"Takes the hits meant for its partner this round, at {guard_share(member, None):.0%}."
+    guard = f"Takes Partner's hits this round at {guard_share(member, None):.0%}."
     heal_e, heal_max_e, heal_m, heal_max_m = heal_amounts(member)
     says = {
         "attack": (f"{wd.tw(own)} attack", ""),
@@ -412,24 +405,61 @@ def described_moves(member: dict, mana: int | None = None) -> list[dict]:
         **({"mix": (None, mix_move(member).says)} if "mix" in (member.get("swaps") or {}).values() else {}),
         "big": (f"Big {wd.tw(own)}", ""),
         "guard": ("Guard", guard),
-        "focus": ("Focus", f"Its next move is {focus_strength(member)}x as strong."),
-        "cheer": ("Cheer", f"Its partner's move this round is {cheer_strength(member)}x as strong."),
-        "rest": ("Rest", f"Gets back {rest_energy} energy and {rest_mana} mana."),
-        "healer": (None, f"Each round its partner gets back {heal_e} energy (up to {heal_max_e} a battle) and {heal_m} mana (up to {heal_max_m})."),
-        "mark": (None, f"Sets up the next hit for a combo. No combo with {wd.tw(no_combo_with(own))} hits."),
-        "daredevil": (None, f"{'All its moves' if plus_daredevil else 'Its ' + wd.tw(own) + ' moves'} do double damage, and cost energy."),
-        "guardian": (None, f"For the first {guardian_rounds(member)} rounds, {a} and {b} can't hurt its partner"
-                           + (f", and other types hit it {1 - GUARDIAN_PLUS_SOFTER:.0%} softer." if focus_plus(member, "guardian") else ".")),
+        "focus": ("Focus", f"Your next move is {focus_strength(member)}x."),
+        "cheer": ("Cheer", f"Partner's move this round is {cheer_strength(member)}x."),
+        "rest": ("Rest", f"Gain {rest_energy} {{energy}} and {rest_mana} {{mana}}."),
+        "healer": (None, f"Each round, Partner gains {heal_e} {{energy}} (max {heal_max_e}) and {heal_m} {{mana}} (max {heal_max_m})."),
+        "mark": (None, ""),
+        "daredevil": (None, f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits 2x, but cost {{energy}}."),
+        "guardian": (None, f"For {guardian_rounds(member)} rounds, {a} and {b} can't hurt Partner"
+                           + (f", and other types hit Partner {1 - GUARDIAN_PLUS_SOFTER:.0%} softer." if focus_plus(member, "guardian") else ".")),
     }
     if focus_plus(member, "guardian"):
         says["guard"] = (GUARD_NAMES[own], guard)
     elif member.get("focus") == "guardian":
-        says["guard"] = (GUARD_NAMES[own], f"{guard} Only {GUARD_STRONG:.0%} from {beats_it}, the type that beats it.")
+        says["guard"] = (GUARD_NAMES[own], f"{guard} {GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}.")
     out = []
     for m in moves(member, None, mana):
         label, note = says[m["id"]]
         out.append({**m, "label": _plus(member, m["id"], label) if label else m["label"], "note": note})
     return out
+
+
+def move_catalog() -> list[dict]:
+    """Every move tile there is, in groups, for the move lab: each with how
+    it looks in the party book and level-ups (party) and in battle (battle)."""
+    def pet(first: str, second: str | None = None, level: int = 7, species: str | None = None, **rest) -> dict:
+        base = wp.starter(first, level)
+        kinds = {first: level, **({second: max(1, level - 4)} if second else {})}
+        return {**base, "types": kinds, **({"species": species} if species else {}), **rest}
+
+    def tile(member: dict, move: str, name: str) -> dict:
+        party = next(m for m in described_moves(member) if m["id"] == move)
+        battle = next(m for m in moves(member, "dream") if m["id"] == move)
+        return {"name": name, "party": party, "battle": battle}
+
+    def both(make, move: str, name: str) -> list[dict]:
+        """A move as it is, and with its "+"."""
+        return [tile(make(False), move, name), tile(make(True), move, f"{name}+")]
+
+    groups = {"Attacks": [], "Big moves": [], "Grey moves": [], "Daredevil's doubled attacks": [], "Guardian's Guard": [],
+              "Focus moves": [], "Mixes": [], "Mythical mixes": []}
+    for t in wd.REGIONS:
+        groups["Attacks"] += both(lambda plus, t=t: pet(t, upgrades=["attack"] if plus else []), "attack", t.title())
+        groups["Big moves"] += both(lambda plus, t=t: pet(t, upgrades=["big"] if plus else []), "big", t.title())
+        doubled = pet(t, "leaf" if t != "leaf" else "ember", focus="daredevil")
+        groups["Daredevil's doubled attacks"] += [tile(doubled, "attack", t.title()), tile(doubled, "big", t.title())]
+        groups["Guardian's Guard"] += both(lambda plus, t=t: pet(t, level=9 if plus else 7, focus="guardian"), "guard", GUARD_NAMES[t])
+        for focus in FOCUSES:
+            groups["Focus moves"] += both(lambda plus, t=t, focus=focus: pet(t, level=9 if plus else 7, focus=focus), FOCUS_MOVES[focus], FOCUS_NAMES[t][focus])
+    for move in ("guard", "focus", "cheer", "rest"):
+        groups["Grey moves"] += both(lambda plus, move=move: pet("ember", upgrades=[move] if plus else []), move, move.title())
+    for (first, second), mix in MIX_MOVES.items():
+        groups["Mixes"] += both(lambda plus, f=first, s=second: pet(f, s, swaps={"rest": "mix"}, upgrades=["mix"] if plus else []), "mix", mix.name)
+    for species, mix in MYTHICAL_MOVES.items():
+        first, second = wp.SPECIES_TYPES[species]
+        groups["Mythical mixes"] += both(lambda plus, f=first, s=second, sp=species: pet(f, s, species=sp, swaps={"rest": "mix"}, upgrades=["mix"] if plus else []), "mix", mix.name)
+    return [{"name": name, "tiles": tiles} for name, tiles in groups.items()]
 
 
 def _daredevil_cost(member: dict) -> int:
@@ -442,7 +472,7 @@ def focus_option(member: dict, focus: str, mana: int | None = None) -> dict:
     card = next(m for m in preview if m["id"] == FOCUS_MOVES[focus])
     replaces = FOCUS_REPLACES[focus].title()
     return {**card, "id": focus, "title": f"{FOCUS_TITLES[focus]} focus", "replaces": replaces,
-            "also": "Its Guard turns its color too." if focus == "guardian" else None, "moves": preview}
+            "also": "Upgrades Guard too." if focus == "guardian" else None, "moves": preview}
 
 
 def _strength(m: float) -> str:
@@ -459,10 +489,10 @@ def moves(member: dict, foe: str | None = None, mana: int | None = None) -> list
          "note": strength},
         {"id": "big", "type": own, "label": f"Big {wd.tw(own)}", "size": "phrase", "cost": big_mana(member),
          "note": strength, "can": mana is None or mana >= big_mana(member)},
-        {"id": "guard", "type": None, "label": "Guard", "size": "short", "note": "Protect your partner."},
-        {"id": "focus", "type": None, "label": "Focus", "size": "short", "note": "Next move is stronger."},
-        {"id": "cheer", "type": None, "label": "Cheer", "size": "short", "note": "Help your partner."},
-        {"id": "rest", "type": None, "label": "Rest", "size": "short", "note": "Energy and mana back."},
+        {"id": "guard", "type": None, "label": "Guard", "size": "short", "note": f"Partner's hits at {guard_share(member, None):.0%}."},
+        {"id": "focus", "type": None, "label": "Focus", "size": "short", "note": f"Your next move: {focus_strength(member)}x."},
+        {"id": "cheer", "type": None, "label": "Cheer", "size": "short", "note": f"Partner's move: {cheer_strength(member)}x."},
+        {"id": "rest", "type": None, "label": "Rest", "size": "short", "note": "Gain {energy} and {mana}."},
     ]
     done = _with_swaps(_with_focus(out, member, mana), member, foe, mana)
     return [{**m, "label": _plus(member, m["id"], m["label"]), "icons": move_icons(member, m["id"])} for m in done]
@@ -474,26 +504,27 @@ def _dots(strength: float) -> int:
 
 
 def move_icons(member: dict, move: str) -> dict:
-    """What a move's card shows as icons, each with a tooltip: hit (circles for
-    how strong), haste, marks, shield, and its costs (mana, energy)."""
+    """What a move's card shows as icons: haste, hit (circles for how strong),
+    marks, shield and its costs (mana, energy). An icon's tooltip is always the
+    same for the same icon (terms.py); more than that goes in the move's text."""
     own = own_type(member)
     kinds = list(member["types"])
     second = kinds[1] if len(kinds) > 1 else kinds[0]
-    base = pet_hit(member["power"])
     icons: dict = {"cost": {}}
 
-    def hit(strength: float, types: list[str], extra: str = "") -> None:
-        icons["hit"] = {"count": _dots(strength), "types": types, "tip": f"Hits for about {round(base * strength)}{extra}, before type strength."}
+    def hit(strength: float, types: list[str]) -> None:
+        count = _dots(strength)
+        icons["hit"] = {"count": count, "types": types, "tip": terms.damage_tip(count)}
 
     def marks(*names: str) -> None:
-        icons["marks"] = [{"type": MARK_TYPES[n], "tip": f"Leaves it {n.title()}."} for n in names]
+        icons["marks"] = [{"type": MARK_TYPES[n], "tip": terms.mark_tip(n)} for n in names]
 
     def haste() -> None:
-        icons["haste"] = "Goes first."
+        icons["haste"] = terms.FAST_TIP
 
-    def shield(tip: str, who: str, types: list[str] | None = None, double: bool = False) -> None:
+    def shield(who: str, types: list[str] | None = None, double: bool = False) -> None:
         """who: "you", "partner" or "both"; double: immunity, not just softer."""
-        icons["shield"] = {"types": types or [], "double": double, "who": who, "tip": tip}
+        icons["shield"] = {"types": types or [], "double": double, "who": who, "tip": terms.shield_tip(who, double, types)}
 
     doubled = lambda kind: DAREDEVIL if _doubles(member, kind) else 1.0  # noqa: E731
     if move in ("attack", "attack2"):
@@ -509,11 +540,7 @@ def move_icons(member: dict, move: str) -> dict:
         if _doubles(member, own):
             icons["cost"]["energy"] = _daredevil_cost(member)
     elif move == "guard":
-        share = guard_share(member, None)
-        if member.get("focus") == "guardian" and not focus_plus(member, "guardian"):
-            shield(f"Takes its partner's hits, at {share:.0%}, or {GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}.", "partner", [beaten_by(own)])
-        else:
-            shield(f"Takes its partner's hits, at {share:.0%}.", "partner")
+        shield("partner", [beaten_by(own)] if member.get("focus") == "guardian" and not focus_plus(member, "guardian") else None)
     elif move == "mark":
         haste()
         marks(*(MARKS[k] for k in mark_kinds(member)))
@@ -521,13 +548,12 @@ def move_icons(member: dict, move: str) -> dict:
         if mark_energy(member):
             icons["cost"]["energy"] = mark_energy(member)
     elif move == "guardian":
-        shield(f"Its partner can't be hurt by {wd.tw(strong_against(own)[0])} or {wd.tw(strong_against(own)[1])} for the first {guardian_rounds(member)} rounds.",
-               "partner", list(strong_against(own)), double=True)
+        shield("partner", list(strong_against(own)), double=True)
     elif move == "mix":
         m = mix_move(member)
         total = m.hit * m.times + m.later
         if total:
-            hit(total, kinds[:2], ", in all" if m.times > 1 or (m.hit and m.later) else "")
+            hit(total, kinds[:2])
         if m.first:
             haste()
         if m.marks:
@@ -536,11 +562,11 @@ def move_icons(member: dict, move: str) -> dict:
         if m.self_energy < 0:
             icons["cost"]["energy"] = round(member["energy"] * -m.self_energy)
         if m.mirror:
-            shield("The next hit on this pet bounces back at the creature.", "you", double=True)
+            shield("you", double=True)
         elif m.skip:
-            shield("Its next attack misses, whoever it's aimed at.", "both", double=True)
+            shield("both", double=True)
         elif any(e == "scalded" for e, _ in m.effects):
-            shield(f"Its hits on both pets are {1 - SCALDED_HITS:.0%} weaker this round and next.", "both")
+            shield("both")
     return icons
 
 
@@ -592,14 +618,14 @@ def _with_focus(out: list[dict], member: dict, mana: int | None) -> list[dict]:
     a, b = (wd.tw(t) for t in strong_against(own))
     card = {
         "healer": {"passive": True, "note": "Partner heals each round."},
-        "elementalist": {"size": "short", "cost": MARK_MANA, "note": "Sets up a combo.", "can": mana is None or mana >= MARK_MANA},
-        "daredevil": {"passive": True, "note": f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} moves x2."},
+        "elementalist": {"size": "short", "cost": MARK_MANA, "note": "", "can": mana is None or mana >= MARK_MANA},
+        "daredevil": {"passive": True, "note": f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} hits 2x."},
         "guardian": {"passive": True, "note": f"Stops {a} and {b}."},
     }[focus]
     new = {"id": FOCUS_MOVES[focus], "type": own, "label": FOCUS_NAMES[own][focus], **card}
     out = [new if m["id"] == FOCUS_REPLACES[focus] else m for m in out]
     if focus == "guardian":
-        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": "Everything's softer." if focus_plus(member, "guardian") else f"Best against {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
+        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": f"Partner's hits at {guard_share(member, None):.0%}." if focus_plus(member, "guardian") else f"{GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
     return out
 
 
@@ -689,7 +715,7 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
             gain, back = rest_gains(team[who])
             energy[who] = min(team[who]["energy"], energy[who] + gain)
             mana[who] = min(team[who]["mana"], mana[who] + back)
-            step({"who": who, "act": "rest", "target": who, "gain": gain, "text": f"{name(who)} rests: +{gain} energy, +{back} mana."})
+            step({"who": who, "act": "rest", "target": who, "gain": gain, "text": f"{name(who)} rests: +{gain} {{energy}}, +{back} {{mana}}."})
         elif move == "guard":
             step({"who": who, "act": "guard", "text": f"{name(who)} stands guard."})
         elif move == "focus":
@@ -714,7 +740,7 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
             gain = min(max(1, burn // 2), team[who]["energy"] - energy[who])
             energy[who] += gain
         step({"who": "foe", "act": "burn", "target": "foe", "type": "leaf", "damage": burn,
-              "text": f"The brambles burn the {foe} for {burn}." + (f" {name(who)} drains {gain} energy." if gain else "")})
+              "text": f"The brambles burn the {foe} for {burn}." + (f" {name(who)} drains {gain} {{energy}}." if gain else "")})
     if b["energy"] > 0 and "mending" in b["effects"]:
         gains = {}
         for i in b["fighters"]:
@@ -755,7 +781,7 @@ def _heal(b: dict, team: list[dict], i: int, p: int, energy: list[int], mana: li
     b["healed"][f"{i}:energy"] = given("energy") + e
     b["healed"][f"{i}:mana"] = given("mana") + m
     own = own_type(team[i])
-    gains = " and ".join(x for x in (f"+{e} energy" if e else "", f"+{m} mana" if m else "") if x)
+    gains = " and ".join(x for x in (f"+{e} {{energy}}" if e else "", f"+{m} {{mana}}" if m else "") if x)
     return [{"who": i, "act": "heal", "target": p, "type": own, "gain": e or m, "flash": [i, "healer"],
              "text": f"{FOCUS_NAMES[own]['healer']}: {team[p]['name']} {gains}."}]
 
@@ -798,7 +824,6 @@ def _mix(b: dict, team: list[dict], who: int, strength: float, energy: list[int]
         energy[other] = max(1, round(team[other]["energy"] * REVIVE))
         step({"who": who, "act": "heal", "target": other, "type": _mix_kind(me, b["kind"]), "gain": energy[other],
               "text": f"{me['name']}'s {m.name}: {team[other]['name']} is back on its feet!"})
-        return False
     if m.hit:
         for n in range(m.times):
             if b["energy"] > 0:
@@ -812,8 +837,6 @@ def _mix(b: dict, team: list[dict], who: int, strength: float, energy: list[int]
     b["skip"] = max(b["skip"], m.skip)
     if m.drain:
         b["drainer"] = who
-    if m.poppy:
-        b["poppy"] = m.poppy
     if m.mirror:
         b["mirror"] = who
     if m.lift:
@@ -902,10 +925,8 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     if "doze" in b["effects"] or ("drowsy" in b["marks"] and rng.random() < DOZE):
         b["effects"].pop("doze", None)
         return [{"who": "foe", "act": "doze", "text": f"The {foe} dozes off..."}]
-    if b.get("poppy"):
-        b["poppy"] -= 1
-        if rng.random() < POPPY_DOZE:
-            return [{"who": "foe", "act": "doze", "text": f"The poppies get to the {foe}. It dozes off..."}]
+    if "poppies" in b["effects"] and rng.random() < WIRED_STOP:
+        return [{"who": "foe", "act": "doze", "text": f"The poppies get to the {foe}. It dozes off..."}]
     if "wired" in b["effects"] and rng.random() < WIRED_STOP:
         return [{"who": "foe", "act": "skip", "text": f"The live wire holds the {foe} still!"}]
     if "wisp" in b["effects"]:

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Move Lab</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/wanderpaw.css" />
+</head>
+<body>
+  <main class="move-lab">
+    <section class="panel">
+      <h1>Move lab</h1>
+      <p class="hint">Every move tile, drawn by the game's own code. Hover an icon for its tooltip.</p>
+      <div class="lab-options">
+        <label>Show as
+          <select id="opt-view">
+            <option value="party">Party book</option>
+            <option value="battle">Battle</option>
+            <option value="choice">Level-up choice</option>
+          </select>
+        </label>
+        <label>Across
+          <select id="opt-across">
+            <option value="3">3 (today)</option>
+            <option value="4">4 (from level 11)</option>
+          </select>
+        </label>
+        <label><input id="opt-trouble" type="checkbox" /> Only tiles that don't fit</label>
+      </div>
+      <p id="lab-count"></p>
+    </section>
+    <div id="lab-groups"></div>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/wander_map.js"></script>
+  <script src="/static/js/wander_text.js"></script>
+  <script src="/static/js/wander_moves.js"></script>
+  <script src="/static/js/move_lab.js"></script>
+</body>
+</html>

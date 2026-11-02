@@ -32,6 +32,7 @@ from app.activities.practice_text import snapshot_from_stats
 from app.activities.teach_curriculum import known_before, lessons as teach_lessons
 from app.activities.teach_modules import get_teach_module, list_teach_modules
 from app.finger_map import KEY_TO_FINGER
+from app.wanderpaw import battle as wander_battle
 from app.wanderpaw import local as wander_local
 from app.wanderpaw import quests as wander_quests
 from app.wanderpaw import save as wander
@@ -875,6 +876,17 @@ def wanderpaw_page() -> FileResponse:
 @app.get("/wander-lab")
 def wander_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "wander_lab.html")
+
+
+@app.get("/move-lab")
+def move_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "move_lab.html")
+
+
+@app.get("/api/move-lab")
+def move_lab() -> dict:
+    """Every move tile, for the move lab."""
+    return {"groups": wander_battle.move_catalog()}
 
 
 @app.get("/api/wander")

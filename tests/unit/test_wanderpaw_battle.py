@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import statistics
 
 import pytest
@@ -12,6 +13,7 @@ from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
 from app.wanderpaw import pets as wp
 from app.wanderpaw import save as sv
+from app.wanderpaw import terms
 from app.wanderpaw import world as wd
 
 SEED = 102
@@ -77,9 +79,8 @@ def test_every_type_names_every_focus_and_each_takes_one_grey_move():
         ids = _ids(_focused("ember", focus))
         assert len(ids) == 6 and bt.FOCUS_MOVES[focus] in ids and bt.FOCUS_REPLACES[focus] not in ids
         option = bt.focus_option(wp.starter("ember", 3), focus)
-        assert option["type"] == "ember" and option["note"] and len(option["moves"]) == 6
+        assert option["type"] == "ember" and len(option["moves"]) == 6
     assert bt.strong_against("ember") == ("dream", "leaf") and bt.beaten_by("ember") == "splash"
-    assert bt.no_combo_with("splash") == "leaf"
 
 
 def test_a_passive_move_cant_be_picked():
@@ -105,7 +106,7 @@ def test_a_healer_gives_its_partner_energy_and_mana_up_to_the_most():
     assert mana[1] == 5 + bt.HEAL_MAX_MANA and given == bt.HEAL_MAX_ENERGY
     heal = bt.turn({**bt.start(_critter(21), [0, 1]), "energy": 9999}, team, [25, 10], picks, random.Random(1), [30, 5])[0]["log"]
     step = next(s for s in heal if s["act"] == "heal")
-    assert step["target"] == 1 and step["flash"] == [0, "healer"] and "+1 energy" in step["text"] and "+1 mana" in step["text"]
+    assert step["target"] == 1 and step["flash"] == [0, "healer"] and "+1 {energy}" in step["text"] and "+1 {mana}" in step["text"]
     assert not any(s["act"] == "heal" for s in bt.turn({**bt.start(_critter(21), [0, 1]), "energy": 9999}, plain, [25, 10], picks, random.Random(1), [30, 5])[0]["log"])
 
 
@@ -192,12 +193,11 @@ def test_moves_away_from_battle_say_just_what_they_do():
     pet = wp.starter("ember", 3)
     moves = {m["id"]: m for m in bt.described_moves(pet, mana=2)}
     assert list(moves) == ["attack", "big", "guard", "focus", "cheer", "rest"]
-    hit = bt.pet_hit(pet["power"])
-    assert moves["attack"]["label"] == "{ember} attack" and str(round(hit)) in moves["attack"]["icons"]["hit"]["tip"]
-    assert str(round(hit * bt.BIG)) in moves["big"]["icons"]["hit"]["tip"] and "Glowing" in moves["big"]["icons"]["marks"][0]["tip"]
+    assert moves["attack"]["label"] == "{ember} attack" and moves["attack"]["icons"]["hit"]["tip"] == "Medium damage."
+    assert moves["big"]["icons"]["hit"]["tip"] == "Very high damage." and "Glowing" in moves["big"]["icons"]["marks"][0]["tip"]
     assert moves["big"]["can"] is False  # not enough mana
     both = {m["id"]: m for m in bt.described_moves({**pet, "types": {"shock": 3, "ember": 3}})}
-    assert both["attack"]["label"] == "{shock} attack" and [m["tip"] for m in both["big"]["icons"]["marks"]] == ["Leaves it Static."]
+    assert both["attack"]["label"] == "{shock} attack" and [m["tip"] for m in both["big"]["icons"]["marks"]] == ["Leaves Enemy Static."]
     assert both["big"]["label"] == "Big {shock}"
 
 
@@ -545,7 +545,7 @@ def test_every_pair_and_mythical_has_a_move_at_one_price():
     assert set(bt.MIX_MOVES) == pairs and len(pairs) == 20
     assert set(bt.MYTHICAL_MOVES) == set(wp.MYTHICAL)
     every = [*bt.MIX_MOVES.values(), *bt.MYTHICAL_MOVES.values()]
-    assert len({m.name for m in every}) == 25 and all(len(m.short) <= 28 for m in every)
+    assert len({m.name for m in every}) == 25 and all(len(re.sub(r"\{\w+\}", "#", m.short)) <= 28 for m in every)
     assert not {m.name for m in every} & {c.name for c in bt.COMBOS.values()}
     # a mythical uses its own, though others can have its type pair
     assert bt.mix_move(_mixer("shock", "ember")).name == "Ball Lightning"
@@ -754,7 +754,7 @@ def test_rising_ash_brings_back_a_worn_out_partner_or_else_hits_hard():
     b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
     back, energy, _ = bt.turn(b, team, [40, 0], [{"move": "mix", "slips": 0}], random.Random(1), [30, 30])
     assert energy[1] == round(team[1]["energy"] * bt.REVIVE) and "back on its feet" in back["log"][0]["text"]
-    assert back["energy"] == 9999
+    assert back["energy"] < 9999  # and it still hits
     # and it fights on
     _round(back, team, [{"move": "attack", "slips": 0}] * 2, energy=energy, mana=[26, 30])
     hit = next(s for s in _mix_round(pet, b=b)[0]["log"] if s["who"] == 0)
@@ -883,7 +883,7 @@ def test_icons_show_at_a_glance_what_a_move_does():
     assert "hit" not in _icons(pet, "focus") and "hit" not in _icons(_mixer("dream", "splash"), "mix")
     # haste and marks
     big = _icons(pet, "big")
-    assert big["haste"] and big["marks"] == [{"type": "ember", "tip": "Leaves it Glowing."}]
+    assert big["haste"] == "Fast: goes first." and big["marks"] == [{"type": "ember", "tip": "Leaves Enemy Glowing."}]
     assert "haste" not in _icons(pet, "attack")
     stormfire = _icons(_mixer("shock", "ember", "dragon"), "mix")
     assert stormfire["haste"] and {m["type"] for m in stormfire["marks"]} == {"shock", "ember"}
@@ -893,7 +893,9 @@ def test_icons_show_at_a_glance_what_a_move_does():
     wall = _icons(_nine(focus="guardian"), "guardian")["shield"]
     assert wall["double"] and wall["who"] == "partner" and wall["types"] == ["dream", "leaf"]
     veil = _icons(_mixer("splash", "ember"), "mix")["shield"]
-    assert veil["who"] == "both" and veil["double"]
+    assert veil["who"] == "both" and veil["double"] and veil["tip"] == "Both can't be hurt."
+    assert guard["tip"] == "Partner takes less damage."
+    assert wall["tip"] == "Partner can't be hurt by {dream} or {leaf}."
     assert _icons(_mixer("ember", "splash"), "mix")["shield"]["who"] == "both"
     below = {**_focused("ember", "guardian", 7), "types": {"ember": 7}}
     assert _icons(below, "guard")["shield"]["types"] == ["splash"]
@@ -906,6 +908,64 @@ def test_icons_show_at_a_glance_what_a_move_does():
     assert _icons(flash, "mix")["cost"] == {"mana": bt.MIX_MANA, "energy": round(flash["energy"] * 0.08)}
     bold = _nine(focus="daredevil")
     assert _icons(bold, "attack")["cost"] == {"energy": bt._daredevil_cost(bold)} and _icons(bold, "attack")["hit"]["count"] == 4
+
+
+def _every_text():
+    for group in bt.move_catalog():
+        for tile in group["tiles"]:
+            yield tile["name"], tile["party"]["note"]
+            yield tile["name"], tile["battle"]["note"]
+    for focus in bt.FOCUSES:
+        for m in bt.described_moves(_focused("ember", focus)):
+            yield focus, m["note"]
+    for combo in bt.COMBOS.values():
+        yield combo.name, combo.says
+
+
+def test_text_uses_the_game_terms():
+    """One word for one idea (terms.py): who's who is never just "it"."""
+    banned = re.compile(r"\b(It|Its|its partner|gets? back|both pets|Both pets|creature|moves x2|No combo)\b|\b(energy|mana)\b(?![^{]*\})")
+    for name, text in _every_text():
+        assert not banned.search(re.sub(r"\{\w+\}", "#", text)), (name, text)
+    assert {"You", "Partner", "Both", "Enemy", "Gain", "Drain", "Bounce", "Mark"} <= set(terms.TERMS)
+
+
+def test_the_dictionary_covers_types_marks_and_the_map():
+    assert set(terms.TYPES) == set(wd.REGIONS)
+    for kind, says in terms.TYPES.items():
+        a, b = bt.strong_against(kind)
+        assert f"{{{a}}}" in says and f"{{{b}}}" in says  # the same as the battle's ring
+    assert {m.lower() for m in terms.MARKS} == set(bt.MARKS.values())
+    assert set(terms.LANDS) == {b for lands in wd.BIOMES.values() for b, _, _ in lands}
+    tiles = {t for t in lc.WALKABLE | lc.BLOCKED | set(lc.GATE_TILES.values()) if not t.startswith(("pillar_", "feature_"))}
+    assert tiles <= set(terms.TERRAIN), tiles - set(terms.TERRAIN)
+    # what a battle's effects are called
+    assert {"Asleep", "Rooted", "Scalded", "Wired", "Mending", "Brambles", "Burning", "Drenched", "Thorns", "Dizzy", "Bubble", "Sleepy"} <= set(terms.EFFECTS)
+
+
+def test_one_tooltip_for_one_icon():
+    """The same icon always says the same: anything more goes in the move's text."""
+    seen: dict[tuple, set] = {}
+    for group in bt.move_catalog():
+        for tile in group["tiles"]:
+            icons = tile["party"]["icons"]
+            if "hit" in icons:
+                seen.setdefault(("hit", icons["hit"]["count"]), set()).add(icons["hit"]["tip"])
+            if "haste" in icons:
+                seen.setdefault(("haste",), set()).add(icons["haste"])
+            for mark in icons.get("marks", []):
+                seen.setdefault(("mark", mark["type"]), set()).add(mark["tip"])
+            if "shield" in icons:
+                s = icons["shield"]
+                seen.setdefault(("shield", s["who"], s["double"], tuple(s["types"])), set()).add(s["tip"])
+    assert all(len(tips) == 1 for tips in seen.values()), seen
+    assert seen[("hit", 1)] == {"Low damage."} and seen[("hit", 5)] == {"Massive damage."}
+
+
+def test_poppy_patch_and_living_wire_do_the_same():
+    poppy, wire = bt.MIX_MOVES["leaf", "dream"], bt.MIX_MOVES["leaf", "shock"]
+    assert poppy.says == wire.says and poppy.short == wire.short and poppy.hit == wire.hit
+    assert dict(poppy.effects).keys() != dict(wire.effects).keys() and list(dict(poppy.effects).values()) == list(dict(wire.effects).values())
 
 
 def test_every_move_gets_icons_that_the_text_doesnt_repeat():

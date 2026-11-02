@@ -812,7 +812,7 @@ def screen(save: dict) -> dict | None:
         title = _townsfolk(kind, region, pid)[0]
         if pid in trip["used"]:
             return {"title": title, "text": "You're full! Come back next trip.", "action": None}
-        return {"title": title, "text": f"A warm bowl of soup? (+{st.INN_ENERGY} energy)", "action": "inn", "label": "Yes please"}
+        return {"title": title, "text": f"A warm bowl of soup? (+{st.INN_ENERGY} {{energy}})", "action": "inn", "label": "Yes please"}
     if kind == "shop":
         return {"title": _townsfolk(kind, region, pid)[0], "text": "The shopkeeper is still unpacking. Come back soon!", "action": None}
     if kind == "house":
@@ -913,7 +913,7 @@ def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -
             save = _event(save, kind="found", text=f"You found a {st.FORAGE[region]}!")
         elif f == "energy":
             save = _restore(save, st.NOOK_ENERGY)
-            save = _event(save, kind="found", text=f"You feel refreshed. +{st.NOOK_ENERGY} energy.")
+            save = _event(save, kind="found", text=f"You feel refreshed. +{st.NOOK_ENERGY} {{energy}}.")
         elif f == "fish":
             n = 2 if accuracy >= 1 else 1 if accuracy >= 0.6 else 0
             if n:
@@ -958,7 +958,7 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
             texts.insert(0, "You're not ready to rest yet.")
         else:
             save = _restore({**save, "trip": {**trip, "rested": True}}, st.CAMP_ENERGY)
-            texts.insert(0, f"You and your party rest by the fire for a while. +{st.CAMP_ENERGY} energy.")
+            texts.insert(0, f"You and your party rest by the fire for a while. +{st.CAMP_ENERGY} {{energy}}.")
         return _event(save, kind="camp", text=" ".join(texts))
     if action == "ask":
         g = place(save)["giver"]
@@ -1011,7 +1011,7 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
     if action == "shrine":
         gain = round(st.SHRINE_ENERGY * max(0.0, min(1.0, accuracy)))
         save = _restore({**save, "trip": {**trip, "used": [*trip["used"], pid]}}, gain)
-        return _event(save, kind="found", text=f"The shrine glows. +{gain} energy.")
+        return _event(save, kind="found", text=f"The shrine glows. +{gain} {{energy}}.")
     if action == "temple":
         tale = st.STORIES[region]
         save = {**save, "temples": [*save["temples"], region], "charms": save["charms"] + 1,
@@ -1158,7 +1158,7 @@ def _upgrade_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
             return None
         choice = _mix_choice(name, member)
         where = [o for o in choice["options"] if o["id"] != focus_move]
-        return {**choice, "ask": f"{bt.mix_move(member).name} needs a new slot. Which move does it replace?", "options": where}
+        return {**choice, "ask": f"{bt.mix_move(member).name} needs a new slot. Which move gets replaced?", "options": where}
     if rec.upgrades:
         return None
     focus_name = bt.FOCUS_NAMES[own][rec.focus] if rec.focus else None
@@ -1173,7 +1173,7 @@ def _upgrade_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
     if gave_up:
         back = {**member, "swaps": {k: v for k, v in rec.swaps.items() if k != focus_move}}
         options.append({"id": "refocus", "type": own, "label": f"{focus_name}+", "title": "Take back",
-                        "note": f"Back in its old slot and stronger. {bt.mix_move(member).name} moves to a new one.", "moves": bt.described_moves(back)})
+                        "note": f"Returns to its old slot, upgraded. {bt.mix_move(member).name} moves to a new one.", "moves": bt.described_moves(back)})
     ask = f"{name}'s {focus_name}+ grew stronger! Pick a move to upgrade." if rec.focus and not gave_up else f"{name} can upgrade a move!"
     return {"kind": "upgrade", "ask": ask, "options": options}
 
@@ -1187,7 +1187,7 @@ def _swap_options(member: dict, gives_up: list[dict], gets: str) -> list[dict]:
 def _attack2_choice(name: str, member: dict) -> dict:
     """Which grey move a pet's new second-type attack takes the place of."""
     second = list(member["types"])[1]
-    return {"kind": "attack2", "ask": f"{name} learns a {wd.tw(second)} attack! Which move does it replace?",
+    return {"kind": "attack2", "ask": f"{name} learns a {wd.tw(second)} attack! Which move gets replaced?",
             "options": _swap_options(member, bt.grey_moves(member), "attack2")}
 
 
@@ -1195,8 +1195,8 @@ def _mix_choice(name: str, member: dict) -> dict:
     """Which of its six moves a pet's new mix of its two types takes the place of."""
     a, b = list(member["types"])[:2]
     move = bt.mix_move(member)
-    new = {**bt.mix_card(member), "note": f"{move.says} Costs {bt.MIX_MANA} mana."}
-    return {"kind": "mix", "ask": f"{name} learns {move.name}, a mix of {wd.tw(a)} and {wd.tw(b)}! Which move does it replace?",
+    new = {**bt.mix_card(member), "note": move.says}
+    return {"kind": "mix", "ask": f"{name} learns {move.name}, a mix of {wd.tw(a)} and {wd.tw(b)}! Which move gets replaced?",
             "new": new, "options": _swap_options(member, bt.described_moves(member), "mix")}
 
 

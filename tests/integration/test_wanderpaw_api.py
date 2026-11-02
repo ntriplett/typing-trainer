@@ -27,6 +27,21 @@ def _seed():
     return client.get("/api/wander-lab/world").json()["seed"]
 
 
+def test_the_move_lab_lists_every_move_tile():
+    assert client.get("/move-lab").status_code == 200
+    groups = {g["name"]: g["tiles"] for g in client.get("/api/move-lab").json()["groups"]}
+    assert len(groups["Mixes"]) == 40 and len(groups["Mythical mixes"]) == 10 and len(groups["Focus moves"]) == 40
+    names = {t["name"] for t in groups["Mixes"]}
+    assert "Fire Seed" in names and "Fire Seed+" in names
+    for tiles in groups.values():
+        for t in tiles:
+            assert t["party"]["label"] and t["battle"]["icons"] is not None
+    plus = next(t for t in groups["Focus moves"] if t["name"] == "Cozy Hearth+")
+    assert plus["party"]["label"] == "Cozy Hearth+"
+    mythic = next(t for t in groups["Mythical mixes"] if t["name"] == "Stormfire Breath")
+    assert mythic["party"]["label"] == "Stormfire Breath"
+
+
 def test_pages_serve():
     assert client.get("/wanderpaw").status_code == 200
     assert client.get("/wander-lab").status_code == 200

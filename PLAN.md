@@ -949,6 +949,11 @@ in order: >> for haste; circles for a hit (one per half of a plain attack, in it
 mark; a shield for protection (solid: you, thick outline: your partner, half and half: both; colored for certain types, dark gray
 for all; two for immunity). Bottom right, its mana and energy costs. Hover for details. Text only says what icons don't. Energy,
 mana and XP have icons wherever they're called out: wanderText adds them beside the words "energy" and "mana" in game text.
+Text and tooltips follow app/wanderpaw/terms.py, the dictionary of game terms: You/Your, Partner, Both, Enemy, Gain and so on, one
+word for one idea, with types, marks, battle effects, terrain and lands; "gain" and "drain" (taking energy from Enemy) differ. The same icon always has the same tooltip; anything more specific goes in the move's text, kept as short as it
+can be. {energy}, {mana} and {xp} in text draw their icons in place of the word.
+Tiles are drawn by wander_moves.js everywhere. `/move-lab` (admin) shows every tile (battle.move_catalog), as a party, battle or
+level-up card, 3 or 4 across, and flags any whose words don't fit.
 
 **Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
 it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;
