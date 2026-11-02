@@ -61,17 +61,24 @@ function moveCosts(m) {
   return `<span class="wander-move-cost">${one(cost.mana, MANA_ICON, "mana")}${one(cost.energy, ENERGY_ICON, "energy")}</span>`;
 }
 
-function moveCard(m, word, fresh = false) {
+// Three across for six moves; four once a pet has more slots.
+const gridSize = (moves) => (moves.length > 6 ? "wide" : "");
+
+// A tile's border and background: its type's, half and half for a mix.
+function tileStyle(m) {
   const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
   const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
-  // a mix is half and half
-  const mixed = m.type2
+  return m.type2
     ? `background:linear-gradient(135deg, ${tint} 50%, ${TYPE_TINT[m.type2]} 50%);border-image:linear-gradient(135deg, ${color} 50%, ${WanderMap.TYPE_COLORS[m.type2]} 50%) 1`
     : `border-color:${color};background:${tint}`;
+}
+
+function moveCard(m, word, fresh = false) {
+  const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
   const always = `<span class="wander-move-always">Always on</span>`;
   const slot = word === undefined ? (m.passive ? always : "") : `<span class="wander-move-word">${m.passive ? always : word ? labelHtml(word) : "&nbsp;"}</span>`;
   const paid = moveCosts(m) ? "paid" : "";
-  return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""} ${paid}" data-move="${m.id}" style="${mixed}">
+  return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""} ${paid}" data-move="${m.id}" style="${tileStyle(m)}">
     <div class="wander-move-head"><b class="wander-move-name" style="color:${color}">${wanderText(m.label)}</b>${moveIcons(m)}</div>
     ${slot}
     <span class="wander-move-note">${wanderText(m.note)}</span>
@@ -82,7 +89,7 @@ function levelOption(o, i, picked) {
   const color = o.type ? WanderMap.TYPE_COLORS[o.type] : "#8b7a5c";
   const on = i === picked ? "on" : "";
   const paid = moveCosts(o) ? "paid" : "";
-  return `<li class="wander-levelup-option ${on} ${paid}" data-option="${i}" style="border-color:${color};background:${o.type ? TYPE_TINT[o.type] : "#efe6d2"}">
+  return `<li class="wander-levelup-option ${on} ${paid}" data-option="${i}" style="${tileStyle(o)}">
     <small><kbd class="keycap">${i + 1}</kbd> ${wanderText(o.title)}</small>
     <div class="wander-move-head"><b style="color:${color}">${wanderText(o.label)}</b>${moveIcons(o)}</div>
     ${o.passive ? `<span class="wander-move-always">Always on</span>` : ""}

@@ -58,6 +58,8 @@ FOCUS_LEVEL = 3
 SECOND_TYPE_LEVEL = 5
 MIX_LEVEL = 7
 UPGRADE_LEVEL = 9
+SEVENTH_SLOT_LEVEL = 11
+REVERSE_MIX_LEVEL = 13
 PARTY_SIZE = 5
 STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
             "dream": ("Fluff", "sheep"), "shock": ("Zip", "cat")}
@@ -74,6 +76,7 @@ class Record:
     focus: str | None = None  # what it chose at FOCUS_LEVEL (battle.FOCUSES)
     swaps: dict[str, str] = field(default_factory=dict)  # move id it gave up -> move id it got (level choices)
     upgrades: list[str] = field(default_factory=list)  # move ids made "+" ("refocus": took a focus back instead)
+    extra: list[str] = field(default_factory=list)  # move ids in the slots past six
 
 
 def can_go(species: str) -> bool:
@@ -162,6 +165,17 @@ def learn_upgrade(rec: Record, move: str) -> Record:
     return replace(rec, upgrades=[*rec.upgrades, move])
 
 
+def learn_move(rec: Record, gives_up: str, gets: str) -> Record:
+    """A new move takes a slot: one of the six, or one past them."""
+    if gives_up in rec.extra:
+        return replace(rec, extra=[gets if m == gives_up else m for m in rec.extra])
+    return learn_swap(rec, gives_up, gets)
+
+
+def learn_slot(rec: Record, move: str) -> Record:
+    return replace(rec, extra=[*rec.extra, move])
+
+
 def take_back(rec: Record, focus_move: str) -> Record:
     """A focus's move returns to its slot, in place of the level's upgrade (what took its slot needs a new one)."""
     return replace(rec, swaps={k: v for k, v in rec.swaps.items() if k != focus_move}, upgrades=[*rec.upgrades, "refocus"])
@@ -189,7 +203,7 @@ def gain_xp(rec: Record, amount: int) -> Record:
 
 def member(pet: dict, rec: Record) -> dict:
     """A real pet as it goes on a trip (pet: a pets v3 row with genes)."""
-    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades,
+    return {"id": pet["id"], "name": pet["name"], "species": pet["species"], "xp": rec.xp, "progress": progress(rec.xp), "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra,
             "types": type_levels(pet["species"], rec), **stats(pet["species"], pet["genes"]["battle"], rec),
             "genes": pet_genes.resolve(pet["genes"]) if "coat" in pet["genes"] else None, "growth": pet.get("growth", 10)}
 
@@ -223,7 +237,7 @@ def team_energy(members: list[dict]) -> int:
 
 
 def record_json(rec: Record) -> dict:
-    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades}
+    return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra}
 
 
 def record_from(data: dict | None) -> Record:

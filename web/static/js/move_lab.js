@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 // The room each view has in the game, for the same width of tile.
 const WIDTHS = { party: 925, battle: 790, choice: 1140 };
 // The longest word each size of move can ask for.
-const SAMPLE = { short: "gal", medium: "flask", long: "butterfly", phrase: "dad gal lag" };
+const SAMPLE = { short: "gals", medium: "flasks", long: "butterfly", phrase: "gals dads lags" };
 let groups = [];
 
 function tileHtml(t, view, i) {
@@ -49,8 +49,8 @@ function render() {
   const onlyTrouble = $("opt-trouble").checked;
   const box = $("lab-groups");
   box.innerHTML = groups
-    .map((g) => `<section class="panel move-lab-group wander-party"><h2 class="panel-title">${g.name} <small>(${g.tiles.length})</small></h2>
-      <ul class="wander-moves" style="width:${WIDTHS[view]}px;max-width:100%;grid-template-columns:repeat(${across}, minmax(0, 1fr))">
+    .map((g) => `<section class="panel move-lab-group ${view === "battle" ? "" : "wander-party"}"><h2 class="panel-title">${g.name} <small>(${g.tiles.length})</small></h2>
+      <ul class="wander-moves ${across === 4 ? "wide" : ""}" style="width:${WIDTHS[view]}px;max-width:100%">
         ${g.tiles.map((t, i) => tileHtml(t, view, i)).join("")}
       </ul></section>`)
     .join("");

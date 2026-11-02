@@ -3,6 +3,8 @@ trip and walking by typing, and the lab's small maps and gallery."""
 
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import Page, expect
 
 
@@ -282,3 +284,41 @@ def test_the_move_lab_draws_every_tile(page: Page, live_server):
         page.select_option("#opt-view", view)
         page.select_option("#opt-across", "3")
         expect(page.locator("#lab-count")).to_contain_text("They all fit")
+
+
+def test_level_eleven_opens_a_seventh_slot_four_across(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import pets as wp
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+        db.save_wander_pet(conn, 1, fox, {"xp": wp.xp_for(10), "second": "leaf", "second_at": 5, "partners": {}, "starred": False,
+                                          "focus": "healer", "swaps": {"rest": "attack2", "attack2": "mix"}, "upgrades": ["big"], "extra": []})
+    page.request.post(f"{live_server}/api/wander-lab/xp", data={"pet_id": fox, "xp": wp.xp_for(11) - wp.xp_for(10)})
+    page.reload()
+    choice = page.locator("#levelup-choice")
+    expect(choice).to_contain_text("7th slot")
+    expect(choice.locator(".wander-levelup-option")).to_have_count(3)
+    page.keyboard.press("Enter")  # it has to be chosen
+    expect(choice).to_contain_text("7th slot")
+    page.keyboard.press("1")
+    moves = page.locator("#levelup-detail .wander-moves")
+    expect(moves.locator(".wander-move")).to_have_count(7)
+    expect(moves).to_have_class(re.compile("wide"))
+    page.keyboard.press("Enter")
+    expect(choice).to_contain_text("can upgrade a move")
+    page.keyboard.press("1")
+    page.keyboard.press("Enter")
+    expect(page.locator("#levelup")).to_be_hidden()
+    page.keyboard.press("3")
+    page.keyboard.press("ArrowDown")
+    expect(page.locator("#party-detail .wander-move")).to_have_count(7)
+
+
+def test_mix_moves_are_two_colored_as_level_up_choices(page: Page, live_server):
+    page.goto(f"{live_server}/move-lab")
+    page.select_option("#opt-view", "choice")
+    mixes = page.locator(".move-lab-group", has_text="Mixes").first
+    style = mixes.locator(".wander-levelup-option").first.get_attribute("style")
+    assert "linear-gradient" in style

@@ -414,7 +414,11 @@ def _start_battle(save: dict, c: cr.Critter) -> dict:
     who = fighters(save)
     if not who:
         raise WanderError("Your pets are too tired to fight. Rest at a campfire, or go round.")
-    return _event({**save, "battle": bt.start(c, who)}, kind="battle",
+    used = (save["trip"] or {}).get("reborn", [])
+    pets = (save["trip"] or {}).get("pets") or [m["energy"] for m in save["team"]]
+    battle = {**bt.start(c, who), "start_energy": {str(i): pets[i] for i in who},
+              "reborn": [i for i in who if i not in used and bt.has_reborn(save["team"][i])]}
+    return _event({**save, "battle": battle}, kind="battle",
                   text=f"A wild level {c.level} {c.species} blocks the way!")
 
 
@@ -430,7 +434,13 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
     except ValueError as exc:
         raise WanderError(str(exc)) from exc
     trip = save["trip"]
-    save = {**save, "battle": b, "trip": {**trip, "pets": pets, "mana": mana, "energy": trip["walk"] + sum(pets)}}
+    # (once a day: the trip remembers who's been reborn)
+    reborn = [*trip.get("reborn", []), *(i for i in b.get("reborn_used", []) if i not in trip.get("reborn", []))]
+    save = {**save, "battle": b, "trip": {**trip, "pets": pets, "mana": mana, "energy": trip["walk"] + sum(pets), "reborn": reborn}}
+    if b.get("gift_xp"):
+        place, amount = b.pop("gift_xp")
+        if save["team"][place]["id"]:
+            save = _event(save, kind="xp", amount=amount, pets=[save["team"][place]["id"]])
     for line in b["log"]:
         save = _event(save, kind="hit", text=line["text"])
         if line.get("combo") and line["combo"] not in save["combos"]:
@@ -447,6 +457,8 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
         ids = [save["team"][i]["id"] for i in b["fighters"] if save["team"][i]["id"]]
         gain = bt.xp(b, save["team"])
         save = _event(save, kind="won", text=f"You won! The {b['species']} scampers off.")
+        if b.get("coins"):
+            save = _event(save, kind="coins", amount=b["coins"], text=f"Golden Flame! {b['coins']} coins.")
         if ids:
             save = _event(save, kind="xp", amount=gain, pets=ids)
             for i in b["fighters"]:
@@ -500,10 +512,10 @@ def battle_view(save: dict) -> dict | None:
     pets, mana = save["trip"]["pets"], _mana(save)
     return {**b, "looks": cr_looks(b), "fighters": [
         {"place": i, "name": save["team"][i]["name"], "species": save["team"][i]["species"], "level": save["team"][i]["level"],
-         "types": save["team"][i]["types"], "energy": pets[i], "max": save["team"][i]["energy"],
+         "types": save["team"][i]["types"], "energy": pets[i], "max": bt.battle_energy(b, save["team"], i),
          "mana": mana[i], "max_mana": save["team"][i]["mana"], "focused": i in b.get("focus", []),
          "genes": save["team"][i].get("genes"), "growth": save["team"][i].get("growth", 10),
-         "moves": bt.moves(save["team"][i], b["kind"], mana[i])}
+         "moves": bt.battle_moves(b, i, save["team"][i], mana[i])}
         for i in b["fighters"]]}
 
 
@@ -1134,6 +1146,10 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
         return _mix_choice(name, member)
     if lv == wp.UPGRADE_LEVEL:
         return _upgrade_choice(name, rec, member)
+    if lv == wp.SEVENTH_SLOT_LEVEL:
+        return _seventh_slot_choice(name, rec, member)
+    if lv == wp.REVERSE_MIX_LEVEL and len(member["types"]) > 1 and "mix2" not in [*rec.swaps.values(), *rec.extra]:
+        return _reverse_mix_choice(name, member)
     if lv != wp.SECOND_TYPE_LEVEL:
         return None
     offered = wp.second_choices(pet["seed"], pet["species"], rec)
@@ -1176,6 +1192,44 @@ def _upgrade_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
                         "note": f"Returns to its old slot, upgraded. {bt.mix_move(member).name} moves to a new one.", "moves": bt.described_moves(back)})
     ask = f"{name}'s {focus_name}+ grew stronger! Pick a move to upgrade." if rec.focus and not gave_up else f"{name} can upgrade a move!"
     return {"kind": "upgrade", "ask": ask, "options": options}
+
+
+def _seventh_slot_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
+    """Level 11: a 7th slot, for a move it gave up to come back to, then one more upgrade."""
+    back = bt.given_up(member)
+    if not rec.extra and back:
+        options = []
+        for move in back:
+            preview = bt.described_moves({**member, "extra": [move]})
+            options.append({**preview[-1], "title": "Bring back", "moves": preview})
+        return {"kind": "slot", "ask": f"{name} opens a 7th slot! Which move comes back?", "options": options}
+    if len(rec.upgrades) >= 2:
+        return None
+    options = []
+    for m in bt.can_upgrade(member):
+        preview = bt.described_moves({**member, "upgrades": [*rec.upgrades, m["id"]]})
+        options.append({**next(p for p in preview if p["id"] == m["id"]), "title": "Upgrade", "moves": preview})
+    return {"kind": "upgrade", "ask": f"{name} can upgrade a move!", "options": options} if options else None
+
+
+def _reverse_mix_choice(name: str, member: dict) -> dict:
+    """Level 13: its pair's mix the other way around, in any slot."""
+    a, b = list(member["types"])[:2]
+    move = bt.mix_move(member, "mix2")
+    options = []
+    for m in bt.described_moves(member):
+        options.append({**m, "title": "Replace", "moves": bt.described_moves(_with_move(member, m["id"], "mix2"))})
+    new = {**bt.mix_card(member, None, "mix2"), "note": move.says, "icons": bt.move_icons(member, "mix2")}
+    return {"kind": "mix2", "ask": f"{name} learns {move.name}, a mix of {wd.tw(b)} and {wd.tw(a)}! Which move gets replaced?",
+            "new": new, "options": options}
+
+
+def _with_move(member: dict, gives_up: str, gets: str) -> dict:
+    """A team member with a new move in a slot, as wp.learn_move would have it."""
+    extra = member.get("extra") or []
+    if gives_up in extra:
+        return {**member, "extra": [gets if m == gives_up else m for m in extra]}
+    return {**member, "swaps": {**(member.get("swaps") or {}), gives_up: gets}}
 
 
 def _swap_options(member: dict, gives_up: list[dict], gets: str) -> list[dict]:
@@ -1226,6 +1280,8 @@ def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
         kind = first["choose"]["kind"]
         learn = {"focus": lambda r: wp.learn_focus(r, choice), "second": lambda r: wp.learn_second(r, choice, first["level"]),
                  "attack2": lambda r: wp.learn_swap(r, choice, "attack2"), "mix": lambda r: wp.learn_swap(r, choice, "mix"),
+                 "slot": lambda r: wp.learn_slot(r, choice),
+                 "mix2": lambda r: wp.learn_move(r, choice, "mix2"),
                  "upgrade": lambda r: wp.take_back(r, bt.FOCUS_MOVES[r.focus]) if choice == "refocus" else wp.learn_upgrade(r, choice)}[kind]
         rec = learn(pet[1])
         db.save_wander_pet(conn, learner_id, first["pet"], wp.record_json(rec))

@@ -937,12 +937,29 @@ stronger. All cost 4 mana, so about 4 uses a day at level 7. A mix hits with its
 a Daredevil doesn't double it. `tools/wander_balance.py` measures each in the real battle code, used once a fight.
 
 **Level 9 (2026-11-01).** Two rewards, names getting a "+". The focus grows on its own (battle.focus_plus): Healer +3 energy a
-round up to 9, mana up to 5 (long fights are its strength); Elementalist's move leaves both types' marks for 1 mana + 5% energy,
+round... (see Energy in battles); Elementalist's move leaves both types' marks for 1 mana + 5% energy,
 still no damage; Daredevil doubles both types; Guardian 3 rounds, other
 types hit its partner 25% softer, Guard 25% from everything. And one other move upgrades (`Record.upgrades`): Attack and the
 second attack 1.3x, Big 2.8x for 5 mana, Guard takes 25%, Focus and Cheer 2x, Rest 30% energy and 5 mana, a mix 3 mana. A pet that
 gave up its focus at level 7 can take it back instead (with its growth), and its mix then picks a new slot. A balance pass
 changed first drafts (a free second mark was far too strong; Guardian, Guard and Rest too weak).
+
+**Level 11 (2026-11-01).** A 7th slot (`Record.extra`), a move it gave up coming back to it, keeping any "+" (battle.given_up, which
+counts what a focus replaced), then one more upgrade: two steps on the page, each saved. Cards go four across past six moves. 
+
+**Level 13 (2026-11-01).** The pair's mix the other way around (`mix2`: splash + ember's owner learns ember + splash), at its usual price
+(no "+": mana's plentiful by now), taking any of the seven slots. Each mythical has its own (battle.MYTHICAL_REVERSE): Golden Flame (2x; bonus coins if it wins the battle), Reborn (passive: once a day,
+back at 30% energy instead of worn out), Sanctuary (Both safe this round and next, once a battle), Undertow (fast 1.5x; Both drain all
+the damage, split), Nectar (hit; Partner gains 10% of a level's XP, once a battle). Next: 15 a third type (no new moves: it can pick among its 3 pairs' mixes); 17 an 8th slot; 19 a second
+focus, smaller and passive; 21 a capstone that helps even when the pet isn't fighting.
+
+**Energy in battles (2026-11-01).** A pet's energy going in is its battle energy: the most it can have in that battle, and what percentage
+gains are of, so a fight can't be a refill (Rest + Rest once could take a level 3 pair from 20% to 91%, for free, forever). Mana can
+still go up to full. Rest costs 1 energy (never its last) for 3 mana; Rest+ has no cost and gives 4. The balance report's energy loop checks this.
+Healer is +1 energy, +1 mana a round and Healer+ +2, +2, each for at most 3 rounds' worth; Reborn comes back at all its battle energy.
+Moves that gain energy were cut back: Spring Shower 15%, Rain Garden and Blooming Circle 3% for 3 rounds, Power Sprout 5%, Burning Brambles
+drains a quarter, Campfire Tale 2%, Rainbow Blessing 10%, Rising Ash revives at 20%, Undertow drains half, Meadow Nap 5%. Healer is left
+as the focus for it: gaining energy should take specializing.
 
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
 in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each

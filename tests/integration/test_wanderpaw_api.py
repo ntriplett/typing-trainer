@@ -7,6 +7,7 @@ from app import db, main
 from app import pet_genes as g
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import battle as bt
 from app.wanderpaw import pets as wp
 from app.wanderpaw import quests as qs
 from app.wanderpaw import save as sv
@@ -30,7 +31,7 @@ def _seed():
 def test_the_move_lab_lists_every_move_tile():
     assert client.get("/move-lab").status_code == 200
     groups = {g["name"]: g["tiles"] for g in client.get("/api/move-lab").json()["groups"]}
-    assert len(groups["Mixes"]) == 40 and len(groups["Mythical mixes"]) == 10 and len(groups["Focus moves"]) == 40
+    assert len(groups["Mixes"]) == 40 and len(groups["Mythical mixes"]) == 20 and len(groups["Focus moves"]) == 40
     names = {t["name"] for t in groups["Mixes"]}
     assert "Fire Seed" in names and "Fire Seed+" in names
     for tiles in groups.values():
@@ -270,6 +271,131 @@ def test_level_nine_grows_the_focus_and_upgrades_a_chosen_move():
         assert db.get_wander_pets(conn, 1)[fox]["upgrades"] == ["big"]
 
 
+def test_level_eleven_brings_a_slot_a_move_back_and_an_upgrade():
+    fox = _add_pet("fox")
+    _to_level_nine(fox)  # Healer, second attack for rest, mix for the second attack
+    _finish("big", None)  # level 9's upgrade, then level 10
+    _level_to(fox, 11)
+    data = client.get("/api/wander").json()
+    step = data["levelups"][0]
+    if step["level"] == 10:
+        data = _finish(None)
+        step = data["levelups"][0]
+    assert step["level"] == 11 and step["choose"]["kind"] == "slot"
+    assert {o["id"] for o in step["choose"]["options"]} == {"guard", "rest", "attack2"}
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    data = _finish("rest")
+    # the same page goes on: an upgrade, of anything with no + yet
+    step = data["levelups"][0]
+    assert step["level"] == 11 and step["choose"]["kind"] == "upgrade"
+    ids = {o["id"] for o in step["choose"]["options"]}
+    assert "big" not in ids and "healer" not in ids and "rest" in ids and "mix" in ids
+    assert len(step["moves"]) == 7
+    data = _finish("rest")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert len(me["moves"]) == 7 and me["moves"][-1]["label"] == "Rest+" and me["extra"] == ["rest"]
+    assert me["upgrades"] == ["big", "rest"]
+
+
+def test_level_thirteen_brings_the_mix_the_other_way_around():
+    fox = _add_pet("fox")
+    with db.open_db(main.DB_PATH) as conn:
+        db.save_wander_pet(conn, 1, fox, {"xp": wp.xp_for(12), "second": "leaf", "second_at": 5, "partners": {}, "starred": False, "focus": "healer",
+                                          "swaps": {"rest": "attack2", "attack2": "mix"}, "upgrades": ["big", "attack"], "extra": ["guard"]})
+    client.post("/api/wander/trip/start", json={})
+    step = _level_to(fox, 13)[0]
+    assert step["level"] == 13 and step["choose"]["kind"] == "mix2"
+    assert step["choose"]["new"]["label"] == bt.MIX_MOVES["leaf", "ember"].name
+    assert step["choose"]["new"]["type"] == "leaf" and step["choose"]["new"]["cost"] == bt.MIX_MANA
+    assert len(step["choose"]["options"]) == 7  # any of the seven
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    # taking the 7th slot's move
+    data = _finish("guard")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert len(me["moves"]) == 7 and me["moves"][-1]["id"] == "mix2" and not me["moves"][-1]["label"].endswith("+")
+    assert me["extra"] == ["mix2"] and "mix2" not in me["upgrades"]
+    assert "mix" in {m["id"] for m in me["moves"]}
+
+
+def _in_battle_as(species, rec, partner=True):
+    pet = _add_pet(species, 7)
+    with db.open_db(main.DB_PATH) as conn:
+        db.save_wander_pet(conn, 1, pet, rec)
+    if partner:
+        _add_pet("bunny", 8)
+    client.post("/api/wander/trip/start", json={})
+    seed, data = _seed(), client.get("/api/wander").json()
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    world, day = wd.generate(seed), data["stats"]["trips"]
+    big, h = next((b, h) for b in sorted(world.hexes) if world.hexes[b].region == wd.HEARTLAND for h in sorted(cr.at(seed, b, day)))
+    local = lc.generate(seed, big)
+    n = next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in cr.at(seed, big, day))
+    client.post("/api/wander-lab/teleport", json={"q": big[0], "r": big[1], "spot": list(n)})
+    g = lc.to_world(big, h)
+    return pet, client.post("/api/wander/walk", json={"q": g[0], "r": g[1]}).json()
+
+
+MYTH_REC = {"xp": wp.xp_for(13), "second": None, "second_at": None, "partners": {}, "starred": False, "focus": None, "swaps": {"rest": "mix2"}, "upgrades": [], "extra": []}
+
+
+def test_a_mythical_gets_its_own_reverse_move_at_level_thirteen():
+    unicorn = _add_pet("unicorn", 5)
+    with db.open_db(main.DB_PATH) as conn:
+        db.save_wander_pet(conn, 1, unicorn, {**MYTH_REC, "xp": wp.xp_for(12), "swaps": {"rest": "mix"}})
+    step = _level_to(unicorn, 13)[0]
+    assert step["choose"]["new"]["label"] == "Sanctuary"
+
+
+def test_a_once_a_battle_move_shows_it_can_not_be_used_again():
+    pet, data = _in_battle_as("unicorn", MYTH_REC)
+    mine = lambda d: next(m for m in d["battle"]["fighters"][0]["moves"] if m["id"] == "mix2")  # noqa: E731
+    assert mine(data)["can"] is True
+    data = client.post("/api/wander/battle/turn", json={"moves": [{"move": "mix2", "slips": 0}, {"move": "attack", "slips": 0}]}).json()
+    if not data["battle"]["over"]:
+        assert mine(data)["can"] is False
+        res = client.post("/api/wander/battle/turn", json={"moves": [{"move": "mix2", "slips": 0}, {"move": "attack", "slips": 0}]})
+        assert res.status_code == 400
+
+
+def test_golden_flame_pays_its_coins_and_nectar_its_xp():
+    pet, data = _in_battle_as("dragon", MYTH_REC)
+    before = data["coin_balance"]
+    data = client.post("/api/wander/battle/turn", json={"moves": [{"move": "mix2", "slips": 0}, {"move": "attack", "slips": 0}]}).json()
+    while not data["battle"]["over"]:
+        moves = [{"move": "attack", "slips": 0} for f in data["battle"]["fighters"] if f["energy"] > 0]
+        data = client.post("/api/wander/battle/turn", json={"moves": moves}).json()
+    # (it pays only if it was the Golden Flame that won: a heartland creature falls to one)
+    if any(e.get("text", "").startswith("Golden Flame") for e in data["events"]):
+        assert data["coin_balance"] > before
+
+
+def test_nectar_gives_partner_its_xp():
+    # (the fairy has no art yet, so no real one to adopt: this is where the battle hands the save its XP)
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import save as sv
+    fairy = {**wp.starter("leaf", 13), "species": "flower_fairy", "types": {"leaf": 13, "splash": 9}, "swaps": {"rest": "mix2"}, "id": 1}
+    partner = {**wp.starter("ember", 13), "id": 2, "progress": (0, 1000)}
+    save = sv.start_trip({**sv.new_save(5), "team": [fairy, partner]})
+    c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "sheep", "dream", 2, True, 1)
+    save = {**sv._start_battle(save, c)}
+    save = {**save, "battle": {**save["battle"], "energy": 9999, "max": 9999}}
+    after = sv.battle_turn(save, [{"move": "mix2", "slips": 0}, {"move": "guard", "slips": 0}])
+    assert {"kind": "xp", "amount": 100, "pets": [2]} in after["events"]
+
+
+def test_reborn_is_once_a_day_across_battles():
+    from app.wanderpaw import save as sv
+    team = [{**wp.starter("ember", 13), "species": "phoenix", "types": {"ember": 13, "dream": 9}, "swaps": {"rest": "mix2"}, "id": None}, wp.starter("leaf", 13)]
+    save = sv.start_trip({**sv.new_save(5), "team": team})
+    from app.wanderpaw import critters as cr
+    c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "sheep", "dream", 2, True, 1)
+    assert sv._start_battle(save, c)["battle"]["reborn"] == [0]
+    assert sv._start_battle({**save, "trip": {**save["trip"], "reborn": [0]}}, c)["battle"]["reborn"] == []
+
+
 def test_a_guardian_plus_cant_also_upgrade_its_guard():
     fox = _add_pet("fox")
     client.post("/api/wander/trip/start", json={})
@@ -408,3 +534,23 @@ def test_a_battle_pays_its_fighters():
     left = client.post("/api/wander/battle/leave", json={}).json()
     assert left["battle"] is None
     assert client.post("/api/wander/fighters", json={"slots": [1, 0]}).json()["fighters"] == [1, 0]
+
+
+def test_the_battle_shows_and_keeps_to_energy_going_in():
+    fox, _ = _add_pet("fox"), _add_pet("bunny", 2)
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import hexes as hx
+    from app.wanderpaw import save as sv
+    client.post("/api/wander/trip/start", json={})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "pets": [9, 9, *save["trip"]["pets"][2:]]}})
+    seed, data = _seed(), client.get("/api/wander").json()
+    world, day = wd.generate(seed), data["stats"]["trips"]
+    big, h = next((b, h) for b in sorted(world.hexes) if world.hexes[b].region == wd.HEARTLAND for h in sorted(cr.at(seed, b, day)))
+    local = lc.generate(seed, big)
+    n = next(n for n in hx.neighbors(h) if n in lc.CELL_SET and local.walkable(n) and n not in cr.at(seed, big, day))
+    client.post("/api/wander-lab/teleport", json={"q": big[0], "r": big[1], "spot": list(n)})
+    g = lc.to_world(big, h)
+    data = client.post("/api/wander/walk", json={"q": g[0], "r": g[1]}).json()
+    assert [f["max"] for f in data["battle"]["fighters"]] == [9, 9] and fox

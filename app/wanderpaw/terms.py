@@ -23,6 +23,7 @@ TERMS = {
     "Energy": "What a pet spends on the trip and in battle. Out of it, a pet is worn out.",
     "Mana": "What bigger moves cost. It comes back each day.",
     "XP": "What pets earn toward their next level.",
+    "Battle energy": "The energy a pet comes into a battle with: the most it can have in that battle. Percentage gains are of this.",
     "Worn out": "Out of energy: it can't fight until tomorrow.",
     "Round": "Each pet and Enemy acting once.",
     "Fast": "Goes first in the round.",
@@ -69,11 +70,12 @@ EFFECTS = {
     "Dizzy": "Enemy's next attack hits itself.",
     "Bubble": "The next hit on Enemy does 1.5x damage.",
     "Sleepy": "Enemy dozes off on its next turn.",
+    "Sanctuary": "Enemy can't hurt either pet.",
     "Scalded": "Enemy hits 25% softer.",
     "Wired": "Enemy has a 50% chance to lose its turn.",
     "Poppies": "Enemy has a 50% chance to lose its turn.",
     "Brambles": "Enemy burns each round, and the pet that planted them drains half that damage.",
-    "Mending": "Both gain 4% energy each round.",
+    "Mending": "Both gain 3% energy each round.",
 }
 
 # The small map: what each hex is.

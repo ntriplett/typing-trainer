@@ -253,7 +253,7 @@ def test_guard_takes_the_hit_for_a_partner_at_half():
     b = bt.start(_critter(3, "shock", "cat"), [0, 1])
     for seed in range(20):
         _, energy, _ = _round(b, team, [{"move": "guard", "slips": 0}, {"move": "rest", "slips": 0}], energy=[20, 20], seed=seed)
-        assert energy[1] > 20 and energy[0] < 20  # the guard takes the hit; the guarded one only rests
+        assert energy[1] == 20 - bt.REST_COST and energy[0] < 20  # the guard takes the hit; the guarded one only rests
 
 
 def test_focus_and_cheer_make_moves_stronger_and_rest_gives_back():
@@ -276,7 +276,7 @@ def _pet(kind, level=3):
 
 def _hit_with(kind, marks=None, effects=None, move="attack", foe_kind="leaf", seed=1, energy=None):
     """One round: a `kind` pet's move (its partner guards) on a creature with these marks."""
-    b = {**bt.start(_critter(5, foe_kind, "goat"), [0, 1]), "marks": dict(marks or {}), "effects": dict(effects or {})}
+    b = {**bt.start(_critter(5, foe_kind, "goat"), [0, 1]), "marks": dict(marks or {}), "effects": dict(effects or {}), "start_energy": {"0": 40, "1": 40}}
     team = [_pet(kind), _pet("leaf")]
     return _round(b, team, [{"move": move, "slips": 0}, {"move": "guard", "slips": 0}], energy=energy or [20, 20],
                   mana=[30, 30], seed=seed)
@@ -636,11 +636,9 @@ def test_flashfire_is_big_and_costs_energy_but_never_its_last():
 
 
 def test_power_sprout_and_spring_shower_give_energy_back():
-    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
-    sprout = _mixer("shock", "leaf")
-    assert _mix_round(sprout, b=b, energy=[10, 10])[1][0] == 10 + round(sprout["energy"] * 0.08)
-    shower = _mixer("leaf", "splash")
-    assert _mix_round(shower, b=b, energy=[10, 10], partner=_pet("leaf", 7))[1][1] == 10 + round(_pet("leaf", 7)["energy"] * 0.25)
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5, "start_energy": {"0": 40, "1": 40}}
+    assert _mix_round(_mixer("shock", "leaf"), b=b, energy=[10, 10])[1][0] == 10 + round(40 * 0.05)
+    assert _mix_round(_mixer("leaf", "splash"), b=b, energy=[10, 10], partner=_pet("leaf", 7))[1][1] == 10 + round(40 * 0.15)
 
 
 def test_moon_tide_gives_both_pets_mana():
@@ -733,8 +731,8 @@ def test_lucid_spark_and_rainbow_blessing_lift_next_round():
     damage = lambda r: next(s["damage"] for s in r["log"] if s["who"] == 0)  # noqa: E731
     assert damage(next_round) == pytest.approx(damage(plain) * 1.25, abs=1)
     blessing = _mixer("dream", "leaf", "unicorn")
-    b, energy, mana = _mix_round(blessing, b={**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}, energy=[10, 10], mana=[10, 10])
-    assert energy[0] == 10 + round(blessing["energy"] * 0.15) and mana == [8, 12] and b["boost"]["first"] is False
+    b, energy, mana = _mix_round(blessing, b={**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5, "start_energy": {"0": 40, "1": 40}}, energy=[10, 10], mana=[10, 10])
+    assert energy[0] == 10 + round(40 * 0.1) and mana == [8, 12] and b["boost"]["first"] is False
 
 
 def test_sleep_spores_are_drowsy_this_round_and_tangled_for_two():
@@ -751,9 +749,9 @@ def test_stormfire_breath_leaves_two_marks():
 def test_rising_ash_brings_back_a_worn_out_partner_or_else_hits_hard():
     pet = _mixer("ember", "dream", "phoenix")
     team = [pet, _pet("leaf", 7)]
-    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
+    b = {**bt.start(_critter(1, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5, "start_energy": {"0": 40, "1": 30}}
     back, energy, _ = bt.turn(b, team, [40, 0], [{"move": "mix", "slips": 0}], random.Random(1), [30, 30])
-    assert energy[1] == round(team[1]["energy"] * bt.REVIVE) and "back on its feet" in back["log"][0]["text"]
+    assert energy[1] == round(30 * bt.REVIVE) and "back on its feet" in back["log"][0]["text"]
     assert back["energy"] < 9999  # and it still hits
     # and it fights on
     _round(back, team, [{"move": "attack", "slips": 0}] * 2, energy=energy, mana=[26, 30])
@@ -771,7 +769,7 @@ def test_blooming_circle_and_rain_garden_mend_both_pets_for_three_rounds():
     for pet in (_mixer("leaf", "splash", "flower_fairy"), _mixer("splash", "leaf")):
         team = [pet, _pet("leaf", 7)]
         foe = bt.start(_critter(1, "dream", "sheep"), [0, 1])
-        b, energy, mana = _mix_round(pet, b={**foe, "energy": 9999, "skip": 9}, energy=[10, 10])
+        b, energy, mana = _mix_round(pet, b={**foe, "energy": 9999, "skip": 9, "start_energy": {"0": 40, "1": 40}}, energy=[10, 10])
         rounds = 1
         for _ in range(4):
             b, energy, mana = _round(b, team, [{"move": "guard", "slips": 0}] * 2, energy=energy, mana=mana)
@@ -826,13 +824,12 @@ def test_attack_big_and_mix_upgrades():
 
 
 def test_rest_focus_cheer_and_guard_upgrades():
-    full = _nine()["energy"]
-    assert bt.rest_gains(_nine(upgrades=["rest"])) == (round(full * bt.REST_PLUS_ENERGY), bt.REST_PLUS_MANA)
+    assert bt.rest_cost(_nine()) == bt.REST_COST and bt.rest_cost(_nine(upgrades=["rest"])) == 0
     assert bt.focus_strength(_nine(upgrades=["focus"])) == bt.FOCUS_PLUS == bt.cheer_strength(_nine(upgrades=["cheer"]))
     b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5}
     plus = [_nine(upgrades=["rest", "cheer", "focus"]), _pet("leaf", 9)]
     _, energy, mana = _round(b, plus, [{"move": "rest", "slips": 0}, {"move": "guard", "slips": 0}], energy=[1, 40], mana=[1, 30])
-    assert energy[0] == 1 + round(full * bt.REST_PLUS_ENERGY) and mana[0] == 1 + bt.REST_PLUS_MANA
+    assert energy[0] == 1 and mana[0] == 1 + bt.REST_PLUS_MANA
     plain_team = [_nine(), _pet("leaf", 9)]
     partner_hit = lambda team: next(s["damage"] for s in _round(b, team, [{"move": "cheer", "slips": 0}, {"move": "attack", "slips": 0}], energy=[40, 40], mana=[30, 30])[0]["log"] if s["who"] == 1)  # noqa: E731
     assert partner_hit(plus) == pytest.approx(partner_hit(plain_team) * bt.CHEER_PLUS / bt.CHEER, abs=1)
@@ -843,9 +840,11 @@ def test_rest_focus_cheer_and_guard_upgrades():
 
 def test_healer_plus_heals_more_up_to_a_higher_limit():
     team = [_nine(focus="healer"), {**_pet("leaf", 9), "energy": 60}]
-    b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 99}
+    b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 99, "start_energy": {"0": 37, "1": 60}}
     b, energy, mana = _round(b, team, [{"move": "attack", "slips": 0}] * 2, energy=[37, 10], mana=[30, 0])
-    assert energy[1] == 10 + bt.HEAL_PLUS_ENERGY and mana[1] == bt.HEAL_MANA
+    assert energy[1] == 10 + bt.HEAL_PLUS_ENERGY and mana[1] == bt.HEAL_PLUS_MANA
+    assert (bt.HEAL_ENERGY, bt.HEAL_MANA, bt.HEAL_MAX_ENERGY, bt.HEAL_MAX_MANA) == (1, 1, 3, 3)
+    assert (bt.HEAL_PLUS_ENERGY, bt.HEAL_PLUS_MANA, bt.HEAL_PLUS_MAX_ENERGY, bt.HEAL_PLUS_MAX_MANA) == (2, 2, 6, 6)
     for _ in range(9):
         b, energy, mana = _round(b, team, [{"move": "attack", "slips": 0}] * 2, energy=energy, mana=mana)
     assert energy[1] == 10 + bt.HEAL_PLUS_MAX_ENERGY and mana[1] == bt.HEAL_PLUS_MAX_MANA
@@ -998,4 +997,268 @@ def test_guardian_plus_lasts_longer_and_softens_other_types():
             _, energy, _ = bt.turn(b, [guard, _pet("leaf", 9)], [40, 40], picks, random.Random(seed), [30, 30])
             total += 40 - energy[1]
         return total
-    assert partner_takes(team[0]) < partner_takes(_nine(focus="healer"))
+    assert partner_takes(team[0]) < partner_takes(_nine())
+
+
+# --- level 11: a 7th slot ---------------------------------------------------------
+
+
+def _eleven(focus="healer", swaps=None, extra=(), upgrades=()):
+    swaps = {"rest": "attack2", "attack2": "mix"} if swaps is None else swaps
+    return {**wp.starter("ember", 11), "types": {"ember": 11, "leaf": 7}, "focus": focus, "swaps": swaps, "extra": list(extra), "upgrades": list(upgrades), "mana": 30}
+
+
+def test_what_can_come_back_is_everything_it_gave_up():
+    pet = _eleven()  # Healer took guard's slot; rest went for attack2, which went for its mix
+    assert set(bt.given_up(pet)) == {"guard", "rest", "attack2"}
+    back = _eleven(extra=["rest"])
+    assert set(bt.given_up(back)) == {"guard", "attack2"}
+    assert bt.given_up({**wp.starter("ember", 1), "mana": 11}) == []
+
+
+def test_a_seventh_slot_holds_a_move_that_works_in_battle():
+    pet = _eleven(extra=["attack2"])
+    ids = [m["id"] for m in bt.moves(pet)]
+    assert len(ids) == 7 and ids[-1] == "attack2"
+    assert len(bt.described_moves(pet)) == 7
+    b = {**bt.start(_critter(11, "dream", "sheep"), [0, 1]), "energy": 9999}
+    team = [pet, _pet("leaf", 11)]
+    step = next(s for s in _round(b, team, [{"move": "attack2", "slips": 0}, {"move": "guard", "slips": 0}], energy=[40, 40], mana=[30, 30])[0]["log"] if s["who"] == 0)
+    assert step["type"] == "leaf" and step["damage"] > 0
+
+
+def test_a_move_coming_back_keeps_its_plus_and_a_focus_works_again():
+    pet = _eleven(swaps={"rest": "attack2", "guard": "mix"}, extra=["guard"], upgrades=["guard"], focus=None)
+    guard = next(m for m in bt.described_moves(pet) if m["id"] == "guard")
+    assert guard["label"] == "Guard+"
+    gone = _eleven(swaps={"healer": "mix"})
+    assert not bt.focus_active(gone, "healer")
+    back = _eleven(swaps={"healer": "mix"}, extra=["healer"])
+    assert bt.focus_active(back, "healer") and bt.focus_plus(back, "healer")
+    assert next(m for m in bt.described_moves(back) if m["id"] == "healer")["label"].endswith("+")
+
+
+def test_only_moves_with_no_plus_can_upgrade():
+    pet = _eleven(upgrades=["big"])
+    ids = {m["id"] for m in bt.can_upgrade(pet)}
+    assert "big" not in ids and "healer" not in ids  # its focus grew at level 9
+    assert {"attack", "mix"} <= ids
+
+
+# --- level 13: the mix the other way around ---------------------------------------
+
+
+def _thirteen(first="splash", second="ember", species=None, **rest):
+    base = {**wp.starter(first, 13), "types": {first: 13, second: 9}, "swaps": {"rest": "attack2", "attack2": "mix", "cheer": "mix2"}, "mana": 30}
+    return {**base, **({"species": species} if species else {}), **rest}
+
+
+def test_mix2_is_the_pairs_move_the_other_way_around_at_its_usual_price():
+    pet = _thirteen()
+    by_id = {m["id"]: m for m in bt.described_moves(pet)}
+    assert by_id["mix"]["label"] == "Steam Veil" and by_id["mix2"]["label"] == "Scald"
+    assert by_id["mix2"]["type"] == "ember" and by_id["mix2"]["type2"] == "splash"
+    assert by_id["mix2"]["cost"] == bt.MIX_MANA and by_id["mix2"]["icons"]["cost"]["mana"] == bt.MIX_MANA
+    assert by_id["mix"]["cost"] == bt.MIX_MANA
+    # it can still be upgraded later on, like any other
+    assert bt.mix_mana({**pet, "upgrades": ["mix2"]}, "mix2") == bt.MIX_PLUS_MANA
+    # a mythical has its own both ways around
+    assert bt.mix_move(_thirteen("shock", "ember", "dragon"), "mix2").name == "Golden Flame"
+    assert bt.mix_move(_thirteen("shock", "ember", "dragon")).name == "Stormfire Breath"
+    assert set(bt.MYTHICAL_REVERSE) == set(wp.MYTHICAL)
+
+
+def test_mix2_works_in_battle():
+    pet = _thirteen()
+    b = {**bt.start(_critter(13, "dream", "sheep"), [0, 1]), "energy": 9999}
+    after, _, mana = _round(b, [pet, _pet("leaf", 13)], [{"move": "mix2", "slips": 0}, {"move": "guard", "slips": 0}], energy=[40, 40], mana=[30, 30])
+    step = next(s for s in after["log"] if s["who"] == 0)
+    assert "Scald" in step["text"] and "scalded" in after["effects"] and mana[0] == 30 - bt.MIX_MANA
+
+
+@pytest.mark.parametrize("pair", sorted(bt.MIX_MOVES))
+def test_every_reverse_mix_plays_through_a_whole_battle(pair):
+    pet = _thirteen(*pair)
+    for seed in range(6):
+        rng = random.Random(seed)
+        b = bt.start(_critter(13, rng.choice(wd.REGIONS), "sheep"), [0, 1])
+        team, energy, mana = [pet, _pet("leaf", 13)], [40, 40], [30, 30]
+        for _ in range(40):
+            if b["over"]:
+                break
+            picks = [{"move": "mix2" if i == 0 and mana[0] >= bt.MIX_MANA else "attack", "slips": 0} for i in b["fighters"] if energy[i] > 0]
+            if energy[0] <= 0:
+                picks = [{"move": "attack", "slips": 0}]
+            b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+            json.dumps(b)
+        assert b["over"]
+
+
+def test_a_mix_upgrade_lowers_its_cost_and_not_its_hit():
+    plain, plus = _mixer("ember", "shock"), {**_mixer("ember", "shock"), "upgrades": ["mix"]}
+    damage = lambda p: next(s["damage"] for s in _mix_round(p, seed=2)[0]["log"] if s["who"] == 0)  # noqa: E731
+    assert damage(plain) == damage(plus)
+
+
+def test_a_new_move_can_take_the_seventh_slot():
+    rec = wp.Record(swaps={"rest": "attack2"}, extra=["rest"])
+    moved = wp.learn_move(rec, "rest", "mix2")
+    assert moved.extra == ["mix2"] and moved.swaps == {"rest": "attack2"}
+    assert wp.learn_move(rec, "cheer", "mix2").swaps == {"rest": "attack2", "cheer": "mix2"}
+
+
+def _myth(species, **rest):
+    first, second = wp.SPECIES_TYPES[species]
+    return _thirteen(first, second, species, **rest)
+
+
+def _myth_round(species, b=None, foe=None, partner_move="guard", energy=None, mana=None, seed=1, team=None):
+    team = team or [_myth(species), {**_pet("leaf", 13), "progress": (100, 1000)}]
+    b = b or {**bt.start(foe or _critter(13, "dream", "sheep"), [0, 1]), "energy": 9999, "max": 9999}
+    return _round(b, team, [{"move": "mix2", "slips": 0}, {"move": partner_move, "slips": 0}], energy=energy or [40, 40], mana=mana or [30, 30], seed=seed)
+
+
+@pytest.mark.parametrize("species", sorted(set(bt.MYTHICAL_REVERSE) - {"phoenix"}))
+def test_every_typed_mythical_reverse_plays_through_a_battle(species):
+    for seed in range(6):
+        rng = random.Random(seed)
+        pet = _myth(species)
+        b = bt.start(_critter(13, rng.choice(wd.REGIONS), "sheep"), [0, 1])
+        team, energy, mana = [pet, _pet("leaf", 13)], [40, 40], [30, 30]
+        for _ in range(40):
+            if b["over"]:
+                break
+            use = not bt.used_up(b, 0, pet, "mix2") and mana[0] >= bt.MIX_MANA
+            picks = [{"move": "mix2" if i == 0 and use else "attack", "slips": 0} for i in b["fighters"] if energy[i] > 0]
+            if energy[0] <= 0:
+                picks = [{"move": "attack", "slips": 0}]
+            b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+            json.dumps(b)
+        assert b["over"]
+
+
+def test_golden_flame_pays_coins_only_when_it_wins():
+    alive = _myth_round("dragon")[0]
+    assert not alive.get("coins")
+    b = {**bt.start(_critter(13, "dream", "sheep"), [0, 1]), "energy": 1, "max": 34}
+    won = _myth_round("dragon", b=b)[0]
+    assert won["over"] == "won" and won["coins"] == bt.GOLDEN_COINS + 13
+
+
+def test_undertow_is_fast_and_both_drain_half_the_damage():
+    team = [_myth("mermaid"), _pet("leaf", 13)]
+    b = {**bt.start(_critter(99, "dream", "sheep"), [0, 1]), "energy": 9999, "skip": 5, "start_energy": {"0": 60, "1": 60}}
+    after, energy, _ = _myth_round("mermaid", b=b, team=team, energy=[10, 10])
+    step = after["log"][0]
+    assert step["who"] == 0 and "drain" in step["text"]
+    each = round(step["damage"] * 0.5) // 2
+    assert energy == [10 + each, 10 + each]
+
+
+def test_sanctuary_keeps_both_safe_two_rounds_and_is_once_a_battle():
+    team = [_myth("unicorn"), _pet("leaf", 13)]
+    picks = [{"move": "attack", "slips": 0}] * 2
+    for seed in range(20):
+        b, energy, mana = _myth_round("unicorn", foe=_critter(30, "dream", "sheep"), team=team, seed=seed)
+        assert energy == [40, 40]
+        b, energy, mana = _round(b, team, picks, energy=energy, mana=mana, seed=seed)
+        assert energy == [40, 40]
+    with pytest.raises(ValueError, match="once a battle"):
+        _round(b, team, [{"move": "mix2", "slips": 0}, {"move": "attack", "slips": 0}], energy=energy, mana=mana)
+    assert next(m for m in bt.battle_moves(b, 0, team[0], 30) if m["id"] == "mix2")["can"] is False
+
+
+def test_nectar_gifts_partner_xp_once_a_battle():
+    team = [_myth("flower_fairy"), {**_pet("leaf", 13), "progress": (100, 1000)}]
+    after = _myth_round("flower_fairy", team=team)[0]
+    assert after["gift_xp"] == [1, 100]
+    with pytest.raises(ValueError, match="once a battle"):
+        _round(after, team, [{"move": "mix2", "slips": 0}, {"move": "attack", "slips": 0}], energy=[40, 40], mana=[30, 30])
+    # a fully leveled partner has nothing to gain
+    full = [_myth("flower_fairy"), {**_pet("leaf", 13), "progress": None}]
+    assert "gift_xp" not in _myth_round("flower_fairy", team=full)[0]
+
+
+def test_reborn_is_passive_and_brings_a_worn_out_pet_back_once():
+    pet = _myth("phoenix")
+    card = next(m for m in bt.moves(pet) if m["id"] == "mix2")
+    assert card["passive"] and card["icons"]["cost"] == {} and bt.has_reborn(pet)
+    assert "mix2" not in {m["id"] for m in bt.can_upgrade(pet)}
+    team = [pet, _pet("leaf", 13)]
+    picks = [{"move": "attack", "slips": 0}] * 2
+    back = False
+    for seed in range(40):
+        b = {**bt.start(_critter(50, "dream", "sheep"), [0, 1]), "energy": 9999, "reborn": [0], "start_energy": {"0": 40, "1": 40}}
+        after, energy, _ = bt.turn(b, team, [1, 1], picks, random.Random(seed), [30, 30])
+        if "reborn_used" in after:
+            back = True
+            assert energy[0] == 40 and after["reborn"] == [] and after["over"] != "lost"
+        # with no second chance left, it stays down
+        again = {**b, "reborn": []}
+        assert "reborn_used" not in bt.turn(again, team, [1, 1], picks, random.Random(seed), [30, 30])[0]
+    assert back
+
+
+# --- energy in battles ------------------------------------------------------------
+
+
+def _full_of(b, **rest):
+    return {**b, "energy": 9999, "skip": 99, **rest}
+
+
+def test_a_pets_energy_going_in_is_the_most_it_can_have_in_that_battle():
+    team = [_mixer("shock", "leaf"), _pet("leaf", 7)]
+    picks = [{"move": "mix", "slips": 0}, {"move": "guard", "slips": 0}]
+    b = _full_of(bt.start(_critter(1, "dream", "sheep"), [0, 1]))
+    # coming in at 10 of its full energy: 10 is as high as it goes
+    after, energy, _ = bt.turn(b, team, [10, 12], picks, random.Random(1), [30, 30])
+    assert after["start_energy"] == {"0": 10, "1": 12} and energy[0] == 10
+    # hurt in this battle, it can gain back: a percentage of what it came in with
+    hurt = {**after, "start_energy": {"0": 40, "1": 12}}
+    _, energy, _ = bt.turn(hurt, team, [20, 12], picks, random.Random(1), [30, 30])
+    assert energy[0] == 20 + round(40 * 0.05)
+    # and no further than it came in with
+    near = {**after, "start_energy": {"0": 21, "1": 12}}
+    assert bt.turn(near, team, [20, 12], picks, random.Random(1), [30, 30])[1][0] == 21
+
+
+def test_every_energy_gain_stops_at_battle_energy():
+    """No way to come out of a fight with more than you went in with."""
+    for pair in [*bt.MIX_MOVES]:
+        pet = _mixer(*pair)
+        team = [pet, _pet("leaf", 7)]
+        b = bt.start(_critter(1, "dream", "sheep"), [0, 1])
+        energy, mana = [8, 8], [30, 30]
+        for _ in range(12):
+            if b["over"]:
+                break
+            picks = [{"move": "mix" if i == 0 and mana[0] >= 4 else "guard", "slips": 0} for i in b["fighters"] if energy[i] > 0]
+            if energy[0] <= 0:
+                picks = [{"move": "attack", "slips": 0}]
+            b, energy, mana = bt.turn({**b, "energy": 9999, "over": None}, team, energy, picks, random.Random(1), mana)
+            assert energy[0] <= 8 and energy[1] <= 8, pair
+    healer = [_nine(focus="healer"), _pet("leaf", 9)]
+    b = bt.start(_critter(1, "dream", "sheep"), [0, 1])
+    _, energy, _ = bt.turn(b, healer, [5, 5], [{"move": "attack", "slips": 0}] * 2, random.Random(1), [30, 30])
+    assert energy[1] <= 5
+
+
+def test_mana_can_still_rise_above_where_it_started():
+    team = [_pet("ember", 7), _pet("leaf", 7)]
+    b = _full_of(bt.start(_critter(1, "dream", "sheep"), [0, 1]))
+    _, _, mana = bt.turn(b, team, [20, 20], [{"move": "rest", "slips": 0}, {"move": "guard", "slips": 0}], random.Random(1), [1, 1])
+    assert mana[0] == 1 + bt.REST_MANA
+
+
+def test_rest_costs_energy_for_mana_and_rest_plus_is_free():
+    team = [_pet("ember", 7), _pet("leaf", 7)]
+    b = _full_of(bt.start(_critter(1, "dream", "sheep"), [0, 1]))
+    picks = [{"move": "rest", "slips": 0}, {"move": "guard", "slips": 0}]
+    _, energy, mana = bt.turn(b, team, [20, 20], picks, random.Random(1), [1, 1])
+    assert energy[0] == 20 - bt.REST_COST and mana[0] == 1 + bt.REST_MANA
+    assert bt.turn(b, team, [1, 20], picks, random.Random(1), [1, 1])[1][0] == 1  # never its last
+    plus = [{**_pet("ember", 7), "upgrades": ["rest"]}, _pet("leaf", 7)]
+    _, energy, mana = bt.turn(b, plus, [20, 20], picks, random.Random(1), [1, 1])
+    assert energy[0] == 20 and mana[0] == 1 + bt.REST_PLUS_MANA
+    assert _icons(_pet("ember", 7), "rest")["cost"] == {"energy": bt.REST_COST} and _icons(plus[0], "rest")["cost"] == {}
+    assert next(m for m in bt.described_moves(plus[0]) if m["id"] == "rest")["label"] == "Rest+"

@@ -651,6 +651,10 @@ main.wander {
   gap: 0.4rem;
 }
 
+.wander-moves.wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .wander-move {
   display: flex;
   flex-direction: column;
@@ -664,11 +668,19 @@ main.wander {
   min-height: 1.6em;
 }
 
-.wander-move-note {
-  overflow: hidden;
+.wander-word {
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
+
+.wander-moves.wide .wander-word {
+  font-size: 18px;
+}
+
+/* the bottom row, even with no note: a move's cost sits at the end of it */
+.wander-move-word + .wander-move-note {
+  min-height: 1.4em;
+}
+
 
 .wander-picked {
   margin: 0.4rem 0 0;
@@ -1045,10 +1057,6 @@ main.wander {
   outline: 4px solid var(--outline);
 }
 
-.wander-levelup-option .wander-move-note {
-  white-space: normal;
-}
-
 /* a move this choice would bring */
 .wander-move.fresh {
   outline: 4px solid var(--outline);
@@ -1171,12 +1179,6 @@ main.wander {
   margin: 0.4rem 0 0;
 }
 
-/* here the notes have room to say it all */
-.wander-party .wander-move-note {
-  overflow: visible;
-  white-space: normal;
-}
-
 @media (max-width: 860px) {
   .wander-party-split {
     grid-template-columns: 1fr;
@@ -1296,7 +1298,3 @@ main.wander {
   outline-offset: 1px;
 }
 
-.move-lab #lab-groups:not(.in-battle) .wander-move-note {
-  overflow: visible;
-  white-space: normal;
-}

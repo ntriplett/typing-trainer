@@ -58,6 +58,7 @@ TARGETS = {
     "favorite: sessions to level 20": (35, 65),  # maxing favorites around the game's end is fine
     "other: sessions to level 20": (65, 130),  # the whole party shouldn't max out with nothing to do
     "other: sessions to level 5": (4, 12),  # the second type should come soon
+    "energy loop: most energy out of a fight (from 20%)": (0, 21),  # a fight is never a refill
     "level 9 focus: most energy saved": (1.5, 5),  # all four grow about alike
     "level 9 focus: least energy saved": (1.5, 5),
     "level 9 upgrade: most energy saved": (1, 3.5),  # none the obvious pick
@@ -200,6 +201,157 @@ def _strip(both, focus: str | None, upgrade: str) -> list[tuple[int, float]]:
     return runs
 
 
+def build_pet(level: int, focus: str | None, first: str, second: str, species: str | None = None) -> dict:
+    """A pet as a player would have it at a level: its focus at 3, second attack
+    at 5, mix at 7, upgrades at 9 and 11, a move back at 11, the other mix at 13.
+    New moves take the grey slots its focus left."""
+    pet = wp.starter(first, level)
+    grey = [m for m in ("focus", "cheer", "guard") if not focus or m != bt.FOCUS_REPLACES[focus]]
+    swaps: dict[str, str] = {}
+    if level >= 5 and grey:
+        swaps[grey.pop(0)] = "attack2"
+    if level >= 7 and grey:
+        swaps[grey.pop(0)] = "mix"
+    if level >= 13 and grey:
+        swaps[grey.pop(0)] = "mix2"
+    upgrades = ["attack"] * (level >= 9) + ["big"] * (level >= 11)
+    kinds = {first: level, **({second: level - 4} if level >= 5 else {})}
+    return {**pet, "types": kinds, "focus": focus if level >= 3 else None, "swaps": swaps, "upgrades": upgrades,
+            "extra": [], **({"species": species} if species else {})}
+
+
+def _smart_pick(pet: dict, foe_kind: str, energy: int, mana: int, used: set[str], b: dict, place: int, round_no: int) -> str:
+    """A sensible player: each mix and Big once a fight, an Elementalist's mark on
+    odd rounds, otherwise whichever attack hits hardest."""
+    ids = {m["id"]: m for m in bt.moves(pet, foe_kind, mana)}
+    for move in ("mix", "mix2", "big"):
+        m = ids.get(move)
+        if m and move not in used and m.get("can") is not False and not m.get("passive") and not bt.used_up(b, place, pet, move):
+            used.add(move)
+            return move
+    if "mark" in ids and round_no % 2 == 0 and ids["mark"].get("can") is not False:
+        return "mark"
+    return _best_attack(pet, foe_kind) if "attack2" in ids else "attack"
+
+
+def level_fight(level: int, focus: str | None, foe_level: int, rng: random.Random) -> tuple[bool, int, float, int]:
+    """A pair at a level: a built pet beside a pet of the same level. Won, rounds, energy %, mana used."""
+    a, b_ = rng.sample(wp.TYPES, 2)
+    pet = build_pet(level, focus, a, b_)
+    other = rng.choice(wp.TYPES)
+    friend = build_pet(level, rng.choice(bt.FOCUSES), other, rng.choice([t for t in wp.TYPES if t != other]))
+    team = [pet, friend]
+    foe = cr._grown(cr.Critter("x", (0, 0), (0, 0), "dog", rng.choice(wp.TYPES), foe_level, False, rng.randrange(2**31)), 0)
+    b = bt.start(foe, [0, 1])
+    energy, mana = [m["energy"] for m in team], [m["mana"] for m in team]
+    full, spent, rounds = sum(energy), sum(mana), 0
+    used: list[set[str]] = [set(), set()]
+    while not b["over"] and rounds < 60:
+        picks = [{"move": _smart_pick(team[i], foe.kind, energy[i], mana[i], used[i], b, i, rounds), "slips": SLIPS} for i in range(2) if energy[i] > 0]
+        b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+        rounds += 1
+    return b["over"] == "won", rounds, 100 * (full - sum(energy)) / full, spent - sum(mana)
+
+
+def level_table() -> list[tuple]:
+    """How strong a pair is at each level: against an even creature and one 3 up."""
+    rows = []
+    for level in (1, 3, 5, 7, 9, 11, 13):
+        for focus in (None, *bt.FOCUSES) if level >= 3 else (None,):
+            if focus is None and level >= 3:
+                continue
+            rng = random.Random(level)
+            even = [level_fight(level, focus, level, rng) for _ in range(FIGHT_RUNS)]
+            up = [level_fight(level, focus, min(wp.MAX_LEVEL, level + 3), rng) for _ in range(FIGHT_RUNS)]
+            mean = lambda runs, i: statistics.mean(r[i] for r in runs)  # noqa: E731
+            rows.append((level, bt.FOCUS_TITLES.get(focus, "none"), mean(even, 1), mean(even, 2), mean(even, 3), 100 * mean(up, 0), mean(up, 1), mean(up, 2), mean(up, 3)))
+    return rows
+
+
+# The energy loop: how much can a pair get back by stalling a fight on purpose?
+# Each entry: name, level, its focus, its type pair, a species, its upgrades,
+# and the moves it uses to restore or to keep Enemy from hurting anyone.
+LOOP_BUILDS = (
+    ("Plain pets: Rest, Rest", 3, None, ("ember", "leaf"), None, [], ()),
+    ("Plain pets: Rest, Rest", 7, None, ("ember", "leaf"), None, [], ()),
+    ("Plain pets: Rest, Rest", 13, None, ("ember", "leaf"), None, [], ()),
+    ("Rest+", 9, None, ("ember", "leaf"), None, ["rest"], ()),
+    ("Healer+ beside Rest", 9, "healer", ("ember", "leaf"), None, [], ()),
+    ("Spring Shower", 7, None, ("leaf", "splash"), None, [], ("mix",)),
+    ("Rain Garden", 7, None, ("splash", "leaf"), None, [], ("mix",)),
+    ("Burning Brambles", 7, None, ("leaf", "ember"), None, [], ("mix",)),
+    ("Power Sprout", 7, None, ("shock", "leaf"), None, [], ("mix",)),
+    ("Steam Veil", 7, None, ("splash", "ember"), None, [], ("mix",)),
+    ("Campfire Tale", 7, None, ("dream", "ember"), None, [], ("mix",)),
+    ("Sleep Spores", 7, None, ("dream", "leaf"), None, [], ("mix",)),
+    ("Rainbow Blessing", 7, None, ("dream", "leaf"), "unicorn", [], ("mix",)),
+    ("Sanctuary + Rainbow", 13, None, ("dream", "leaf"), "unicorn", [], ("mix2", "mix")),
+    ("Moon Tide + Rest+", 9, None, ("splash", "dream"), None, ["rest"], ("mix",)),
+)
+LOOP_START = 0.2  # of full energy, going in
+LOOP_ENOUGH = 0.9  # of full energy: when the player stops stalling and finishes it
+
+
+def _loop_pet(level: int, focus: str | None, pair: tuple[str, str], species: str | None, upgrades: list[str], moves_used: tuple) -> dict:
+    """A pet keeping Rest and Attack, with the moves it needs in other slots."""
+    pet = wp.starter(pair[0], level)
+    swaps = {}
+    free = [m for m in ("focus", "cheer", "guard") if not focus or m != bt.FOCUS_REPLACES[focus]]
+    for move in moves_used:
+        swaps[free.pop(0)] = move
+    kinds = {pair[0]: level, pair[1]: max(1, level - 4)} if level >= 5 or species else {pair[0]: level}
+    return {**pet, "types": kinds, "focus": focus, "swaps": swaps, "upgrades": upgrades, "extra": [], **({"species": species} if species else {})}
+
+
+def energy_loop(build: tuple, foe_level: int, rng: random.Random) -> tuple[bool, int, float, float]:
+    """Stall on purpose: restore until both pets are full (the special moves
+    first, whenever there's mana), then finish it off. Won, rounds, energy and
+    mana going out as a % of full (coming in at LOOP_START of each)."""
+    _, level, focus, pair, species, upgrades, moves_used = build
+    pet = _loop_pet(level, focus, pair, species, upgrades, moves_used)
+    friend = wp.starter(rng.choice(wp.TYPES), level)
+    team = [pet, friend]
+    foe = cr._grown(cr.Critter("x", (0, 0), (0, 0), "dog", rng.choice(wp.TYPES), foe_level, False, rng.randrange(2**31)), 0)
+    b = bt.start(foe, [0, 1])
+    fulls = [m["energy"] for m in team]
+    energy = [max(1, round(f * LOOP_START)) for f in fulls]
+    mana = [m["mana"] for m in team]
+    rounds = 0
+    while not b["over"] and rounds < 150:
+        hurt = any(energy[i] < fulls[i] * LOOP_ENOUGH for i in range(2) if energy[i] > 0)
+        picks = []
+        for i in range(2):
+            if energy[i] <= 0:
+                continue
+            move = "attack"
+            if hurt:
+                move = "rest"
+                if i == 0:
+                    for m in moves_used:
+                        card = next(x for x in bt.moves(pet, foe.kind, mana[0]) if x["id"] == m)
+                        if card.get("can") is not False and not bt.used_up(b, 0, pet, m) and not card.get("passive"):
+                            move = m
+                            break
+            picks.append({"move": move, "slips": SLIPS})
+        b, energy, mana = bt.turn(b, team, energy, picks, rng, mana)
+        rounds += 1
+    full, have = sum(fulls), sum(energy)
+    return b["over"] == "won", rounds, 100 * have / full, 100 * sum(mana) / sum(m["mana"] for m in team)
+
+
+def loop_table() -> list[tuple]:
+    rows = []
+    for build in LOOP_BUILDS:
+        level = build[1]
+        for name, foe_level in (("even", level), ("3 up", level + 3), ("weak", max(1, level - 4))):
+            rng = random.Random(level * 31 + foe_level)
+            runs = [energy_loop(build, foe_level, rng) for _ in range(FIGHT_RUNS // 3)]
+            wins = [r for r in runs if r[0]] or runs  # what a winner walks away with
+            rows.append((build[0], level, name, 100 * statistics.mean(r[0] for r in runs), statistics.mean(r[1] for r in wins),
+                         statistics.mean(r[2] for r in wins), statistics.mean(r[3] for r in wins)))
+    return rows
+
+
 def fight_table() -> dict[tuple[int, int], tuple[float, float, float, int]]:
     rng = random.Random(1)
     out = {}
@@ -299,6 +451,20 @@ def main() -> int:
     for name, r0, c0, r1, c1 in nines:
         print(f"  {name:<14}{r0:>5.1f} rounds {c0:>5.1f}%   {r1:>5.1f} rounds {c1:>5.1f}%  ({c1 - c0:+.1f})")
 
+    print("\nPower by level: a built pet beside another, each using its mixes and Big once a fight")
+    print("                            even creature                  creature 3 levels up")
+    print("  level focus           rounds energy% mana     win% rounds energy% mana")
+    levels = level_table()
+    for level, focus, r0, c0, m0, w1, r1, c1, m1 in levels:
+        print(f"  {level:>5} {focus:<14}{r0:>6.1f}{c0:>8.1f}{m0:>5.1f}{w1:>9.0f}{r1:>7.1f}{c1:>8.1f}{m1:>5.1f}")
+
+    loops = loop_table()
+    print(f"\nThe energy loop: come in at {LOOP_START:.0%} energy, stall on purpose until full, then finish it")
+    print("  (rounds, energy and mana are for the fights it won)")
+    print("  build                      level foe     win% rounds  energy out  mana out")
+    for name, level, foe, win, rounds, out, mana_out in loops:
+        print(f"  {name:<26}{level:>6} {foe:<6}{win:>6.0f}{rounds:>7.1f}{out:>10.0f}%{mana_out:>9.0f}%")
+
     print(f"\nSessions to reach a level (a party of {' + '.join(f'{n} {k}' for k, (n, _) in PARTY.items())}; favorites fight 2x)")
     print(f"  {'':<34}" + "".join(f"{'L' + str(lv):>6}" for lv in LEVELS))
     base = sessions_to_levels(wp.XP_GROWTH, pop, BASE_FIGHTS, args.relic_every)
@@ -319,6 +485,7 @@ def main() -> int:
         "other: sessions to level 20": base["other", 20],
         "other: sessions to level 5": base["other", 5],
         "level 7 moves: most energy saved": plain_cost - mixes[0][2],
+        "energy loop: most energy out of a fight (from 20%)": max(r[5] for r in loops),
         "level 9 focus: most energy saved": max(c0 - c1 for _, _, c0, _, c1 in nines[:4]),
         "level 9 focus: least energy saved": min(c0 - c1 for _, _, c0, _, c1 in nines[:4]),
         "level 9 upgrade: most energy saved": max(c0 - c1 for _, _, c0, _, c1 in nines[4:]),

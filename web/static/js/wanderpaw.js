@@ -218,12 +218,12 @@ function renderBattle() {
       const picked = k >= 0 ? fight.picks[k] : null;
       const picking = k >= 0 && k === fight.picks.findIndex((p) => !p);
       const moves = replay
-        ? `<ul class="wander-moves waiting">${f.moves.map((m) => moveCard(m, null)).join("")}</ul>` // dimmed while the round plays
+        ? `<ul class="wander-moves waiting ${gridSize(f.moves)}">${f.moves.map((m) => moveCard(m, null)).join("")}</ul>` // dimmed while the round plays
         : b.over || k < 0
           ? ""
           : picked
             ? `<p class="wander-picked">Ready: <b>${wanderText(picked.label)}</b></p>`
-            : `<ul class="wander-moves ${picking ? "" : "waiting"}">${f.moves
+            : `<ul class="wander-moves ${picking ? "" : "waiting"} ${gridSize(f.moves)}">${f.moves
                 .map((m) => moveCard(m, (picking && fight.targets.find((t) => t.move.id === m.id)) || null))
                 .join("")}</ul>`;
       return `<div class="wander-fighter ${petEnergy(f) ? "" : "out"}">
@@ -260,7 +260,7 @@ function renderBattle() {
 const MARK_TYPE = { soaked: "splash", glowing: "ember", drowsy: "dream", tangled: "leaf", static: "shock" };
 // What a combo leaves on it, as the labels say.
 const EFFECT_NAMES = { drenched: "drenched", thorns: "thorns", confused: "dizzy", burn: "burning", popped: "bubble", doze: "sleepy",
-  mending: "pets mending", brambles: "brambles", scalded: "scalded", wisp: "wisp", wired: "wired", poppies: "poppies" };
+  mending: "pets mending", brambles: "brambles", scalded: "scalded", wisp: "wisp", wired: "wired", poppies: "poppies", sanctuary: "sanctuary" };
 let marksTimer = null;
 
 function animateMarks() {
@@ -657,7 +657,7 @@ function partyPetDetail(m, i) {
           <p class="wander-party-stats">Power <b>${m.power}</b> &nbsp; Speed <b>${m.speed}</b></p>
         </div>
       </div>
-      <ul class="wander-moves">${m.moves.map((move) => moveCard(move)).join("")}</ul>
+      <ul class="wander-moves ${gridSize(m.moves)}">${m.moves.map((move) => moveCard(move)).join("")}</ul>
     </div>`;
 }
 
@@ -1082,12 +1082,12 @@ function renderLevelup() {
           }).join("")}</dl>
         </div>
       </div>
-      <ul class="wander-moves">${moves.map((m, i) => moveCard(m, undefined, pick && m.label !== up.moves[i].label)).join("")}</ul>
+      <ul class="wander-moves ${gridSize(moves)}">${moves.map((m, i) => moveCard(m, undefined, pick && m.label !== up.moves[i]?.label)).join("")}</ul>
     </div>`;
   document.getElementById("levelup-choice").innerHTML = options.length
     ? `<h3 class="wander-levelup-ask">${wanderText(up.choose.ask)}</h3>
        ${up.choose.new ? `<ul class="wander-moves wander-levelup-new">${moveCard(up.choose.new)}</ul>` : ""}
-       <ul class="wander-levelup-options" style="--across:${options.length === 6 ? 3 : options.length}">${options.map((o, i) => levelOption(o, i, levelPick)).join("")}</ul>`
+       <ul class="wander-levelup-options" style="--across:${options.length === 6 ? 3 : Math.min(4, options.length)}">${options.map((o, i) => levelOption(o, i, levelPick)).join("")}</ul>`
     : "";
   const more = state.levelups.length - 1;
   const left = more ? ` &nbsp; <small>${more} more to celebrate</small>` : "";
