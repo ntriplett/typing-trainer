@@ -1198,3 +1198,60 @@ main.wander {
 .wander-levelup-new {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* A move's icons: what it does at the top right, what it costs at the bottom right. */
+.wander-move,
+.wander-levelup-option {
+  position: relative;
+}
+
+.wander-move-icons {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.wander-move-name {
+  padding-right: 5.5rem;
+}
+
+.wander-move-cost {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.wander-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: help;
+}
+
+.wander-icon-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+
+.wander-icon-haste {
+  font-size: 20px;
+  font-weight: bold;
+  line-height: 1;
+  color: #1c1208;
+}
+
+.wander-stat-icon {
+  vertical-align: -2px;
+}
+

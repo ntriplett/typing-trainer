@@ -33,6 +33,7 @@ const REGION_NAMES = {
   camp: "Heartland", ember: "EMBER", splash: "SPLASH", leaf: "LEAF", dream: "DREAM", shock: "SHOCK",
 };
 
+document.getElementById("energy-label").innerHTML = wanderText("Energy");
 const localCanvas = document.getElementById("wander-local");
 const bigCanvas = document.getElementById("wander-map");
 const message = document.getElementById("wander-message");
@@ -230,8 +231,8 @@ function renderBattle() {
         <div class="wander-fighter-head">
           <canvas width="110" height="86" data-fighter="${i}" data-place="${f.place}"></canvas>
           <div><b>${esc(f.name)}</b> <small>lv ${f.level}</small> ${chips(f.types)}<br>
-          ${bar(petEnergy(f), f.max)} <small>${petEnergy(f)} / ${f.max}</small><br>
-          ${bar(petMana(f), f.max_mana, "mana")} <small class="wander-mana">${petMana(f)} / ${f.max_mana} mana</small>
+          ${bar(petEnergy(f), f.max)} <small title="Energy">${petEnergy(f)} / ${f.max} ${ENERGY_ICON}</small><br>
+          ${bar(petMana(f), f.max_mana, "mana")} <small class="wander-mana" title="Mana">${petMana(f)} / ${f.max_mana} ${MANA_ICON}</small>
           ${f.focused ? `<span class="wander-mark">focused</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
         </div>
         ${moves}
@@ -604,6 +605,56 @@ const HOME_CHOICES = [
 // Bars and move cards: the battle screen's, and the party book's.
 const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="width:${(100 * e) / m}%"></span></span>`;
 
+// A move's icons: top right says what it does (>> for haste, circles for how
+// hard it hits, a burst for each mark, a shield for protection), bottom right
+// what it costs. Hover any for the details.
+const SHIELD_ALL = "#55504a"; // dark gray: against every type
+
+// Solid: protects you. A thick outline: your partner. Half and half: both.
+function shieldSvg(who, types) {
+  const a = types.length ? WanderMap.TYPE_COLORS[types[0]] : SHIELD_ALL;
+  const b = types.length ? WanderMap.TYPE_COLORS[types[1] || types[0]] : SHIELD_ALL;
+  const left = "M8 1.5 L1.5 3.8 V9 C1.5 13 4.8 15.8 8 17";
+  const right = "M8 1.5 L14.5 3.8 V9 C14.5 13 11.2 15.8 8 17";
+  const solid = (d, color) => `<path d="${d} Z" fill="${color}" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`;
+  const outline = (d, color) => `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const parts = who === "you" ? solid(left, a) + solid(right, b) : who === "partner" ? outline(left, a) + outline(right, b) : solid(left, a) + outline(right, b);
+  return `<svg class="wander-icon-shield" viewBox="0 0 16 18.5" width="15" height="17" aria-hidden="true">${parts}</svg>`;
+}
+
+// A mark: a little soft explosion.
+function burstSvg(color) {
+  return `<svg class="wander-icon-burst" viewBox="0 0 18 18" width="17" height="17" aria-hidden="true"><path d="M9 1 L10.6 5.4 L14.8 3 L13 7.4 L17 9 L13 10.6 L15 15 L10.6 12.8 L9 17 L7.4 12.8 L3 15 L5 10.6 L1 9 L5 7.4 L3.2 3 L7.4 5.4 Z" fill="${color}" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+}
+
+function moveIcons(m) {
+  const icons = m.icons;
+  if (!icons) return "";
+  const parts = [];
+  if (icons.haste) parts.push(`<span class="wander-icon wander-icon-haste" data-icon="haste" title="${wanderPlain(icons.haste)}">&raquo;</span>`);
+  if (icons.hit) {
+    const [a, b] = [WanderMap.TYPE_COLORS[icons.hit.types[0]], WanderMap.TYPE_COLORS[icons.hit.types[1] || icons.hit.types[0]]];
+    const dots = Array.from({ length: icons.hit.count }, () => `<i class="wander-icon-dot" style="background:linear-gradient(90deg, ${a} 50%, ${b} 50%)"></i>`).join("");
+    parts.push(`<span class="wander-icon" data-icon="hit" title="${wanderPlain(icons.hit.tip)}">${dots}</span>`);
+  }
+  (icons.marks || []).forEach((mark) => {
+    parts.push(`<span class="wander-icon" data-icon="mark" title="${wanderPlain(mark.tip)}">${burstSvg(WanderMap.TYPE_COLORS[mark.type])}</span>`);
+  });
+  if (icons.shield) {
+    const s = icons.shield;
+    const one = shieldSvg(s.who, s.types);
+    parts.push(`<span class="wander-icon wander-icon-shields" data-icon="shield" data-who="${s.who}" title="${wanderPlain(s.tip)}">${one}${s.double ? one : ""}</span>`);
+  }
+  return parts.length ? `<span class="wander-move-icons">${parts.join("")}</span>` : "";
+}
+
+function moveCosts(m) {
+  const cost = m.icons && m.icons.cost;
+  if (!cost || !(cost.mana || cost.energy)) return "";
+  const one = (n, icon, name) => (n ? `<span class="wander-icon" data-icon="${name}" title="Costs ${n} ${name}.">${n}${icon}</span>` : "");
+  return `<span class="wander-move-cost">${one(cost.mana, MANA_ICON, "mana")}${one(cost.energy, ENERGY_ICON, "energy")}</span>`;
+}
+
 function moveCard(m, word, fresh = false) {
   const color = m.type ? WanderMap.TYPE_COLORS[m.type] : "#8b7a5c";
   const tint = m.type ? TYPE_TINT[m.type] : "#efe6d2";
@@ -614,9 +665,11 @@ function moveCard(m, word, fresh = false) {
   const always = `<span class="wander-move-always">Always on</span>`;
   const slot = word === undefined ? (m.passive ? always : "") : `<span class="wander-move-word">${m.passive ? always : word ? labelHtml(word) : "&nbsp;"}</span>`;
   return `<li class="wander-move ${m.can === false ? "off" : ""} ${fresh ? "fresh" : ""}" data-move="${m.id}" style="${mixed}">
-    <b style="color:${color}">${wanderText(m.label)}</b>
+    ${moveIcons(m)}
+    <b class="wander-move-name" style="color:${color}">${wanderText(m.label)}</b>
     ${slot}
-    <span class="wander-move-note">${wanderText(m.note)}</span></li>`;
+    <span class="wander-move-note">${wanderText(m.note)}</span>
+    ${moveCosts(m)}</li>`;
 }
 
 // --- the party book: everyone together, then each pet up close ---------------------
@@ -664,8 +717,8 @@ function partyPetDetail(m, i) {
   const xp = !m.id
     ? `<small>A starter: doesn't level up</small>`
     : m.progress
-      ? `${bar(m.progress[0], m.progress[1], "xp")} <small>${m.progress[0]} / ${m.progress[1]} xp</small>`
-      : `${bar(1, 1, "xp")} <small>Fully leveled</small>`;
+      ? `${bar(m.progress[0], m.progress[1], "xp")} <small>${m.progress[0]} / ${m.progress[1]} xp ${XP_ICON}</small>`
+      : `${bar(1, 1, "xp")} <small>Fully leveled ${XP_ICON}</small>`;
   return `<div class="wander-fighter">
       <div class="wander-fighter-head">
         <canvas id="party-pet" width="150" height="120"></canvas>
@@ -673,8 +726,8 @@ function partyPetDetail(m, i) {
           <span class="wander-level">Level ${m.level}</span>
           <b class="wander-party-name">${esc(m.name)}</b> <small>${words(m.species)}</small>
           ${chips(m.types)}${state.fighters.includes(i) ? ` <span class="wander-mark">⚔ fights next</span>` : ""}<br>
-          ${bar(energy, m.energy)} <small>${energy} / ${m.energy} energy</small><br>
-          ${bar(mana, m.mana, "mana")} <small class="wander-mana">${mana} / ${m.mana} mana</small><br>
+          ${bar(energy, m.energy)} <small>${energy} / ${m.energy} energy ${ENERGY_ICON}</small><br>
+          ${bar(mana, m.mana, "mana")} <small class="wander-mana">${mana} / ${m.mana} mana ${MANA_ICON}</small><br>
           ${xp}
           <p class="wander-party-stats">Power <b>${m.power}</b> &nbsp; Speed <b>${m.speed}</b></p>
         </div>
@@ -1062,7 +1115,7 @@ function renderScreen() {
     : `<kbd class="keycap">Enter</kbd> leave`;
 }
 
-const LEVEL_STATS = [["energy", "Energy"], ["mana", "Mana"], ["power", "Power"], ["speed", "Speed"]];
+const LEVEL_STATS = [["energy", `Energy ${ENERGY_ICON}`], ["mana", `Mana ${MANA_ICON}`], ["power", "Power"], ["speed", "Speed"]];
 const CONFETTI = ["#e2a33c", "#c8553d", "#6d9f58", "#4f8fb8", "#a76fb0"];
 
 // Looks like a pet's page in the party book: stats with what grew, its six
@@ -1132,9 +1185,11 @@ function levelOption(o, i) {
   const on = i === levelPick ? "on" : "";
   return `<li class="wander-levelup-option ${on}" data-option="${i}" style="border-color:${color};background:${o.type ? TYPE_TINT[o.type] : "#efe6d2"}">
     <small><kbd class="keycap">${i + 1}</kbd> ${esc(o.title)}</small>
+    ${moveIcons(o)}
     <b style="color:${color}">${wanderText(o.label)}</b>
     ${o.passive ? `<span class="wander-move-always">Always on</span>` : ""}
     <span class="wander-move-note">${wanderText(o.note)}</span>
+    ${moveCosts(o)}
     ${o.replaces ? `<small>Replaces ${esc(o.replaces)}.${o.also ? ` ${esc(o.also)}` : ""}</small>` : ""}
   </li>`;
 }

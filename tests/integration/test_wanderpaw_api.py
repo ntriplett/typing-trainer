@@ -226,6 +226,63 @@ def test_level_seven_brings_a_mix_that_can_replace_any_of_the_six():
     assert len(ups) == 6
 
 
+def _to_level_nine(pet, focus="healer", mix_slot="attack2"):
+    client.post("/api/wander/trip/start", json={})
+    _level_to(pet, 9)
+    _finish(None, focus, None)
+    five = client.get("/api/wander").json()["levelups"][0]
+    return _finish(five["choose"]["options"][0]["id"], "rest", None, mix_slot, None)
+
+
+def test_level_nine_grows_the_focus_and_upgrades_a_chosen_move():
+    fox = _add_pet("fox")
+    step = _to_level_nine(fox)["levelups"][0]
+    assert step["level"] == 9 and step["choose"]["kind"] == "upgrade"
+    assert "Cozy Hearth+" in step["choose"]["ask"]
+    labels = {m["id"]: m["label"] for m in step["moves"]}
+    assert labels["healer"] == "Cozy Hearth+"  # already grown
+    # every move but the focus's: and the mix
+    assert {o["id"] for o in step["choose"]["options"]} == {"attack", "big", "focus", "cheer", "mix"}
+    option = next(o for o in step["choose"]["options"] if o["id"] == "big")
+    assert option["label"].endswith("+") and option["icons"]["cost"] == {"mana": 5}
+    assert client.post("/api/wander/levelup", json={}).status_code == 400
+    assert client.post("/api/wander/levelup", json={"choice": "healer"}).status_code == 400
+    data = _finish("big")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    assert next(m for m in me["moves"] if m["id"] == "big")["label"].endswith("+") and me["upgrades"] == ["big"]
+    with db.open_db(main.DB_PATH) as conn:
+        assert db.get_wander_pets(conn, 1)[fox]["upgrades"] == ["big"]
+
+
+def test_a_guardian_plus_cant_also_upgrade_its_guard():
+    fox = _add_pet("fox")
+    client.post("/api/wander/trip/start", json={})
+    _level_to(fox, 9)
+    _finish(None, "guardian", None)
+    five = client.get("/api/wander").json()["levelups"][0]
+    step = _finish(five["choose"]["options"][0]["id"], "rest", None, "attack2", None)["levelups"][0]
+    assert "guard" not in {o["id"] for o in step["choose"]["options"]}
+
+
+def test_a_pet_that_gave_up_its_focus_can_take_it_back():
+    fox = _add_pet("fox")
+    step = _to_level_nine(fox, mix_slot="healer")["levelups"][0]
+    assert "healer" not in {m["id"] for m in step["moves"]}
+    back = next(o for o in step["choose"]["options"] if o["id"] == "refocus")
+    assert back["label"] == "Cozy Hearth+" and "healer" in {m["id"] for m in back["moves"]}
+    data = _finish("refocus")
+    # its mix needs a new slot, on the same page
+    step = data["levelups"][0]
+    assert step["level"] == 9 and step["choose"]["kind"] == "mix" and "healer" not in {o["id"] for o in step["choose"]["options"]}
+    data = _finish("cheer")
+    assert data["levelups"] == []
+    me = next(m for m in data["team"] if m["id"] == fox)
+    ids = [m["id"] for m in me["moves"]]
+    assert "healer" in ids and "mix" in ids and "cheer" not in ids
+    assert me["upgrades"] == ["refocus"]
+
+
 def test_a_mythical_gets_its_own_mix():
     unicorn = _add_pet("unicorn", 5)
     _level_to(unicorn, 7)

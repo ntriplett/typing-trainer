@@ -1132,6 +1132,8 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
         return {"kind": "focus", "ask": f"What will {name} focus on?", "options": [bt.focus_option(member, f) for f in bt.FOCUSES]}
     if lv == wp.MIX_LEVEL and len(member["types"]) > 1 and "mix" not in rec.swaps.values():
         return _mix_choice(name, member)
+    if lv == wp.UPGRADE_LEVEL:
+        return _upgrade_choice(name, rec, member)
     if lv != wp.SECOND_TYPE_LEVEL:
         return None
     offered = wp.second_choices(pet["seed"], pet["species"], rec)
@@ -1143,6 +1145,37 @@ def _level_choice(pet: dict, rec: wp.Record, member: dict, lv: int) -> dict | No
         options.append({"id": t, "type": t, "label": wd.tw(t), "title": "Second type", "note": f"Strong against {beats}.",
                         "moves": bt.described_moves({**member, "types": {**member["types"], t: 1}})})
     return {"kind": "second", "ask": f"{name} can learn a second type!", "options": options}
+
+
+def _upgrade_choice(name: str, rec: wp.Record, member: dict) -> dict | None:
+    """Which move a pet makes "+" (its focus has already grown), or, if it gave
+    its focus up, taking that back instead, which then needs a new slot for
+    what took its place."""
+    own = bt.own_type(member)
+    focus_move = bt.FOCUS_MOVES.get(rec.focus)
+    if "refocus" in rec.upgrades:
+        if "mix" in rec.swaps.values():
+            return None
+        choice = _mix_choice(name, member)
+        where = [o for o in choice["options"] if o["id"] != focus_move]
+        return {**choice, "ask": f"{bt.mix_move(member).name} needs a new slot. Which move does it replace?", "options": where}
+    if rec.upgrades:
+        return None
+    focus_name = bt.FOCUS_NAMES[own][rec.focus] if rec.focus else None
+    gave_up = focus_move is not None and focus_move in rec.swaps
+    options = []
+    for m in bt.described_moves(member):
+        if m["id"] in bt.FOCUS_MOVES.values() or (m["id"] == "guard" and bt.focus_plus(member, "guardian")):
+            continue
+        preview = bt.described_moves({**member, "upgrades": [m["id"]]})
+        card = next(p for p in preview if p["id"] == m["id"])
+        options.append({**card, "title": "Upgrade", "moves": preview})
+    if gave_up:
+        back = {**member, "swaps": {k: v for k, v in rec.swaps.items() if k != focus_move}}
+        options.append({"id": "refocus", "type": own, "label": f"{focus_name}+", "title": "Take back",
+                        "note": f"Back in its old slot and stronger. {bt.mix_move(member).name} moves to a new one.", "moves": bt.described_moves(back)})
+    ask = f"{name}'s {focus_name}+ grew stronger! Pick a move to upgrade." if rec.focus and not gave_up else f"{name} can upgrade a move!"
+    return {"kind": "upgrade", "ask": ask, "options": options}
 
 
 def _swap_options(member: dict, gives_up: list[dict], gets: str) -> list[dict]:
@@ -1192,7 +1225,8 @@ def finish_levelup(conn, learner_id: int, choice: str | None = None) -> dict:
             raise WanderError("Pick one of the choices.")
         kind = first["choose"]["kind"]
         learn = {"focus": lambda r: wp.learn_focus(r, choice), "second": lambda r: wp.learn_second(r, choice, first["level"]),
-                 "attack2": lambda r: wp.learn_swap(r, choice, "attack2"), "mix": lambda r: wp.learn_swap(r, choice, "mix")}[kind]
+                 "attack2": lambda r: wp.learn_swap(r, choice, "attack2"), "mix": lambda r: wp.learn_swap(r, choice, "mix"),
+                 "upgrade": lambda r: wp.take_back(r, bt.FOCUS_MOVES[r.focus]) if choice == "refocus" else wp.learn_upgrade(r, choice)}[kind]
         rec = learn(pet[1])
         db.save_wander_pet(conn, learner_id, first["pet"], wp.record_json(rec))
         save = _redo_waiting(_refresh_member(save, pet[0], rec), pet[0], rec)  # one choice can bring the next

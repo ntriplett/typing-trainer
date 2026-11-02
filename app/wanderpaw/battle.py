@@ -40,6 +40,9 @@ combo for either. Its first type says how it behaves: SPLASH weakens the
 creature and supports, EMBER is raw power with a catch, DREAM plays tricks,
 LEAF outlasts it, SHOCK is fast and hits often.
 
+At level 9 a pet's focus grows stronger on its own (focus_plus: FOCUS_PLUS
+says how), and it upgrades one other move (`upgrades`): names get a "+".
+
 Marks (MARKS: soaked, glowing, drowsy, static, tangled) last this round
 and the next (MARK_ROUNDS). On their own: glowing burns, drowsy may doze
 off, tangled acts last and hits softer. A hit on a marked creature can
@@ -121,6 +124,23 @@ DAREDEVIL = 2.0
 DAREDEVIL_COST = 0.04  # of its full energy
 GUARDIAN_ROUNDS = 2
 GUARD_STRONG = 0.25
+# level 9
+FOCUS_PLUS_LEVEL = 9
+HEAL_PLUS_ENERGY = 3
+HEAL_PLUS_MAX_ENERGY = 9
+HEAL_PLUS_MAX_MANA = 5
+MARK_PLUS_ENERGY = 0.05  # of its full energy: it leaves both types' marks
+GUARDIAN_PLUS_ROUNDS = 3
+GUARDIAN_PLUS_SOFTER = 0.75  # what other types' hits on its partner come to, those rounds
+ATTACK_PLUS = 1.3
+BIG_PLUS = 2.8
+BIG_PLUS_MANA = 5
+GUARD_PLUS = 0.25
+FOCUS_PLUS = 2.0
+CHEER_PLUS = 2.0
+REST_PLUS_ENERGY = 0.3
+REST_PLUS_MANA = 5
+MIX_PLUS_MANA = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +188,7 @@ COMBOS = {
 }
 
 
+MARK_TYPES = {mark: kind for kind, mark in MARKS.items()}
 MIX_MANA = 4
 REVIVE = 0.25  # of its full energy
 MENDING = 0.04  # of each pet's full energy, each round it lasts
@@ -207,37 +228,37 @@ class MixMove:
 
 MIX_MOVES = {
     # SPLASH first: weakens the creature and supports
-    ("splash", "ember"): MixMove("Steam Veil", "Hit. Next attack misses.", "Hits, and the creature's next attack misses.", "Steam hides everyone!", skip=1),
-    ("splash", "dream"): MixMove("Moon Tide", "Hit. Pets +2 mana.", "Hits, and both pets get back 2 mana.", "The tide brings mana.", team_mana=2),
-    ("splash", "leaf"): MixMove("Rain Garden", "Half hit. Pets mend.", "A half-strength hit. Both pets get back 4% energy each round for 3 rounds.", "A garden grows.", hit=0.5, effects=(("mending", 3),)),
-    ("splash", "shock"): MixMove("Riptide Zap", "1.5x hit. Soaked.", "A 1.5x hit that leaves it Soaked.", hit=1.5, marks=(("soaked", MARK_ROUNDS),)),
+    ("splash", "ember"): MixMove("Steam Veil", "Next attack misses.", "Its next attack misses.", "Steam hides everyone!", skip=1),
+    ("splash", "dream"): MixMove("Moon Tide", "Pets +2 mana.", "Both pets get back 2 mana.", "The tide brings mana.", team_mana=2),
+    ("splash", "leaf"): MixMove("Rain Garden", "Pets mend 3 rounds.", "Both pets get back 4% energy each round, for 3 rounds.", "A garden grows.", hit=0.5, effects=(("mending", 3),)),
+    ("splash", "shock"): MixMove("Riptide Zap", "", "", hit=1.5, marks=(("soaked", MARK_ROUNDS),)),
     # EMBER first: raw power, with a catch
-    ("ember", "splash"): MixMove("Scald", "1.5x hit. It hits softer.", "A 1.5x hit. Its hits are 25% weaker this round and next.", hit=1.5, effects=(("scalded", 2),)),
-    ("ember", "dream"): MixMove("Will-o'-Wisp", "Hit. It may hit itself.", "Hits. Its next attack has a 75% chance of hitting itself.", "A wisp dances by.", effects=(("wisp", 3),)),
-    ("ember", "leaf"): MixMove("Fire Seed", "Bursts 3.5x next round.", "No hit now. Bursts for 3.5x at the start of next round.", "A seed glows in the ground.", hit=0.0, later=3.5, later_when="start"),
-    ("ember", "shock"): MixMove("Flashfire", "First! 2.5x. Costs energy.", "Goes first with a 2.5x hit, but costs this pet 8% of its energy.", hit=2.5, first=True, self_energy=-0.08),
+    ("ember", "splash"): MixMove("Scald", "", "", hit=1.5, effects=(("scalded", 2),)),
+    ("ember", "dream"): MixMove("Will-o'-Wisp", "It may hit itself.", "Its next attack has a 75% chance of hitting itself.", "A wisp dances by.", effects=(("wisp", 3),)),
+    ("ember", "leaf"): MixMove("Fire Seed", "Bursts next round.", "No hit now: it bursts at the start of next round.", "A seed glows in the ground.", hit=0.0, later=3.5, later_when="start"),
+    ("ember", "shock"): MixMove("Flashfire", "", "", hit=2.5, first=True, self_energy=-0.08),
     # DREAM first: tricks
-    ("dream", "splash"): MixMove("Mirror Pool", "First! Bounces a hit.", "Goes first. The next hit on this pet bounces back at the creature.", "A still pool shines.", hit=0.0, first=True, mirror=True),
-    ("dream", "ember"): MixMove("Campfire Tale", "Half hit. It dozes.", "A half-strength hit. It dozes through its next turn, and both pets get back 3% energy.", "It's such a cozy story.", hit=0.5, effects=(("doze", 2),), team_energy=0.03),
-    ("dream", "leaf"): MixMove("Sleep Spores", "Half hit. Drowsy, Tangled.", "A half-strength hit. It's Drowsy this round and Tangled this round and next.", hit=0.5, marks=(("drowsy", 1), ("tangled", MARK_ROUNDS))),
-    ("dream", "shock"): MixMove("Deja Vu", "First! Partner hits twice.", "Goes first with a half-strength hit. If its partner attacks this round, that attack happens twice.", "Haven't we done this before?", hit=0.5, first=True, echo=True),
+    ("dream", "splash"): MixMove("Mirror Pool", "", "", "A still pool shines.", hit=0.0, first=True, mirror=True),
+    ("dream", "ember"): MixMove("Campfire Tale", "It dozes. Pets +3%.", "It dozes through its next turn, and both pets get back 3% energy.", "It's such a cozy story.", hit=0.5, effects=(("doze", 2),), team_energy=0.03),
+    ("dream", "leaf"): MixMove("Sleep Spores", "Drowsy just this round.", "It's only Drowsy this round.", hit=0.5, marks=(("drowsy", 1), ("tangled", MARK_ROUNDS))),
+    ("dream", "shock"): MixMove("Deja Vu", "Partner hits twice.", "If its partner attacks this round, that attack happens twice.", "Haven't we done this before?", hit=0.5, first=True, echo=True),
     # LEAF first: outlasts the creature
-    ("leaf", "splash"): MixMove("Spring Shower", "Half hit. Partner +25%.", "A half-strength hit. Its partner gets back 25% of its energy.", hit=0.5, partner_energy=0.25),
-    ("leaf", "ember"): MixMove("Burning Brambles", "Half hit. Burns and drains.", "A half-strength hit. It burns for 3 rounds, and this pet drains half of what it burns.", hit=0.5, effects=(("brambles", 3),), drain=True),
-    ("leaf", "dream"): MixMove("Poppy Patch", "Hit. It may doze off.", "Hits. Its next two attacks each have a 50% chance of dozing off instead.", poppy=2),
-    ("leaf", "shock"): MixMove("Living Wire", "Hit. It may freeze.", "Hits. For 2 rounds it has a 50% chance of losing its turn.", effects=(("wired", 2),)),
+    ("leaf", "splash"): MixMove("Spring Shower", "Partner +25% energy.", "Its partner gets back 25% of its energy.", hit=0.5, partner_energy=0.25),
+    ("leaf", "ember"): MixMove("Burning Brambles", "Burns and drains.", "It burns for 3 rounds, and this pet drains half of what it burns.", hit=0.5, effects=(("brambles", 3),), drain=True),
+    ("leaf", "dream"): MixMove("Poppy Patch", "It may doze off.", "Its next two attacks each have a 50% chance of dozing off instead.", poppy=2),
+    ("leaf", "shock"): MixMove("Living Wire", "It may freeze.", "For 2 rounds it has a 50% chance of losing its turn.", effects=(("wired", 2),)),
     # SHOCK first: fast, with lots of small hits
-    ("shock", "splash"): MixMove("Thunder Patter", "Three quick hits.", "Three quick 0.6x hits. Only the first can set off a combo.", hit=0.6, times=3),
-    ("shock", "ember"): MixMove("Ball Lightning", "First! Hits, then again.", "Goes first with a hit, then hits again for 0.8x at the end of the round.", first=True, later=0.8),
-    ("shock", "dream"): MixMove("Lucid Spark", "First! Next round: faster.", "Goes first with a hit. Next round both pets go first, 1.25x as strong.", first=True, lift=1.25, lift_first=True),
-    ("shock", "leaf"): MixMove("Power Sprout", "Hit. Energy back.", "Hits, and this pet gets back 8% of its energy.", self_energy=0.08),
+    ("shock", "splash"): MixMove("Thunder Patter", "Three quick hits.", "Three quick hits. Only the first can set off a combo.", hit=0.6, times=3),
+    ("shock", "ember"): MixMove("Ball Lightning", "Hits again later.", "Hits again at the end of the round.", first=True, later=0.8),
+    ("shock", "dream"): MixMove("Lucid Spark", "Next round: all faster.", "Next round both pets go first, 1.25x as strong.", first=True, lift=1.25, lift_first=True),
+    ("shock", "leaf"): MixMove("Power Sprout", "Energy back.", "This pet gets back 8% of its energy.", self_energy=0.08),
 }
 MYTHICAL_MOVES = {
-    "dragon": MixMove("Stormfire Breath", "First! 2x. Two marks.", "Goes first with a 2x hit that leaves it both Static and Glowing.", hit=2.0, first=True, marks=(("static", MARK_ROUNDS), ("glowing", MARK_ROUNDS))),
-    "phoenix": MixMove("Rising Ash", "Revive, or a 2x hit.", "If its partner is worn out in this battle, brings it back with 25% energy. Otherwise a 2x hit.", hit=2.0, revive=True),
-    "unicorn": MixMove("Rainbow Blessing", "Pets mend. Next round 1.25x.", "Both pets get back 15% energy and 2 mana, and their moves next round are 1.25x as strong.", "A rainbow arcs over your pets!", hit=0.0, team_energy=0.15, team_mana=2, lift=1.25),
-    "mermaid": MixMove("Siren Song", "First! It hits itself next.", "Goes first with a half-strength hit that leaves it Soaked. Its next attack is sure to hit itself.", "It can't help but listen.", hit=0.5, first=True, marks=(("soaked", MARK_ROUNDS),), effects=(("confused", 3),)),
-    "flower_fairy": MixMove("Blooming Circle", "Hit. Pets mend. Tangled.", "Hits. For 3 rounds both pets get back 4% energy each round and it stays Tangled.", "Flowers ring your pets.", marks=(("tangled", 3),), effects=(("mending", 3),)),
+    "dragon": MixMove("Stormfire Breath", "", "", hit=2.0, first=True, marks=(("static", MARK_ROUNDS), ("glowing", MARK_ROUNDS))),
+    "phoenix": MixMove("Rising Ash", "Or revives its partner.", "If its partner is worn out in this battle, brings it back with 25% energy instead of hitting.", hit=2.0, revive=True),
+    "unicorn": MixMove("Rainbow Blessing", "Pets mend. Next round +.", "Both pets get back 15% energy and 2 mana, and their moves next round are 1.25x as strong.", "A rainbow arcs over your pets!", hit=0.0, team_energy=0.15, team_mana=2, lift=1.25),
+    "mermaid": MixMove("Siren Song", "It hits itself next.", "Its next attack is sure to hit itself.", "It can't help but listen.", hit=0.5, first=True, marks=(("soaked", MARK_ROUNDS),), effects=(("confused", 3),)),
+    "flower_fairy": MixMove("Blooming Circle", "Pets mend. Tangled.", "For 3 rounds both pets get back 4% energy each round and it stays Tangled.", "Flowers ring your pets.", marks=(("tangled", 3),), effects=(("mending", 3),)),
 }
 
 
@@ -285,6 +306,79 @@ def focus_active(member: dict, focus: str) -> bool:
     return member.get("focus") == focus and FOCUS_MOVES[focus] not in (member.get("swaps") or {})
 
 
+def focus_plus(member: dict, focus: str) -> bool:
+    return focus_active(member, focus) and member.get("level", 0) >= FOCUS_PLUS_LEVEL
+
+
+def upgraded(member: dict, move: str) -> bool:
+    return move in (member.get("upgrades") or [])
+
+
+def _plus(member: dict, move: str, label: str) -> str:
+    """A move's name, with a "+" once it's been upgraded."""
+    focus = member.get("focus")
+    grown = bool(focus) and focus_plus(member, focus) and (move == FOCUS_MOVES[focus] or (focus == "guardian" and move == "guard"))
+    return f"{label}+" if grown or upgraded(member, move) else label
+
+
+def big_strength(member: dict) -> float:
+    return BIG_PLUS if upgraded(member, "big") else BIG
+
+
+def big_mana(member: dict) -> int:
+    return BIG_PLUS_MANA if upgraded(member, "big") else BIG_MANA
+
+
+def mix_mana(member: dict) -> int:
+    return MIX_PLUS_MANA if upgraded(member, "mix") else MIX_MANA
+
+
+def attack_strength(member: dict, move: str) -> float:
+    return ATTACK_PLUS if upgraded(member, move) else 1.0
+
+
+def focus_strength(member: dict) -> float:
+    return FOCUS_PLUS if upgraded(member, "focus") else FOCUS
+
+
+def cheer_strength(member: dict) -> float:
+    return CHEER_PLUS if upgraded(member, "cheer") else CHEER
+
+
+def rest_gains(member: dict) -> tuple[int, int]:
+    energy, mana = (REST_PLUS_ENERGY, REST_PLUS_MANA) if upgraded(member, "rest") else (REST_ENERGY, REST_MANA)
+    return max(1, round(member["energy"] * energy)), mana
+
+
+def guard_share(member: dict, kind: str | None) -> float:
+    """Of a hit it takes for its partner."""
+    if focus_plus(member, "guardian") or (member.get("focus") == "guardian" and kind == beaten_by(own_type(member))):
+        return GUARD_STRONG
+    return GUARD_PLUS if upgraded(member, "guard") else GUARD
+
+
+def guardian_rounds(member: dict) -> int:
+    return GUARDIAN_PLUS_ROUNDS if focus_plus(member, "guardian") else GUARDIAN_ROUNDS
+
+
+def mark_kinds(member: dict) -> list[str]:
+    """The types whose marks an Elementalist's move leaves."""
+    return list(member["types"])[:2] if focus_plus(member, "elementalist") else [own_type(member)]
+
+
+def mark_energy(member: dict) -> int:
+    return max(1, round(member["energy"] * MARK_PLUS_ENERGY)) if focus_plus(member, "elementalist") else 0
+
+
+def heal_amounts(member: dict) -> tuple[int, int, int, int]:
+    """Energy a round, the most energy a battle, mana a round, the most mana a battle."""
+    if focus_plus(member, "healer"):
+        return HEAL_PLUS_ENERGY, HEAL_PLUS_MAX_ENERGY, HEAL_MANA, HEAL_PLUS_MAX_MANA
+    return HEAL_ENERGY, HEAL_MAX_ENERGY, HEAL_MANA, HEAL_MAX_MANA
+
+
+
+
 def strong_against(kind: str) -> tuple[str, str]:
     i = wd.REGIONS.index(kind)
     return wd.REGIONS[(i + 1) % len(wd.REGIONS)], wd.REGIONS[(i + 2) % len(wd.REGIONS)]
@@ -300,35 +394,42 @@ def no_combo_with(kind: str) -> str:
 
 
 def _doubles(member: dict, kind: str) -> bool:
-    return focus_active(member, "daredevil") and kind == own_type(member)
+    return focus_active(member, "daredevil") and (kind == own_type(member) or focus_plus(member, "daredevil"))
 
 
 def described_moves(member: dict, mana: int | None = None) -> list[dict]:
     """A fighter's six moves away from any battle, saying just what each does."""
-    hit, own = pet_hit(member["power"]), own_type(member)
-    rest = max(1, round(member["energy"] * REST_ENERGY))
+    own = own_type(member)
+    rest_energy, rest_mana = rest_gains(member)
     a, b = (wd.tw(t) for t in strong_against(own))
     beats_it = wd.tw(beaten_by(own))
-    double = focus_active(member, "daredevil")
-    twice = f" Double that in {wd.tw(own)}, for {_daredevil_cost(member)} energy." if double else ""
-    guard = f"Takes the hits meant for its partner this round, at {GUARD:.0%}."
+    plus_daredevil = focus_plus(member, "daredevil")
+    guard = f"Takes the hits meant for its partner this round, at {guard_share(member, None):.0%}."
+    heal_e, heal_max_e, heal_m, heal_max_m = heal_amounts(member)
     says = {
-        "attack": (f"{wd.tw(own)} attack", f"Hits for about {round(hit)}.{twice}"),
-        "attack2": (None, f"Hits for about {round(hit)}."),
-        **({"mix": (None, f"{mix_move(member).says} Costs {MIX_MANA} mana.")} if "mix" in (member.get("swaps") or {}).values() else {}),
-        "big": (f"Big {wd.tw(own)}", f"Goes first and hits for about {round(hit * BIG)}. Leaves it {MARKS[own].title()}. Costs {BIG_MANA} mana.{twice}"),
+        "attack": (f"{wd.tw(own)} attack", ""),
+        "attack2": (None, ""),
+        **({"mix": (None, mix_move(member).says)} if "mix" in (member.get("swaps") or {}).values() else {}),
+        "big": (f"Big {wd.tw(own)}", ""),
         "guard": ("Guard", guard),
-        "focus": ("Focus", f"Its next move is {FOCUS}x as strong."),
-        "cheer": ("Cheer", f"Its partner's move this round is {CHEER}x as strong."),
-        "rest": ("Rest", f"Gets back {rest} energy and {REST_MANA} mana."),
-        "healer": (None, f"Each round its partner gets back {HEAL_ENERGY} energy (up to {HEAL_MAX_ENERGY} a battle) and {HEAL_MANA} mana (up to {HEAL_MAX_MANA})."),
-        "mark": (None, f"Goes first and leaves it {MARKS[own].title()}, so the next hit can set off a combo. No damage. Costs {MARK_MANA} mana. No combo with {wd.tw(no_combo_with(own))} hits."),
-        "daredevil": (None, f"Its {wd.tw(own)} moves do double damage, but each costs {_daredevil_cost(member)} energy."),
-        "guardian": (None, f"For the first {GUARDIAN_ROUNDS} rounds of a battle, {a} and {b} can't hurt its partner."),
+        "focus": ("Focus", f"Its next move is {focus_strength(member)}x as strong."),
+        "cheer": ("Cheer", f"Its partner's move this round is {cheer_strength(member)}x as strong."),
+        "rest": ("Rest", f"Gets back {rest_energy} energy and {rest_mana} mana."),
+        "healer": (None, f"Each round its partner gets back {heal_e} energy (up to {heal_max_e} a battle) and {heal_m} mana (up to {heal_max_m})."),
+        "mark": (None, f"Sets up the next hit for a combo. No combo with {wd.tw(no_combo_with(own))} hits."),
+        "daredevil": (None, f"{'All its moves' if plus_daredevil else 'Its ' + wd.tw(own) + ' moves'} do double damage, and cost energy."),
+        "guardian": (None, f"For the first {guardian_rounds(member)} rounds, {a} and {b} can't hurt its partner"
+                           + (f", and other types hit it {1 - GUARDIAN_PLUS_SOFTER:.0%} softer." if focus_plus(member, "guardian") else ".")),
     }
-    if member.get("focus") == "guardian":
+    if focus_plus(member, "guardian"):
+        says["guard"] = (GUARD_NAMES[own], guard)
+    elif member.get("focus") == "guardian":
         says["guard"] = (GUARD_NAMES[own], f"{guard} Only {GUARD_STRONG:.0%} from {beats_it}, the type that beats it.")
-    return [{**m, "label": says[m["id"]][0] or m["label"], "note": says[m["id"]][1]} for m in moves(member, None, mana)]
+    out = []
+    for m in moves(member, None, mana):
+        label, note = says[m["id"]]
+        out.append({**m, "label": _plus(member, m["id"], label) if label else m["label"], "note": note})
+    return out
 
 
 def _daredevil_cost(member: dict) -> int:
@@ -355,15 +456,92 @@ def moves(member: dict, foe: str | None = None, mana: int | None = None) -> list
     strength = _strength(matchup(own, foe)).strip() if foe else ""
     out = [
         {"id": "attack", "type": own, "label": f"{wd.tw(own)} attack", "size": "medium",
-         "note": strength or "Hit it."},
-        {"id": "big", "type": own, "label": f"Big {wd.tw(own)}", "size": "phrase", "cost": BIG_MANA,
-         "note": f"First! {MARKS[own].title()}. {BIG_MANA} mana", "can": mana is None or mana >= BIG_MANA},
+         "note": strength},
+        {"id": "big", "type": own, "label": f"Big {wd.tw(own)}", "size": "phrase", "cost": big_mana(member),
+         "note": strength, "can": mana is None or mana >= big_mana(member)},
         {"id": "guard", "type": None, "label": "Guard", "size": "short", "note": "Protect your partner."},
         {"id": "focus", "type": None, "label": "Focus", "size": "short", "note": "Next move is stronger."},
         {"id": "cheer", "type": None, "label": "Cheer", "size": "short", "note": "Help your partner."},
         {"id": "rest", "type": None, "label": "Rest", "size": "short", "note": "Energy and mana back."},
     ]
-    return _with_swaps(_with_focus(out, member, mana), member, foe, mana)
+    done = _with_swaps(_with_focus(out, member, mana), member, foe, mana)
+    return [{**m, "label": _plus(member, m["id"], m["label"]), "icons": move_icons(member, m["id"])} for m in done]
+
+
+def _dots(strength: float) -> int:
+    """How many circles a hit this strong shows: one for each half of a plain attack."""
+    return max(1, min(5, round(strength / 0.5)))
+
+
+def move_icons(member: dict, move: str) -> dict:
+    """What a move's card shows as icons, each with a tooltip: hit (circles for
+    how strong), haste, marks, shield, and its costs (mana, energy)."""
+    own = own_type(member)
+    kinds = list(member["types"])
+    second = kinds[1] if len(kinds) > 1 else kinds[0]
+    base = pet_hit(member["power"])
+    icons: dict = {"cost": {}}
+
+    def hit(strength: float, types: list[str], extra: str = "") -> None:
+        icons["hit"] = {"count": _dots(strength), "types": types, "tip": f"Hits for about {round(base * strength)}{extra}, before type strength."}
+
+    def marks(*names: str) -> None:
+        icons["marks"] = [{"type": MARK_TYPES[n], "tip": f"Leaves it {n.title()}."} for n in names]
+
+    def haste() -> None:
+        icons["haste"] = "Goes first."
+
+    def shield(tip: str, who: str, types: list[str] | None = None, double: bool = False) -> None:
+        """who: "you", "partner" or "both"; double: immunity, not just softer."""
+        icons["shield"] = {"types": types or [], "double": double, "who": who, "tip": tip}
+
+    doubled = lambda kind: DAREDEVIL if _doubles(member, kind) else 1.0  # noqa: E731
+    if move in ("attack", "attack2"):
+        kind = own if move == "attack" else second
+        hit(attack_strength(member, move) * doubled(kind), [kind])
+        if _doubles(member, kind):
+            icons["cost"]["energy"] = _daredevil_cost(member)
+    elif move == "big":
+        hit(big_strength(member) * doubled(own), [own])
+        haste()
+        marks(MARKS[own])
+        icons["cost"]["mana"] = big_mana(member)
+        if _doubles(member, own):
+            icons["cost"]["energy"] = _daredevil_cost(member)
+    elif move == "guard":
+        share = guard_share(member, None)
+        if member.get("focus") == "guardian" and not focus_plus(member, "guardian"):
+            shield(f"Takes its partner's hits, at {share:.0%}, or {GUARD_STRONG:.0%} from {wd.tw(beaten_by(own))}.", "partner", [beaten_by(own)])
+        else:
+            shield(f"Takes its partner's hits, at {share:.0%}.", "partner")
+    elif move == "mark":
+        haste()
+        marks(*(MARKS[k] for k in mark_kinds(member)))
+        icons["cost"]["mana"] = MARK_MANA
+        if mark_energy(member):
+            icons["cost"]["energy"] = mark_energy(member)
+    elif move == "guardian":
+        shield(f"Its partner can't be hurt by {wd.tw(strong_against(own)[0])} or {wd.tw(strong_against(own)[1])} for the first {guardian_rounds(member)} rounds.",
+               "partner", list(strong_against(own)), double=True)
+    elif move == "mix":
+        m = mix_move(member)
+        total = m.hit * m.times + m.later
+        if total:
+            hit(total, kinds[:2], ", in all" if m.times > 1 or (m.hit and m.later) else "")
+        if m.first:
+            haste()
+        if m.marks:
+            marks(*(mark for mark, _ in m.marks))
+        icons["cost"]["mana"] = mix_mana(member)
+        if m.self_energy < 0:
+            icons["cost"]["energy"] = round(member["energy"] * -m.self_energy)
+        if m.mirror:
+            shield("The next hit on this pet bounces back at the creature.", "you", double=True)
+        elif m.skip:
+            shield("Its next attack misses, whoever it's aimed at.", "both", double=True)
+        elif any(e == "scalded" for e, _ in m.effects):
+            shield(f"Its hits on both pets are {1 - SCALDED_HITS:.0%} weaker this round and next.", "both")
+    return icons
 
 
 def _with_swaps(out: list[dict], member: dict, foe: str | None, mana: int | None = None) -> list[dict]:
@@ -375,7 +553,7 @@ def _with_swaps(out: list[dict], member: dict, foe: str | None, mana: int | None
     kinds = list(member["types"])
     second = kinds[1] if len(kinds) > 1 else kinds[0]
     strength = _strength(matchup(second, foe)).strip() if foe else ""
-    got = {"attack2": {"id": "attack2", "type": second, "label": f"{wd.tw(second)} attack", "size": "medium", "note": strength or "Hit it."}}
+    got = {"attack2": {"id": "attack2", "type": second, "label": f"{wd.tw(second)} attack", "size": "medium", "note": strength}}
     if "mix" in swaps.values():
         got["mix"] = mix_card(member, mana)
     result = []
@@ -396,8 +574,8 @@ def mix_move(member: dict) -> MixMove:
 def mix_card(member: dict, mana: int | None = None) -> dict:
     kinds = list(member["types"])
     m = mix_move(member)
-    return {"id": "mix", "type": kinds[0], "type2": kinds[1], "label": m.name, "size": "long", "cost": MIX_MANA,
-            "note": m.short, "says": m.says, "can": mana is None or mana >= MIX_MANA}
+    return {"id": "mix", "type": kinds[0], "type2": kinds[1], "label": m.name, "size": "long", "cost": mix_mana(member),
+            "note": m.short, "says": m.says, "can": mana is None or mana >= mix_mana(member)}
 
 
 def grey_moves(member: dict) -> list[dict]:
@@ -414,15 +592,14 @@ def _with_focus(out: list[dict], member: dict, mana: int | None) -> list[dict]:
     a, b = (wd.tw(t) for t in strong_against(own))
     card = {
         "healer": {"passive": True, "note": "Partner heals each round."},
-        "elementalist": {"size": "short", "cost": MARK_MANA, "note": f"First! {MARKS[own].title()}. {MARK_MANA} mana",
-                         "can": mana is None or mana >= MARK_MANA},
-        "daredevil": {"passive": True, "note": f"{wd.tw(own)} x2, costs energy."},
+        "elementalist": {"size": "short", "cost": MARK_MANA, "note": "Sets up a combo.", "can": mana is None or mana >= MARK_MANA},
+        "daredevil": {"passive": True, "note": f"{'All' if focus_plus(member, 'daredevil') else wd.tw(own)} moves x2."},
         "guardian": {"passive": True, "note": f"Stops {a} and {b}."},
     }[focus]
     new = {"id": FOCUS_MOVES[focus], "type": own, "label": FOCUS_NAMES[own][focus], **card}
     out = [new if m["id"] == FOCUS_REPLACES[focus] else m for m in out]
     if focus == "guardian":
-        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": f"Best against {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
+        out = [{**m, "type": own, "label": GUARD_NAMES[own], "note": "Everything's softer." if focus_plus(member, "guardian") else f"Best against {wd.tw(beaten_by(own))}."} if m["id"] == "guard" else m for m in out]
     return out
 
 
@@ -451,10 +628,10 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         chosen[i] = pick
     partner = {i: next((j for j in able if j != i), None) for i in able}
     lift = battle.get("boost") if (battle.get("boost") or {}).get("round") == b["round"] else None
-    boost = {i: (FOCUS if i in battle.get("focus", []) else 1.0) * (lift["mult"] if lift else 1.0) for i in able}
+    boost = {i: (focus_strength(team[i]) if i in battle.get("focus", []) else 1.0) * (lift["mult"] if lift else 1.0) for i in able}
     for i, pick in chosen.items():
         if pick["move"] == "cheer" and partner[i] is not None:
-            boost[partner[i]] *= CHEER
+            boost[partner[i]] *= cheer_strength(team[i])
     guards = {partner[i]: i for i, p in chosen.items() if p["move"] == "guard" and partner[i] is not None}
     focus_next = [i for i, p in chosen.items() if p["move"] == "focus"]
     log = []
@@ -502,14 +679,17 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
         elif move == "mark":
             own = own_type(team[who])
             mana[who] -= MARK_MANA
-            b["marks"][MARKS[own]] = MARK_ROUNDS
+            energy[who] = max(1, energy[who] - mark_energy(team[who]))
+            kinds = mark_kinds(team[who])
+            for kind in kinds:
+                b["marks"][MARKS[kind]] = MARK_ROUNDS
             step({"who": who, "act": "mark", "target": "foe", "type": own,
-                  "text": f"{name(who)}'s {FOCUS_NAMES[own]['elementalist']}: the {foe} is {MARKS[own]}!"})
+                  "text": f"{name(who)}'s {FOCUS_NAMES[own]['elementalist']}: the {foe} is {' and '.join(MARKS[k] for k in kinds)}!"})
         elif move == "rest":
-            gain = max(1, round(team[who]["energy"] * REST_ENERGY))
+            gain, back = rest_gains(team[who])
             energy[who] = min(team[who]["energy"], energy[who] + gain)
-            mana[who] = min(team[who]["mana"], mana[who] + REST_MANA)
-            step({"who": who, "act": "rest", "target": who, "gain": gain, "text": f"{name(who)} rests: +{gain} energy, +{REST_MANA} mana."})
+            mana[who] = min(team[who]["mana"], mana[who] + back)
+            step({"who": who, "act": "rest", "target": who, "gain": gain, "text": f"{name(who)} rests: +{gain} energy, +{back} mana."})
         elif move == "guard":
             step({"who": who, "act": "guard", "text": f"{name(who)} stands guard."})
         elif move == "focus":
@@ -564,8 +744,9 @@ def turn(battle: dict, team: list[dict], energy: list[int], picks: list[dict], r
 def _heal(b: dict, team: list[dict], i: int, p: int, energy: list[int], mana: list[int]) -> list[dict]:
     """A healer's partner gets some energy and mana back."""
     given = lambda what: b["healed"].get(f"{i}:{what}", 0)  # noqa: E731
-    e = min(HEAL_ENERGY, HEAL_MAX_ENERGY - given("energy"), team[p]["energy"] - energy[p])
-    m = min(HEAL_MANA, HEAL_MAX_MANA - given("mana"), team[p]["mana"] - mana[p])
+    heal_e, heal_max_e, heal_m, heal_max_m = heal_amounts(team[i])
+    e = min(heal_e, heal_max_e - given("energy"), team[p]["energy"] - energy[p])
+    m = min(heal_m, heal_max_m - given("mana"), team[p]["mana"] - mana[p])
     if e <= 0 and m <= 0:
         return []
     e, m = max(0, e), max(0, m)
@@ -581,10 +762,8 @@ def _heal(b: dict, team: list[dict], i: int, p: int, energy: list[int], mana: li
 
 def _guardian_blocks(b: dict, team: list[dict], energy: list[int], target: int) -> tuple[tuple[str, ...], int | None]:
     """The types a Guardian partner keeps off `target` this round, and which place it is."""
-    if b["round"] > GUARDIAN_ROUNDS:
-        return (), None
     for i in b["fighters"]:
-        if i != target and focus_active(team[i], "guardian") and energy[i] > 0:
+        if i != target and focus_active(team[i], "guardian") and energy[i] > 0 and b["round"] <= guardian_rounds(team[i]):
             return strong_against(own_type(team[i])), i
     return (), None
 
@@ -613,7 +792,7 @@ def _mix(b: dict, team: list[dict], who: int, strength: float, energy: list[int]
     """A fighter's mixed move, step by step. True if it's a Deja Vu."""
     me = team[who]
     m = mix_move(me)
-    mana[who] -= MIX_MANA
+    mana[who] -= mix_mana(me)
     other = next((j for j in b["fighters"] if j != who), None)
     if m.revive and other is not None and energy[other] <= 0:
         energy[other] = max(1, round(team[other]["energy"] * REVIVE))
@@ -665,7 +844,7 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     mix = move == "mix"
     kind = _mix_kind(team[who], b["kind"]) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
     mult = matchup(kind, b["kind"])
-    power = pet_hit(team[who]["power"]) * mult * strength * (BIG if move == "big" else 1) * scale
+    power = pet_hit(team[who]["power"]) * mult * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
     extra, found, flash = "", None, None
     if _doubles(team[who], kind) and not mix:
         power *= DAREDEVIL
@@ -700,7 +879,7 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     dmg = max(1, round(power))
     b["energy"] = max(0, b["energy"] - dmg)
     if move == "big":
-        mana[who] -= 0 if free else BIG_MANA
+        mana[who] -= 0 if free else big_mana(team[who])
         mark = MARKS[kind]
         b["marks"][mark] = MARK_ROUNDS
         extra += f" The {foe} is {mark}."
@@ -775,8 +954,10 @@ def _foe_acts(b: dict, team: list[dict], energy: list[int], able: list[int], gua
     hit = m["energy"] * share * mult * ratio
     if "scalded" in b["effects"]:
         hit *= SCALDED_HITS
+    if guardian is not None and focus_plus(team[guardian], "guardian"):
+        hit *= GUARDIAN_PLUS_SOFTER
     if i != aim:
-        hit *= GUARD_STRONG if m.get("focus") == "guardian" and kind == beaten_by(defends) else GUARD
+        hit *= guard_share(m, kind)
     if "tangled" in b["marks"]:
         hit *= TANGLED_HITS
     if "drenched" in b["effects"]:

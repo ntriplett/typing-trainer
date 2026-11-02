@@ -936,6 +936,20 @@ catch, DREAM tricks, LEAF outlasts, SHOCK fast and often; second its flavor); MY
 stronger. All cost 4 mana, so about 4 uses a day at level 7. A mix hits with its better type, can set off a combo for either, and
 a Daredevil doesn't double it. `tools/wander_balance.py` measures each in the real battle code, used once a fight.
 
+**Level 9 (2026-11-01).** Two rewards, names getting a "+". The focus grows on its own (battle.focus_plus): Healer +3 energy a
+round up to 9, mana up to 5 (long fights are its strength); Elementalist's move leaves both types' marks for 1 mana + 5% energy,
+still no damage; Daredevil doubles both types; Guardian 3 rounds, other
+types hit its partner 25% softer, Guard 25% from everything. And one other move upgrades (`Record.upgrades`): Attack and the
+second attack 1.3x, Big 2.8x for 5 mana, Guard takes 25%, Focus and Cheer 2x, Rest 30% energy and 5 mana, a mix 3 mana. A pet that
+gave up its focus at level 7 can take it back instead (with its growth), and its mix then picks a new slot. A balance pass
+changed first drafts (a free second mark was far too strong; Guardian, Guard and Rest too weak).
+
+**Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
+in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each
+mark; a shield for protection (solid: you, thick outline: your partner, half and half: both; colored for certain types, dark gray
+for all; two for immunity). Bottom right, its mana and energy costs. Hover for details. Text only says what icons don't. Energy,
+mana and XP have icons wherever they're called out: wanderText adds them beside the words "energy" and "mana" in game text.
+
 **Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
 it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;
 `story.fill` instead of `str.format` for templates holding tokens), and the page's `wanderText` (wander_text.js) draws them.

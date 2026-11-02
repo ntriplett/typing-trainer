@@ -204,3 +204,57 @@ def test_level_seven_shows_the_mix_and_lets_it_replace_any_move(page: Page, live
     expect(page.locator("#levelup")).to_be_hidden()
     me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
     assert "mix" in me["swaps"].values()
+
+
+def test_level_nine_shows_plus_names_and_lets_a_move_upgrade(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import pets as wp
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    page.request.post(f"{live_server}/api/wander-lab/xp", data={"pet_id": fox, "xp": wp.xp_for(9)})
+    finish = lambda choice=None: page.request.post(f"{live_server}/api/wander/levelup", data={"choice": choice}).json()  # noqa: E731
+    finish()
+    finish("healer")
+    data = finish()
+    data = finish(data["levelups"][0]["choose"]["options"][0]["id"])
+    finish("rest")
+    finish()
+    finish("attack2")
+    finish()
+    page.reload()
+    choice = page.locator("#levelup-choice")
+    expect(page.locator("#levelup-detail .wander-level")).to_have_text("Level 9")
+    expect(page.locator('#levelup-detail [data-move="healer"]')).to_contain_text("Cozy Hearth+")
+    expect(choice).to_contain_text("grew stronger")
+    page.keyboard.press("Enter")  # it has to be chosen
+    expect(page.locator("#levelup")).to_be_visible()
+    page.keyboard.press("1")
+    expect(page.locator('#levelup-detail [data-move="attack"].fresh')).to_contain_text("EMBER attack+")
+    page.keyboard.press("Enter")
+    expect(page.locator("#levelup")).to_be_hidden()
+    me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
+    assert me["upgrades"] == ["attack"]
+
+
+def test_move_cards_show_icons_with_tooltips(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+    page.reload()
+    page.wait_for_function("state")
+    page.keyboard.press("3")
+    page.keyboard.press("ArrowDown")
+    detail = page.locator("#party-detail")
+    expect(detail.locator('[data-move="attack"] .wander-icon-dot')).to_have_count(2)
+    big = detail.locator('[data-move="big"]')
+    expect(big.locator(".wander-icon-dot")).to_have_count(4)
+    expect(big.locator('[data-icon="haste"]')).to_have_attribute("title", "Goes first.")
+    expect(big.locator('[data-icon="mark"]')).to_have_attribute("title", "Leaves it Glowing.")
+    expect(big.locator(".wander-move-cost")).to_have_text("6")
+    expect(big.locator('[data-icon="mana"]')).to_have_attribute("title", "Costs 6 mana.")
+    expect(detail.locator('[data-move="guard"] [data-icon="shield"]')).to_be_visible()
+    expect(detail.locator('[data-move="focus"] .wander-move-icons')).to_have_count(0)
