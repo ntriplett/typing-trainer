@@ -277,7 +277,7 @@ function renderStats() {
       .map((t) => `<span class="type-chip" style="background:${WanderMap.TYPE_COLORS[t.region]}">${t.region} ${dist.get(WanderMap.key(t.q, t.r))}</span>`)
       .join(" ")}</p>
     ${isMine() ? `<p>Try a boss (puts you at its door with the key; then open Wanderpaw and press Enter):<br>${temples
-      .map((t) => `<button class="boss-button" data-region="${t.region}">${t.region}</button>`)
+      .map((t) => `<button class="boss-button" data-region="${t.region}">${t.region}</button> <button class="letter-button" data-region="${t.region}">Letter</button>`)
       .join(" ")}</p>` : ""}
     <p>Edges: ${Object.entries(walls).map(([k, v]) => `${k} ${v}`).join(", ")}</p>
     <p>Gates: ${gateSummary()}</p>
@@ -294,6 +294,7 @@ function renderStats() {
       .join("<br>")}</p>
     ${isMine() ? `<p>Visited ${world.me.visited.length} places. Temples open: ${world.me.temples.join(", ") || "none"}. Gates cleared: ${world.me.cleared.length}.</p>` : ""}
   `;
+  stats.querySelectorAll(".letter-button").forEach((b) => (b.onclick = () => act("/api/wander-lab/keeper-beaten", { region: b.dataset.region })));
   stats.querySelectorAll(".boss-button").forEach((b) => (b.onclick = () => act("/api/wander-lab/boss", { region: b.dataset.region })));
   renderParty();
 }

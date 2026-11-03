@@ -25,13 +25,21 @@
         <button type="button" class="button-go" id="go-home">Go home</button>
       </div>
     </section>
+    <p class="panel wander-pip" id="pip-hint" hidden></p>
     <div class="wander-play">
       <section class="panel wander-board">
         <canvas id="wander-local" class="wander-map" aria-label="Where you are"></canvas>
         <div class="wander-keys" id="keys"></div>
         <div class="wander-screen panel" id="screen" hidden>
           <h2 class="panel-title" id="screen-title"></h2>
+          <canvas id="screen-portrait" class="wander-portrait" width="120" height="96" hidden></canvas>
           <p id="screen-text"></p>
+          <div class="wander-letter" id="screen-letter" hidden>
+            <p id="letter-to"></p>
+            <div id="letter-read"></div>
+            <div id="letter-prompt"></div>
+            <p id="letter-signed"></p>
+          </div>
           <p class="wander-line" id="screen-line" hidden></p>
           <p class="wander-screen-keys" id="screen-keys"></p>
         </div>
@@ -122,6 +130,7 @@
   <script src="/static/js/wander_text.js"></script>
   <script src="/static/js/wander_moves.js"></script>
   <script src="/static/js/wander_items.js"></script>
+  <script src="/static/js/prompt_view.js"></script>
   <script src="/static/js/wanderpaw.js"></script>
 </body>
 </html>

@@ -109,9 +109,11 @@ def test_going_in_and_party():
     client.post("/api/wander/trip/start", json={})
     client.post("/api/wander-lab/teleport", json={"q": g.town[0], "r": g.town[1], "spot": list(g.house)})
     data = client.get("/api/wander").json()
-    assert data["screen"]["action"] == "ask"
+    assert data["screen"]["talking"] and data["screen"]["portrait"]
+    assert client.post("/api/wander/act", json={"action": "ask"}).status_code == 400  # ask first
+    client.post("/api/wander/act", json={"action": "folk", "arg": "help"})
     data = client.post("/api/wander/act", json={"action": "ask"}).json()
-    assert data["quests"][0]["title"].startswith("Mend")
+    assert data["quests"][0]["title"] == "Nanny Bramble's Garden Shears"
     assert client.post("/api/wander/act", json={"action": "ask"}).status_code == 400
 
 
@@ -573,12 +575,12 @@ def test_quests_give_the_team_xp():
     g = qs.plan(seed).givers["leaf:leaf"]
     client.post("/api/wander/trip/start", json={})
     client.post("/api/wander-lab/teleport", json={"q": g.town[0], "r": g.town[1], "spot": list(g.house)})
+    client.post("/api/wander/act", json={"action": "folk", "arg": "help"})
     client.post("/api/wander/act", json={"action": "ask"})
     with db.open_db(main.DB_PATH) as conn:
         save = sv.load(conn, 1)
-        have = [sv.st.NPCS[("leaf", "leaf")].lost, *sv._parts(save, "leaf", "leaf")]
-        db.save_wander(conn, 1, {**save, "items": {x: 1 for x in have}})
-    data = client.post("/api/wander/act", json={"action": "mend"}).json()
+        db.save_wander(conn, 1, {**save, "items": {sv.st.NPCS[("leaf", "leaf")].lost: 1}})
+    data = client.post("/api/wander/act", json={"action": "give_back"}).json()
     assert data["team"][0]["id"] == fox
     with db.open_db(main.DB_PATH) as conn:
         assert db.get_wander_pets(conn, 1)[fox]["xp"] == sv.st.XP_QUEST
@@ -659,7 +661,7 @@ def test_the_lab_takes_you_to_a_boss_at_its_door():
     state = client.get("/api/wander").json()
     assert state["trip"] and state["screen"]
     screen = client.get("/api/wander").json()["screen"]
-    assert screen["action"] == "boss" and screen["label"] == "Face the guardian"
+    assert screen["action"] == "boss" and screen["label"] == "Face Solenne"
     fight = client.post("/api/wander/act", json={"action": "boss"}).json()
     assert fight["battle"]["tier"] == "boss" and fight["battle"]["kind"] == "ember"
     assert client.post("/api/wander-lab/boss", json={"region": "nope"}).status_code == 400
@@ -775,3 +777,38 @@ def test_the_guidebook_comes_from_the_real_type_chart():
     assert g["chart"]["splash"]["ember"] == 2 and g["chart"]["dream"]["ember"] == 0.5
     assert set(g["order"]) == set(wd.REGIONS) and g["marks"] and g["effects"] and g["lands"]
     assert "Your first type" in g["fight"] and "Mixes" in g["fight"] and g["hits"]["typed"] > g["hits"]["plain"]
+
+
+def test_a_new_game_starts_with_pip_and_can_skip_him():
+    state = client.get("/api/wander").json()
+    assert state["tutorial"]["step"] == "intro" and state["tutorial"]["pages"]
+    moved = client.post("/api/wander/tutorial", json={"step": "intro"}).json()
+    assert moved["tutorial"]["step"] == "party"
+    assert client.post("/api/wander/tutorial", json={"step": "skip"}).json()["tutorial"] is None
+
+
+def test_a_keepers_relative_comes_free_and_a_token_makes_them_a_pet():
+    client.get("/api/wander")
+    client.post("/api/wander-lab/keeper-beaten", json={"region": "leaf"})
+    state = client.get("/api/wander").json()
+    for at in range(len(state["screen"]["letter"]["lines"])):
+        state = client.post("/api/wander/act", json={"action": "letter_line", "arg": at}).json()
+    state = client.post("/api/wander/act", json={"action": "temple"}).json()
+    assert "leaf" in state["temples"] and state["items"]["Seed Pouch"] == 1
+    state = client.post("/api/wander/act", json={"action": "kin_join"}).json()
+    friend = state["camp_friends"][0]
+    assert friend["name"] == "Tansy" and friend["species"] == "flower_fairy" and friend["level"] == 13
+
+    with db.open_db(main.DB_PATH) as conn:
+        save = db.get_wander(conn, 1)
+        db.save_wander(conn, 1, {**save, "items": {**save["items"], "Friendship Token": 1}, "at": [0, 0], "spot": [0, 0]})
+    state = client.post("/api/wander/camp/welcome", json={"item": friend["id"]}).json()
+    assert not state["camp_friends"]
+    assert any(p["name"] == "Tansy" for p in client.get("/api/wander/pets").json()["pets"])
+
+
+def test_starting_over_opens_with_pip_again():
+    client.get("/api/wander")
+    assert client.post("/api/wander/tutorial", json={"step": "skip"}).json()["tutorial"] is None
+    client.post("/api/wander-lab/reset", json={})
+    assert client.get("/api/wander").json()["tutorial"]["pages"]

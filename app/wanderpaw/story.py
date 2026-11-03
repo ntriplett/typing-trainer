@@ -2,11 +2,12 @@
 
 Quests (quests.py): each town has two quest-givers, one for each broken
 shortcut on its region's borders (NPCS, by town region and the shortcut's
-region; SHORTCUTS: a ferry, a tunnel, a footbridge, a ladder, a lift). For
-each shortcut, whichever of its two quest-givers you take on first will
-mend it (bring back their lost thing and the part waiting on each side);
-the other one trains a pet a level for theirs. Towns are full of their
-region's animals (HOUSES, INNS, SHOPS).
+region; SHORTCUTS: a ferry, a tunnel, a footbridge, a ladder, a lift). Each
+has a lost thing to find, which earns a favor: they'll train a pet a level.
+A shortcut you've found is its own job: once you've helped either of its
+two quest-givers, that one will mend it (bring the part waiting on each
+side). Towns are full of their
+region's animals (folk.py; INNS and SHOPS here name their places).
 Lost things hide in a region's pocket or in a nook that takes 3 levels of
 a type (FETCH_HINTS). Finishing either quest in a town gets you a rumor of
 where the region's temple key is hidden. The temple wants the key and a
@@ -25,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.wanderpaw import shop
+from app.wanderpaw import lore, shop
 
 TYPE_NAMES = {t: "{" + t + "}" for t in ("ember", "splash", "leaf", "dream", "shock")}  # see world.tw
 
@@ -167,30 +168,7 @@ NPCS = {
 # How a part gets across with a pet of the far side's type.
 CARRY = {"splash": "washes", "ember": "flings", "dream": "floats", "leaf": "swings", "shock": "zaps"}
 
-# Who lives in each region's town: houses (a title and what they say), the
-# inn, and the shop. The odd mythical neighbor too.
-HOUSES = {
-    "splash": [("A dog's house", "Woof! Want to play fetch? No? Okay!"),
-               ("A turtle's house", "No need to hurry. The river will still be here tomorrow."),
-               ("A dog's house", "I buried a bone by the docks. Don't tell anyone."),
-               ("The mermaid's pool", "Sometimes I sing to the fish. They never sing back.")],
-    "ember": [("A fox's den", "Lantern light is the best light. Everyone knows that."),
-              ("A lizard's house", "Find a warm rock and stay a while."),
-              ("A fox's den", "Have you seen the rocks glow at night? Like embers!"),
-              ("The phoenix's nest", "Every hundred years I nap in the ashes. Very refreshing.")],
-    "dream": [("A llama's house", "Have you counted the stars tonight? I got to a thousand."),
-              ("A sheep's house", "I dreamed of a giant carrot. It was delicious."),
-              ("A sheep's house", "Shh... the whole town naps after lunch."),
-              ("The unicorn's stable", "My horn glows when someone tells the truth. Yours is glowing now.")],
-    "leaf": [("A bunny's burrow", "Carrots! Do you have carrots?"),
-             ("A goat's house", "I'll eat anything. Except broccoli."),
-             ("A bunny's burrow", "Every bunny in town has forty cousins. At least."),
-             ("The flower fairy's bloom", "Every flower in town has a name. That one's Gerald.")],
-    "shock": [("A cat's house", "I'm not napping. I'm thinking with my eyes closed."),
-              ("A snake's house", "Sssome say the wind up here can light a lamp."),
-              ("A cat's house", "If the bell rings on the hill, a storm is coming."),
-              ("The dragon's den", "Don't mind the sparks. I sneeze when I'm happy.")],
-}
+# The town's inn and shop (who runs them, and everyone else: folk.py).
 INNS = {"splash": "The Soggy Paw", "ember": "The Warm Hearth", "dream": "The Sleepy Llama",
         "leaf": "The Carrot Patch", "shock": "The Spark & Sprocket"}
 SHOPS = {"splash": "Shellby's Shells", "ember": "Cinder & Sons", "dream": "Moonlight Goods",
@@ -211,7 +189,7 @@ FETCH_HINTS = {
     "pocket": "My {item} rolled off into {place}, behind a gate. Get past it, and it's right there.",
     "ground": "I dropped my {item} somewhere in {place}.",
 }
-KEY_RUMOR = "Have you heard? They say the {key} is hidden in {place}. {how}"
+KEY_RUMOR = "Have you heard? They say the [[{key}]] is hidden in {place}. {how}"
 KEY_HOW = {k: v.split(". ", 1)[-1].replace("{item}", "it") for k, v in FETCH_HINTS.items()}
 TRAIN_LEVELS = 1  # what a trainer's thanks is worth
 
@@ -232,7 +210,7 @@ FIELD_SKILLS = {
 
 # XP for the party's pets (battles bring the most, later).
 XP_QUEST = 150  # bringing an elder's lost thing back
-XP_TEMPLE = 300
+XP_TEMPLE = lore.KEEPER_XP
 XP_CACHE = 25  # digging up what a clue pointed to
 XP_HARD_NOOK = 20  # the first search of a nook that needed type levels
 
@@ -300,7 +278,7 @@ NOOKS = {
     "nest": NookWords("Big nest", "A huge empty nest, lined with soft feathers.", "Peek in"),
     "berries": NookWords("Berry bushes", "Bushes heavy with ripe berries.", "Pick some"),
     "log": NookWords("Hollow log", "A big hollow log. Something might be inside.", "Reach in"),
-    "statue": NookWords("Old statue", "A worn stone statue of a pet you don't know."),
+    "statue": NookWords("Old statue", "A worn stone figure in a tall hat, with five round stones floating over his head."),
     "traveler": NookWords("A traveler", "A traveler is resting here, happy to chat."),
     "well": NookWords("Old well", "A stone well. The rope still works!", "Pull up the bucket"),
     "rune": NookWords("Rune stone", "A stone covered in sleepy, swirly marks.", "Read the runes",
@@ -367,6 +345,8 @@ def describe(item: str) -> str:
                 return f"Needed to fix {shortcut.name}. Bring it to whoever is fixing it."
     if item in shop.ITEMS:
         return shop.ITEMS[item].about
+    if item in lore.KEEPSAKES:
+        return lore.KEEPSAKES[item]
     if item in FORAGE.values():
         return "Found while exploring. Notice boards in town pay coins for these."
     if item in FISH.values():

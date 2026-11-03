@@ -174,16 +174,16 @@ def test_temples_want_the_key_and_a_pet_of_their_type():
     assert sv.screen(save)["action"] is None  # no key
     keyed = {**save, "items": {tale.key: 1}}
     assert sv.screen({**keyed, "team": _team("leaf")})["action"] is None  # no splash pet
-    assert sv.screen(keyed)["action"] == "boss"  # its guardian first
+    assert sv.screen(keyed)["action"] == "boss"  # its Keeper first
     with pytest.raises(sv.WanderError):
         sv.act(keyed, "temple")
     assert sv.act(keyed, "boss")["battle"]["tier"] == "boss"
-    keyed = {**keyed, "bosses": [region]}
+    keyed = {**keyed, "bosses": [region], "letters": {region: 3}}
     opened = sv.act(keyed, "temple")
     assert region in opened["temples"]
     assert opened["items"][tale.relic] == 1
     assert opened["buffs"][region] == tale.buff
-    assert sv.screen(opened)["action"] is None
+    assert sv.screen(opened)["action"] == "keeper_talk"  # a friend now
 
 
 def test_the_heartstone_wants_all_five_relics():

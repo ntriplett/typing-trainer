@@ -67,7 +67,7 @@ EIGHTH_SLOT_LEVEL = 17
 ANY_MIX_LEVEL = 19
 CAPSTONE_LEVEL = 21
 PARTY_SIZE = 5
-STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Pip", "fox"), "leaf": ("Clover", "bunny"),
+STARTERS = {"splash": ("Puddle", "dog"), "ember": ("Kindle", "fox"), "leaf": ("Clover", "bunny"),
             "dream": ("Fluff", "sheep"), "shock": ("Zip", "cat")}
 STARTER_STATS = {"strength": 5, "speed": 5, "stamina": 5}
 

@@ -14,7 +14,7 @@ const WANDER_TYPE_TEXT = { shock: "#a86a10" };
 
 // The same text with no formatting, for tooltips.
 function wanderPlain(text) {
-  return String(text ?? "").replace(WANDER_TYPE_TOKEN, (_, kind) => kind.toUpperCase()).replace(/\{(energy|mana|xp)\}/g, "$1").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  return String(text ?? "").replace(/\[\[(.+?)\]\]/g, "$1").replace(WANDER_TYPE_TOKEN, (_, kind) => kind.toUpperCase()).replace(/\{(energy|mana|xp)\}/g, "$1").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 
 function wanderText(text) {
@@ -22,6 +22,7 @@ function wanderText(text) {
   return safe
     .replace(WANDER_TYPE_TOKEN, (_, kind) =>
       `<span class="type-word" style="color:${WANDER_TYPE_TEXT[kind] || WanderMap.TYPE_COLORS[kind]}">${kind.toUpperCase()}</span>`)
+    .replace(/\[\[(.+?)\]\]/g, '<b class="wander-quest-item">$1</b>') // a quest item
     .replace(/\{(energy|mana|xp)\}([.,!?]?)/g, (_, stat, mark) =>
       `<span class="wander-stat-word">${{ energy: ENERGY_ICON, mana: MANA_ICON, xp: XP_ICON }[stat]}${mark}</span>`);
 }

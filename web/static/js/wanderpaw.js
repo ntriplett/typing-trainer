@@ -55,6 +55,8 @@ let lastReady = null; // what Enter offered last render, so a new offer glows
 let pets = null; // the picker's list (GET /api/wander/pets)
 let cursor = 0;
 let typing = null; // a line to type: {action, line, at, slips, wrong}
+let reading = null; // a Keeper's letter being read: {view, lines, at} (the server saves each line)
+let pages = null; // Pip's pages to read: {list, at, done: what to tell the server at the end, back: mode after}
 // Where the view is centered (fractional while sliding to a new hex).
 let camera = null;
 let slide = null; // {from, to, start}
@@ -131,7 +133,6 @@ function render() {
     document.getElementById("energy-text").textContent = `${state.trip.energy}`;
   }
   const usable = bagUsable();
-  document.querySelector('[data-menu="bag"]').classList.toggle("nothing", !usable);
   const battleBag = document.getElementById("battle-bag");
   battleBag.disabled = !usable;
   battleBag.title = usable ? "Your bag" : "Nothing in your bag can help right now";
@@ -141,6 +142,7 @@ function render() {
   renderPicker();
   renderMenu();
   renderBattle();
+  renderPip();
 }
 
 // --- battles -----------------------------------------------------------------------
@@ -224,7 +226,7 @@ function renderBattle() {
     ? `<small>Helping from the bench:</small> ${b.bench_helps.map((c) => `<span class="wander-mark" title="${wanderPlain(c.says)}">${esc(c.name)}</span>`).join(" ")}`
     : "";
   document.getElementById("battle-foe-info").innerHTML = `
-    <b>${b.tier ? `${b.tier[0].toUpperCase()}${b.tier.slice(1)}` : "Wild"} ${esc(b.species)}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
+    <b>${b.keeper ? `${esc(b.keeper)}, the Keeper` : `${b.tier ? `${b.tier[0].toUpperCase()}${b.tier.slice(1)}` : "Wild"} ${esc(b.species)}`}</b> <small>level ${b.level}</small> ${chips({ [b.kind]: "", ...(b.second ? { [b.second]: "" } : {}) })}<br>
     ${bar(foeEnergy, b.max)} <small>${foeEnergy} / ${b.max}</small>
     ${marks ? `<p>${marks}</p>` : ""}`;
   // what happened last round (during a replay: so far)
@@ -233,7 +235,7 @@ function renderBattle() {
     : (state.events || []).filter((e) => e.text).map((e) => e.text);
   document.getElementById("battle-log").innerHTML = lines.length
     ? lines.map((l) => `<li>${wanderText(l)}</li>`).join("")
-    : `<li class="hint">${esc(`A wild ${b.species} blocks the way!`)}</li>`;
+    : `<li class="hint">${esc(b.keeper ? `${b.keeper} rises to meet you!` : `A wild ${b.species} blocks the way!`)}</li>`;
   // your fighters, on the left, each with its moves under it
   const team = document.getElementById("battle-team");
   team.innerHTML = b.fighters
@@ -597,12 +599,13 @@ function renderKeys() {
 const BOOKS = ["bag", "journal", "party", "log", "map", "guide"];
 
 function openMenu(name) {
-  if (mode === "line" || mode === "credits") return;
+  if (["line", "credits", "letter", "pages"].includes(mode)) return;
   typer.release();
   const from = mode === "menu" ? menu.from : mode;
   menu = { name, at: 0, picked: name === "map" ? state.big.at : null, from, page: 0, me: guideSides.me, enemy: guideSides.enemy, picking: null };
   mode = "menu";
   if (name === "guide") loadGuide();
+  if ((name === "map" || name === "guide") && state.tutorial && state.tutorial.step === name) send("/api/wander/tutorial", { step: name }).then((d) => d && apply(d));
   if (name === "party" && !pets) loadPets();
   render();
 }
@@ -928,7 +931,7 @@ function renderMenu() {
 // --- the guidebook -----------------------------------------------------------------------
 // Pages you turn with the arrows, all from the real rules (battle.guide).
 
-const GUIDE_PAGES = ["Types", "Match-ups", "Combo chart", "Combos found", "Marks & effects", "How fights work", "The lands"];
+const GUIDE_PAGES = ["Types", "Match-ups", "Combo chart", "Combos found", "Marks", "Effects", "How fights work", "The lands"];
 // Shown as 2x, 1.5x, 1x, 0.7x, 0.5x (the rules really use 2/3, not 0.7).
 const TIMES = (x) => `${Math.round(x * 10) / 10}x`;
 const STRENGTH_WORD = { 2: "Super strong", 1.5: "Strong", 1: "Even", 0.67: "Weak", 0.5: "Very weak" };
@@ -1060,20 +1063,23 @@ function guideMarks(g) {
   const example = found
     ? `For example, <b>${esc(found.mark)}</b> plus a ${wanderText(`{${found.hit}}`)} hit is <b>${esc(found.name)}</b>: ${wanderText(found.says || "")}`
     : "Find one in a fight, and it'll be your example here.";
+  return `<h3>Marks</h3>
+    <p>A big move leaves a mark. The next hit of the right type uses it up and sets off a combo.</p>
+    <div class="wander-guide-cards">${Object.entries(g.marks).map(([k, v]) => guideCard(burstSvg(markType(k)), k, v, markType(k))).join("")}</div>
+    <p class="wander-guide-example">${example}</p>`;
+}
+
+function guideEffects(g) {
   const seen = new Set();
   const groups = EFFECT_GROUPS.map(([label, color, names]) => {
     const cards = names.filter((k) => g.effects[k]).map((k) => {
       seen.add(k);
       return guideCard(effectIcon(k, 32), k, g.effects[k], color);
     }).join("");
-    return `<h3>${esc(label)}</h3><div class="wander-guide-cards">${cards}</div>`;
+    return `<section><h3>${esc(label)}</h3><div class="wander-guide-cards">${cards}</div></section>`;
   }).join("");
   const rest = Object.keys(g.effects).filter((k) => !seen.has(k)).map((k) => guideCard(effectIcon(k, 32), k, g.effects[k])).join("");
-  return `<h3>Marks</h3>
-    <p>A big move leaves a mark. The next hit of the right type uses it up and sets off a combo.</p>
-    <div class="wander-guide-cards">${Object.entries(g.marks).map(([k, v]) => guideCard(burstSvg(markType(k)), k, v, markType(k))).join("")}</div>
-    <p class="wander-guide-example">${example}</p>
-    ${groups}${rest ? `<h3>Others</h3><div class="wander-guide-cards">${rest}</div>` : ""}`;
+  return `<div class="wander-guide-effects">${groups}</div>${rest ? `<h3>Others</h3><div class="wander-guide-cards">${rest}</div>` : ""}`;
 }
 
 function guideFight(g) {
@@ -1109,12 +1115,12 @@ function guideLands(g) {
   const mine = (t) => entries.filter(([, text]) => text.startsWith(`{${t}}`));
   const home = entries.filter(([, text]) => !text.startsWith("{"));
   return `<p>The land round Camp is ordinary heartland. Past it, each of the five types has its own country, with a town and a temple.</p>
-    <div class="wander-guide-land" style="border-color:#b8a878"><h3>Heartland</h3><ul>${home.map(([b, t]) => place(b, t)).join("")}</ul></div>
+    <div class="wander-guide-lands"><div class="wander-guide-land" style="border-color:#b8a878"><h3>Heartland</h3><ul>${home.map(([b, t]) => place(b, t)).join("")}</ul></div>
     ${g.order.map((t) => `<div class="wander-guide-land" style="border-color:${WanderMap.TYPE_COLORS[t]}">
       <h3>${chips({ [t]: "" })}</h3>
       <p>${wanderText(g.types[t])}</p>
       <ul>${mine(t).map(([b, text]) => place(b, text)).join("")}</ul>
-    </div>`).join("")}`;
+    </div>`).join("")}</div>`;
 }
 
 function renderGuide(setBody, keys) {
@@ -1131,6 +1137,7 @@ function renderGuide(setBody, keys) {
     guideComboChart,
     guideCombosFound,
     () => guideMarks(g),
+    () => guideEffects(g),
     () => guideFight(g),
     () => guideLands(g),
   ][menu.page]();
@@ -1407,14 +1414,30 @@ function pickerKey(e) {
 }
 
 function renderScreen() {
-  screenBox.hidden = !["screen", "line", "credits"].includes(mode);
+  screenBox.hidden = !["screen", "line", "credits", "letter", "pages"].includes(mode);
   if (screenBox.hidden) return;
+  document.getElementById("screen-letter").hidden = mode !== "letter";
+  paintPortrait(mode === "pages" ? { genes: state.pip_looks, growth: 10 } : mode === "screen" ? state.screen && state.screen.portrait : null);
   const title = document.getElementById("screen-title");
   const text = document.getElementById("screen-text");
   const line = document.getElementById("screen-line");
   const keys = document.getElementById("screen-keys");
   line.hidden = mode !== "line";
   screenBox.classList.toggle("wander-credits", mode === "credits");
+  screenBox.classList.toggle("wander-pip-pages", mode === "pages");
+  if (mode === "pages") {
+    title.textContent = "Pip";
+    text.innerHTML = wanderText(pages.list[pages.at]);
+    const last = pages.at === pages.list.length - 1;
+    keys.innerHTML = `<kbd class="keycap">Enter</kbd> ${last ? "Okay!" : "next"} &nbsp; <kbd class="keycap">Esc</kbd> skip`;
+    return;
+  }
+  if (mode === "letter") {
+    title.innerHTML = wanderText(state.screen.title);
+    text.innerHTML = "";
+    keys.innerHTML = `Read it out by typing. The ink writes any letters you haven't learned yet. <kbd class="keycap">Esc</kbd> stop, and come back any time`;
+    return;
+  }
   if (mode === "credits") {
     title.textContent = "The End";
     text.innerHTML = state.credits.map((l) => wanderText(l) || "&nbsp;").join("<br>");
@@ -1438,7 +1461,7 @@ function renderScreen() {
     const chars = [...typing.line];
     line.innerHTML = chars
       .map((ch, i) => {
-        const cls = i < typing.at ? "done" : i === typing.at ? (typing.wrong ? "wrong" : "next") : "";
+        const cls = i === typing.at ? (typing.wrong ? "wrong" : "next") : !canType(ch) ? "ink" : i < typing.at ? "done" : "";
         return `<span class="${cls}">${ch === " " ? "&nbsp;" : esc(ch)}</span>`;
       })
       .join("");
@@ -1593,6 +1616,8 @@ function apply(data) {
   typer.release();
   pickTargets();
   if (data.credits) mode = "credits";
+  if (data.pages && mode !== "credits") openPages(data.pages, null);
+  else if (data.tutorial && data.tutorial.pages && mode === "walk" && !pages) openPages(data.tutorial.pages, data.tutorial.step);
   if (data.levelups.length && !data.battle && mode !== "line" && mode !== "credits") {
     if (mode !== "levelup") afterLevelup = mode === "screen" ? "screen" : "walk";
     mode = "levelup";
@@ -1728,11 +1753,13 @@ function screenKey(e) {
     return;
   }
   const s = state.screen;
+  if (e.key === "Enter" && s && s.letter) return openLetter(s.letter);
   if (e.key === "Enter" && s && s.action === "shop") return openMenu("shop");
   if ((e.key === "f" || e.key === "F") && s && s.friends) return openMenu("camp");
   // several choices: a number picks one
   const pick = s && s.options && s.options.length > 1 ? s.options[Number(e.key) - 1] : null;
   if (pick) {
+    if (pick.action === "shop") return openMenu("shop");
     act(pick.action, 1, pick.arg);
     return;
   }
@@ -1742,12 +1769,128 @@ function screenKey(e) {
     render();
   } else if (s.line) {
     typing = { action: s.action, line: s.line, at: 0, slips: 0, wrong: false };
+    inkAhead();
+    if (typing.at === typing.line.length) {
+      act(typing.action, 1); // nothing on it you've learned yet: the ink wrote it all
+      return;
+    }
     mode = "line";
     render();
   } else if (s.options && s.options.length > 1) {
-    // Enter alone does nothing when there's a choice to make
+    // Enter alone does nothing when there's a choice to make, unless there's a main thing to do here
+    if (s.enter) act(s.options[0].action, 1, s.options[0].arg);
   } else {
+    if (s.action === "pip_in") mode = "walk"; // back out to where his next tip applies
     act(s.action, 1, s.options ? s.options[0].arg : null);
+  }
+}
+
+// Only what you've been taught, and spaces, gets typed. The ink writes the
+// rest: letters still to come, capitals and punctuation.
+function canType(ch) {
+  return ch === " " || (/^[a-z]$/.test(ch) && state.words.letter.includes(ch));
+}
+
+function inkAhead() {
+  while (typing.at < typing.line.length && !canType(typing.line[typing.at])) typing.at += 1;
+}
+
+function openPages(list, done) {
+  pages = { list, at: 0, done, back: mode };
+  mode = "pages";
+}
+
+async function pagesDone(skip) {
+  const { done, back } = pages;
+  pages = null;
+  mode = back === "pages" ? "walk" : back;
+  if (skip && done) {
+    const data = await send("/api/wander/tutorial", { step: "skip" });
+    if (data) apply(data);
+  } else if (done) {
+    const data = await send("/api/wander/tutorial", { step: done });
+    if (data) apply(data);
+  } else render();
+}
+
+function pagesKey(e) {
+  if (e.key === "Escape") return pagesDone(true);
+  if (e.key !== "Enter") return;
+  if (pages.at < pages.list.length - 1) {
+    pages.at += 1;
+    render();
+  } else pagesDone(false);
+}
+
+function paintPortrait(who) {
+  const canvas = document.getElementById("screen-portrait");
+  canvas.hidden = !who || !who.genes;
+  if (!canvas.hidden) paintPet(canvas, who, 2, true);
+}
+
+function renderPip() {
+  const box = document.getElementById("pip-hint");
+  const t = state.tutorial;
+  box.hidden = !t || !t.hint || !["walk", "battle"].includes(mode) || (mode === "battle" && !state.battle);
+  if (!box.hidden) box.innerHTML = `<b>${esc(t.name)}:</b> ${wanderText(t.hint)}`;
+}
+
+// A letter: each server line is typed in the shared prompt, and saved when it's done.
+function openLetter(letter) {
+  reading = { view: null, letter };
+  mode = "letter";
+  render();
+  document.getElementById("letter-to").textContent = `Dear ${letter.to},`;
+  document.getElementById("letter-signed").textContent = `Your friend, ${letter.signed}`;
+  reading.view = new PromptView(document.getElementById("letter-prompt"));
+  loadLetterLine();
+}
+
+function loadLetterLine() {
+  const { view, letter } = reading;
+  document.getElementById("letter-read").innerHTML = letter.lines.slice(0, letter.at).map((l) => `<p>${esc(l)}</p>`).join("");
+  view.load(letter.lines[letter.at]);
+  inkLetter();
+}
+
+function inkLetter() {
+  const { view } = reading;
+  while (!view.done && !canType(view.expected)) {
+    view.spans[view.col].classList.add("ink");
+    view.mark(true);
+  }
+  if (view.done) finishLetterLine();
+}
+
+async function finishLetterLine() {
+  const at = reading.letter.at;
+  await act("letter_line", 1, at);
+  if (mode !== "letter") return;
+  const next = state.screen && state.screen.letter;
+  if (next) {
+    reading.letter = next;
+    loadLetterLine();
+  } else {
+    reading = null;
+    mode = "screen";
+    render();
+  }
+}
+
+function letterKey(e) {
+  if (e.key === "Escape") {
+    reading = null;
+    mode = "screen";
+    render();
+    return;
+  }
+  if (e.key.length !== 1 || !reading.view || reading.view.done) return;
+  e.preventDefault();
+  if (e.key === reading.view.expected) {
+    reading.view.mark(true);
+    inkLetter();
+  } else {
+    reading.view.flagMiss();
   }
 }
 
@@ -1762,6 +1905,7 @@ function lineKey(e) {
   if (e.key === typing.line[typing.at]) {
     typing.at += 1;
     typing.wrong = false;
+    inkAhead();
   } else {
     typing.slips += 1;
     typing.wrong = true;
@@ -1781,6 +1925,8 @@ document.addEventListener("keydown", (e) => {
   else if (mode === "battle") battleKey(e);
   else if (mode === "menu") menuKey(e);
   else if (mode === "line") lineKey(e);
+  else if (mode === "letter") letterKey(e);
+  else if (mode === "pages") pagesKey(e);
   else if (mode === "levelup") levelupKey(e);
   else screenKey(e);
 });

@@ -107,6 +107,34 @@ const ITEM_ART = {
     r(3, 5, 2, 6, "#5a5a6a");
     r(11, 5, 2, 6, "#5a5a6a");
   },
+  "Rippling Pearl": (r) => {
+    itemDisc(r, 8, 8, 5, "#cfe4f2");
+    itemDisc(r, 7, 7, 2, "#ffffff");
+    r(4, 13, 8, 1, "#3a7fc8");
+  },
+  "Warm Ash": (r) => {
+    r(4, 11, 8, 2, "#8a8078");
+    r(5, 9, 6, 2, "#a89c90");
+    r(7, 8, 2, 1, "#e2703c");
+    r(6, 10, 1, 1, "#f0a03c");
+  },
+  "Dream Pillow": (r) => {
+    r(3, 6, 10, 6, "#a76fb0");
+    r(4, 5, 8, 1, "#c79fd0");
+    r(4, 12, 8, 1, "#7f4f88");
+    r(7, 8, 2, 2, "#f0e0a0");
+  },
+  "Seed Pouch": (r) => {
+    r(6, 3, 4, 2, "#8a5a30");
+    r(4, 5, 8, 8, "#b07a40");
+    r(7, 8, 2, 2, "#6d9f58");
+  },
+  "Spark Compass": (r) => {
+    itemDisc(r, 8, 8, 5, "#c8a040");
+    itemDisc(r, 8, 8, 4, "#f4ecd0");
+    r(8, 5, 1, 4, "#c8553d");
+    r(7, 8, 1, 3, "#3a3a3a");
+  },
   "Friendship Token": (r) => {
     itemDisc(r, 8, 8, 6, "#e8b33e");
     itemDisc(r, 8, 8, 4.5, "#f8d870");

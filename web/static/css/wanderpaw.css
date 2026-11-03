@@ -403,10 +403,6 @@ main.wander {
   --book: #b8432f;
 }
 
-.wander-books [data-menu="bag"].nothing {
-  --book: #9a948a;
-}
-
 .wander-books [data-menu="journal"] {
   --book: #4f8f2a;
 }
@@ -541,6 +537,7 @@ main.wander {
    colors; Chrome and Safari get the chunky pixel thumb). */
 @supports not selector(::-webkit-scrollbar) {
   .wander-atlas-scroll,
+  .wander-guide-page,
   .wander-menu,
   .wander-menu-list,
   .wander-pets {
@@ -549,6 +546,7 @@ main.wander {
 }
 
 .wander-atlas-scroll::-webkit-scrollbar,
+.wander-guide-page::-webkit-scrollbar,
 .wander-menu::-webkit-scrollbar,
 .wander-menu-list::-webkit-scrollbar,
 .wander-pets::-webkit-scrollbar {
@@ -557,6 +555,7 @@ main.wander {
 }
 
 .wander-atlas-scroll::-webkit-scrollbar-track,
+.wander-guide-page::-webkit-scrollbar-track,
 .wander-menu::-webkit-scrollbar-track,
 .wander-menu-list::-webkit-scrollbar-track,
 .wander-pets::-webkit-scrollbar-track {
@@ -564,6 +563,7 @@ main.wander {
 }
 
 .wander-atlas-scroll::-webkit-scrollbar-thumb,
+.wander-guide-page::-webkit-scrollbar-thumb,
 .wander-menu::-webkit-scrollbar-thumb,
 .wander-menu-list::-webkit-scrollbar-thumb,
 .wander-pets::-webkit-scrollbar-thumb {
@@ -1483,14 +1483,77 @@ main.wander {
 }
 
 /* One steady page at a time: the book never changes size or stacks scrollbars */
+/* The guidebook opens over the whole window, the same size on every page. */
 .wander-menu.guide {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(1400px, calc(100vw - 16px));
+  height: min(860px, calc(100vh - 16px));
+  max-height: none;
+  box-sizing: border-box;
   overflow: hidden;
-  width: min(900px, 97%);
 }
 .wander-guide-page {
-  height: min(60vh, 520px);
-  overflow-y: scroll;
-  padding-right: 0.5rem;
+  flex: 1;
+  min-height: 0;
+}
+#menu-body {
+  min-height: 0;
+}
+.wander-menu.guide #menu-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.wander-guide-page {
+  overflow-y: auto; /* only a very small window ever needs this */
+}
+.wander-guide-page h3 {
+  margin: 0.4rem 0 0.2rem;
+}
+.wander-guide-page > p {
+  margin: 0.3rem 0;
+}
+/* A short window: tighter, so the pages still fit */
+@media (max-height: 760px) {
+  .wander-menu.guide {
+    font-size: 16px;
+  }
+  .wander-menu.guide .panel-title {
+    margin: 0;
+  }
+  .wander-guide-card {
+    font-size: 14px;
+    padding: 0.15rem 0.4rem;
+  }
+  .wander-guide-tabs {
+    margin-bottom: 0.2rem;
+  }
+}
+/* The last two groups of effects share a row: three cards and one */
+.wander-guide-effects {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  column-gap: 0.4rem;
+}
+.wander-guide-effects > section:not(:nth-last-child(2), :last-child) {
+  grid-column: 1 / -1;
+}
+.wander-guide-effects > section:nth-last-child(2) .wander-guide-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.wander-guide-effects > section:last-child .wander-guide-cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wander-guide-lands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 0.5rem;
+}
+.wander-guide-lands .wander-guide-land {
+  margin: 0;
 }
 .wander-menu-close {
   position: absolute;
@@ -1641,4 +1704,71 @@ main.wander {
 .wander-guide-icon .wander-icon-mix {
   width: 28px;
   height: 28px;
+}
+
+/* Pip's help beside what you're doing, portraits, and reading a Keeper's letter */
+.wander-pip {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 23px;
+  border-left: 6px solid var(--accent, #c8853d);
+}
+
+.wander-pip-pages {
+  width: min(620px, 90%);
+  font-size: 24px;
+}
+
+.wander-portrait {
+  float: right;
+  margin: 0 0 8px 12px;
+  image-rendering: pixelated;
+}
+
+.wander-letter {
+  clear: both;
+  margin: 8px 0;
+  padding: 12px 16px;
+  background: #fdf6e3;
+  color: #4a3a28;
+  border: 2px solid #c8a878;
+  font-size: 22px;
+}
+
+.wander-letter p {
+  margin: 4px 0;
+}
+
+.wander-letter #letter-read p {
+  color: #7a6a58;
+}
+
+.wander-letter #letter-prompt {
+  margin: 8px 0;
+  font-size: 26px;
+}
+
+.wander-letter .ink,
+.wander-line .ink {
+  color: #6f8fb0;
+}
+
+.wander-letter .prompt-view .current {
+  outline: 2px solid #e2a33c;
+}
+
+.wander-letter .missed {
+  background: var(--space-wrong-bg, #f6d5d0);
+}
+
+/* A quest item's name, wherever you read it */
+.wander-quest-item {
+  color: #8a4f10;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Someone's reply can have a few separate things to tell you */
+#screen-text {
+  white-space: pre-line;
 }

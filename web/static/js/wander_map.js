@@ -845,7 +845,7 @@ const WanderMap = (() => {
       drawHeart(ctx, g, t, x, y);
       if (rows) glyph(ctx, rows, x, y, Math.max(2, Math.round(g.size / 7)));
     }
-    const role = t.role && t.role.startsWith("quest:") ? "elder" : t.role; // quest-givers: a house with a star
+    const role = t.role && (t.role.startsWith("quest:") || t.role === "pip") ? "elder" : t.role && t.role.startsWith("hermit:") ? "house" : t.role; // quest-givers and Pip: a house with a star
     if (role && GLYPHS[role]) glyph(ctx, GLYPHS[role], x, y, px + 1);
     if (t.poi) glyph(ctx, GLYPHS[t.poi], x, y, px);
     else if (t.nook && !t.doors && GLYPHS[t.nook]) glyph(ctx, GLYPHS[t.nook], x, y, px);

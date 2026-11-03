@@ -5,7 +5,14 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
+
+
+@pytest.fixture(autouse=True)
+def no_tutorial(page: Page, live_server):
+    """These tests are about the game itself (test_wanderpaw_story.py has Pip's tutorial)."""
+    page.request.post(f"{live_server}/api/wander/tutorial", data={"step": "skip"})
 
 
 def test_set_off_and_walk_by_typing(page: Page, live_server):
@@ -46,8 +53,15 @@ def test_go_in_to_a_quest_giver_and_take_the_quest(page: Page, live_server):
     page.wait_for_function("state && state.screen")
     page.keyboard.press("Enter")
     expect(page.locator("#screen-title")).to_have_text("Nanny Bramble")
-    page.keyboard.press("Enter")
-    expect(page.locator("#screen-text")).to_contain_text("still need the")
+    expect(page.locator("#screen-text")).to_contain_text("Mind the turnips")  # just a greeting
+    expect(page.locator("#screen-portrait")).to_be_visible()
+    page.keyboard.press("2")  # who are you?
+    expect(page.locator("#screen-text")).to_contain_text("I keep the hedges")
+    page.keyboard.press("1")  # can I help?
+    expect(page.locator("#screen-text")).to_contain_text("Garden Shears")
+    expect(page.locator("#screen-text .wander-quest-item")).to_have_text("Garden Shears")
+    page.keyboard.press("1")  # I'll find them
+    page.wait_for_function("state.quests.length === 1")
     page.keyboard.press("Escape")
     expect(page.locator("#keys")).to_contain_text("Go in: Nanny Bramble")
     page.keyboard.press("2")  # the journal
@@ -479,7 +493,7 @@ def test_the_guidebook_turns_pages_and_shows_match_ups(page: Page, live_server, 
     page.locator("[data-guide-me='shock']").click()
     expect(result).to_contain_text("1.5x")  # shock is strong against ember
     page.keyboard.press("j")
-    for _ in range(5):
+    for _ in range(6):
         page.keyboard.press("ArrowRight")
         expect(page.locator(".wander-guide-page")).not_to_be_empty()
     page.keyboard.press("ArrowRight")
@@ -592,10 +606,10 @@ def test_the_guidebook_uses_the_games_own_icons_not_emoji(page: Page, live_serve
     expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
     page.keyboard.press("6")
     expect(page.locator(".wander-guide-tabs")).to_be_visible()
-    for tab in ("Types", "Match-ups", "Combo chart", "Combos found", "Marks & effects", "How fights work", "The lands"):
+    for tab in ("Types", "Match-ups", "Combo chart", "Combos found", "Marks", "Effects", "How fights work", "The lands"):
         page.get_by_role("button", name=tab).click()
         assert not EMOJI.search(page.locator("#menu-body").inner_text()), tab
-    page.get_by_role("button", name="Marks & effects").click()
+    page.get_by_role("button", name="Marks", exact=True).click()
     expect(page.locator(".wander-guide-card .wander-icon-burst")).to_have_count(5)  # a mark looks like it does on a move
     page.get_by_role("button", name="How fights work").click()
     expect(page.locator(".wander-guide-card .wander-icon-mix").first).to_be_visible()
@@ -623,3 +637,24 @@ def test_marks_and_effects_show_their_icons_on_the_enemy_in_battle(page: Page, l
     expect(info.locator(".wander-mark .wander-icon-burst")).to_have_count(1)
     expect(info.locator(".wander-mark .wander-icon-dot")).to_have_count(1)  # thorns: it gets hurt
     expect(info.locator(".wander-mark .wander-icon-shield")).to_have_count(1)  # braced
+
+
+def test_the_guidebook_fits_without_scrolling_and_the_bag_stays_red(page: Page, live_server):
+    page.set_viewport_size({"width": 1280, "height": 800})
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && pets")
+    page.keyboard.press("Enter")
+    page.wait_for_function("state.trip && !busy")
+    assert page.evaluate("""getComputedStyle(document.querySelector('[data-menu="bag"]')).getPropertyValue('--book').trim()""") == "#b8432f"
+    page.keyboard.press("6")
+    page.wait_for_selector(".wander-guide-page")
+    for at in range(page.evaluate("GUIDE_PAGES.length")):
+        page.wait_for_function(f"menu.page === {at} && document.querySelector('.wander-guide-tab.on').textContent === GUIDE_PAGES[{at}]")
+        sizes = page.evaluate("""(() => {
+            const g = document.querySelector('.wander-guide-page');
+            const m = document.getElementById('menu').getBoundingClientRect();
+            return {over: g.scrollHeight - g.clientHeight, wide: g.scrollWidth - g.clientWidth, top: m.top, bottom: m.bottom};
+        })()""")
+        assert sizes["over"] <= 0 and sizes["wide"] <= 0, (at, sizes)
+        assert sizes["top"] >= 0 and sizes["bottom"] <= 800
+        page.keyboard.press("ArrowRight")

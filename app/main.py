@@ -965,6 +965,16 @@ class WanderItemRequest(BaseModel):
     arg: str | None = None
 
 
+class WanderTutorialRequest(BaseModel):
+    step: str
+
+
+@app.post("/api/wander/tutorial")
+def wander_tutorial(body: WanderTutorialRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The page finished this tutorial step (or "skip")."""
+    return _wander_act(conn, learner_id, lambda: wander.tutorial_step(conn, learner_id, body.step))
+
+
 @app.post("/api/wander/shop/buy")
 def wander_shop_buy(body: WanderItemRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return _wander_act(conn, learner_id, lambda: wander.buy_item(conn, learner_id, body.item))
@@ -1110,6 +1120,16 @@ def wander_lab_boss(body: WanderBossRequest, conn=Depends(get_db), learner_id: i
     """Stand at a temple's door with its key, to try its boss."""
     try:
         wander.to_temple(conn, learner_id, body.region)
+    except wander.WanderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return wander_lab_world(None, conn, learner_id)
+
+
+@app.post("/api/wander-lab/keeper-beaten")
+def wander_lab_keeper_beaten(body: WanderBossRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Stand at a temple's door with its Keeper already beaten, ready for the letter."""
+    try:
+        wander.keeper_beaten(conn, learner_id, body.region)
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return wander_lab_world(None, conn, learner_id)

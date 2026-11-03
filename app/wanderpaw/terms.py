@@ -41,7 +41,7 @@ TERMS = {
     "Capstone": "A pet's level 21 passive, helping the fighters whenever it's on the party and not fighting.",
     "Tough": "A creature two levels up on the others, with more energy and harder hits. Pays more XP.",
     "Champion": "A rare creature, far stronger than the others. Pays a lot more XP, and coins.",
-    "Boss": "The creature guarding a temple's relic. Beat it to reach the relic.",
+    "Boss": "A Keeper, guarding a temple's relic. Beat them, then read them their letter, to get the relic.",
     "Upgrade": "A stronger version of a move, shown with a +.",
     "Slot": "One of the six places a pet keeps a move.",
 }

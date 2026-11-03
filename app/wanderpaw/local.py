@@ -60,6 +60,12 @@ INDEX = {h: i for i, h in enumerate(CELLS)}
 CELL_SET = frozenset(CELLS)
 OUTER: tuple[Hex, ...] = tuple(hx.ring((0, 0), LOCAL_RADIUS))
 
+PIP_HOUSE: Hex = (1, 0)  # at Camp: Pip's door, beside the campfire
+PIP_YARD: Hex = (2, 0)  # just past it
+PIP_ROLE = "pip"
+HERMIT_ROLE = "hermit:"  # + which hermit (folk.HERMITS)
+HERMITS_PER_REGION = 2
+TOWN_TOUCHING = 3  # buildings right beside a town's square, at most
 WALKABLE = frozenset({"grass", "flowers", "path", "sand", "plaza", "court", "bridge", "ford", "building", "campfire",
                       "camp", "temple", "stone"})
 # The great halls (_hall): colonnade walls, a relic pillar per type at the
@@ -347,10 +353,37 @@ def generate(seed: int, big: Hex) -> LocalMap:
     # Places of interest have their own random stream (the land stays put).
     story = random.Random(f"wanderpaw-poi:{wd.STORY_VERSION}:{seed}:{big[0]}:{big[1]}")
     givers = [QUEST_ROLE.format(r) for r in (here.region, wd.weak_against(here.region))] if here.special == "town" else []
-    roles = _building_roles(story, buildings, givers)
+    roles = {PIP_HOUSE: PIP_ROLE} if here.special == "camp" else _building_roles(story, buildings, givers)
     pois = _place_pois(story, tiles, exits, campfire, here)
     nooks = _place_nooks(story, tiles, exits, campfire, here, style, pois, set(roles))
+    if big in hermit_homes(seed):
+        house = _hermit_house(seed, big, tiles, exits, campfire, pois, nooks)
+        if house:
+            tiles[house] = "building"
+            roles[house] = f"{HERMIT_ROLE}{hermit_homes(seed)[big]}"
     return LocalMap(big, here.biome, style.name, tiles, exits, campfire, roles, gates, pois, nooks, here.region)
+
+
+@lru_cache(maxsize=32)
+def hermit_homes(seed: int) -> dict[Hex, str]:
+    """Which big hexes have a hermit living out in the wilds: HERMITS_PER_REGION
+    in each region, and which one ("region:0") lives there."""
+    world = wd.generate(seed)
+    rng = random.Random(f"wanderpaw-hermits:{seed}")
+    homes: dict[Hex, str] = {}
+    for region in (wd.HEARTLAND, *wd.REGIONS):
+        spots = sorted(h for h, b in world.hexes.items() if b.region == region and not b.special)
+        rng.shuffle(spots)
+        for i, big in enumerate(spots[:HERMITS_PER_REGION]):
+            homes[big] = f"{region}:{i}"
+    return homes
+
+
+def _hermit_house(seed: int, big: Hex, tiles, exits, campfire: Hex, pois, nooks) -> Hex | None:
+    rng = random.Random(f"wanderpaw-hermit-house:{seed}:{big}")
+    ground = [h for h in sorted(reachable(tiles, campfire)) if tiles[h] in ("grass", "flowers", "sand")
+              and h not in exits and h not in pois and h not in nooks and hx.distance(h, campfire) >= 2]
+    return rng.choice(ground) if ground else None
 
 
 def _building_roles(rng: random.Random, buildings: list[Hex], givers: list[str]) -> dict[Hex, str]:
@@ -652,18 +685,46 @@ def _clear(tiles: dict[Hex, str], locked: set[Hex], cells, kind: str) -> None:
             tiles[h] = kind
 
 
+def _town_buildings(spots: list[Hex], town: Hex, locked: set[Hex], count: int) -> list[Hex]:
+    """Up to `count` of the shuffled spots, leaving the square room to breathe:
+    trails can't cross buildings, so there's always a way out of town."""
+    touching = [h for h in spots if hx.distance(h, town) == 1][:TOWN_TOUCHING]
+    chosen = [h for h in spots if hx.distance(h, town) != 1 or h in touching][:count]
+
+    def way_out() -> bool:
+        blocked = locked | set(chosen)
+        seen, todo = {town}, [town]
+        while todo:
+            h = todo.pop()
+            if hx.distance(h, town) >= 3:
+                return True
+            for n in hx.neighbors(h):
+                if n in CELL_SET and n not in seen and n not in blocked:
+                    seen.add(n)
+                    todo.append(n)
+        return False
+
+    while not way_out():
+        chosen.pop()
+    return sorted(chosen)
+
+
 def _place_specials(rng, tiles, locked, here: wd.BigHex, world: wd.World, big: Hex) -> tuple[Hex, list[Hex], list[Hex]]:
     """(campfire, building hexes, landmarks the trails must reach)."""
     inner = [h for h in CELLS if hx.distance(h, (0, 0)) <= LOCAL_RADIUS - 2]
     if here.special == "camp":
         _clear(tiles, locked, hx.spiral((0, 0), 1), "plaza")
-        return (0, 0), [], []
+        # Pip's house beside the fire, and the clearing past his door (the tutorial's fight)
+        tiles[PIP_HOUSE] = "building"
+        tiles[PIP_YARD] = "grass"
+        locked.update((PIP_HOUSE, PIP_YARD))
+        return (0, 0), [PIP_HOUSE], [PIP_YARD]
     if here.special == "town":
         town = rng.choice(hx.ring((0, 0), 2))
         _clear(tiles, locked, hx.spiral(town, 2), "plaza")
         spots = [h for h in hx.ring(town, 1) + hx.ring(town, 2) if h in CELL_SET and h not in locked]
         rng.shuffle(spots)
-        buildings = sorted(spots[: rng.randint(5, 7)])
+        buildings = _town_buildings(spots, town, locked, rng.randint(8, 10))
         for h in buildings:
             tiles[h] = "building"
             locked.add(h)
