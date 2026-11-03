@@ -62,7 +62,7 @@ TARGETS = {
     "energy loop: most energy out of a fight (from 20%)": (0, 21),  # a fight is never a refill
     "capstones: most energy saved": (0.5, 16),  # strong ones are fine this late
     "level 9 focus: most energy saved": (1.5, 10),  # (Elementalist+ tops it: fine, long fights cost more)
-    "level 9 focus: least energy saved": (0, 5),  # (Daredevil+: a glass cannon, it pays in energy for its speed)
+    "level 9 focus: least energy saved": (-2, 5),  # plain attacks grew with type levels (2026-11-02), so a focus can dip just under nothing
     "level 9 upgrade: most energy saved": (1, 5),  # none the obvious pick
     "level 7 moves: most energy saved": (5, 20),  # roughly equal, none a must-have ...
     "level 7 moves: least energy saved": (-4, 6),  # ... and none a waste of 4 mana

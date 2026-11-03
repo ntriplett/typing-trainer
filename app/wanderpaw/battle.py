@@ -128,7 +128,8 @@ BOSS_FIRST_LEVEL = 13
 # winning nearly every time to rarely. These put each boss just on the safe
 # side of it (measured with tools/wander_balance.py), so every boss is about
 # as hard at every level, and BOSS_EASE moves them all together.
-BOSS_EASE = 0.83
+TYPE_POWER = 1  # of a pet's level in a type, added to its power for plain attacks of that type
+BOSS_EASE = 0.95
 BOSS_TYPE_EDGE = 0.6  # of a strong type's extra damage (x2 is x1.6): levels and good play can stand in for the right types
 BOSS_SPECIES_ENERGY = {"dragon": 0.96, "phoenix": 0.99, "unicorn": 1.0, "mermaid": 1.15, "flower_fairy": 0.95}
 BOSS_LEVEL_ENERGY = {13: 1.03, 15: 1.0, 17: 0.95, 19: 1.0, 21: 1.02}  # pets don't gain evenly: level 17 is a lean one
@@ -433,6 +434,13 @@ def accuracy(slips: int) -> float:
 
 def pet_hit(power: int) -> float:
     return 3 + 0.6 * power
+
+
+def type_power(member: dict, kind: str) -> float:
+    """A pet's power for a plain attack of this type: its own, plus its level in
+    the type. Moves that spend mana don't get this: it keeps a pet strong once
+    its mana is gone, which is when a long fight is won or lost."""
+    return member["power"] + TYPE_POWER * member.get("types", {}).get(kind, 0)
 
 
 def enemy_energy(level: int) -> int:
@@ -1232,7 +1240,7 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     mix = is_mix(move)
     kind = _mix_kind(team[who], b["kind"], move) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
     mult = matchup(kind, b["kind"])  # for what it says; what it does is against()
-    power = pet_hit(team[who]["power"]) * against(b, kind) * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
+    power = pet_hit(type_power(team[who], kind) if move in ATTACKS else team[who]["power"]) * against(b, kind) * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
     if "battle_cry" in (b.get("bench") or []):
         power *= BATTLE_CRY
     if "hardened" in b["effects"]:

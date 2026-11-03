@@ -1685,6 +1685,19 @@ def test_each_boss_has_its_own_energy_at_each_level():
     assert bt.start(plain, [0, 1])["energy"] == round(bt.enemy_energy(15) * bt.TIERS["tough"]["energy"])  # only bosses
 
 
+def test_plain_attacks_grow_with_the_pets_level_in_that_type():
+    pet = {"power": 20, "types": {"ember": 13, "leaf": 9}}
+    assert bt.type_power(pet, "ember") == 33 and bt.type_power(pet, "leaf") == 29
+    assert bt.type_power(pet, "dream") == 20  # not one of its types
+    def first_hit(move, types):
+        member = {**_pet("ember", 13), "types": types}
+        b = bt.start(_critter(9, "shock", "dog"), [0, 1])
+        hits = [s for s in _round(b, [member, _pet("leaf", 13)], [{"move": move, "slips": 0}, {"move": "guard", "slips": 0}], energy=[900, 900])[0]["log"] if s.get("who") == 0 and s.get("damage")]
+        return hits[0]["damage"]
+    assert first_hit("attack", {"ember": 13}) > first_hit("attack", {"ember": 1})  # a plain attack cares
+    assert first_hit("big", {"ember": 13}) == first_hit("big", {"ember": 1})  # a big move, spending mana, doesn't
+
+
 def test_a_boss_takes_less_from_a_strong_type_but_the_rest_dont():
     boss, tough = {"kind": "ember", "tier": "boss"}, {"kind": "ember", "tier": "tough"}
     assert bt.matchup("splash", "ember") == 2 == bt.against(tough, "splash")
