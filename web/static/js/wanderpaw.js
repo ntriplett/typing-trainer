@@ -699,41 +699,91 @@ const bar = (e, m, cls = "") => `<span class="wander-hp ${cls}"><span style="wid
 
 // --- the party book: everyone together, then each pet up close ---------------------
 
-const PARTY_SCENE_PX = 6; // the 160x90 habitat grid on a 960x540 canvas
-const PARTY_PET_SCALE = 2 / 3;
-const PARTY_TICK_MS = 120;
-// The scene for where you are, by biome. Just grass so far; new ones go here.
-const PARTY_SCENES = {};
-let partyScene = null; // {key, world, background, timer}
+// The picture of where you are (wander_scene.js), with you and your pets in it. One
+// at a time, wherever it's showing: the Party book, a campfire, between days.
+const SCENE_PX = 6; // the 160x90 habitat grid on a 960x540 canvas
+const SCENE_PET_SCALE = 2 / 3;
+const SCENE_AVATAR_SCALE = 0.5; // pets are drawn at twice the avatar's density too
+const SCENE_AVATAR_SIZE = 48;
+const SCENE_TICK_MS = 120;
+const sceneSpecs = new Map(); // where -> the facts (they never change)
+let liveScene = null; // {key, canvasId, scene, world, timer, tick}
+let sceneAvatar = null; // what you're wearing (from /api/me)
+let morning = false; // opened the game between trips: that's a new day, whatever ended the last
 
-function partySceneStart() {
-  const kind = PARTY_SCENES[state.local.biome] || "meadow";
-  const key = `${kind}:${state.team.map((m) => m.name).join()}`;
-  if (!partyScene || partyScene.key !== key) {
-    if (partyScene) clearInterval(partyScene.timer);
-    const look = HABITAT_LOOKS[kind];
-    const area = { left: 2, right: HABITAT_W - 2, top: look.groundTop, bottom: look.groundBottom, props: look.props, terrain: look.terrain };
-    partyScene = { key, world: PetMotion.create(state.team.filter((m) => m.genes), area, PARTY_PET_SCALE), background: habitatBackground(kind, PARTY_SCENE_PX), timer: null };
+const sceneNight = () => Boolean(state.night) && !morning;
+
+async function sceneFacts() {
+  const where = state.local.spot.join();
+  if (!sceneSpecs.has(where)) {
+    const res = await fetch("/api/wander/scene");
+    if (!res.ok) return null;
+    sceneSpecs.set(where, await res.json());
   }
-  if (!partyScene.timer) {
-    partyScene.timer = setInterval(() => {
-      if (!document.getElementById("party-scene")) {
-        clearInterval(partyScene.timer);
-        partyScene.timer = null;
-        return;
-      }
-      PetMotion.step(partyScene.world);
-      partySceneDraw();
-    }, PARTY_TICK_MS);
-  }
-  partySceneDraw();
+  return { where, spec: sceneSpecs.get(where) };
 }
 
-function partySceneDraw() {
-  const ctx = document.getElementById("party-scene").getContext("2d");
+// Who's in the picture: your party, and your friends when you're at Camp.
+function scenePets() {
+  const friends = state.at_camp ? (state.camp_friends || []).map((f) => ({ ...f, growth: 10 })) : [];
+  return [...state.team.filter((m) => m.genes), ...friends];
+}
+
+async function sceneShow(canvasId) {
+  if (window.Header && !sceneAvatar) sceneAvatar = (await Header.ready.catch(() => null))?.avatar || null;
+  const facts = await sceneFacts();
+  if (!facts || !document.getElementById(canvasId)) return;
+  const who = scenePets();
+  const key = `${facts.where}:${sceneNight()}:${who.map((m) => m.id || m.name).join()}`;
+  if (!liveScene || liveScene.key !== key) {
+    if (liveScene) clearInterval(liveScene.timer);
+    const scene = WanderScene.build(facts.spec, SCENE_PX, { night: sceneNight() });
+    liveScene = { key, scene, world: PetMotion.create(who, scene.area, SCENE_PET_SCALE), timer: null, tick: 0 };
+  }
+  liveScene.canvasId = canvasId;
+  if (!liveScene.timer) {
+    liveScene.timer = setInterval(() => {
+      if (!sceneCanvas()) {
+        clearInterval(liveScene.timer);
+        liveScene.timer = null;
+        return;
+      }
+      PetMotion.step(liveScene.world);
+      liveScene.tick++;
+      sceneDraw();
+    }, SCENE_TICK_MS);
+  }
+  sceneDraw();
+}
+
+// The canvas it's showing on, if that's still on the screen.
+function sceneCanvas() {
+  const canvas = document.getElementById(liveScene.canvasId);
+  return canvas && canvas.offsetParent ? canvas : null;
+}
+
+function sceneDraw() {
+  const canvas = sceneCanvas();
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const { scene, world, tick } = liveScene;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(partyScene.background, 0, 0);
-  PetMotion.draw(partyScene.world, habitatPainter(ctx, PARTY_SCENE_PX), { ctx, unit: PARTY_SCENE_PX, tags: true });
+  ctx.drawImage(scene.background, 0, 0);
+  WanderScene.animate(scene, ctx, tick);
+  const px = habitatPainter(ctx, SCENE_PX);
+  const opts = { ctx, unit: SCENE_PX };
+  const order = [...world.walkers].sort((a, b) => a.y - b.y);
+  order.filter((w) => w.y <= scene.avatar.y).forEach((w) => PetMotion.drawOne(world, w, px, opts));
+  if (sceneAvatar) {
+    const left = scene.avatar.x - (SCENE_AVATAR_SIZE * SCENE_AVATAR_SCALE) / 2;
+    const top = scene.avatar.y - SCENE_AVATAR_SIZE * SCENE_AVATAR_SCALE;
+    px(scene.avatar.x - 6, scene.avatar.y - 1, 12, 1.5, "rgba(40, 30, 20, 0.25)");
+    paintAvatar((x, y, w, h, c) => px(left + x * SCENE_AVATAR_SCALE, top + y * SCENE_AVATAR_SCALE, w * SCENE_AVATAR_SCALE, h * SCENE_AVATAR_SCALE, c),
+      sceneAvatar, { background: false, pets: false, frame: Math.floor(tick / 8) });
+  }
+  order.filter((w) => w.y > scene.avatar.y).forEach((w) => PetMotion.drawOne(world, w, px, opts));
+  WanderScene.shade(scene, ctx);
+  PetMotion.drawTags(world, ctx, SCENE_PX);
 }
 
 function partyPetDetail(m, i) {
@@ -785,10 +835,10 @@ function renderParty() {
   const look = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look`;
   const close = `<kbd class="keycap">Esc</kbd> close`;
   if (menu.at === 0) {
-    detail.innerHTML = `<canvas id="party-scene" class="wander-party-scene" width="960" height="540"></canvas>
+    detail.innerHTML = `<canvas id="party-scene" class="wander-scene" width="960" height="540"></canvas>
       <p class="hint">Your party, taking it easy at ${esc(state.local.name)}.</p>`;
     keys.innerHTML = `${look} &nbsp; ${close}`;
-    partySceneStart();
+    sceneShow("party-scene");
     return;
   }
   const m = state.team[menu.at - 1];
@@ -1322,6 +1372,7 @@ function renderPicker() {
   box.hidden = !!state.trip || mode !== "walk" || !pets;
   document.getElementById("keys").hidden = !box.hidden || !state.trip;
   if (box.hidden) return;
+  sceneShow("picker-scene");
   const list = document.getElementById("picker-pets");
   cursor = Math.max(0, Math.min(cursor, pets.pets.length - 1));
   list.innerHTML = pets.pets.length
@@ -1452,6 +1503,9 @@ function renderScreen() {
   }
   title.innerHTML = wanderText(s.title);
   text.innerHTML = wanderText(s.text);
+  const fire = document.getElementById("screen-scene");
+  fire.hidden = !s.rest;
+  if (s.rest) sceneShow("screen-scene");
   if (s.friends) {
     const n = (state.camp_friends || []).length;
     text.insertAdjacentHTML("beforeend", `<br><button type="button" id="camp-friends-button"><kbd class="keycap">F</kbd> Visit your friends${n ? ` (${n})` : ""}</button>`);
@@ -1571,7 +1625,7 @@ async function finishLevelup(choice) {
 function noteFor(data) {
   // (a battle's blow-by-blow goes in its own log, and level-ups get a pop-up)
   const texts = (data.events || []).filter((e) => e.text && e.kind !== "hit" && e.kind !== "level").map((e) => e.text);
-  if (data.note === "rested" && !data.trip) texts.push("You head home for the night. Tomorrow you'll set off from the nearest campfire you've rested at.");
+  if (data.note === "rested" && !data.trip && !morning) texts.push("You head home for the night. Tomorrow you'll set off from the nearest campfire you've rested at.");
   if (data.note === "new_day") texts.push("A new day! You're full of energy.");
   return texts.join(" ");
 }
@@ -1611,6 +1665,8 @@ function apply(data) {
   if (data.battle && mode !== "menu") mode = "battle";
   else if (mode === "battle") mode = "walk";
   if (!data.trip && (!pets || state?.trip)) loadPets(); // back between trips: levels may have changed
+  if (!state) morning = !data.trip;
+  else if (data.trip) morning = false;
   state = data;
   slideTo(data.local.spot);
   typer.release();

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Typing Trainer — Scene Lab</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <link rel="stylesheet" href="/static/css/wanderpaw.css" />
+  <style>
+    #scene-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+    #scene-grid figure { margin: 0; }
+    #scene-grid canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; border: 2px solid var(--outline); }
+    #scene-grid figcaption { font-size: 16px; }
+  </style>
+</head>
+<body>
+  <main class="scene-lab">
+    <section class="panel">
+      <h1>Scene lab</h1>
+      <p class="hint">The generated picture for each land and setting of a world, painted by the game's own code.</p>
+      <div class="lab-options">
+        <label>Seed <input id="opt-seed" type="number" value="3" style="width: 7em" /></label>
+        <label><input id="opt-night" type="checkbox" /> Night</label>
+      </div>
+    </section>
+    <div id="scene-grid"></div>
+  </main>
+  <script src="/static/js/habitats.js"></script>
+  <script src="/static/js/wander_scene.js"></script>
+  <script>
+    const grid = document.getElementById("scene-grid");
+    const seedBox = document.getElementById("opt-seed");
+    const nightBox = document.getElementById("opt-night");
+    const PX = 3;
+    async function show() {
+      const { scenes } = await (await fetch(`/api/scene-lab?seed=${Number(seedBox.value) || 0}`)).json();
+      grid.innerHTML = "";
+      for (const s of scenes) {
+        const fig = document.createElement("figure");
+        const canvas = document.createElement("canvas");
+        canvas.width = HABITAT_W * PX;
+        canvas.height = HABITAT_H * PX;
+        const built = WanderScene.build(s.spec, PX, { night: nightBox.checked });
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(built.background, 0, 0);
+        WanderScene.animate(built, ctx, 3);
+        WanderScene.shade(built, ctx);
+        fig.append(canvas);
+        const cap = document.createElement("figcaption");
+        cap.textContent = `${s.label} (${s.spec.setting}, on ${s.spec.ground})`;
+        fig.append(cap);
+        grid.append(fig);
+      }
+      document.body.dataset.ready = "1";
+    }
+    seedBox.onchange = show;
+    nightBox.onchange = show;
+    show();
+  </script>
+</body>
+</html>

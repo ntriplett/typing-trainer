@@ -658,3 +658,77 @@ def test_the_guidebook_fits_without_scrolling_and_the_bag_stays_red(page: Page, 
         assert sizes["over"] <= 0 and sizes["wide"] <= 0, (at, sizes)
         assert sizes["top"] >= 0 and sizes["bottom"] <= 800
         page.keyboard.press("ArrowRight")
+
+
+def test_a_place_paints_the_same_every_time_and_water_is_where_the_mermaid_swims(page: Page, live_server):
+    from app.wanderpaw import pets as wp
+
+    mermaid = {"species": "mermaid", "name": "Mira", "growth": 10, "genes": wp.looks("mermaid", 1)}
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    out = page.evaluate(
+        """async (mermaid) => {
+          const { scenes } = await (await fetch("/api/scene-lab?seed=3")).json();
+          const seen = { same: true, wet: 0, dry: 0, kinds: new Set() };
+          for (const s of scenes) {
+            const a = WanderScene.build(s.spec, 2);
+            seen.same &&= a.background.toDataURL() === WanderScene.build(s.spec, 2).background.toDataURL();
+            seen.kinds.add(a.background.toDataURL());
+            const swimmer = PetMotion.create([mermaid], a.area, 2 / 3).walkers[0];
+            if (a.area.terrain.water.length) seen.wet += swimmer.pool ? 1 : 0;
+            else seen.dry += swimmer.pool ? 0 : 1;
+            seen.wetTotal = (seen.wetTotal || 0) + (a.area.terrain.water.length ? 1 : 0);
+            seen.dryTotal = (seen.dryTotal || 0) + (a.area.terrain.water.length ? 0 : 1);
+          }
+          return { ...seen, kinds: seen.kinds.size, total: scenes.length };
+        }""",
+        mermaid,
+    )
+    assert out["same"]
+    assert out["kinds"] == out["total"]  # every place its own picture
+    assert out["wet"] == out["wetTotal"] > 0  # water: she swims
+    assert out["dry"] == out["dryTotal"] > 0  # none: she just sits
+
+
+def test_the_picture_shows_at_the_campfire_in_the_party_book_and_by_night(page: Page, live_server):
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#picker-scene")).to_be_visible()  # a day's start
+    assert not page.evaluate("state.night")
+    page.keyboard.press("Enter")
+    expect(page.locator("#energy")).to_be_visible()
+    page.keyboard.press("Enter")  # Camp's campfire
+    expect(page.locator("#screen-scene")).to_be_visible()
+    page.wait_for_function("liveScene && liveScene.canvasId === 'screen-scene'")
+    page.keyboard.press("Escape")
+    expect(page.locator("#screen-scene")).to_be_hidden()
+    page.keyboard.press("3")
+    expect(page.locator("#party-scene")).to_be_visible()
+    page.wait_for_function("liveScene && liveScene.canvasId === 'party-scene' && sceneAvatar")
+    assert page.evaluate("liveScene.scene.spec.setting") == "camp"
+    page.keyboard.press("Escape")
+    # the day ends while you're playing: night
+    page.request.post(f"{live_server}/api/wander/trip/end", data={})
+    page.evaluate("fetch('/api/wander').then((r) => r.json()).then(apply).then(render)")
+    expect(page.locator("#picker-scene")).to_be_visible()
+    page.wait_for_function("liveScene.canvasId === 'picker-scene' && liveScene.scene.night")
+    # back another time: a new day
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#picker-scene")).to_be_visible()
+    page.wait_for_function("liveScene && liveScene.canvasId === 'picker-scene' && !liveScene.scene.night")
+
+
+def test_camp_friends_are_only_in_the_picture_at_camp(page: Page, live_server):
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    friend = {"id": "f1", "name": "Buddy", "species": "cat", "genes": {"species": "cat"}}
+    names = page.evaluate(
+        """(friend) => {
+          state.camp_friends = [friend];
+          state.at_camp = true;
+          const home = scenePets().map((p) => p.name);
+          state.at_camp = false;
+          return [home, scenePets().map((p) => p.name)];
+        }""",
+        friend,
+    )
+    assert "Buddy" in names[0] and "Buddy" not in names[1]

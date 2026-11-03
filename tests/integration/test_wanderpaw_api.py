@@ -812,3 +812,15 @@ def test_starting_over_opens_with_pip_again():
     assert client.post("/api/wander/tutorial", json={"step": "skip"}).json()["tutorial"] is None
     client.post("/api/wander-lab/reset", json={})
     assert client.get("/api/wander").json()["tutorial"]["pages"]
+
+
+def test_the_scene_is_of_where_you_are_and_stays_the_same():
+    first = client.get("/api/wander/scene").json()
+    assert first["setting"] == "camp" and first["special"] == "camp"
+    assert client.get("/api/wander/scene").json() == first
+
+
+def test_the_scene_lab_shows_every_biome():
+    scenes = client.get("/api/scene-lab?seed=3").json()["scenes"]
+    assert {s["spec"]["biome"] for s in scenes} >= {b for bs in wd.BIOMES.values() for b, *_ in bs}
+    assert {s["spec"]["setting"] for s in scenes} >= {"camp", "town", "temple", "heartstone", "shrine", "wild"}

@@ -143,6 +143,15 @@ def test_resting_at_a_campfire_marks_where_a_new_day_starts():
     assert sv.apply_walk({**tired, "camps": []}, away)["at"] == [0, 0]
 
 
+def test_it_is_night_only_between_a_day_ending_and_the_next_starting():
+    save = _on_trip()
+    assert not sv.is_night(sv.new_save(7)) and not sv.is_night(save)
+    tonight = sv.end_trip(save)
+    assert sv.is_night(tonight) and sv.view(tonight)["night"]
+    assert not sv.is_night(sv.start_trip(tonight))
+    assert sv.is_night(sv.nap(save))
+
+
 def test_going_home_ends_the_day_from_anywhere():
     save = _on_trip()
     to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))

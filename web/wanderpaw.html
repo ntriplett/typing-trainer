@@ -32,6 +32,7 @@
         <div class="wander-keys" id="keys"></div>
         <div class="wander-screen panel" id="screen" hidden>
           <h2 class="panel-title" id="screen-title"></h2>
+          <canvas id="screen-scene" class="wander-scene" width="960" height="540" hidden></canvas>
           <canvas id="screen-portrait" class="wander-portrait" width="120" height="96" hidden></canvas>
           <p id="screen-text"></p>
           <div class="wander-letter" id="screen-letter" hidden>
@@ -44,6 +45,7 @@
           <p class="wander-screen-keys" id="screen-keys"></p>
         </div>
         <div class="wander-screen panel wander-picker" id="picker" hidden>
+          <canvas id="picker-scene" class="wander-scene" width="960" height="540"></canvas>
           <h2 class="panel-title">Who's coming?</h2>
           <ul class="wander-pets" id="picker-pets"></ul>
           <p class="wander-screen-keys" id="picker-keys"></p>
@@ -126,6 +128,7 @@
   <script src="/static/js/game_kit.js"></script>
   <script src="/static/js/habitats.js"></script>
   <script src="/static/js/pet_motion.js"></script>
+  <script src="/static/js/wander_scene.js"></script>
   <script src="/static/js/wander_map.js"></script>
   <script src="/static/js/wander_text.js"></script>
   <script src="/static/js/wander_moves.js"></script>

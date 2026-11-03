@@ -728,6 +728,11 @@ const PetMotion = (() => {
     if (ctx && tags && w.p.name) nameTag(ctx, unit, w);
   }
 
+  // Everyone's names, last, so nothing covers them (a scene's dark, say).
+  function drawTags(world, ctx, unit) {
+    for (const w of world.walkers) if (w.p.name) nameTag(ctx, unit, w);
+  }
+
   function flightPose(world, w) {
     w.air ||= petScenePose(w.p.genes, w.p.growth, "air");
     return w.air;
@@ -773,5 +778,5 @@ const PetMotion = (() => {
     ctx.fillText(w.p.name, cx, top);
   }
 
-  return { create, step, draw, drawOne, attract };
+  return { create, step, draw, drawOne, drawTags, attract };
 })();

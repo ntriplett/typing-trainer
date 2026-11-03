@@ -36,6 +36,7 @@ from app.wanderpaw import battle as wander_battle
 from app.wanderpaw import local as wander_local
 from app.wanderpaw import quests as wander_quests
 from app.wanderpaw import save as wander
+from app.wanderpaw import scene as wander_scene
 from app.wanderpaw import world as wander_world
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
@@ -903,6 +904,17 @@ def wander_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "wander_lab.html")
 
 
+@app.get("/scene-lab")
+def scene_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "scene_lab.html")
+
+
+@app.get("/api/scene-lab")
+def scene_lab(seed: int = 3) -> dict:
+    """A picture's facts for every biome and setting of a world, for the scene lab."""
+    return {"scenes": wander_scene.samples(seed)}
+
+
 @app.get("/move-lab")
 def move_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "move_lab.html")
@@ -917,6 +929,13 @@ def move_lab() -> dict:
 @app.get("/api/wander")
 def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     return _wander_state(conn, learner_id, wander.current(conn, learner_id))
+
+
+@app.get("/api/wander/scene")
+def wander_scene_now(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The facts of the picture of where you are, for the page to paint."""
+    save = wander.current(conn, learner_id)
+    return wander_scene.describe(save["seed"], tuple(save["at"]), tuple(save["spot"]))
 
 
 @app.post("/api/wander/walk")

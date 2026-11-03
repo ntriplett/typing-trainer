@@ -2291,6 +2291,11 @@ def clues_view(save: dict) -> list[dict]:
     return out
 
 
+def is_night(save: dict) -> bool:
+    """The day's over (tired out, or gone home) and the next hasn't started."""
+    return not save["trip"] and save["note"] in ("napped", "rested")
+
+
 def team_view(save: dict) -> list[dict]:
     """The team for the party book: how far along each is, and its moves."""
     mana = _mana(save) if save["trip"] else [m["mana"] for m in save["team"]]
@@ -2308,6 +2313,7 @@ def view(save: dict) -> dict:
         "local": local_view(save),
         "trip": save["trip"],
         "note": save["note"],
+        "night": is_night(save),
         "events": save["events"],
         "screen": screen(save),
         "campfires": len(campfires_rested(save)),

@@ -262,7 +262,7 @@ main.wander {
   list-style: none;
   margin: 0 0 0.75rem;
   padding: 0;
-  max-height: 420px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
@@ -1140,12 +1140,22 @@ main.wander {
   align-items: start;
 }
 
-.wander-party-scene {
+.wander-scene {
   display: block;
   width: 100%;
   height: auto;
   border: 3px solid var(--outline);
   image-rendering: pixelated;
+}
+
+.wander-screen .wander-scene {
+  margin-bottom: 0.5rem;
+}
+
+.wander-picker .wander-scene {
+  width: auto;
+  max-height: 250px;
+  margin: 0 auto 0.5rem;
 }
 
 .wander-party .hint {

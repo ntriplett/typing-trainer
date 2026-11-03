@@ -1007,6 +1007,8 @@ can be. {energy}, {mana} and {xp} in text draw their icons in place of the word.
 Tiles are drawn by wander_moves.js everywhere. `/move-lab` (admin) shows every tile (battle.move_catalog), as a party, battle or
 level-up card, 3 or 4 across, and flags any whose words don't fit.
 
+**Generated scenes (2026-11-03).** The picture in the Party book, at campfires and between days is built from where you stand, not stored. `app/wanderpaw/scene.py` describes it (GET /api/wander/scene): your hex sets the foreground and setting (camp, town, temple, heartstone, shrine, house, wild), rings 1-2 are one thing each in the middle distance, out to ring 11 is the horizon by slices plus landmarks to spot. It reads the true land, fog or not: spotting a far town is a fun hint. The view aims at whatever's most interesting and squeezes the whole way round in. `web/static/js/wander_scene.js` paints from those facts with a kit of parts on the habitat grid, seeded per small hex, so a place always looks the same. All water is one body from one side: out to the horizon (the far land flattens behind it), and off the bottom of the picture when you're beside it, which is also where a mermaid can swim; otherwise she sits. You and your party are in it, and camp friends at Camp. Night falls only when a day ends while you're playing. `/scene-lab` shows every biome and setting for any seed.
+
 **Style rule: type words (user, 2026-11-01).** Any time a type's name appears in text (SPLASH, EMBER, DREAM, LEAF, SHOCK),
 it's in all caps and in that type's color. Text marks them as tokens: `{ember}` in strings (`world.tw(kind)` in f-strings;
 `story.fill` instead of `str.format` for templates holding tokens), and the page's `wanderText` (wander_text.js) draws them.
