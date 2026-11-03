@@ -174,6 +174,7 @@ GUIDE_FIGHT = {
     "Out of mana": "Big moves do far more than plain attacks, so a long fight often turns when your {mana} runs out.",
     "Mixes": "A mix hits as whichever of its two types is stronger against Enemy.",
     "Bosses": "A temple's guardian is hard. Bring counters, or come a few levels up and play well. If you lose, try again another day.",
+    "Relics": "Each relic you take makes every creature and every gate you haven't cleared 2 levels harder.",
     "Bag": "In a fight, press 1 to open your bag. Using something doesn't cost your turn.",
     "Slips": "A wrong key while typing a move's word weakens that move.",
 }

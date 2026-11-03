@@ -213,6 +213,11 @@ def levels(save: dict, kind: str) -> int:
     return wp.team_levels(save["team"], kind)
 
 
+def gate_level(save: dict, base: int) -> int:
+    """What a gate takes now: every relic out makes the world harder, gates too."""
+    return base + cr.RELIC_LEVELS * relics_out(save)
+
+
 def has_levels(save: dict, need: tuple[str, int] | None) -> bool:
     return need is None or levels(save, need[0]) >= need[1]
 
@@ -300,11 +305,11 @@ def _bump_bridge(save: dict, shortcut: str) -> dict:
             texts.append(f"You pick up the {mine.split(' for ')[0]} on this side.")
         kind = sides[far]
         if not save["items"].get(theirs):
-            if has_levels(save, (kind, qs.FETCH_LEVEL)):
+            if has_levels(save, (kind, gate_level(save, qs.FETCH_LEVEL))):
                 save = _give(save, theirs)
                 texts.append(f"Your {st.TYPE_NAMES[kind]} pet {st.CARRY[kind]} the {theirs.split(' for ')[0]} across from the far side!")
             else:
-                texts.append(f"The {theirs.split(' for ')[0]} is on the far side. A pet with {qs.FETCH_LEVEL} {st.TYPE_NAMES[kind]} levels could bring it across, or walk around.")
+                texts.append(f"The {theirs.split(' for ')[0]} is on the far side. A pet with {gate_level(save, qs.FETCH_LEVEL)} {st.TYPE_NAMES[kind]} levels could bring it across, or walk around.")
     return _event(save, kind="bridge", text=" ".join(texts))
 
 
@@ -364,7 +369,7 @@ def _try_gate(save: dict, local: lc.LocalMap, h: Hex) -> dict:
     gate = world_of(save).gates[edge]
     what, does = st.FIELD_SKILLS[gate.kind]
     name = st.TYPE_NAMES[gate.kind]
-    need = gate.level
+    need = gate_level(save, gate.level)
     short = need - levels(save, gate.kind)
     if 0 < short <= sh.LUCKY_LEVELS and save["items"].get(sh.LUCKY):
         save = _give(save, sh.LUCKY, -1)
@@ -1095,7 +1100,7 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
         save = {**save, "temples": [*save["temples"], region],
                 "buffs": {**save["buffs"], region: tale.buff}}
         save = _xp(_give(save, tale.relic), st.XP_TEMPLE)
-        return _event(save, kind="relic", text=f"You found the {tale.relic}! Your {st.TYPE_NAMES[region]} pet becomes {tale.buff}.")
+        return _event(save, kind="relic", text=f"You found the {tale.relic}! Your {st.TYPE_NAMES[region]} pet becomes {tale.buff}. But the land stirs: every creature and gate grows {cr.RELIC_LEVELS} levels harder.")
     if action == "heartstone":
         return _event({**save, "finished": True}, kind="credits")
     if action == "credits":
@@ -1786,6 +1791,7 @@ def big_view(save: dict) -> dict:
             edge = wd.edge_json(k, v, world.gates.get(k))
             if "gate" in edge:
                 edge["gate"]["cleared"] = cleared(save, k)
+                edge["gate"]["level"] = gate_level(save, edge["gate"]["level"])
             edges.append(edge)
     # Where a quest-giver said to look, and where a rumor says a key is,
     # even before you've been there.

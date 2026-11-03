@@ -156,6 +156,11 @@ const IDEA_ART = {
     for (const x of [2, 7, 12]) r(x, 3, 2, 1, "#f8e08a");
     r(7, 9, 2, 2, "#c8382a");
   },
+  Relic: (r) => {
+    for (let k = 0; k < 5; k++) r(8 - (k + 1), 2 + k, 2 * (k + 1), 1, k % 2 ? "#c0a0ec" : "#a878e0");
+    for (let k = 0; k < 7; k++) r(8 - (5 - k * 0.7), 7 + k, 2 * (5 - k * 0.7), 1, k % 2 ? "#8a58c8" : "#7a48b8");
+    r(6, 4, 2, 1, "#ffffff");
+  },
   First: (r) => {
     itemDisc(r, 8, 9, 5, "#e8b33e");
     itemDisc(r, 8, 9, 3.5, "#f8d870");

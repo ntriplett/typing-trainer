@@ -75,12 +75,12 @@ def test_a_field_skill_clears_a_gate_for_good():
 
 
 def test_gates_count_type_levels():
-    big, local, h, gate = _find_gate(level=8)
+    big, local, h, gate = _find_gate(level=wd.TEMPLE_LEVEL)
     save = _at(_trip(), big, _beside(local, h))
     with pytest.raises(sv.WanderError, match="you have 5"):
         sv.apply_walk(save, h)  # one pet at level 5 isn't enough
-    assert sv.apply_walk({**save, "team": _team(gate.kind, gate.kind)}, h)["spot"] == list(h)
-    assert sv.apply_walk({**save, "team": _team(gate.kind, lv=8)}, h)["spot"] == list(h)
+    assert sv.apply_walk({**save, "team": _team(gate.kind, gate.kind, lv=7)}, h)["spot"] == list(h)  # two pets add up
+    assert sv.apply_walk({**save, "team": _team(gate.kind, lv=wd.TEMPLE_LEVEL)}, h)["spot"] == list(h)
 
 
 def test_a_cleared_gate_leads_on():
@@ -227,3 +227,31 @@ def test_type_names_in_text_are_tokens_for_the_page_to_style():
             for m in bt.described_moves({**member, "focus": focus}) + bt.moves({**member, "focus": focus}, "dream"):
                 for text in (m["label"], m["note"]):
                     assert not re.search(r"\b(Ember|Splash|Leaf|Shock|ember|splash|leaf|shock)\b(?!\})", re.sub(r"\{\w+\}", "", text)), text
+
+
+def test_each_relic_makes_gates_two_levels_harder():
+    save = sv.start_trip(sv.new_save(5))
+    world = sv.world_of(save)
+    edge, gate = next((e, g) for e, g in world.gates.items() if g.kind != "quest" and g.level == wd.TEMPLE_LEVEL)
+    assert gate.level == 13
+    big = edge[0]
+    local = sv.local_of(save, big)
+    h = next(h for h, e in local.gates.items() if e == edge)
+    team = lambda n: [{**wp.starter(gate.kind, 1), "id": 1, "types": {gate.kind: n}}]  # noqa: E731
+    assert sv._try_gate({**save, "team": team(13)}, local, h)["cleared"]  # no relics: 13 will do
+    two = {**save, "temples": ["ember", "leaf"]}
+    assert sv.gate_level(two, gate.level) == 17
+    with pytest.raises(sv.WanderError, match="17"):
+        sv._try_gate({**two, "team": team(16)}, local, h)
+    assert sv._try_gate({**two, "team": team(17)}, local, h)["cleared"]
+    # the map shows what it takes now
+    shown = {**two, "visited": [list(big)]}
+    assert any(e.get("gate") and e["gate"]["kind"] == gate.kind and e["gate"]["level"] == 17 for e in sv.big_view(shown)["edges"])
+
+
+def test_a_gate_you_already_cleared_stays_cleared_when_relics_come_out():
+    save = sv.start_trip(sv.new_save(5))
+    world = sv.world_of(save)
+    edge = next(e for e, g in world.gates.items() if g.kind != "quest")
+    done = {**save, "cleared": [sv._edge_id(edge)], "temples": ["ember", "leaf", "dream"]}
+    assert sv.cleared(done, edge)

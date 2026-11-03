@@ -1083,7 +1083,7 @@ function guideFight(g) {
   const round = ["You pick each pet's move", "Fast moves go first", "Your pets act", "Enemy acts", "Burns and such, at the end"];
   const icons = {
     "Your first type": itemIcon("First", 32), "Plain attacks": hitDots("#e8a03a", 2), "Out of mana": MANA_ICON, Mixes: mixSvg(),
-    Bosses: itemIcon("Boss", 32), Bag: itemIcon("Bag", 32), Slips: itemIcon("Key", 32),
+    Bosses: itemIcon("Boss", 32), Relics: itemIcon("Relic", 32), Bag: itemIcon("Bag", 32), Slips: itemIcon("Key", 32),
   };
   const termIcons = {
     Energy: ENERGY_ICON, Mana: MANA_ICON, Round: itemIcon("Round", 32), Fast: hasteIcon(), "Goes last": hasteIcon(true),
