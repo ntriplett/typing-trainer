@@ -195,6 +195,14 @@ def along_pets(conn, learner_id: int) -> list[dict]:
     )
 
 
+def guard_pet(conn, learner_id: int) -> dict:
+    """Who runs out for you in Crow Patrol: your first pet along, or a friendly stray."""
+    along = along_pets(conn, learner_id)
+    if along:
+        return along[0]
+    return {"name": "", "species": "dog", "growth": 10, "genes": g.resolve(g.roll("dog", None, None, learner_id)), "slot": None}
+
+
 # --- habitats -------------------------------------------------------------------------
 
 

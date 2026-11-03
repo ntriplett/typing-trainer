@@ -331,6 +331,19 @@
 }
 
 .crow-word.kind-big { font-size: 34px; }
+.crow-word.kind-king {
+  font-size: 34px;
+  border-color: #c8921a;
+  background: #fff4c8;
+}
+.crow-word.kind-guard {
+  border-color: #4a8a4a;
+  background: #eef8e6;
+}
+.choice-card.king {
+  border-color: #c8921a;
+  background: #fff4c8;
+}
 .crow-word.kind-little { font-size: 26px; }
 .crow-word.kind-golden { border-color: var(--leaf-gold); background: #fff3c4; }
 .crow-word.kind-runner { border-color: #a0602c; }

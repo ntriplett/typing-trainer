@@ -140,6 +140,7 @@ const DayTracker = {
     teach_first: "First lesson bonus!",
     game: "Game",
     daily_goal: "Daily goal!",
+    king_crow: "King Crow!",
     daily_bonus: "Bonus token!",
     daily_seed: "A seed!",
   };

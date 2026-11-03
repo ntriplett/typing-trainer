@@ -424,3 +424,132 @@ def test_farm_stand_a_whole_day_ends_in_the_evening_and_shop(page: Page, live_se
     page.keyboard.press("Enter")
     expect(page.locator(".game-card")).to_contain_text("Final score")
     assert errors == []
+
+
+# --- Crow Patrol's cards ------------------------------------------------------------
+
+
+def _to_cards(page, live_server, before_round=1):
+    """At the card pick before round `before_round`."""
+    start_crows(page, live_server)
+    page.evaluate(f"game.levelIndex = {before_round - 1}; game.chooseUpgrade()")
+    expect(page.locator(".choice-card")).to_have_count(3)
+
+
+def test_a_round_card_is_offered_just_before_its_crow(page: Page, live_server):
+    for before, card in ((1, "slingshot"), (2, "earmuffs"), (3, "acorns"), (4, "net")):
+        _to_cards(page, live_server, before)
+        assert card in page.evaluate("game.choices.map((c) => c.id)")
+
+
+def test_sunny_and_rainy_come_together_and_only_one_can_be_taken(page: Page, live_server):
+    _to_cards(page, live_server)
+    offers = page.evaluate("Array.from({length: 200}, () => game.offerCards())")
+    assert all(("sunny" in o) == ("rainy" in o) for o in offers)
+    assert any("sunny" in o for o in offers)
+    assert all(len(o) == 3 and len(set(o)) == 3 for o in offers)
+    after = page.evaluate("game.upgrades.rainy = 1; Array.from({length: 100}, () => game.offerCards())")
+    assert not any("sunny" in o or "rainy" in o for o in after)
+
+
+def test_one_time_cards_arent_offered_twice_but_others_can_stack(page: Page, live_server):
+    _to_cards(page, live_server)
+    offers = page.evaluate("game.upgrades.calm = 1; game.upgrades.fence = 1; Array.from({length: 200}, () => game.offerCards())")
+    assert not any("calm" in o for o in offers)
+    assert any("fence" in o for o in offers)
+
+
+def test_king_crow_is_only_a_chance_before_the_last_round(page: Page, live_server):
+    _to_cards(page, live_server, 4)
+    seen = page.evaluate("game.kingChance = 0.5; Array.from({length: 400}, () => game.offerCards().includes('king'))")
+    assert 120 < sum(seen) < 280  # about half
+    page.evaluate("game.levelIndex = 2")
+    assert not any(page.evaluate("game.kingChance = 1; Array.from({length: 50}, () => game.offerCards().includes('king'))"))
+    page.evaluate("game.levelIndex = 3; game.game.king_ready = false")
+    assert not any(page.evaluate("Array.from({length: 50}, () => game.offerCards().includes('king'))"))
+
+
+def test_king_crow_comes_halfway_with_two_guards_and_pays_a_token_once(page: Page, live_server):
+    errors = start_crows(page, live_server)
+    page.evaluate("""game.levelIndex = 4; game.upgrades.king = 1; game.resetPatch(); game.resetRound(); game.state = 'play';
+                     game.spawnIn = 99""")
+    assert page.evaluate("game.flying().length") == 0
+    page.evaluate("game.timeLeft = game.roundSeconds / 2")
+    page.wait_for_function("game.flying().filter((c) => c.kind === 'king').length === 1")
+    assert page.evaluate("game.flying().filter((c) => c.kind === 'squirrel').length") == 2
+    assert page.evaluate("CROW_KINDS.king.size") == 2 * page.evaluate("CROW_KINDS.crow.size")
+    page.evaluate("game.ringBell.call(Object.assign(game, {bellLeft: 1}))")
+    assert page.evaluate("game.flying().filter((c) => c.kind === 'king').length") == 1  # the bell won't do it
+    word = page.evaluate("game.flying().find((c) => c.kind === 'king').word")
+    page.keyboard.type(word)
+    page.wait_for_function("document.querySelector('#token-count').textContent === '1'")
+    # another game today: he's not ready, and caught can't pay again
+    assert page.request.post(f"{live_server}/api/crow-king/caught").json()["paid"] is False
+    assert page.request.post(f"{live_server}/api/crow-king/appear").json()["ok"] is False
+    game = page.request.get(f"{live_server}/api/game/{CROWS}/content", params={"keys": "home"}).json()["game"]
+    assert game["king_ready"] is False
+    assert errors == []
+
+
+def test_your_pet_runs_out_for_its_long_word_then_comes_back(page: Page, live_server):
+    errors = start_crows(page, live_server)
+    page.evaluate("game.upgrades.guard = 1; game.resetRound(); game.state = 'play'; game.spawnIn = 99")
+    guard = page.evaluate("({word: game.guard.word, state: game.guard.state})")
+    assert guard["state"] == "ready" and len(guard["word"]) >= 4
+    expect(page.locator(".crow-word.kind-guard")).to_be_visible()
+    page.evaluate("game.spawnCrow('crow')")
+    page.keyboard.type(guard["word"])
+    page.wait_for_function("game.guard.state !== 'ready'")
+    page.wait_for_function("game.flying().length === 0")  # it scared the crow off
+    assert page.evaluate("game.shooed.crow") == 1
+    page.wait_for_function("game.guard.state === 'ready' && game.guard.word.length > 0")  # back, with a new word
+    assert page.evaluate("Math.round(game.guard.x)") == page.evaluate("GUARD_HOME.x")
+    assert errors == []
+
+
+def test_hot_streak_triples_after_five_clean_crows_and_a_slip_breaks_it(page: Page, live_server):
+    start_crows(page, live_server)
+    page.evaluate("game.upgrades.hot = 1; game.spawnIn = 99")
+    for _ in range(5):
+        page.evaluate("game.countStreak({kind: 'crow', x: 50, y: 50})")
+    assert page.evaluate("game.streakHot") is True
+    page.evaluate("game.countStreak({kind: 'crow', x: 50, y: 50})")
+    assert page.evaluate("game.streakBonus") == 40  # the crow's 20, twice more
+    page.evaluate("for (let i = 0; i < 4; i++) game.countStreak({kind: 'crow', x: 50, y: 50})")
+    page.evaluate("game.spawnCrow('crow'); game.flying()[0].word = 'fff'; game.flying()[0].shown = -1")
+    page.keyboard.press("f")
+    page.keyboard.press("z")
+    assert page.evaluate("game.streak") == 0
+
+
+def test_points_follow_your_cards(page: Page, live_server):
+    start_crows(page, live_server)
+    assert page.evaluate("game.pointsFor('crow')") == 20
+    assert page.evaluate("game.upgrades.whistle = 1; game.pointsFor('crow')") == 40
+    assert page.evaluate("game.upgrades.shiny = 1; game.pointsFor('crow')") == 60
+    assert page.evaluate("game.upgrades.whistle = 0; game.upgrades.shiny = 0; game.upgrades.net = 1; game.pointsFor('golden')") == 200
+
+
+def test_calm_crows_stop_the_call_and_weather_changes_the_round(page: Page, live_server):
+    start_crows(page, live_server)
+    assert page.evaluate("game.upgrades.sunny = 1; game.roundSeconds") == 70
+    assert page.evaluate("game.upgrades.sunny = 0; game.upgrades.rainy = 1; game.roundSeconds") == 50
+    page.evaluate("game.upgrades.calm = 1; game.spawnIn = 99; game.spawnCrow('crow'); game.flying()[0].word = 'fff'; game.flying()[0].shown = -1")
+    page.keyboard.press("f")
+    page.keyboard.press("z")
+    expect(page.locator(".crow-bubble")).to_have_count(0)
+    assert page.evaluate("game.flying().length") == 1
+
+
+def test_compost_grows_a_pumpkin_back_and_a_decoy_goes_first(page: Page, live_server):
+    start_crows(page, live_server)
+    page.evaluate("game.upgrades.compost = 1; game.pumpkins[0].taken = true; game.spawnIn = 99")
+    page.evaluate("for (let i = 0; i < 7; i++) game.growCompost()")
+    assert page.evaluate("game.pumpkins[0].taken") is True
+    page.evaluate("game.growCompost()")
+    assert page.evaluate("game.pumpkins[0].taken") is False
+    page.evaluate("game.upgrades.decoy = 1; game.resetRound(); game.spawnIn = 99; game.state = 'play'")
+    fake = page.evaluate("const c = game.spawnCrow('crow'); c.t = 0.999; c.pumpkin.fake === true")
+    assert fake is True
+    page.wait_for_function("game.decoy.taken")
+    assert page.evaluate("game.pumpkins.every((p) => !p.taken) && game.flying()[0].pumpkin.fake !== true")

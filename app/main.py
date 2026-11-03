@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, daily, db, desktop, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -615,7 +615,22 @@ def game_content(
         out["game"] = pet_care.battle_pets(out["game"])
     if module.game == "farm_stand":
         out["game"] = farm_stand.game_data(conn, learner_id, out["game"])
+    if module.game == "crow_patrol":
+        out["game"] = {**out["game"], "king_ready": crow_king.ready(conn, learner_id, now()), "helper": pet_care.guard_pet(conn, learner_id)}
     return out
+
+
+@app.post("/api/crow-king/appear")
+def crow_king_appear(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """King Crow flies in, if he hasn't been by lately. That uses up his visit."""
+    return {"ok": crow_king.appear(conn, learner_id, now())}
+
+
+@app.post("/api/crow-king/caught")
+def crow_king_caught(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """You shooed King Crow: his token, once a visit."""
+    balance = crow_king.caught(conn, learner_id, now())
+    return {"paid": balance is not None, "tokens": balance if balance is not None else db.get_token_balance(conn, learner_id)}
 
 
 class GameRoundRequest(BaseModel):
