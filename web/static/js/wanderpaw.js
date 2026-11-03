@@ -210,10 +210,10 @@ function renderBattle() {
   const marks = [
     ...Object.entries(b.marks || {}).map(([m, rounds]) => {
       const color = WanderMap.TYPE_COLORS[MARK_TYPE[m]];
-      return `<span class="wander-mark" style="border-color:${color};color:${color}">${esc(m)} <small>(${rounds})</small></span>`;
+      return `<span class="wander-mark" style="border-color:${color};color:${color}">${burstSvg(color)} ${esc(m)} <small>(${rounds})</small></span>`;
     }),
-    ...Object.entries(b.effects || {}).map(([e, rounds]) => `<span class="wander-mark effect">${esc(EFFECT_NAMES[e] || e)} <small>(${rounds})</small></span>`),
-    ...(b.skip ? [`<span class="wander-mark effect">can't move <small>(${b.skip})</small></span>`] : []),
+    ...Object.entries(b.effects || {}).map(([e, rounds]) => `<span class="wander-mark effect">${effectIcon(EFFECT_NAMES[e] || e)} ${esc(EFFECT_NAMES[e] || e)} <small>(${rounds})</small></span>`),
+    ...(b.skip ? [`<span class="wander-mark effect">${effectIcon("can't move")} can't move <small>(${b.skip})</small></span>`] : []),
   ].join(" ");
   animateMarks();
   const intent = document.getElementById("battle-intent");
@@ -256,7 +256,7 @@ function renderBattle() {
           <div><b>${esc(f.name)}</b> <small>lv ${f.level}</small> ${chips(f.types)}<br>
           ${bar(petEnergy(f), f.max)} <small title="Energy">${petEnergy(f)} / ${f.max} ${ENERGY_ICON}</small><br>
           ${bar(petMana(f), f.max_mana, "mana")} <small class="wander-mana" title="Mana">${petMana(f)} / ${f.max_mana} ${MANA_ICON}</small>
-          ${f.ward ? `<span class="wander-mark" title="Used up first, and gone when the battle ends">ward +${f.ward}</span>` : ""}${f.focused ? `<span class="wander-mark">focused</span>` : ""}${f.asleep ? `<span class="wander-mark">asleep</span>` : ""}${f.marked ? `<span class="wander-mark">marked</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
+          ${f.ward ? `<span class="wander-mark" title="Used up first, and gone when the battle ends">${effectIcon("ward")} ward +${f.ward}</span>` : ""}${f.focused ? `<span class="wander-mark">${effectIcon("focused")} focused</span>` : ""}${f.asleep ? `<span class="wander-mark">${effectIcon("asleep")} asleep</span>` : ""}${f.marked ? `<span class="wander-mark">${burstSvg("#55504a")} marked</span>` : ""}${f.energy ? "" : "<br><small>Worn out</small>"}</div>
         </div>
         ${moves}
       </div>`;
@@ -1027,7 +1027,7 @@ function guideComboChart() {
   return `<p>A big move leaves a mark; the next hit of the right type sets off a combo. Found ${found.length} of ${state.combo_book.length}.</p>
     <table class="wander-combos">
       <tr><th>mark / hit</th>${order.map((t) => `<th>${chips({ [t]: "" })}</th>`).join("")}</tr>
-      ${marks.map((m) => `<tr><th style="color:${WanderMap.TYPE_COLORS[MARK_TYPE[m]]}">${m}</th>${order.map((t) => {
+      ${marks.map((m) => `<tr><th style="color:${WanderMap.TYPE_COLORS[MARK_TYPE[m]]}">${burstSvg(WanderMap.TYPE_COLORS[MARK_TYPE[m]])} ${m}</th>${order.map((t) => {
         const c = cell(m, t);
         return `<td class="${c ? (c.name ? "found" : "") : "gap"}">${c ? (c.name ? esc(c.name) : "???") : ""}</td>`;
       }).join("")}</tr>`).join("")}
@@ -1037,7 +1037,7 @@ function guideComboChart() {
 function guideCombosFound() {
   const found = state.combo_book.filter((c) => c.name);
   return found.length
-    ? `<ul class="wander-combo-list">${found.map((c) => `<li><b>${esc(c.name)}</b> (${c.mark} + ${wanderText(`{${c.hit}}`)}): ${wanderText(c.says || "")}</li>`).join("")}</ul>`
+    ? `<ul class="wander-combo-list">${found.map((c) => `<li>${burstSvg(WanderMap.TYPE_COLORS[MARK_TYPE[c.mark]])} <b>${esc(c.name)}</b> (${c.mark} + ${wanderText(`{${c.hit}}`)}): ${wanderText(c.says || "")}</li>`).join("")}</ul>`
     : `<p class="hint">None yet. Set one off in a fight, and it's written down here.</p>`;
 }
 
@@ -1045,14 +1045,13 @@ function guideCombosFound() {
 const guideCard = (icon, name, text, color = "#2a8a8a", extra = "") =>
   `<div class="wander-guide-card" style="border-left-color:${color}"><span class="wander-guide-icon" aria-hidden="true">${icon}</span><div><b>${esc(name)}</b><br>${wanderText(text)}${extra}</div></div>`;
 
-const MARK_ICONS = { Soaked: "💧", Glowing: "🔥", Drowsy: "💤", Static: "⚡", Tangled: "🌿" };
 // What each effect does to a fight, so the page reads in groups.
 const EFFECT_GROUPS = [
-  ["It loses its turn", "#8a4fb8", { Asleep: "😴", Rooted: "🌱", Sleepy: "💤", Wired: "⚡", Poppies: "🌺", Lull: "🌙" }],
-  ["It gets hurt", "#c8382a", { Burning: "🔥", Thorns: "🌵", Brambles: "🌿", Dizzy: "💫", Bubble: "🫧" }],
-  ["It hits softer", "#3a7fc8", { Drenched: "🌊", Scalded: "♨️", Sanctuary: "🛡️" }],
-  ["It's bracing or hitting hard", "#b8842a", { Hardened: "🪨", "Heavy Blow": "💥", Sweep: "🌀" }],
-  ["It helps you", "#4f8f2a", { Mending: "💚" }],
+  ["It loses its turn", "#8a4fb8", ["Asleep", "Rooted", "Sleepy", "Wired", "Poppies", "Lull"]],
+  ["It gets hurt", "#c8382a", ["Burning", "Thorns", "Brambles", "Dizzy", "Bubble"]],
+  ["It hits softer", "#3a7fc8", ["Drenched", "Scalded", "Sanctuary"]],
+  ["It's bracing or hitting hard", "#b8842a", ["Hardened", "Heavy Blow", "Sweep"]],
+  ["It helps you", "#4f8f2a", ["Mending"]],
 ];
 
 function guideMarks(g) {
@@ -1062,17 +1061,17 @@ function guideMarks(g) {
     ? `For example, <b>${esc(found.mark)}</b> plus a ${wanderText(`{${found.hit}}`)} hit is <b>${esc(found.name)}</b>: ${wanderText(found.says || "")}`
     : "Find one in a fight, and it'll be your example here.";
   const seen = new Set();
-  const groups = EFFECT_GROUPS.map(([label, color, icons]) => {
-    const cards = Object.entries(icons).filter(([k]) => g.effects[k]).map(([k, icon]) => {
+  const groups = EFFECT_GROUPS.map(([label, color, names]) => {
+    const cards = names.filter((k) => g.effects[k]).map((k) => {
       seen.add(k);
-      return guideCard(icon, k, g.effects[k], color);
+      return guideCard(effectIcon(k, 32), k, g.effects[k], color);
     }).join("");
     return `<h3>${esc(label)}</h3><div class="wander-guide-cards">${cards}</div>`;
   }).join("");
-  const rest = Object.keys(g.effects).filter((k) => !seen.has(k)).map((k) => guideCard("✨", k, g.effects[k])).join("");
+  const rest = Object.keys(g.effects).filter((k) => !seen.has(k)).map((k) => guideCard(effectIcon(k, 32), k, g.effects[k])).join("");
   return `<h3>Marks</h3>
     <p>A big move leaves a mark. The next hit of the right type uses it up and sets off a combo.</p>
-    <div class="wander-guide-cards">${Object.entries(g.marks).map(([k, v]) => guideCard(MARK_ICONS[k] || "✨", k, v, markType(k))).join("")}</div>
+    <div class="wander-guide-cards">${Object.entries(g.marks).map(([k, v]) => guideCard(burstSvg(markType(k)), k, v, markType(k))).join("")}</div>
     <p class="wander-guide-example">${example}</p>
     ${groups}${rest ? `<h3>Others</h3><div class="wander-guide-cards">${rest}</div>` : ""}`;
 }
@@ -1082,8 +1081,14 @@ function guideFight(g) {
   const most = Math.max(h.big, h.typed, h.plain);
   const bar = (label, n, color) => `<div class="wander-guide-bar"><span>${label}</span><span class="track"><span style="width:${(100 * n) / most}%;background:${color}"></span></span><b>${n}</b></div>`;
   const round = ["You pick each pet's move", "Fast moves go first", "Your pets act", "Enemy acts", "Burns and such, at the end"];
-  const icons = { "Your first type": "🥇", "Plain attacks": "👊", "Out of mana": "💧", Mixes: "🔀", Bosses: "👑", Bag: "🎒", Slips: "⌨️" };
-  const termIcons = { Energy: "⚡", Mana: "💧", Round: "🔁", Fast: "⏩", "Goes last": "🐢", Focus: "🎯", Mix: "🔀", "Worn out": "😴" };
+  const icons = {
+    "Your first type": itemIcon("First", 32), "Plain attacks": hitDots("#e8a03a", 2), "Out of mana": MANA_ICON, Mixes: mixSvg(),
+    Bosses: itemIcon("Boss", 32), Bag: itemIcon("Bag", 32), Slips: itemIcon("Key", 32),
+  };
+  const termIcons = {
+    Energy: ENERGY_ICON, Mana: MANA_ICON, Round: itemIcon("Round", 32), Fast: hasteIcon(), "Goes last": hasteIcon(true),
+    Focus: itemIcon("Focus", 32), Mix: mixSvg(), "Worn out": itemIcon("Tired", 32),
+  };
   return `<h3>A round</h3>
     <ol class="wander-guide-steps">${round.map((r) => `<li>${esc(r)}</li>`).join("")}</ol>
     <h3>How hard a level ${h.level} pet hits</h3>
@@ -1092,9 +1097,9 @@ function guideFight(g) {
       ${bar(`Plain attack at level ${h.level} in that type`, h.typed, "#e8a03a")}
       ${bar("Big move, spending mana", h.big, "#3a7fc8")}
     </div>
-    <div class="wander-guide-cards">${Object.entries(g.fight).map(([k, v]) => guideCard(icons[k] || "✨", k, v)).join("")}</div>
+    <div class="wander-guide-cards">${Object.entries(g.fight).map(([k, v]) => guideCard(icons[k] || itemIcon(k, 32), k, v)).join("")}</div>
     <h3>Words to know</h3>
-    <div class="wander-guide-cards">${Object.entries(g.terms).map(([k, v]) => guideCard(termIcons[k] || "✨", k, v, "#c8b48c")).join("")}</div>`;
+    <div class="wander-guide-cards">${Object.entries(g.terms).map(([k, v]) => guideCard(termIcons[k] || itemIcon(k, 32), k, v, "#c8b48c")).join("")}</div>`;
 }
 
 function guideLands(g) {
@@ -1659,6 +1664,7 @@ for (const [id, name] of [["battle-bag", "bag"], ["battle-guide", "guide"]]) {
     if (state && !busy && !replay) openMenu(name);
   });
 }
+document.querySelectorAll("[data-idea]").forEach((el) => (el.innerHTML = itemIcon(el.dataset.idea, 16)));
 document.getElementById("menu-close").addEventListener("click", (e) => {
   e.currentTarget.blur(); // keep Enter for the map
   if (!menu) return;

@@ -33,6 +33,35 @@ function burstSvg(color) {
   return `<svg class="wander-icon-burst" viewBox="0 0 18 18" width="17" height="17" aria-hidden="true"><path d="M9 1 L10.6 5.4 L14.8 3 L13 7.4 L17 9 L13 10.6 L15 15 L10.6 12.8 L9 17 L7.4 12.8 L3 15 L5 10.6 L1 9 L5 7.4 L3.2 3 L7.4 5.4 Z" fill="${color}" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 }
 
+// A mix: a square cut corner to corner, a triangle of each type, like a mix's tile.
+function mixSvg(a = "#3a7fc8", b = "#c8382a") {
+  return `<svg class="wander-icon-mix" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 1 H15 L1 15 Z" fill="${a}"/><path d="M15 1 V15 H1 Z" fill="${b}"/><rect x="1" y="1" width="14" height="14" fill="none" stroke="#3b2417" stroke-width="1.2"/></svg>`;
+}
+
+// A hit: the circles a move's card shows.
+const hitDots = (color, count = 1) => `<span class="wander-icon-dots">${Array.from({ length: count }, () => `<i class="wander-icon-dot" style="background:${color}"></i>`).join("")}</span>`;
+
+// Fast is the >> on a move's card; going last is the same, turned round.
+const hasteIcon = (slow = false) => `<span class="wander-icon-haste">${slow ? "&laquo;" : "&raquo;"}</span>`;
+
+// What an effect does, as a picture: the same in battle and in the guidebook,
+// by the words either one uses for it. They share pictures by what they do
+// until effects get their own.
+const LOSES_TURN = (size) => itemIcon("Lost turn", size);
+const HURTS = () => hitDots("#c8382a");
+const SOFTER = (size) => itemIcon("Softer", size);
+const GUARDED = () => shieldSvg("you", []);
+const EFFECT_ICONS = {
+  asleep: LOSES_TURN, rooted: LOSES_TURN, sleepy: LOSES_TURN, wired: LOSES_TURN, poppies: LOSES_TURN, lull: LOSES_TURN, "can't move": LOSES_TURN, wisp: LOSES_TURN,
+  burning: HURTS, thorns: HURTS, brambles: HURTS, dizzy: HURTS, bubble: HURTS,
+  "heavy blow": () => hitDots("#55504a", 2), sweep: () => hitDots("#55504a", 2),
+  drenched: SOFTER, scalded: SOFTER,
+  sanctuary: GUARDED, hardened: GUARDED, braced: GUARDED, ward: GUARDED,
+  mending: () => ENERGY_ICON, "pets mending": () => ENERGY_ICON,
+  focused: (size) => itemIcon("Focus", size),
+};
+const effectIcon = (name, size = 16) => (EFFECT_ICONS[name.toLowerCase()] || LOSES_TURN)(size);
+
 function moveIcons(m) {
   const icons = m.icons;
   if (!icons) return "";

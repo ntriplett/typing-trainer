@@ -114,6 +114,76 @@ const ITEM_ART = {
   },
 };
 
+// Small pictures for the rest of the game's ideas: one picture for one idea,
+// everywhere it shows. The move cards' own icons are in wander_moves.js.
+const IDEA_ART = {
+  Bag: (r) => {
+    r(6, 2, 4, 2, "#7a2a1e");
+    r(5, 3, 1, 3, "#7a2a1e");
+    r(10, 3, 1, 3, "#7a2a1e");
+    r(3, 5, 10, 9, "#b8432f");
+    r(3, 5, 10, 1, "#7a2a1e");
+    r(5, 8, 6, 4, "#d8604a");
+    r(7, 9, 2, 1, "#f8d870");
+    r(3, 13, 10, 1, "#7a2a1e");
+  },
+  Book: (r) => {
+    r(2, 1, 12, 14, "#d8f4ee");
+    r(2, 1, 3, 14, "#14504e");
+    r(2, 13, 12, 2, "#14504e");
+    r(7, 4, 5, 2, "#14504e");
+    r(7, 8, 5, 2, "#14504e");
+  },
+  "Lost turn": (r) => {
+    // a big Z and a little one
+    for (const [x, y, w] of [[1, 6, 9], [1, 7, 9], [6, 8, 4], [4, 10, 4], [2, 12, 4], [1, 14, 9], [1, 15, 9]]) r(x, y, w, x === 6 || x === 4 || x === 2 ? 2 : 1, "#7a3ab8");
+    for (const [x, y, w] of [[10, 1, 6], [13, 2, 3], [12, 3, 2], [11, 4, 2], [10, 5, 6]]) r(x, y, w, 1, "#7a3ab8");
+  },
+  Softer: (r) => {
+    r(7, 2, 2, 8, "#3a7fc8");
+    for (let k = 0; k < 4; k++) r(4 + k, 9 + k, 8 - 2 * k, 1, "#3a7fc8");
+  },
+  Focus: (r) => {
+    itemDisc(r, 8, 8, 6, "#c8382a");
+    itemDisc(r, 8, 8, 4, "#fbf1dc");
+    itemDisc(r, 8, 8, 2, "#c8382a");
+  },
+  Boss: (r) => {
+    r(2, 8, 12, 6, "#e8b33e");
+    r(2, 12, 12, 2, "#b8842a");
+    for (const x of [2, 7, 12]) r(x, 4, 2, 5, "#e8b33e");
+    for (const x of [4, 10]) r(x, 6, 2, 3, "#e8b33e");
+    for (const x of [2, 7, 12]) r(x, 3, 2, 1, "#f8e08a");
+    r(7, 9, 2, 2, "#c8382a");
+  },
+  First: (r) => {
+    itemDisc(r, 8, 9, 5, "#e8b33e");
+    itemDisc(r, 8, 9, 3.5, "#f8d870");
+    r(7, 6, 2, 6, "#8b5a2b");
+    r(6, 7, 1, 1, "#8b5a2b");
+    r(4, 1, 3, 3, "#3a7fc8");
+    r(9, 1, 3, 3, "#c8382a");
+  },
+  Key: (r) => {
+    r(2, 4, 12, 9, "#d8d0c0");
+    r(2, 4, 12, 1, "#fbf1dc");
+    r(2, 12, 12, 1, "#8a8478");
+    r(6, 7, 4, 3, "#55504a");
+  },
+  Round: (r) => {
+    for (let k = 0; k < 28; k++) {
+      const a = (k / 28) * Math.PI * 1.7;
+      r(8 + Math.cos(a) * 5, 8 + Math.sin(a) * 5, 1.5, 1.5, "#2a8a8a");
+    }
+    r(11, 2, 3, 3, "#2a8a8a");
+  },
+  Tired: (r) => {
+    r(3, 7, 9, 5, "#9a948a");
+    r(12, 8, 1, 3, "#9a948a");
+    r(4, 8, 2, 3, "#c8382a");
+  },
+};
+
 function itemFallback(r) {
   itemDisc(r, 8, 10, 5, "#c8a878");
   r(6, 3, 4, 3, "#c8a878");
@@ -129,7 +199,7 @@ function itemIcon(name, size = 32) {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
     const ctx = c.getContext("2d");
-    (ITEM_ART[name] || itemFallback)((x, y, w, h, color) => {
+    (ITEM_ART[name] || IDEA_ART[name] || itemFallback)((x, y, w, h, color) => {
       ctx.fillStyle = color;
       ctx.fillRect(Math.round(x * 4), Math.round(y * 4), Math.ceil(w * 4), Math.ceil(h * 4));
     });

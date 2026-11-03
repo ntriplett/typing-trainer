@@ -990,6 +990,8 @@ marks and effects), mermaid Siren Song (drains mana), flower fairy Wild Bloom (d
 
 **Befriending, two steps.** After winning a fight with anything but a boss, each fighter can pay mana equal to its level (+2 Tough, +4 Champion): it comes to Camp (5 spots) but not your party, so a really cool wild creature can be grabbed when you see it. At Camp's fire you can ask it to leave, or give it a Friendship Token to make it a real pet at that level, working through each level's choices. One token a shop; each shop gets one more after you beat the game. Relics no longer give a befriending charm; loot comes later.
 
+**Icons (2026-11-02).** One picture for one idea, everywhere, all pixel style: the move cards' icons (burst for a mark, circles for a hit, shield, >>, mana, energy) plus `mixSvg`, a square cut into two triangles like a mix's tile, in wander_moves.js; `effectIcon` gives every effect its picture, by what it does, in battle and the guidebook; `IDEA_ART` in wander_items.js has the rest. Unique icons for each effect come later.
+
 **Guidebook (replaces the combo book).** Book 6, or 2 in a fight. Pages: Types (ring diagram and chart), Match-ups (pick your type and Enemy's), Combo chart, Combos found, Marks & effects, How fights work, The lands. All from the real rules (`battle.guide`, `terms.GUIDE_FIGHT`).
 
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles

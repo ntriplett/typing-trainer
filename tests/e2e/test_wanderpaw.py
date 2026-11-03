@@ -579,3 +579,47 @@ def test_every_shop_item_has_a_picture(page: Page, live_server, tmp_path):
     page.goto(f"{live_server}/wanderpaw")
     missing = page.evaluate("(names) => names.filter((n) => !ITEM_ART[n])", list(sh.ITEMS))
     assert missing == []
+
+
+EMOJI = re.compile("[\u2600-\u27bf\U0001f000-\U0001faff]")
+
+
+def test_the_guidebook_uses_the_games_own_icons_not_emoji(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _set_up(page, live_server, tmp_path)
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.keyboard.press("6")
+    expect(page.locator(".wander-guide-tabs")).to_be_visible()
+    for tab in ("Types", "Match-ups", "Combo chart", "Combos found", "Marks & effects", "How fights work", "The lands"):
+        page.get_by_role("button", name=tab).click()
+        assert not EMOJI.search(page.locator("#menu-body").inner_text()), tab
+    page.get_by_role("button", name="Marks & effects").click()
+    expect(page.locator(".wander-guide-card .wander-icon-burst")).to_have_count(5)  # a mark looks like it does on a move
+    page.get_by_role("button", name="How fights work").click()
+    expect(page.locator(".wander-guide-card .wander-icon-mix").first).to_be_visible()
+    assert not errors
+
+
+def test_every_effect_has_a_picture_in_battle_and_the_guidebook(page: Page, live_server):
+    from app.wanderpaw import terms
+    page.goto(f"{live_server}/wanderpaw")
+    names = [n.lower() for n in terms.EFFECTS]
+    assert page.evaluate("(names) => names.filter((n) => !EFFECT_ICONS[n])", names) == []
+    in_battle = page.evaluate("Object.values(EFFECT_NAMES).filter((n) => !EFFECT_ICONS[n])")
+    assert in_battle == []
+
+
+def test_marks_and_effects_show_their_icons_on_the_enemy_in_battle(page: Page, live_server, tmp_path):
+    from app import db
+    from app.wanderpaw import save as sv
+    _in_a_fight(page, live_server, tmp_path, {})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "battle": {**save["battle"], "marks": {"soaked": 2}, "effects": {"thorns": 2, "hardened": 1}}})
+    page.goto(f"{live_server}/wanderpaw")
+    info = page.locator("#battle-foe-info")
+    expect(info.locator(".wander-mark .wander-icon-burst")).to_have_count(1)
+    expect(info.locator(".wander-mark .wander-icon-dot")).to_have_count(1)  # thorns: it gets hurt
+    expect(info.locator(".wander-mark .wander-icon-shield")).to_have_count(1)  # braced
