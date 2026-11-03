@@ -65,6 +65,7 @@ from app.wanderpaw import critters as cr
 from app.wanderpaw import local as lc
 from app.wanderpaw import pets as wp
 from app.wanderpaw import quests as qs
+from app.wanderpaw import shop as sh
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
 from app.wanderpaw.hexes import Hex
@@ -76,7 +77,7 @@ DEFAULTS = {
     "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
     "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
     "battle": None, "fighters": None, "combos": [], "camps": [], "levelups": [],
-    "bosses": [], "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {},
+    "bosses": [], "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {}, "bought": {}, "friends": [],
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
 
@@ -364,7 +365,11 @@ def _try_gate(save: dict, local: lc.LocalMap, h: Hex) -> dict:
     what, does = st.FIELD_SKILLS[gate.kind]
     name = st.TYPE_NAMES[gate.kind]
     need = gate.level
-    if not has_levels(save, (gate.kind, need)):
+    short = need - levels(save, gate.kind)
+    if 0 < short <= sh.LUCKY_LEVELS and save["items"].get(sh.LUCKY):
+        save = _give(save, sh.LUCKY, -1)
+        save = _event(save, kind="found", text=f"Your {sh.LUCKY} glows, and it's just enough!")
+    elif not has_levels(save, (gate.kind, need)):
         raise WanderError(f"{what} is in the way. It takes {need} {name} levels to get past (you have {levels(save, gate.kind)}).")
     save = _spend(save, st.GATE_ENERGY)
     helpers = [m["name"] for m in save["team"] if gate.kind in m["types"]]
@@ -480,13 +485,23 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
     return save
 
 
+def _ward_fades(save: dict, b: dict) -> dict:
+    """A Ward's extra energy lasts only for the battle."""
+    bases = b.get("ward_base") or {}
+    if not bases:
+        return save
+    pets = [min(e, bases[str(i)]) if str(i) in bases else e for i, e in enumerate(save["trip"]["pets"])]
+    trip = save["trip"]
+    return {**save, "trip": {**trip, "pets": pets, "energy": trip["walk"] + sum(pets)}}
+
+
 def end_battle(save: dict) -> dict:
     """Leave a finished battle: step onto the creature's hex if you won;
     out of pet energy after losing, nap."""
     b = save.get("battle")
     if not b or not b["over"]:
         raise WanderError("The battle isn't over.")
-    save = {**save, "battle": None, "events": []}
+    save = _ward_fades({**save, "battle": None, "events": []}, b)
     if b["over"] == "won" and b.get("tier") == "boss":
         return save  # it stood in the temple's door: you're still there
     if b["over"] == "won":
@@ -503,7 +518,7 @@ def flee(save: dict) -> dict:
     b = save.get("battle")
     if not b or b["over"]:
         raise WanderError("There's no battle to run from.")
-    save = _spend({**save, "battle": None, "events": []}, st.FLEE_ENERGY)
+    save = _spend(_ward_fades({**save, "battle": None, "events": []}, b), st.FLEE_ENERGY)
     save = _event(save, kind="fled", text="You back away. Phew!")
     return nap(save) if save["trip"]["energy"] <= 0 else save
 
@@ -530,9 +545,10 @@ def battle_view(save: dict) -> dict | None:
     pets, mana = save["trip"]["pets"], _mana(save)
     team = _fighting_team(save, b)
     keyed = {c.key: c for c in bt.CAPSTONES.values()}
-    return {**b, "looks": cr_looks(b), "intent": bt.foe_intent(b, team, pets), "bench_helps": [{"name": keyed[k].name, "says": keyed[k].says} for k in b.get("bench") or []], "fighters": [
+    return {**b, "befriend": _befriend_offer(save, b), "looks": cr_looks(b), "intent": bt.foe_intent(b, team, pets), "bench_helps": [{"name": keyed[k].name, "says": keyed[k].says} for k in b.get("bench") or []], "fighters": [
         {"place": i, "name": save["team"][i]["name"], "species": save["team"][i]["species"], "level": save["team"][i]["level"],
          "types": save["team"][i]["types"], "energy": pets[i], "max": bt.battle_energy(b, save["team"], i),
+         "ward": max(0, pets[i] - (b.get("ward_base") or {}).get(str(i), pets[i])),
          "mana": mana[i], "max_mana": save["team"][i]["mana"], "focused": i in b.get("focus", []),
          "genes": save["team"][i].get("genes"), "growth": save["team"][i].get("growth", 10),
          "asleep": bt.asleep_now(b, pets) == i, "marked": str(i) in (b.get("pet_marks") or {}),
@@ -558,9 +574,18 @@ def cr_looks(b: dict) -> dict:
 WALK_ENERGY = 50  # your own, just for walking: used before the pets'
 
 
-def _trip(team: list[dict] | None = None) -> dict:
+def walk_max(save: dict) -> int:
+    """The most walking energy you can have."""
+    return WALK_ENERGY + (sh.BOOTS_WALK if save["items"].get(sh.BOOTS) else 0)
+
+
+def _forage_count(save: dict) -> int:
+    return 2 if save["items"].get(sh.SATCHEL) else 1
+
+
+def _trip(team: list[dict] | None = None, extra_walk: int = 0) -> dict:
     pets = [m["energy"] for m in team or []]
-    walk = WALK_ENERGY if team is not None else 0
+    walk = WALK_ENERGY + extra_walk if team is not None else 0
     return {"walk": walk, "pets": pets, "energy": walk + sum(pets), "max": walk + sum(pets), "used": [], "side": {},
             "beaten": [], "mana": [m["mana"] for m in team or []]}
 
@@ -588,7 +613,7 @@ def _restore(save: dict, n: int) -> dict:
     trip = save["trip"]
     walk, pets = trip.get("walk", trip["energy"]), list(trip.get("pets", []))
     most = [m["energy"] for m in save["team"]][: len(pets)]
-    add = min(n, max(0, WALK_ENERGY - walk)) if "walk" in trip else n
+    add = min(n, max(0, walk_max(save) - walk)) if "walk" in trip else n
     walk += add
     for _ in range(n - add):
         room = [i for i, e in enumerate(pets) if e < most[i]]
@@ -605,7 +630,7 @@ def start_trip(save: dict, from_camp: bool = False) -> dict:
     if from_camp:
         save = {**save, "at": list(CAMP), "spot": [0, 0]}
     stats = {**save["stats"], "trips": save["stats"]["trips"] + 1}
-    save = {**save, "trip": _trip(save["team"]), "note": None, "events": [], "stats": stats, "battle": None, "fighters": None}
+    save = {**save, "trip": _trip(save["team"], walk_max(save) - WALK_ENERGY), "note": None, "events": [], "stats": stats, "battle": None, "fighters": None}
     return _see(save, tuple(save["at"]), tuple(save["spot"]))
 
 
@@ -650,7 +675,13 @@ def apply_walk(save: dict, to: Hex) -> dict:
         raise WanderError("You're in the middle of a battle!")
     why = _blocked(save, big, spot, nbig, h)
     if why == "critter":
-        return _start_battle(save, critter_at(save, nbig, h))
+        c = critter_at(save, nbig, h)
+        if not save["trip"].get("cloak") or c.tier or c.guardian:
+            return _start_battle(save, c)
+        trip = save["trip"]
+        save = {**save, "trip": {**trip, "cloak": trip["cloak"] - 1, "beaten": [*trip.get("beaten", []), c.id]}}
+        save = _event(save, kind="found", text=f"Your {sh.CLOAK} hides you, and you slip past the {c.species.replace('_', ' ')}.")
+        why = None
     if why == "gate" and world_of(save).gates[local.gates[h]].kind == "quest":
         return _bump_bridge(save, world_of(save).gates[local.gates[h]].region)
     if why == "gate":
@@ -746,7 +777,7 @@ def _arrive(save: dict) -> dict:
     pid = _place_id(big, spot)
     if poi == "forage" and pid not in save["trip"]["used"]:
         item = st.FORAGE[here.region]
-        save = _give(save, item)
+        save = _give(save, item, _forage_count(save))
         save = {**save, "trip": {**save["trip"], "used": [*save["trip"]["used"], pid]}}
         save = _event(save, kind="found", text=f"You found a {item}!")
     elif poi == "chest" and pid not in save["chests"]:
@@ -852,7 +883,9 @@ def screen(save: dict) -> dict | None:
             return {"title": title, "text": "You're full! Come back next trip.", "action": None}
         return {"title": title, "text": f"A warm bowl of soup? (+{st.INN_ENERGY} {{energy}})", "action": "inn", "label": "Yes please"}
     if kind == "shop":
-        return {"title": _townsfolk(kind, region, pid)[0], "text": "The shopkeeper is still unpacking. Come back soon!", "action": None}
+        flavor = sh.FLAVORS[sh.SHOP_FLAVOR[region]][0]
+        return {"title": f"{_townsfolk(kind, region, pid)[0]} ({flavor})", "text": sh.KEEPERS[region], "action": "shop", "label": "See what's for sale",
+                "stock": sh.stock(region, save["bought"].get(region, {}), save["items"], bool(save["finished"]))}
     if kind == "house":
         title, line = _townsfolk(kind, region, pid)
         return {"title": title, "text": line, "action": None}
@@ -949,13 +982,15 @@ def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -
             coins = random.randint(*st.NOOK_COINS) + ring
             save = _event(save, kind="coins", amount=coins, text=f"{coins} coins!")
         elif f == "forage":
-            save = _give(save, st.FORAGE[region])
+            save = _give(save, st.FORAGE[region], _forage_count(save))
             save = _event(save, kind="found", text=f"You found a {st.FORAGE[region]}!")
         elif f == "energy":
             save = _restore(save, st.NOOK_ENERGY)
             save = _event(save, kind="found", text=f"You feel refreshed. +{st.NOOK_ENERGY} {{energy}}.")
         elif f == "fish":
             n = 2 if accuracy >= 1 else 1 if accuracy >= 0.6 else 0
+            if n and save["items"].get(sh.ROD):
+                n += 1
             if n:
                 save = _give(save, st.FISH[region], n)
             save = _event(save, kind="found", text=f"You caught {n} {st.FISH[region]}{'s' if n > 1 else ''}!" if n
@@ -1109,6 +1144,12 @@ def _write(conn, learner_id: int, change) -> dict:
         if e["kind"] == "xp" and "pets" in e:  # a battle's: just the fighters
             for pid in e["pets"]:
                 save = _level_up(conn, learner_id, save, e["amount"], only=pid)
+    for e in save["events"]:
+        if e["kind"] == "bonus":  # a Type Tome or a Training Weight
+            pet, rec = _record(conn, learner_id, e["pet"])
+            rec = wp.with_bonus(rec, e["bonus"], e["name"])
+            db.save_wander_pet(conn, learner_id, e["pet"], wp.record_json(rec))
+            save = _refresh_member(save, pet, rec)
     for e in save["events"]:
         if e["kind"] == "train":  # exactly up to the next level
             rec = wp.record_from(db.get_wander_pets(conn, learner_id).get(e["pet"]))
@@ -1501,6 +1542,191 @@ def go_in(conn, learner_id: int, action: str, accuracy: float = 1.0, arg=None) -
     return _write(conn, learner_id, lambda s: act(s, action, accuracy, arg))
 
 
+# --- shops and items (shop.py) ---------------------------------------------------
+
+
+def buy_item(conn, learner_id: int, name: str) -> dict:
+    """Buy from the shop you're standing in. The coins come from your balance."""
+    item = sh.ITEMS.get(name)
+    def change(save: dict) -> dict:
+        where = place(save)
+        if not where or where["kind"] != "shop":
+            raise WanderError("There's no shop here.")
+        region = where["region"]
+        shelf = next((x for x in sh.stock(region, save["bought"].get(region, {}), save["items"], bool(save["finished"])) if x["name"] == name), None)
+        if item is None or shelf is None:
+            raise WanderError("They don't sell that here.")
+        if shelf["sold_out"]:
+            raise WanderError(f"You already have a {name}." if item.keep else f"They're out of {name}s.")
+        have = db.get_coin_balance(conn, learner_id)
+        if have < item.price:
+            raise WanderError(f"You need {item.price - have:,} more coins for the {name}.")
+        db.add_coins(conn, learner_id, -item.price, "purchase", ref=f"wanderpaw:{name}")
+        bought = {**save["bought"], region: {**save["bought"].get(region, {}), name: save["bought"].get(region, {}).get(name, 0) + 1}}
+        return _event(_give({**save, "bought": bought, "events": []}, name), kind="bought", text=f"You bought a {name}.")
+    return _write(conn, learner_id, change)
+
+
+def item_uses(save: dict) -> dict:
+    """What each thing in your bag can do right now: {when, ready, why, choices}."""
+    out = {}
+    for name, n in save["items"].items():
+        item = sh.ITEMS.get(name)
+        if not n or not item:
+            continue
+        out[name] = {"when": item.when, "keep": item.keep, "why": _cant_use(save, item)}
+        if item.when == "pick":
+            out[name]["choices"] = _pick_choices(save, item)
+    return out
+
+
+def _pick_choices(save: dict, item: sh.Item) -> list[dict]:
+    real = [m for m in save["team"] if m["id"]]
+    if item.name == sh.TOME:
+        return [{"arg": f"{m['id']}:{t}", "label": f"{m['name']}: {{{t}}} {n} to {n + 1}"} for m in real for t, n in m["types"].items()]
+    return [{"arg": f"{m['id']}:{s}", "label": f"{m['name']}: {s} {m[s]} to {m[s] + 1}"} for m in real for s in sh.STATS]
+
+
+def _cant_use(save: dict, item: sh.Item) -> str | None:
+    """Why you can't use it right now (None: you can)."""
+    b = save.get("battle")
+    if item.when == "auto":
+        return "It works by itself."
+    if not save["trip"]:
+        return "Set off on a trip first."
+    if b and b["over"]:
+        return "The battle's over."
+    if item.when == "battle" and not b:
+        return "It's for the middle of a battle."
+    if item.when in ("walk", "pick") and b:
+        return "Not in the middle of a battle!"
+    who = b["fighters"] if b else fighters(save)
+    mana, pets = _mana(save), save["trip"]["pets"]
+    if item.name in (sh.MANA_DROP, sh.FULL_MANA) and all(mana[i] >= save["team"][i]["mana"] for i in who):
+        return "Their mana is full."
+    if item.name == sh.FEATHER and not any(pets[i] <= 0 for i in who):
+        return "Nobody's worn out."
+    if item.name == sh.TONIC and save["trip"]["walk"] >= walk_max(save):
+        return "You're not tired."
+    if item.name == sh.MAP and not _map_region(save):
+        return "You know where all the keys are."
+    if item.when == "pick" and not _pick_choices(save, item):
+        return "It needs one of your own pets in the party."
+    return None
+
+
+def _map_region(save: dict) -> str | None:
+    """The next temple key you know nothing about."""
+    for region in wd.REGIONS:
+        if region not in save["rumors"] and region not in save["temples"] and not save["items"].get(st.STORIES[region].key):
+            return region
+    return None
+
+
+def use_item(save: dict, name: str, arg: str | None = None) -> dict:
+    item = sh.ITEMS.get(name)
+    if item is None or not save["items"].get(name):
+        raise WanderError("You don't have that.")
+    why = _cant_use(save, item)
+    if why:
+        raise WanderError(why)
+    save = {**save, "events": []}
+    b = save.get("battle")
+    who = b["fighters"] if b else fighters(save)
+    trip = save["trip"]
+    if name in (sh.MANA_DROP, sh.FULL_MANA):
+        mana = _mana(save)
+        for i in who:
+            most = save["team"][i]["mana"]
+            mana[i] = most if name == sh.FULL_MANA else min(most, mana[i] + sh.MANA_DROP_AMOUNT)
+        save = {**save, "trip": {**trip, "mana": mana}}
+        text = "A sip each, and their {mana} comes flooding back."
+    elif name == sh.WARD:
+        pets, base, start = list(trip["pets"]), dict(b.get("ward_base") or {}), dict(b["start_energy"])
+        for i in who:
+            extra = round(save["team"][i]["energy"] * sh.WARD_SHARE)
+            base.setdefault(str(i), pets[i])
+            pets[i] += extra
+            start[str(i)] = start.get(str(i), 0) + extra
+        save = {**save, "battle": {**b, "ward_base": base, "start_energy": start}, "trip": {**trip, "pets": pets, "energy": trip["walk"] + sum(pets)}}
+        text = "A shimmering ward settles over your fighters."
+    elif name == sh.FEATHER:
+        pets = list(trip["pets"])
+        i = next(i for i in who if pets[i] <= 0)
+        pets[i] = max(1, round(save["team"][i]["energy"] * sh.FEATHER_SHARE))
+        save = {**save, "trip": {**trip, "pets": pets, "energy": trip["walk"] + sum(pets)}}
+        text = f"{save['team'][i]['name']} gets back up!"
+    elif name == sh.TONIC:
+        walk = walk_max(save)
+        save = {**save, "trip": {**trip, "walk": walk, "energy": walk + sum(trip["pets"])}}
+        text = "Refreshing! Your own {energy} is full."
+    elif name == sh.CLOAK:
+        save = {**save, "trip": {**trip, "cloak": trip.get("cloak", 0) + 1}}
+        text = "You pull the cloak around you. The next plain creature won't notice you."
+    elif name == sh.MAP:
+        region = _map_region(save)
+        key = _plan(save).keys[region]
+        save = {**save, "rumors": [*save["rumors"], region]}
+        text = f"The map marks where the {st.STORIES[region].key} is hidden: {world_of(save).hexes[key.big].name}. It's in your journal."
+    elif name == sh.WAY_HOME:
+        save = _see({**save, "at": list(CAMP), "spot": [0, 0]}, CAMP, (0, 0))
+        text = "The charm hums, and you're home at Camp."
+    else:  # a Type Tome or a Training Weight
+        choice = next((c for c in _pick_choices(save, item) if c["arg"] == arg), None)
+        if not choice:
+            raise WanderError("Pick a pet to use it on.")
+        pet, what = arg.split(":")
+        save = _event(save, kind="bonus", pet=int(pet), bonus="type" if name == sh.TOME else "stat", name=what)
+        text = f"{choice['label'].split(':')[0]} feels stronger!"
+    if not item.keep:
+        save = _give(save, name, -1)
+    return _event(save, kind="found", text=text)
+
+
+def use(conn, learner_id: int, name: str, arg: str | None = None) -> dict:
+    return _write(conn, learner_id, lambda s: use_item(s, name, arg))
+
+
+# --- befriending: a Friendship Token, and mana from each fighter ---------------------
+
+
+def _befriend_offer(save: dict, b: dict) -> dict | None:
+    """What befriending this creature takes (None: it isn't on offer)."""
+    if b["over"] != "won" or b.get("tier") == "boss" or b.get("befriended") or not save["items"].get(sh.TOKEN):
+        return None
+    cost = b["level"] + sh.BEFRIEND_EXTRA_MANA.get(b.get("tier") or "", 0)
+    mana = _mana(save)
+    return {"cost": cost, "can": all(mana[i] >= cost for i in b["fighters"]), "tokens": save["items"][sh.TOKEN]}
+
+
+def befriend(conn, learner_id: int) -> dict:
+    """Your Token and each fighter's mana: the creature you just beat joins your
+    pets at the level you found it, with all those levels' choices to make."""
+    def change(save: dict) -> dict:
+        b = save.get("battle")
+        offer = b and _befriend_offer(save, b)
+        if not offer:
+            raise WanderError("There's nobody to befriend right now.")
+        if not offer["can"]:
+            raise WanderError(f"It takes {offer['cost']} mana from each fighter.")
+        species = b["species"].replace(" ", "_")
+        genes = pet_genes.wild_rare(species, b["seed"], wp.TIER_COLORS[b["tier"]]) if b.get("tier") else pet_genes.roll(species, None, None, b["seed"])
+        companion = species in pet_genes.COMPANIONS
+        name = pet_genes.companion_name(species, b["seed"]) if companion else pet_genes.species_name(species)
+        pet_id = db.add_v3_pet(conn, learner_id, genes, name, "friend", growth=10)
+        pet = db.get_v3_pet(conn, learner_id, pet_id)
+        rec = wp.gain_xp(wp.Record(), wp.xp_for(b["level"]))
+        db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(rec))
+        mana = _mana(save)
+        for i in b["fighters"]:
+            mana[i] -= offer["cost"]
+        save = _give({**save, "events": [], "battle": {**b, "befriended": True}, "trip": {**save["trip"], "mana": mana},
+                      "friends": [*save["friends"], pet_id]}, sh.TOKEN, -1)
+        save = _celebrate(save, pet, wp.Record(), rec)
+        return _event(save, kind="found", text=f"{name} wants to come with you! Add them to your party before your next trip.")
+    return _write(conn, learner_id, change)
+
+
 # --- what the player sees ---------------------------------------------------------
 
 
@@ -1669,6 +1895,7 @@ def view(save: dict) -> dict:
         "levels": {t: levels(save, t) for t in wd.REGIONS if levels(save, t)},
         "items": {k: v for k, v in sorted(save["items"].items()) if v},
         "about": {k: st.describe(k) for k, v in save["items"].items() if v},
+        "item_uses": item_uses(save),
         "clues": clues_view(save),
         "log": save["log"],
         "levelups": save["levelups"],

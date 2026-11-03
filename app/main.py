@@ -954,6 +954,32 @@ def wander_battle_turn(body: WanderTurnRequest, conn=Depends(get_db), learner_id
     return _wander_act(conn, learner_id, lambda: wander.fight(conn, learner_id, [m.model_dump() for m in body.moves]))
 
 
+@app.get("/api/wander/guide")
+def wander_guide(learner_id: int = Depends(current_learner)) -> dict:
+    """The guidebook's fixed pages (found combos come with the game state)."""
+    return wander_battle.guide()
+
+
+class WanderItemRequest(BaseModel):
+    item: str
+    arg: str | None = None
+
+
+@app.post("/api/wander/shop/buy")
+def wander_shop_buy(body: WanderItemRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.buy_item(conn, learner_id, body.item))
+
+
+@app.post("/api/wander/use")
+def wander_use_item(body: WanderItemRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.use(conn, learner_id, body.item, body.arg))
+
+
+@app.post("/api/wander/befriend")
+def wander_befriend(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _wander_act(conn, learner_id, lambda: wander.befriend(conn, learner_id))
+
+
 @app.post("/api/wander/battle/leave")
 def wander_battle_leave(body: WanderLeaveRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     """Run from a battle, or walk on from a finished one."""

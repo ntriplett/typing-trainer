@@ -663,3 +663,103 @@ def test_the_lab_takes_you_to_a_boss_at_its_door():
     fight = client.post("/api/wander/act", json={"action": "boss"}).json()
     assert fight["battle"]["tier"] == "boss" and fight["battle"]["kind"] == "ember"
     assert client.post("/api/wander-lab/boss", json={"region": "nope"}).status_code == 400
+
+
+# --- shops and items ----------------------------------------------------------------
+
+
+def _at_the_shop(region="dream", coins=20000):
+    from app.wanderpaw import shop as sh  # noqa: F401
+    if not client.get("/api/wander").json()["trip"]:
+        client.post("/api/wander/trip/start", json={})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        world = sv.world_of(save)
+        big, spot = next((h, s) for h, x in world.hexes.items() if x.special == "town" and x.region == region for s, role in sv.local_of(save, h).buildings.items() if role == "shop")
+        sv.teleport(conn, 1, big, spot)
+        db.add_coins(conn, 1, coins - db.get_coin_balance(conn, 1), "test")
+    return client.get("/api/wander").json()
+
+
+def test_a_town_shop_sells_things_for_your_coins():
+    state = _at_the_shop("dream", 3000)
+    screen = state["screen"]
+    assert screen["action"] == "shop" and "Alchemist" in screen["title"]
+    names = [x["name"] for x in screen["stock"]]
+    assert "Full Mana Potion" in names and "Friendship Token" in names
+    r = client.post("/api/wander/shop/buy", json={"item": "Mana Drop"}).json()
+    assert r["items"]["Mana Drop"] == 1 and r["coin_balance"] == 2500
+    assert client.post("/api/wander/shop/buy", json={"item": "Fine Fishing Rod"}).status_code == 400  # not this shop
+    assert client.post("/api/wander/shop/buy", json={"item": "Full Mana Potion"}).status_code == 200
+    broke = client.post("/api/wander/shop/buy", json={"item": "Full Mana Potion"})
+    assert broke.status_code == 400 and "more coins" in broke.json()["detail"]
+
+
+def test_one_friendship_token_per_shop_and_three_tomes():
+    _at_the_shop("leaf")
+    assert client.post("/api/wander/shop/buy", json={"item": "Friendship Token"}).status_code == 200
+    assert client.post("/api/wander/shop/buy", json={"item": "Friendship Token"}).status_code == 400
+    for _ in range(3):
+        assert client.post("/api/wander/shop/buy", json={"item": "Type Tome"}).status_code == 200
+    assert client.post("/api/wander/shop/buy", json={"item": "Type Tome"}).status_code == 400
+    state = _at_the_shop("dream")  # another town, another token
+    assert next(x for x in state["screen"]["stock"] if x["name"] == "Friendship Token")["left"] == 1
+
+
+def test_you_cant_buy_away_from_a_shop():
+    client.post("/api/wander/trip/start", json={})
+    assert client.post("/api/wander/shop/buy", json={"item": "Mana Drop"}).status_code == 400
+
+
+def test_a_tome_raises_a_type_for_good_but_not_the_pets_level():
+    fox = _add_pet("fox", 1)
+    client.post("/api/wander/party", json={"pets": [fox]})
+    with db.open_db(main.DB_PATH) as conn:
+        sv.give_xp(conn, 1, fox, wp.xp_for(6))
+    state = _at_the_shop("leaf")
+    before = next(m for m in state["team"] if m["id"] == fox)
+    client.post("/api/wander/shop/buy", json={"item": "Type Tome"})
+    choices = client.get("/api/wander").json()["item_uses"]["Type Tome"]["choices"]
+    assert f"{fox}:ember" in [c["arg"] for c in choices]
+    after = client.post("/api/wander/use", json={"item": "Type Tome", "arg": f"{fox}:ember"}).json()
+    me = next(m for m in after["team"] if m["id"] == fox)
+    assert me["types"]["ember"] == before["types"]["ember"] + 1 and me["level"] == before["level"]
+    assert "Type Tome" not in after["items"]
+    with db.open_db(main.DB_PATH) as conn:
+        assert wp.record_from(db.get_wander_pets(conn, 1)[fox]).type_bonus == {"ember": 1}
+
+
+def test_befriending_a_beaten_creature_makes_it_yours_at_its_level():
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import shop as sh
+    fox, bunny = _add_pet("fox", 1), _add_pet("bunny", 2)
+    client.post("/api/wander/party", json={"pets": [fox, bunny]})
+    client.post("/api/wander/trip/start", json={})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "goat", "leaf", 6, False, 77, None, "")
+        save = sv._start_battle({**save, "items": {sh.TOKEN: 1}}, c)
+        mana = [100 for _ in save["trip"]["mana"]]
+        save = {**save, "battle": {**save["battle"], "over": "won"}, "trip": {**save["trip"], "mana": mana}, "events": []}
+        db.save_wander(conn, 1, save)
+    state = client.get("/api/wander").json()
+    assert state["battle"]["befriend"] == {"cost": 6, "can": True, "tokens": 1}
+    r = client.post("/api/wander/befriend")
+    assert r.status_code == 200
+    data = r.json()
+    assert "Friendship Token" not in data["items"] and data["battle"]["befriend"] is None
+    assert [f["mana"] for f in data["battle"]["fighters"]] == [94, 94]
+    assert data["levelups"]  # every level's choices to make, as she catches up
+    with db.open_db(main.DB_PATH) as conn:
+        friend = [p for p in db.list_v3_pets(conn, 1) if p["source"] == "friend"]
+        assert len(friend) == 1 and friend[0]["species"] == "goat" and friend[0]["growth"] == 10
+        assert wp.level(wp.record_from(db.get_wander_pets(conn, 1)[friend[0]["id"]]).xp) == 6
+    assert client.post("/api/wander/befriend").status_code == 400  # only once
+
+
+def test_the_guidebook_comes_from_the_real_type_chart():
+    g = client.get("/api/wander/guide").json()
+    assert g["chart"]["shock"]["ember"] == bt.matchup("shock", "ember") == 1.5  # shock IS strong against ember
+    assert g["chart"]["splash"]["ember"] == 2 and g["chart"]["dream"]["ember"] == 0.5
+    assert set(g["order"]) == set(wd.REGIONS) and g["marks"] and g["effects"] and g["lands"]
+    assert "Your first type" in g["fight"]

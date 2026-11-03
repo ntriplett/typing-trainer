@@ -25,6 +25,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.wanderpaw import shop
+
 TYPE_NAMES = {t: "{" + t + "}" for t in ("ember", "splash", "leaf", "dream", "shock")}  # see world.tw
 
 
@@ -363,6 +365,8 @@ def describe(item: str) -> str:
         for part in shortcut.parts:
             if item.startswith(part):
                 return f"Needed to fix {shortcut.name}. Bring it to whoever is fixing it."
+    if item in shop.ITEMS:
+        return shop.ITEMS[item].about
     if item in FORAGE.values():
         return "Found while exploring. Notice boards in town pay coins for these."
     if item in FISH.values():

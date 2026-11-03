@@ -393,3 +393,121 @@ def test_the_creature_shows_its_next_move_and_is_drawn_on_a_clean_canvas(page: P
     }""")
     assert cleared == 0
     assert not errors
+
+
+def _set_up(page, live_server, tmp_path, items=None, coins=20000):
+    from app import db
+    from app.wanderpaw import save as sv
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_selector("#picker:not([hidden]), #wander-local")
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        db.add_coins(conn, 1, coins - db.get_coin_balance(conn, 1), "test")
+        save = sv.load(conn, 1)
+        world = sv.world_of(save)
+        big, spot = next((h, s) for h, x in world.hexes.items() if x.special == "town" and x.region == "dream" for s, role in sv.local_of(save, h).buildings.items() if role == "shop")
+        sv.teleport(conn, 1, big, spot)
+        if items:
+            save = sv.load(conn, 1)
+            db.save_wander(conn, 1, {**save, "items": items})
+
+
+def test_buy_at_a_town_shop(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _set_up(page, live_server, tmp_path)
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen")).to_contain_text("Alchemist")
+    page.keyboard.press("Enter")
+    expect(page.locator("#menu-body")).to_contain_text("Mana Drop")
+    expect(page.locator("#menu-body")).to_contain_text("Friendship Token")
+    page.keyboard.press("Enter")  # the first thing on the shelf
+    expect(page.locator("#menu-body")).to_contain_text("19,500")
+    expect(page.locator("#menu-body")).to_contain_text("you have 1")
+    page.keyboard.press("Escape")
+    expect(page.locator("#screen")).to_contain_text("Alchemist")
+    assert not errors
+
+
+def _in_a_fight(page, live_server, tmp_path, items):
+    from app import db
+    from app.wanderpaw import critters as cr
+    from app.wanderpaw import save as sv
+    _set_up(page, live_server, tmp_path, items=items)
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "dog", "splash", 3, False, 7, None, "")
+        save = sv._start_battle(save, c)
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "mana": [1 for _ in save["trip"]["mana"]]}, "events": []})
+
+
+def test_the_bag_and_guidebook_open_mid_fight_and_dont_cost_a_turn(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _in_a_fight(page, live_server, tmp_path, {"Mana Drop": 2})
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#battle")).to_be_visible()
+    expect(page.locator("#battle-bag")).to_be_visible()
+    expect(page.locator("#battle-guide")).to_be_visible()
+    page.keyboard.press("1")
+    expect(page.locator("#menu-body")).to_contain_text("Mana Drop")
+    page.keyboard.press("1")  # the first thing in the bag
+    expect(page.locator("#battle")).to_be_visible()
+    expect(page.locator(".wander-mana").first).to_contain_text("11")
+    page.keyboard.press("2")
+    expect(page.locator("#menu-title")).to_have_text("Guidebook")
+    expect(page.locator(".wander-type-ring")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#battle")).to_be_visible()
+    assert not errors
+
+
+def test_the_guidebook_turns_pages_and_shows_match_ups(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _set_up(page, live_server, tmp_path)
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.keyboard.press("6")
+    expect(page.locator("#menu-title")).to_have_text("Guidebook")
+    expect(page.locator(".wander-type-chart")).to_be_visible()
+    page.keyboard.press("ArrowRight")
+    result = page.locator(".wander-guide-result")
+    expect(result).to_contain_text("x2")  # splash on ember, the page's opening pair
+    page.locator("[data-guide-me='shock']").click()
+    expect(result).to_contain_text("x1.5")  # shock is strong against ember
+    page.keyboard.press("j")
+    for _ in range(5):
+        page.keyboard.press("ArrowRight")
+        expect(page.locator(".wander-guide-page")).not_to_be_empty()
+    page.keyboard.press("ArrowRight")
+    expect(page.locator(".wander-type-chart")).to_be_visible()  # back round to the start
+    assert not errors
+
+
+def test_using_something_from_the_bag_while_walking(page: Page, live_server, tmp_path):
+    _set_up(page, live_server, tmp_path, items={"Way-Home Charm": 1})
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.keyboard.press("1")
+    expect(page.locator("#menu-body")).to_contain_text("Way-Home Charm")
+    page.keyboard.press("Enter")
+    expect(page.locator("#menu")).to_be_hidden()
+    expect(page.locator("#where-name")).to_contain_text("Camp")
+
+
+def test_befriending_is_offered_when_you_win_with_a_token(page: Page, live_server, tmp_path):
+    from app import db
+    from app.wanderpaw import save as sv
+    _in_a_fight(page, live_server, tmp_path, {"Friendship Token": 1})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "battle": {**save["battle"], "over": "won"}, "trip": {**save["trip"], "mana": [50 for _ in save["trip"]["mana"]]}})
+    page.goto(f"{live_server}/wanderpaw")
+    keys = page.locator("#battle-keys")
+    expect(keys).to_contain_text("Befriend it")
+    page.keyboard.press("b")
+    expect(keys).not_to_contain_text("Befriend it")
+    expect(page.locator("#battle-log")).to_contain_text("wants to come with you")

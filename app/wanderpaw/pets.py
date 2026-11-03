@@ -88,6 +88,8 @@ class Record:
     pending: str | None = None  # a move picked at a level, waiting for its slot
     done: list[str] = field(default_factory=list)  # choices made that leave no other trace
     capstone: str | None = None  # "first:second", chosen at CAPSTONE_LEVEL (battle.CAPSTONES)
+    type_bonus: dict[str, int] = field(default_factory=dict)  # Type Tomes: levels in a type that aren't real levels
+    stat_bonus: dict[str, int] = field(default_factory=dict)  # Training Weights: power, speed, energy, mana
 
 
 def can_go(species: str) -> bool:
@@ -127,7 +129,7 @@ def type_levels(species: str, rec: Record) -> dict[str, int]:
         out[rec.second] = lv - rec.second_at + 1
     if rec.third:
         out[rec.third] = lv - rec.third_at + 1
-    return out
+    return {t: n + rec.type_bonus.get(t, 0) for t, n in out.items()}
 
 
 def stats(species: str, battle: dict, rec: Record) -> dict:
@@ -135,10 +137,10 @@ def stats(species: str, battle: dict, rec: Record) -> dict:
     lv = level(rec.xp)
     return {
         "level": lv,
-        "energy": 14 + battle["stamina"] + 2 * lv,
-        "power": battle["strength"] + lv,
-        "speed": battle["speed"] + lv,
-        "mana": 10 + lv,
+        "energy": 14 + battle["stamina"] + 2 * lv + rec.stat_bonus.get("energy", 0),
+        "power": battle["strength"] + lv + rec.stat_bonus.get("power", 0),
+        "speed": battle["speed"] + lv + rec.stat_bonus.get("speed", 0),
+        "mana": 10 + lv + rec.stat_bonus.get("mana", 0),
     }
 
 
@@ -291,7 +293,14 @@ def team_energy(members: list[dict]) -> int:
 
 def record_json(rec: Record) -> dict:
     return {"xp": rec.xp, "second": rec.second, "second_at": rec.second_at, "partners": rec.partners, "starred": rec.starred, "focus": rec.focus, "swaps": rec.swaps, "upgrades": rec.upgrades, "extra": rec.extra, "third": rec.third, "third_at": rec.third_at,
-            "pending": rec.pending, "done": rec.done, "capstone": rec.capstone}
+            "pending": rec.pending, "done": rec.done, "capstone": rec.capstone, "type_bonus": rec.type_bonus, "stat_bonus": rec.stat_bonus}
+
+
+def with_bonus(rec: Record, kind: str, name: str) -> Record:
+    """One more level in a type (kind "type") or point of a stat (kind "stat")."""
+    field_name = f"{kind}_bonus"
+    have = getattr(rec, field_name)
+    return replace(rec, **{field_name: {**have, name: have.get(name, 0) + 1}})
 
 
 def record_from(data: dict | None) -> Record:

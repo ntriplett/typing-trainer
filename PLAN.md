@@ -986,6 +986,12 @@ coins). Bosses should be hard (2026-11-02): you need counter types, or to be a f
 to take nearly all your energy and mana. Each has its own move every third round: dragon Stormfire (hits both), phoenix Rekindle (energy back), unicorn Moonlight (clears
 marks and effects), mermaid Siren Song (drains mana), flower fairy Wild Bloom (drinks what it deals). Tough and Champion have wider map sprites of their own, and in battle tougher creatures are drawn bigger, outlined, in rare colors (pets.TIER_COLORS). Next: tune these in play.
 
+**Shops and items (2026-11-02, `app/wanderpaw/shop.py`).** Each of the five towns has a shop with its own flavor (Alchemist, Outfitter, Angler & Forager, General Store, Curio Shop), and every shop also has a Friendship Token (1), Type Tomes (3) and Training Weights (3). Big things cost coins from typing practice. Items: Mana Drop (+10, 500), Full Mana Potion (2,000), Ward Potion (temp energy, used first, fades after the battle, 800), Mender's Feather (1,200), Energy Tonic (walking energy only, 300), Sneak Cloak (200), Treasure Map (750), Lucky Charm (up to 3 levels short of a gate, 500), and to keep: Forager's Satchel, Fine Fishing Rod (1,500 each), Sturdy Boots (2,500), Way-Home Charm (2,000). In a fight, 1 opens the bag and a number uses something, without costing the turn or any limit. Tomes and Weights are saved on the pet's Record (`type_bonus`, `stat_bonus`) and aren't real levels.
+
+**Befriending.** With a Friendship Token, after winning a fight with anything but a boss, press B: each fighter pays mana equal to its level (+2 Tough, +4 Champion). It joins your pets at that level, working through each level's choices. One token a shop makes five friends; each shop gets one more after you beat the game.
+
+**Guidebook (replaces the combo book).** Book 6, or 2 in a fight. Pages: Types (ring diagram and chart), Match-ups (pick your type and Enemy's), Combo chart, Combos found, Marks & effects, How fights work, The lands. All from the real rules (`battle.guide`, `terms.GUIDE_FIGHT`).
+
 **Move icons (2026-11-01).** Each card shows at a glance what it does (battle.move_icons, drawn by moveIcons): top right, circles
 in order: >> for haste; circles for a hit (one per half of a plain attack, in its type, half and half for a mix); a burst for each
 mark; a shield for protection (solid: you, thick outline: your partner, half and half: both; colored for certain types, dark gray

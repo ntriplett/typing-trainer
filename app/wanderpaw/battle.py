@@ -421,6 +421,22 @@ def matchup(move: str, target: str) -> float:
     return {0: 1.0, 1: 2.0, 2: 1.5, 3: 2 / 3, 4: 0.5}[gap]
 
 
+def guide() -> dict:
+    """What the guidebook shows, all from the game's real rules and words."""
+    wanted = ("Energy", "Mana", "Round", "Fast", "Goes last", "Mark", "Combo", "Focus", "Mix", "Worn out")
+    return {
+        "order": list(wd.REGIONS),
+        "chart": {m: {t: round(matchup(m, t), 2) for t in wd.REGIONS} for m in wd.REGIONS},
+        "boss_edge": BOSS_TYPE_EDGE,
+        "types": terms.TYPES,
+        "marks": terms.MARKS,
+        "effects": terms.EFFECTS,
+        "fight": {**terms.GUIDE_FIGHT, **{k: terms.TERMS[k] for k in wanted if k in terms.TERMS}},
+        "lands": terms.LANDS,
+        "bosses": {k: list(v) for k, v in terms.BOSS_MOVES.items()},
+    }
+
+
 def against(b: dict, kind: str) -> float:
     """A hit's type multiplier on this creature. A boss takes less of a strong
     type's extra: the right types help a lot, but levels and play count too."""
