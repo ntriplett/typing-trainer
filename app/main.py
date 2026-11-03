@@ -932,10 +932,12 @@ def wander_state(conn=Depends(get_db), learner_id: int = Depends(current_learner
 
 
 @app.get("/api/wander/scene")
-def wander_scene_now(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    """The facts of the picture of where you are, for the page to paint."""
+def wander_scene_now(home: bool = False, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The facts of the picture of where you are (or, `home`, of the campfire
+    going home would take you to), for the page to paint."""
     save = wander.current(conn, learner_id)
-    return wander_scene.describe(save["seed"], tuple(save["at"]), tuple(save["spot"]))
+    big, spot = wander.home_fire(save) if home else (tuple(save["at"]), tuple(save["spot"]))
+    return wander_scene.describe(save["seed"], big, spot)
 
 
 @app.post("/api/wander/walk")

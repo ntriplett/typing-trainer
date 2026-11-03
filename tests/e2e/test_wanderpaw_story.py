@@ -20,6 +20,8 @@ def test_pip_opens_a_new_game_and_teaches_the_basics(page: Page, live_server):
     expect(page.locator("#screen-portrait")).to_be_visible()
     expect(page.locator("#picker")).to_be_hidden()
     _enter_until_gone(page, len(lore.INTRO_PAGES))  # just reading: nothing typed
+    expect(page.locator("#day-scene")).to_be_visible()  # good morning!
+    page.keyboard.press("Enter")
     expect(page.locator("#picker")).to_be_visible()
     expect(page.locator("#pip-hint")).to_contain_text("Enter sets off")
 
@@ -53,7 +55,7 @@ def test_esc_skips_the_tutorial(page: Page, live_server):
     page.goto(f"{live_server}/wanderpaw")
     expect(page.locator("#screen-title")).to_have_text("Pip")
     page.keyboard.press("Escape")
-    expect(page.locator("#picker")).to_be_visible()
+    expect(page.locator("#day-scene")).to_be_visible()
     expect(page.locator("#pip-hint")).to_be_hidden()
 
 

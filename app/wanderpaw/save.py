@@ -748,7 +748,7 @@ def _fighting_team(save: dict, b: dict) -> list[dict]:
 
 def battle_view(save: dict) -> dict | None:
     b = save.get("battle")
-    if not b:
+    if not b or not save["trip"]:  # (a day ended mid-fight used to leave one behind)
         return None
     pets, mana = save["trip"]["pets"], _mana(save)
     team = _fighting_team(save, b)
@@ -845,20 +845,26 @@ def start_trip(save: dict, from_camp: bool = False) -> dict:
     return _see(save, tuple(save["at"]), tuple(save["spot"]))
 
 
+def home_fire(save: dict) -> tuple[Hex, Hex]:
+    """The campfire ending the day would take you to: its big hex, and its spot there."""
+    big = nearest_campfire(save, tuple(save["at"]))
+    return big, local_of(save, big).campfire
+
+
 def end_trip(save: dict) -> dict:
     """End the day and go home (from wherever you are): the next day starts
     at the nearest campfire you've rested at."""
     if not save["trip"]:
         raise WanderError("You're not on a trip.")
-    big = nearest_campfire(save, tuple(save["at"]))
-    save = _see({**save, "at": list(big), "spot": list(local_of(save, big).campfire)}, big, local_of(save, big).campfire)
-    return {**save, "trip": None, "note": "rested", "events": []}
+    big, fire = home_fire(save)
+    save = _see({**save, "at": list(big), "spot": list(fire)}, big, fire)
+    return {**save, "trip": None, "battle": None, "note": "rested", "events": []}
 
 
 def nap(save: dict) -> dict:
     """Out of energy: the day's over; wake at the nearest campfire you've rested at."""
     big = nearest_campfire(save, tuple(save["at"]))
-    save = {**save, "at": list(big), "spot": list(local_of(save, big).campfire), "trip": None, "note": "napped",
+    save = {**save, "at": list(big), "spot": list(local_of(save, big).campfire), "trip": None, "battle": None, "note": "napped",
             "events": [*save["events"], {"kind": "nap", "text": "All tired out! You curl up and sleep. Tomorrow you'll wake by the nearest campfire you've rested at."}]}
     return _see(save, big, tuple(save["spot"]))
 

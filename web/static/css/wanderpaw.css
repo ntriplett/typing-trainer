@@ -262,7 +262,7 @@ main.wander {
   list-style: none;
   margin: 0 0 0.75rem;
   padding: 0;
-  max-height: 240px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -1152,10 +1152,28 @@ main.wander {
   margin-bottom: 0.5rem;
 }
 
-.wander-picker .wander-scene {
+/* The day's start and end: a whole screen like the party book's. */
+.wander-day {
+  text-align: center;
+}
+
+.wander-day .wander-scene {
   width: auto;
-  max-height: 250px;
-  margin: 0 auto 0.5rem;
+  max-width: 100%;
+  max-height: max(300px, calc(100vh - 470px)); /* room for the buttons, on the screen */
+  margin: 0 auto;
+}
+
+.wander-day-text {
+  margin: 0.5rem 0;
+  font-size: 20px;
+}
+
+.wander-day-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .wander-party .hint {

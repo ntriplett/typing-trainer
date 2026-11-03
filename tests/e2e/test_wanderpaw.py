@@ -18,6 +18,7 @@ def no_tutorial(page: Page, live_server):
 def test_set_off_and_walk_by_typing(page: Page, live_server):
     page.goto(f"{live_server}/wanderpaw")
     expect(page.locator("#where-name")).to_have_text("Camp")
+    page.click("#day-go")  # good morning!
     # between trips: pick a party (no pets yet, so starters come)
     expect(page.locator("#picker")).to_be_visible()
     expect(page.locator("#picker-keys")).to_contain_text("Starters coming")
@@ -174,7 +175,7 @@ def test_level_ups_pop_up_in_turn_and_level_five_asks_for_a_type(page: Page, liv
     expect(page.locator('#levelup-detail [data-move="rest"]')).to_have_count(0)
     page.keyboard.press("Enter")
     expect(page.locator("#levelup")).to_be_hidden()
-    expect(page.locator("#picker")).to_be_visible()
+    expect(page.locator("#day-scene")).to_be_visible()
     me = next(p for p in page.request.get(f"{live_server}/api/wander/pets").json()["pets"] if p["id"] == fox)
     assert len(me["types"]) == 2 and me["choices"] is None and me["focus"] == "healer" and me["swaps"] == {"rest": "attack2"}
     # the party book shows it too
@@ -413,7 +414,7 @@ def _set_up(page, live_server, tmp_path, items=None, coins=20000):
     from app import db
     from app.wanderpaw import save as sv
     page.goto(f"{live_server}/wanderpaw")
-    page.wait_for_selector("#picker:not([hidden]), #wander-local")
+    page.wait_for_function("state && state.local")
     page.request.post(f"{live_server}/api/wander/trip/start", data={})
     with db.open_db(tmp_path / "e2e.db") as conn:
         db.add_coins(conn, 1, coins - db.get_coin_balance(conn, 1), "test")
@@ -643,7 +644,8 @@ def test_the_guidebook_fits_without_scrolling_and_the_bag_stays_red(page: Page, 
     page.set_viewport_size({"width": 1280, "height": 800})
     page.goto(f"{live_server}/wanderpaw")
     page.wait_for_function("state && pets")
-    page.keyboard.press("Enter")
+    page.keyboard.press("Enter")  # good morning
+    page.keyboard.press("Enter")  # set off
     page.wait_for_function("state.trip && !busy")
     assert page.evaluate("""getComputedStyle(document.querySelector('[data-menu="bag"]')).getPropertyValue('--book').trim()""") == "#b8432f"
     page.keyboard.press("6")
@@ -690,31 +692,104 @@ def test_a_place_paints_the_same_every_time_and_water_is_where_the_mermaid_swims
     assert out["dry"] == out["dryTotal"] > 0  # none: she just sits
 
 
-def test_the_picture_shows_at_the_campfire_in_the_party_book_and_by_night(page: Page, live_server):
+def _home_for_the_evening(page):
+    page.click("#go-home")
+    page.keyboard.press("1")  # end the day
+    expect(page.locator("#day-scene")).to_be_visible()
+    page.wait_for_function("liveScene && liveScene.canvasId === 'day-scene' && liveScene.scene.night")
+
+
+def test_a_new_day_starts_with_the_morning_picture_then_the_picker(page: Page, live_server):
     page.goto(f"{live_server}/wanderpaw")
-    expect(page.locator("#picker-scene")).to_be_visible()  # a day's start
-    assert not page.evaluate("state.night")
+    expect(page.locator("#day-scene")).to_be_visible()
+    expect(page.locator("#picker")).to_be_hidden()
+    expect(page.locator("#wander-local")).to_be_hidden()  # a whole screen
+    expect(page.locator("#day-go")).to_contain_text("Start playing a new day")
+    expect(page.locator("#day-stay")).to_be_hidden()
+    page.wait_for_function("liveScene && liveScene.canvasId === 'day-scene' && sceneAvatar && !liveScene.scene.night")
+    assert page.evaluate("liveScene.scene.spec.setting") == "camp"
+    page.click("#day-go")
+    expect(page.locator("#day")).to_be_hidden()
+    expect(page.locator("#picker")).to_be_visible()
+    page.keyboard.press("Escape")  # back a step
+    expect(page.locator("#day-scene")).to_be_visible()
+    page.keyboard.press("Enter")
+    expect(page.locator("#picker")).to_be_visible()
     page.keyboard.press("Enter")
     expect(page.locator("#energy")).to_be_visible()
-    page.keyboard.press("Enter")  # Camp's campfire
+    page.keyboard.press("Enter")  # Camp's campfire: the picture's here too, by day
     expect(page.locator("#screen-scene")).to_be_visible()
-    page.wait_for_function("liveScene && liveScene.canvasId === 'screen-scene'")
+    page.wait_for_function("liveScene.canvasId === 'screen-scene' && !liveScene.scene.night")
     page.keyboard.press("Escape")
-    expect(page.locator("#screen-scene")).to_be_hidden()
     page.keyboard.press("3")
     expect(page.locator("#party-scene")).to_be_visible()
-    page.wait_for_function("liveScene && liveScene.canvasId === 'party-scene' && sceneAvatar")
-    assert page.evaluate("liveScene.scene.spec.setting") == "camp"
-    page.keyboard.press("Escape")
-    # the day ends while you're playing: night
-    page.request.post(f"{live_server}/api/wander/trip/end", data={})
-    page.evaluate("fetch('/api/wander').then((r) => r.json()).then(apply).then(render)")
-    expect(page.locator("#picker-scene")).to_be_visible()
-    page.wait_for_function("liveScene.canvasId === 'picker-scene' && liveScene.scene.night")
-    # back another time: a new day
+
+
+def test_ending_the_day_shows_the_evening_and_you_can_change_your_mind(page: Page, live_server):
+    from app.wanderpaw import save as sv
+
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
     page.goto(f"{live_server}/wanderpaw")
-    expect(page.locator("#picker-scene")).to_be_visible()
-    page.wait_for_function("liveScene && liveScene.canvasId === 'picker-scene' && !liveScene.scene.night")
+    expect(page.locator("#energy")).to_be_visible()
+    _home_for_the_evening(page)
+    assert page.evaluate("liveScene.scene.spec.setting") == "camp"
+    assert page.evaluate("state.trip !== null")  # nothing's changed yet
+    expect(page.locator("#day-go")).to_contain_text("Exit game")
+    page.click("#day-stay")  # wait! still playing: right where you were
+    expect(page.locator("#day")).to_be_hidden()
+    expect(page.locator("#wander-local")).to_be_visible()
+    expect(page.locator("#energy")).to_be_visible()
+    assert page.evaluate("state.trip !== null")
+    _home_for_the_evening(page)
+    page.keyboard.press("Enter")  # exit
+    page.wait_for_url(f"{live_server}/")
+    assert page.request.get(f"{live_server}/api/wander").json()["trip"] is None
+    # back another time: morning
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#day-go")).to_contain_text("Start playing a new day")
+    page.wait_for_function("liveScene && liveScene.canvasId === 'day-scene' && !liveScene.scene.night")
+
+
+def test_out_of_energy_shows_the_evening_and_still_playing_keeps_the_books_open(page: Page, live_server, tmp_path):
+    from app import db
+    from app.wanderpaw import save as sv
+
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        tired = {**save["trip"], "walk": 1, "pets": [0] * len(save["team"]), "energy": 1}
+        db.save_wander(conn, 1, {**save, "trip": tired})
+    page.reload()
+    page.wait_for_function("targets.length > 0 && !busy")
+    # one last step, typed for real
+    page.keyboard.type(page.evaluate("targets.find((t) => t.hex).word"))
+    page.wait_for_function("state.note === 'napped'")
+    expect(page.locator("#wander-message")).to_contain_text("All tired out")
+    expect(page.locator("#day-text")).to_contain_text("ready for sleep")
+    expect(page.locator("#day-go")).to_contain_text("Exit game")
+    page.wait_for_function("liveScene && liveScene.canvasId === 'day-scene' && liveScene.scene.night")
+    page.keyboard.press("Escape")  # wait! I still want to play
+    expect(page.locator("#day")).to_be_hidden()
+    expect(page.locator("#picker")).to_be_hidden()  # no new day from here
+    expect(page.locator("#wander-local")).to_be_visible()
+    page.keyboard.press("2")
+    expect(page.locator("#menu-title")).to_have_text("Journal")
+    page.keyboard.press("Escape")
+    page.keyboard.press("6")
+    expect(page.locator("#menu-title")).to_have_text("Guidebook")
+    page.keyboard.press("Escape")
+    expect(page.locator("#menu")).to_be_hidden()
+    expect(page.locator("#day")).to_be_hidden()
+    page.keyboard.press("3")  # still night in the picture
+    expect(page.locator("#party-scene")).to_be_visible()
+    page.wait_for_function("liveScene.canvasId === 'party-scene' && liveScene.scene.night")
+    page.keyboard.press("Escape")
+    page.click("#go-home")  # and now home: the same evening
+    expect(page.locator("#day-go")).to_contain_text("Exit game")
+    page.click("#day-go")
+    page.wait_for_url(f"{live_server}/")
 
 
 def test_camp_friends_are_only_in_the_picture_at_camp(page: Page, live_server):
@@ -724,10 +799,7 @@ def test_camp_friends_are_only_in_the_picture_at_camp(page: Page, live_server):
     names = page.evaluate(
         """(friend) => {
           state.camp_friends = [friend];
-          state.at_camp = true;
-          const home = scenePets().map((p) => p.name);
-          state.at_camp = false;
-          return [home, scenePets().map((p) => p.name)];
+          return [scenePets({ special: "camp" }).map((p) => p.name), scenePets({ special: null }).map((p) => p.name)];
         }""",
         friend,
     )

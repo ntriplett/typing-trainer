@@ -152,6 +152,17 @@ def test_it_is_night_only_between_a_day_ending_and_the_next_starting():
     assert sv.is_night(sv.nap(save))
 
 
+def test_ending_the_day_mid_fight_drops_the_fight():
+    save = {**_on_trip(), "battle": {"round": 1}}
+    assert sv.end_trip(save)["battle"] is None
+    assert sv.nap(save)["battle"] is None
+
+
+def test_a_save_left_with_a_fight_but_no_trip_still_loads():
+    save = {**sv.end_trip(_on_trip()), "battle": {"round": 1}}
+    assert sv.view(save)["battle"] is None
+
+
 def test_going_home_ends_the_day_from_anywhere():
     save = _on_trip()
     to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))

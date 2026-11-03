@@ -824,3 +824,7 @@ def test_the_scene_lab_shows_every_biome():
     scenes = client.get("/api/scene-lab?seed=3").json()["scenes"]
     assert {s["spec"]["biome"] for s in scenes} >= {b for bs in wd.BIOMES.values() for b, *_ in bs}
     assert {s["spec"]["setting"] for s in scenes} >= {"camp", "town", "temple", "heartstone", "shrine", "wild"}
+
+
+def test_the_scene_of_home_is_the_campfire_going_home_would_take_you_to():
+    assert client.get("/api/wander/scene?home=1").json()["setting"] == "camp"

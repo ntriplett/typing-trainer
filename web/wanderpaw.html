@@ -45,7 +45,6 @@
           <p class="wander-screen-keys" id="screen-keys"></p>
         </div>
         <div class="wander-screen panel wander-picker" id="picker" hidden>
-          <canvas id="picker-scene" class="wander-scene" width="960" height="540"></canvas>
           <h2 class="panel-title">Who's coming?</h2>
           <ul class="wander-pets" id="picker-pets"></ul>
           <p class="wander-screen-keys" id="picker-keys"></p>
@@ -62,6 +61,15 @@
         <div id="levelup-detail"></div>
         <div id="levelup-choice"></div>
         <p class="wander-screen-keys" id="levelup-keys"></p>
+      </div>
+      <div class="panel wander-battle wander-day" id="day" hidden>
+        <h2 class="panel-title" id="day-title"></h2>
+        <canvas id="day-scene" class="wander-scene" width="960" height="540"></canvas>
+        <p class="wander-day-text" id="day-text"></p>
+        <div class="wander-day-buttons">
+          <button type="button" class="button-go" id="day-go"></button>
+          <button type="button" id="day-stay"><kbd class="keycap">Esc</kbd> Wait! I still want to play</button>
+        </div>
       </div>
       <div class="panel wander-battle wander-party" id="party" hidden>
         <h2 class="panel-title">Party</h2>

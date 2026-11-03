@@ -123,7 +123,7 @@ function render() {
   document.getElementById("campfires").textContent = `Campfires rested at: ${state.campfires}`;
 
   const energy = document.getElementById("energy");
-  energy.hidden = !state.trip;
+  energy.hidden = !state.trip || dayScreen === "evening";
   if (state.trip) {
     // green: the pets'; gold: your own walking energy, used first, at the
     // end, so the bar empties from the right
@@ -143,6 +143,7 @@ function render() {
   renderMenu();
   renderBattle();
   renderPip();
+  renderDay();
 }
 
 // --- battles -----------------------------------------------------------------------
@@ -711,21 +712,30 @@ let liveScene = null; // {key, canvasId, scene, world, timer, tick}
 let sceneAvatar = null; // what you're wearing (from /api/me)
 let morning = false; // opened the game between trips: that's a new day, whatever ended the last
 
-const sceneNight = () => Boolean(state.night) && !morning;
+// Between days: "morning" (the full picture, then) "picker"; "evening" (the full
+// picture, whether the day's ended or you've just asked to end it); "tired" (you
+// said you still want to play with no energy left: books and the map, then home).
+let dayScreen = null;
+
+// Asked to end the day, still out there: nothing's changed until you exit.
+const eveningAhead = () => dayScreen === "evening" && Boolean(state.trip);
+const sceneNight = () => eveningAhead() || (Boolean(state.night) && !morning);
 
 async function sceneFacts() {
-  const where = state.local.spot.join();
+  // Heading home for the evening, you're not there yet: it's the campfire you'd go to.
+  const home = eveningAhead();
+  const where = `${home ? `home:${state.campfires}:` : ""}${state.local.spot.join()}`;
   if (!sceneSpecs.has(where)) {
-    const res = await fetch("/api/wander/scene");
+    const res = await fetch(`/api/wander/scene${home ? "?home=1" : ""}`);
     if (!res.ok) return null;
     sceneSpecs.set(where, await res.json());
   }
   return { where, spec: sceneSpecs.get(where) };
 }
 
-// Who's in the picture: your party, and your friends when you're at Camp.
-function scenePets() {
-  const friends = state.at_camp ? (state.camp_friends || []).map((f) => ({ ...f, growth: 10 })) : [];
+// Who's in the picture: your party, and your friends when it's of Camp.
+function scenePets(spec) {
+  const friends = spec.special === "camp" ? (state.camp_friends || []).map((f) => ({ ...f, growth: 10 })) : [];
   return [...state.team.filter((m) => m.genes), ...friends];
 }
 
@@ -733,7 +743,7 @@ async function sceneShow(canvasId) {
   if (window.Header && !sceneAvatar) sceneAvatar = (await Header.ready.catch(() => null))?.avatar || null;
   const facts = await sceneFacts();
   if (!facts || !document.getElementById(canvasId)) return;
-  const who = scenePets();
+  const who = scenePets(facts.spec);
   const key = `${facts.where}:${sceneNight()}:${who.map((m) => m.id || m.name).join()}`;
   if (!liveScene || liveScene.key !== key) {
     if (liveScene) clearInterval(liveScene.timer);
@@ -1272,20 +1282,88 @@ const clueLine = (c) => `Clue from ${esc(c.from)}: dig in ${esc(c.to)}${c.found 
 async function chooseHome(i) {
   const go = HOME_CHOICES[i].go;
   if (go === "stay") return closeMenu();
-  if (go === "end" && state.trip) {
+  if (go === "end") {
+    menu = null;
+    mode = "walk";
+    dayScreen = "evening";
+    typer.release();
+    say("");
+    return render();
+  }
+  location.href = "/";
+}
+
+function askHome() {
+  if (state.trip) return openMenu("home");
+  if (dayScreen === "tired") {
+    dayScreen = "evening";
+    return render();
+  }
+  location.href = "/";
+}
+
+// --- the day's start and end: a whole screen of where you are ----------------------
+
+async function exitGame() {
+  if (state.trip) {
     const res = await fetch("/api/wander/trip/end", { method: "POST" });
     if (!res.ok) return say((await res.json()).detail);
   }
   location.href = "/";
 }
 
-function askHome() {
-  if (!state.trip) {
-    location.href = "/";
-    return;
-  }
-  openMenu("home");
+function keepPlaying() {
+  dayScreen = state.trip ? null : "tired";
+  say(state.trip ? "" : "You're out of energy today. Look through your books, then Go home when you're ready.", true);
+  render();
 }
+
+function startDay() {
+  dayScreen = "picker";
+  render();
+}
+
+function dayKey(e) {
+  if (e.key === "Enter") e.preventDefault(); // not a click on a button too
+  if (dayScreen === "morning") {
+    if (e.key === "Enter") startDay();
+    else if (e.key === "Escape") location.href = "/";
+    else if (BOOKS[Number(e.key) - 1]) openMenu(BOOKS[Number(e.key) - 1]); // a look before you go
+  } else if (e.key === "Enter") {
+    exitGame();
+  } else if (e.key === "Escape") {
+    keepPlaying();
+  }
+}
+
+function renderDay() {
+  const box = document.getElementById("day");
+  const on = mode === "walk" && (dayScreen === "morning" || dayScreen === "evening");
+  box.hidden = !on;
+  if (!on) return;
+  box.parentElement.classList.add("partying");
+  const morningNow = dayScreen === "morning";
+  document.getElementById("day-title").textContent = morningNow ? "Good morning!" : "Good night!";
+  document.getElementById("day-text").textContent = morningNow
+    ? `The sun's up over ${state.local.name}, and everyone's ready to go.`
+    : state.trip ? "Everyone's gathered by the fire. Tomorrow you'll set off from here."
+    : state.note === "napped" ? "The fire's warm, and everyone's ready for sleep."
+    : "Everyone's gathered by the fire. Tomorrow you'll set off from here.";
+  const go = document.getElementById("day-go");
+  const stay = document.getElementById("day-stay");
+  go.innerHTML = `<kbd class="keycap">Enter</kbd> ${morningNow ? "Start playing a new day" : "Exit game"}`;
+  stay.hidden = morningNow;
+  sceneShow("day-scene");
+}
+document.getElementById("day-go").addEventListener("click", (e) => {
+  e.currentTarget.blur(); // keep Enter for the next screen
+  if (dayScreen === "morning") startDay();
+  else exitGame();
+});
+document.getElementById("day-stay").addEventListener("click", (e) => {
+  e.currentTarget.blur();
+  keepPlaying();
+});
 
 function menuKey(e) {
   if (e.key === "Escape") {
@@ -1369,10 +1447,9 @@ function inParty(id) {
 
 function renderPicker() {
   const box = document.getElementById("picker");
-  box.hidden = !!state.trip || mode !== "walk" || !pets;
+  box.hidden = !!state.trip || mode !== "walk" || !pets || dayScreen !== "picker";
   document.getElementById("keys").hidden = !box.hidden || !state.trip;
   if (box.hidden) return;
-  sceneShow("picker-scene");
   const list = document.getElementById("picker-pets");
   cursor = Math.max(0, Math.min(cursor, pets.pets.length - 1));
   list.innerHTML = pets.pets.length
@@ -1459,8 +1536,6 @@ function pickerKey(e) {
     startTrip(false);
   } else if ((e.key === "c" || e.key === "C") && !state.at_camp) {
     startTrip(true);
-  } else if (e.key === "Escape") {
-    askHome();
   }
 }
 
@@ -1665,8 +1740,16 @@ function apply(data) {
   if (data.battle && mode !== "menu") mode = "battle";
   else if (mode === "battle") mode = "walk";
   if (!data.trip && (!pets || state?.trip)) loadPets(); // back between trips: levels may have changed
-  if (!state) morning = !data.trip;
-  else if (data.trip) morning = false;
+  if (!state) {
+    morning = !data.trip;
+    dayScreen = data.trip ? null : "morning";
+  } else if (state.trip && !data.trip) {
+    dayScreen = "evening"; // out of energy
+    if (mode === "screen" || mode === "line" || mode === "letter") mode = "walk";
+  } else if (data.trip && !state.trip) {
+    morning = false;
+    dayScreen = null;
+  }
   state = data;
   slideTo(data.local.spot);
   typer.release();
@@ -1773,6 +1856,9 @@ function walkKey(e) {
     if (typer.target) {
       typer.release();
       render();
+    } else if (e.key === "Escape" && dayScreen === "picker") {
+      dayScreen = "morning"; // back a step
+      render();
     } else if (e.key === "Escape") {
       askHome();
     }
@@ -1783,7 +1869,7 @@ function walkKey(e) {
     return;
   }
   if (!state.trip) {
-    pickerKey(e);
+    if (dayScreen === "picker") pickerKey(e);
     return;
   }
   if (e.key === "Enter") {
@@ -1977,7 +2063,8 @@ function lineKey(e) {
 
 document.addEventListener("keydown", (e) => {
   if (!state || busy || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (mode === "walk") walkKey(e);
+  if (mode === "walk" && (dayScreen === "morning" || dayScreen === "evening")) dayKey(e);
+  else if (mode === "walk") walkKey(e);
   else if (mode === "battle") battleKey(e);
   else if (mode === "menu") menuKey(e);
   else if (mode === "line") lineKey(e);
