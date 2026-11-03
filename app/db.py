@@ -734,6 +734,15 @@ def upsert_streak(conn: sqlite3.Connection, streak: Streak) -> None:
 # --- coins --------------------------------------------------------------------
 
 
+def coin_rows_paid(conn: sqlite3.Connection, learner_id: int, reasons: tuple[str, ...]) -> set[tuple[str, str]]:
+    """(reason, ref) of what's already been paid for these reasons: for things paid once."""
+    marks = ",".join("?" * len(reasons))
+    rows = conn.execute(
+        f"SELECT reason, ref FROM coin_ledger WHERE learner_id = ? AND reason IN ({marks})", (learner_id, *reasons)
+    ).fetchall()
+    return {(r[0], r[1]) for r in rows}
+
+
 def add_coins(
     conn: sqlite3.Connection, learner_id: int, amount: int, reason: str, ref: str | None = None
 ) -> CoinEntry:

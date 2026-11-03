@@ -208,7 +208,7 @@ def test_a_friend_writes_one_at_a_time(monkeypatch):
     slots = client.get("/api/pets/shop/companions").json()["slots"]
     assert len(slots) == 1
     her = slots[0]
-    assert her["species"] in g.COMPANIONS and her["price"] == 10000
+    assert her["species"] in g.COMPANIONS and her["price"] == 7500
     assert her["new_colors"] == [] and her["rare"] == {}
     assert her["letter"]["name"] in g.COMPANION_NAMES[her["species"]] and len(her["letter"]["lines"]) == 3
     assert her["days_left"] >= 1
@@ -224,7 +224,7 @@ def test_inviting_a_friend_brings_her_fully_grown_under_her_own_name(monkeypatch
     assert r.status_code == 200
     friend = r.json()["bought"]
     assert friend["name"] == her["letter"]["name"] and friend["growth"] == 10 and friend["source"] == "letter"
-    assert r.json()["coins"] == 5000
+    assert r.json()["coins"] == 7500
     with db.open_db(main.DB_PATH) as conn:
         assert db.list_pet_color_unlocks(conn, 1) == before  # her colors stay hers
     assert client.get("/api/pets/shop").json()["friend"] is False

@@ -36,6 +36,8 @@ EMA_ALPHA_ACCURACY = 0.15
 
 ACCURACY_FLOOR = 0.95
 MIN_SAMPLES_FOR_MASTERY = 20
+# Half the end goal: 15 WPM on a key, a milestone long before mastery.
+HALFWAY_MS_PER_KEYSTROKE = 2 * TARGET_MS_PER_KEYSTROKE
 
 # Space first (a real, taught, accuracy-tracked key -- every word
 # boundary is a thumb keystroke), then home row, top row, bottom row,
@@ -126,6 +128,18 @@ def record_attempt(stat: KeyStat, *, correct: bool, latency_ms: int, now: dateti
         )
 
     return candidate
+
+
+def reaches_speed(stat: KeyStat | None, ms_per_keystroke: float) -> bool:
+    """This fast on a key, accurately, with enough samples to believe it."""
+    return (
+        stat is not None
+        and stat.ema_time_ms is not None
+        and 0 < stat.ema_time_ms <= ms_per_keystroke
+        and stat.accuracy_rolling is not None
+        and stat.accuracy_rolling >= ACCURACY_FLOOR
+        and stat.sample_count >= MIN_SAMPLES_FOR_MASTERY
+    )
 
 
 def is_mastered(stat: KeyStat) -> bool:

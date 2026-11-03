@@ -116,7 +116,7 @@ def test_pair_lesson_plays_through_and_pays_coins(page: Page, live_server):
 def test_lab_lists_lessons_by_row(page: Page, live_server):
     page.goto(f"{live_server}/teach-lab")
     expect(page.locator(".lab-group h2")).to_have_text(
-        ["Start here", "Home row", "Top row", "Bottom row", "Capitals", "Numbers"]
+        ["Start here", "Home row", "Top row", "Bottom row", "Numbers", "Capitals"]
     )
     page.get_by_role("link", name="C and ,").click()
     expect(page).to_have_url(f"{live_server}/teach/{PAIR}?keys=c%2C")

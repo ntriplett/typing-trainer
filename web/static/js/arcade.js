@@ -22,7 +22,7 @@ function render() {
       <article class="game-card${(g.affordable || g.paid || g.unfinished) && g.ready ? "" : " locked"}">
         <canvas class="game-art" data-icon="${g.id}" width="160" height="200"></canvas>
         <h2>${escapeHtml(g.title)}</h2>
-        <p class="game-blurb">${escapeHtml(g.ready ? g.blurb : "Learn a few more letters to unlock this game!")}</p>
+        <p class="game-blurb">${escapeHtml(g.ready ? g.blurb : g.locked_note || "Learn a few more letters to unlock this game!")}</p>
         ${g.paid ? "" : `<button class="${g.affordable && g.ready ? "button-go" : ""} big-button" data-play="${g.id}" ${g.affordable && g.ready ? "" : "disabled"}>
           ${g.unfinished ? "New day" : "Play"} · <span class="token-icon"></span> ${g.price}
         </button>`}

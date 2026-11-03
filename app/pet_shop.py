@@ -48,8 +48,8 @@ DEPARTMENTS: dict[str, Department] = {
         Department("household", "Household Pets", ("dog", "cat", "bunny"), 16, 800, HOME_ROW),
         Department("farm", "Farm Pets", ("goat", "sheep", "llama", "fox"), 12, 2000, TOP_ROW),
         Department("reptiles", "Reptiles & Amphibians", ("turtle", "lizard", "snake"), 8, 3000, BOTTOM_ROW),
-        Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 10000, NUMBERS),
-        Department("companions", "Companions", ("flower_fairy", "mermaid"), 1, 10000, NUMBERS),  # one letter at a time, on the desk
+        Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 7500, NUMBERS),
+        Department("companions", "Companions", ("flower_fairy", "mermaid"), 1, 7500, NUMBERS),  # one letter at a time, on the desk
         Department("orders", "Special Orders", (), 4, 0, HOME_ROW),
         Department("habitats", "Habitats", (), 0, 0, ""),  # sold by app/pet_care.py
         Department("aqua", "Aquarium Supplies", (), 0, 0, ""),  # sold by app/aquarium.py

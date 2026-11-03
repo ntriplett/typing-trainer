@@ -12,6 +12,7 @@ from app.activities.game_modules import GAME_MODULES
 from app.wanderpaw import save as wander
 
 WANDERPAW = "wanderpaw"
+WANDERPAW_LETTERS = 6  # a whole adventure wants more words than the other games
 PRICES = {"game_crow_patrol_v1": 1, farm_stand.GAME_ID: 1, WANDERPAW: 2}
 REPLACED = "game_pet_battle_v1"  # Wanderpaw took its place (it's still in the game lab)
 
@@ -26,28 +27,31 @@ def _ready(conn: sqlite3.Connection, learner_id: int, game) -> bool:
     return game.is_eligible([], [" ", *letters])
 
 
+def _letters_short(conn: sqlite3.Connection, learner_id: int) -> int:
+    """How many more letters it takes to play Wanderpaw."""
+    letters = [k for k in lessons.taught_keys(conn, learner_id) if k.isalpha()]
+    return max(0, WANDERPAW_LETTERS - len(letters))
+
+
 def _wanderpaw(conn: sqlite3.Connection, learner_id: int, tokens: int) -> dict:
     """Not one of the game modules: it's its own page, and a play buys a day. A day
     you've paid for or left unfinished is yours to go back to for free."""
     save = wander.load(conn, learner_id)
     price = PRICES[WANDERPAW]
+    short = _letters_short(conn, learner_id)
     return {
         "id": WANDERPAW,
         "title": "Wanderpaw",
         "blurb": "Explore the lands with your pets, and carry the letters home. Each play is a new day at full energy.",
         "game": WANDERPAW,
         "price": price,
-        "ready": _ready(conn, learner_id, _letters_game()),
+        "ready": not short,
+        "locked_note": f"Learn {short} more letter{'s' if short > 1 else ''} to unlock this game!" if short else None,
         "affordable": price <= tokens,
         "url": "/wanderpaw",
         "paid": wander.has_paid(save),
         "unfinished": bool(save["trip"]),
     }
-
-
-def _letters_game():
-    """Wanderpaw needs as many letters as the game it replaced."""
-    return next(g for g in GAME_MODULES if g.id == REPLACED)
 
 
 def games(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
@@ -68,8 +72,8 @@ def games(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
 
 
 def _play_wanderpaw(conn: sqlite3.Connection, learner_id: int) -> int:
-    if not _ready(conn, learner_id, _letters_game()):
-        raise ArcadeError("Learn a few more letters first! Games need at least 4.")
+    if _letters_short(conn, learner_id):
+        raise ArcadeError(f"Learn a few more letters first! Wanderpaw needs at least {WANDERPAW_LETTERS}.")
     if wander.has_paid(wander.load(conn, learner_id)):
         return db.get_token_balance(conn, learner_id)  # already paid for: never twice
     price = PRICES[WANDERPAW]

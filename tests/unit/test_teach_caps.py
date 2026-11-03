@@ -40,9 +40,9 @@ def test_caps_groups_cover_the_alphabet_and_use_one_shift_each():
         assert TeachCapsGroup().is_eligible(list(group), [])
 
 
-def test_curriculum_puts_capitals_after_letters_before_numbers():
+def test_curriculum_puts_capitals_last():
     titles = [l["title"] for l in lessons()]
-    assert titles.index("B and N") < titles.index("Big letters") < titles.index("A S D F") < titles.index("1 and 2")
+    assert titles.index("B and N") < titles.index("1 and 2") < titles.index("9 and 0") < titles.index("Big letters") < titles.index("A S D F")
     caps = [l for l in lessons() if l["group"] == "Capitals"]
     assert caps[0]["module"] == CAPS_INTRO_ID
     assert all(l["module"] == CAPS_ID for l in caps[1:])

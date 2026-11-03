@@ -23,8 +23,8 @@ def test_departments_match_the_plan():
         "household": (16, 800, {"dog", "cat", "bunny"}),
         "farm": (12, 2000, {"goat", "sheep", "llama", "fox"}),
         "reptiles": (8, 3000, {"turtle", "lizard", "snake"}),
-        "mythical": (2, 10000, {"dragon", "unicorn", "phoenix"}),
-        "companions": (1, 10000, {"flower_fairy", "mermaid"}),
+        "mythical": (2, 7500, {"dragon", "unicorn", "phoenix"}),
+        "companions": (1, 7500, {"flower_fairy", "mermaid"}),
     }
     for dept_id, (slots, base, species) in expect.items():
         d = shop.DEPARTMENTS[dept_id]
@@ -154,7 +154,7 @@ def test_the_view_has_what_the_shop_page_draws():
 
 
 def test_the_order_fee_is_half_the_species_base():
-    assert [shop.order_fee(s) for s in ("fish", "cat", "goat", "snake", "dragon")] == [50, 400, 1000, 1500, 5000]
+    assert [shop.order_fee(s) for s in ("fish", "cat", "goat", "snake", "dragon")] == [50, 400, 1000, 1500, 3750]
 
 
 def test_an_order_brings_4_pets_in_the_asked_colors_tomorrow_for_3_days():

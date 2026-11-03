@@ -132,7 +132,9 @@ const DayTracker = {
 
   const REASON_LABELS = {
     lesson: "Lesson",
-    key_mastered: "New key mastered!",
+    key_solid: "Key solid!",
+    key_halfway: "15 WPM on a key!",
+    key_mastered: "Key mastered! 30 WPM!",
     session_complete: "Session complete!",
     teach: "Lesson",
     teach_first: "First lesson bonus!",

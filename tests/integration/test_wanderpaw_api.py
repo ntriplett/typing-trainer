@@ -835,7 +835,7 @@ def days_cost_tokens(monkeypatch):
     from app import arcade, config
 
     monkeypatch.setattr(config, "WANDER_FREE_DAYS", False)
-    monkeypatch.setattr(arcade, "_ready", lambda *a: True)
+    monkeypatch.setattr(arcade, "WANDERPAW_LETTERS", 0)
 
 
 def _card():
@@ -889,4 +889,32 @@ def test_the_lab_sets_up_the_ending_and_you_still_place_the_relics():
     assert client.get("/api/wander").json()["finished"]
     client.post("/api/wander-lab/to-the-end")  # and again
     assert client.get("/api/wander").json()["screen"]["action"] == "heartstone"
+
+
+def _learned(keys):
+    from app import lessons
+
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_tokens(conn, 1, 2, "test")
+        lessons.record_placement(conn, 1, set(keys))
+
+
+def test_wanderpaw_opens_at_six_letters():
+    _learned("fjdk")  # the other games open here
+    card = _card()
+    assert not card["ready"] and "2 more letters" in card["locked_note"]
+    other = next(g for g in client.get("/api/arcade").json()["games"] if g["id"] == "game_crow_patrol_v1")
+    assert other["ready"]
+    refused = client.post("/api/arcade/play/wanderpaw")
+    assert refused.status_code == 400 and "at least 6" in refused.json()["detail"]
+    assert client.get("/api/me").json()["tokens"] == 2  # nothing spent
+    _learned("sl")
+    card = _card()
+    assert card["ready"] and card["locked_note"] is None
+    assert client.post("/api/arcade/play/wanderpaw").status_code == 200
+
+
+def test_punctuation_doesnt_count_toward_wanderpaws_letters():
+    _learned("fjdk;")
+    assert not _card()["ready"]
 

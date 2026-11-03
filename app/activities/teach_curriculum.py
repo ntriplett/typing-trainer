@@ -1,7 +1,6 @@
 """The order keys are taught in: the intro, then two keys per lesson in
-skill_model.KEY_ORDER (home row, top row, bottom row, numbers), with
-capitals slotted in after the letters and before the numbers. Each
-lesson's "known" keys are everything taught before it.
+skill_model.KEY_ORDER (home row, top row, bottom row, numbers), then
+capitals last. Each lesson's "known" keys are everything taught before it.
 """
 
 from __future__ import annotations
@@ -35,8 +34,6 @@ def lessons() -> list[dict]:
     out = [{"module": INTRO_ID, "keys": "", "group": "Start here", "title": "Hands on home"}]
     for i in range(0, len(_TAUGHT_KEYS), 2):
         pair = _TAUGHT_KEYS[i : i + 2]
-        if pair[0] == "1":
-            out += _caps_lessons()
         out.append(
             {
                 "module": PAIR_ID,
@@ -45,7 +42,7 @@ def lessons() -> list[dict]:
                 "title": " and ".join(k.upper() for k in pair),
             }
         )
-    return out
+    return out + _caps_lessons()
 
 
 def _caps_lessons() -> list[dict]:

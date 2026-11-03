@@ -25,7 +25,7 @@ from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import SkillSnapshot, snapshot_from_stats
 from app.activities.teach_curriculum import INTRO_ID, PAIR_ID, known_before, lessons as curriculum_lessons
 from app.activities.teach_modules import get_teach_module
-from app.brain import BrainInput, KeyRecord, LessonPlan, LessonRecord, lesson_ref
+from app.brain import MIN_RECENT_ATTEMPTS, BrainInput, KeyRecord, LessonPlan, LessonRecord, lesson_ref, solid_bar
 from app.models import KeyStat
 
 # Per-key windows from the keystroke log: the newest RECENT attempts, and
@@ -33,7 +33,14 @@ from app.models import KeyStat
 RECENT_WINDOW = 50
 OLDER_WINDOW = 100
 
-KEY_MASTERED_BONUS = 50
+# Three milestones for each key, each paid once: solid enough for the next new lesson
+# (the same check as brain.unsolid_keys, so it follows the parent's slider), then 15
+# WPM, then 30. The speed ones come late, and help with the last big buys.
+KEY_BONUS = 500
+KEY_SOLID = "key_solid"
+KEY_HALFWAY = "key_halfway"
+KEY_MASTERED = "key_mastered"
+KEY_BONUS_REASONS = (KEY_SOLID, KEY_HALFWAY, KEY_MASTERED)
 # A lesson's active time can't be more than its wall-clock time (plus a
 # little slack for clocks), or than this.
 MAX_LESSON_SECONDS = 600
@@ -254,11 +261,30 @@ def _sitting(conn: sqlite3.Connection, learner_id: int, now: datetime) -> int:
     return db.start_session(conn, learner_id).id
 
 
+def key_bonuses(
+    keys: list[str], stats: dict[str, KeyStat], records: dict[str, KeyRecord], bar: float, paid: set[tuple[str, str]],
+) -> list[tuple[int, str, str]]:
+    """The milestones `keys` have reached: (coins, reason, key). Speed counts only after
+    enough tries really typed: placement fills in a guessed speed and sample count."""
+    out = []
+    for key in keys:
+        if key not in skill_model.KEY_ORDER:
+            continue  # capitals and the like are the same fingers: only real keys count
+        record = records.get(key, KeyRecord())
+        typed = record.recent_attempts >= skill_model.MIN_SAMPLES_FOR_MASTERY
+        reached = {
+            KEY_SOLID: record.recent_attempts >= MIN_RECENT_ATTEMPTS and record.recent_accuracy >= bar,
+            KEY_HALFWAY: typed and skill_model.reaches_speed(stats.get(key), skill_model.HALFWAY_MS_PER_KEYSTROKE),
+            KEY_MASTERED: typed and skill_model.reaches_speed(stats.get(key), skill_model.TARGET_MS_PER_KEYSTROKE),
+        }
+        out += [(KEY_BONUS, reason, key) for reason, now in reached.items() if now and (reason, key) not in paid]
+    return out
+
+
 def apply_skill_model(
     conn: sqlite3.Connection, learner_id: int, new_keys: list[str], keystrokes: list[KeystrokeEvent], now: datetime
-) -> list[str]:
-    """Fold keystrokes into each key's stats (marking new_keys unlocked) and
-    persist. Returns the keys mastered for the first time."""
+) -> None:
+    """Fold keystrokes into each key's stats (marking new_keys unlocked) and persist."""
     touched: dict[str, KeyStat] = {}
 
     def get_or_new(key: str) -> KeyStat:
@@ -274,13 +300,8 @@ def apply_skill_model(
             get_or_new(ke.expected_char), correct=ke.correct, latency_ms=ke.latency_ms, now=now
         )
 
-    newly_mastered = []
     for stat in touched.values():
-        before = db.get_key_stat(conn, learner_id, stat.key)
-        if stat.mastered_at is not None and (before is None or before.mastered_at is None):
-            newly_mastered.append(stat.key)
         db.upsert_key_stat(conn, stat)
-    return newly_mastered
 
 
 def apply_bigram_model(conn: sqlite3.Connection, learner_id: int, keystrokes: list[KeystrokeEvent]) -> None:
@@ -347,11 +368,15 @@ def complete(
     if p.kind == "learn":
         new_keys = sorted(_lesson_keys(lesson_ref(p.activity_id, p.teach_keys)))
         db.mark_taught(conn, learner_id, lesson_ref(p.activity_id, p.teach_keys), "lesson")
-    newly_mastered = apply_skill_model(conn, learner_id, new_keys, keystrokes, now)
+    apply_skill_model(conn, learner_id, new_keys, keystrokes, now)
     apply_bigram_model(conn, learner_id, keystrokes)
 
     earned = [_coins(conn, learner_id, lesson, result, typed_part)]
-    earned += [(KEY_MASTERED_BONUS, "key_mastered", key) for key in newly_mastered]
+    earned += key_bonuses(
+        sorted({ke.expected_char for ke in keystrokes}), {s.key: s for s in db.list_key_stats(conn, learner_id)},
+        key_records(conn, learner_id), solid_bar(daily.get_settings(conn, learner_id).learn_vs_practice),
+        db.coin_rows_paid(conn, learner_id, KEY_BONUS_REASONS),
+    )
     coins_earned = []
     for amount, reason, ref in earned:
         if amount > 0:
