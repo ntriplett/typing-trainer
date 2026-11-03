@@ -6,12 +6,14 @@
 // ground you could walk on along the bottom. Clouds drift and a few things
 // sway; particles (themes.js) still fall in front.
 //
-// Only on pages with <body data-particles> (not while typing). Everything is
-// drawn on a grid of SCENERY_PX css pixels: the static part once per place
+// On every page that loads this file, typing pages too (particles stay off those:
+// they drift in front of the words). Its helpers stay private, since other scripts
+// have their own SCENES, pine and the like. Everything is drawn on a grid of SCENERY_PX css pixels: the static part once per place
 // and size, the moving part a few times a second.
 //
 // Needs themes.js (PLACE_GROUP) loaded first.
 
+(() => {
 const SCENERY_PX = 4; // css pixels per scenery pixel
 const SCENERY_TICK_MS = 200;
 const CONTENT_W = 1060; // the page's widest column, in css pixels
@@ -1087,7 +1089,6 @@ function fallsAt(s) {
 }
 
 function renderScenery(place, night) {
-  if (!document.body.hasAttribute("data-particles")) return;
   const sc = Scenery;
   if (!sc.canvas) {
     sc.canvas = document.createElement("canvas");
@@ -1109,3 +1110,7 @@ function renderScenery(place, night) {
   document.documentElement.toggleAttribute("data-dark-scenery", Boolean(dark) && !night);
   drawScenery();
 }
+
+window.renderScenery = renderScenery;
+window.Scenery = Scenery;
+})();

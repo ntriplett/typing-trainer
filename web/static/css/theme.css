@@ -520,7 +520,7 @@ button:focus-visible,
   text-shadow: 2px 2px 0 #14162a;
 }
 
-body[data-particles] main {
+.scenery ~ main {
   margin-bottom: 4rem; /* leave the scenery's ground showing */
 }
 

@@ -4,9 +4,8 @@
 // :root[data-night]).
 //
 // applyTheme(avatar) is called by header.js whenever the avatar changes.
-// Scenery and particles only appear on pages that opt in with
-// <body data-particles> (not while typing); the rest get the plain page
-// color with a grain.
+// Every page has its scenery. Particles float in front of everything, so only pages
+// with <body data-particles> get them (not where you type).
 
 // page: background color, grain: its speckle color, bar: top bar color,
 // particles: [kind, colors] -- see PARTICLE_KINDS.
