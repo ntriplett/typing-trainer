@@ -5,8 +5,10 @@ for boss fights. Each of the five towns has one shop, with a flavor of its own
 (FLAVORS), plus three things every shop has: EVERY_SHOP. An item is used up or
 kept (`keep`); `limit` is how many a shop ever has (None: it always restocks).
 
-Five Friendship Tokens in all, one a shop, so five friends across the game;
-each shop gets one more after you beat the game (`RESTOCKED`).
+Befriending takes two steps. Winning a fight and paying mana brings a creature
+to Camp (CAMP_SPOTS at most), where it can stay or be asked to leave. Giving it a
+Friendship Token makes it a real pet. Five Tokens in all, one a shop; each shop
+gets one more after you beat the game (`RESTOCKED`).
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ WARD_SHARE = 0.5  # of a pet's full energy
 FEATHER_SHARE = 0.3  # of a pet's full energy
 LUCKY_LEVELS = 3  # how far short of a gate it can carry you
 BOOTS_WALK = 25
+CAMP_SPOTS = 5  # friends waiting at Camp
 BEFRIEND_EXTRA_MANA = {"": 0, "tough": 2, "champion": 4}  # on top of the creature's level, for each fighter
 
 ITEMS: dict[str, Item] = {
@@ -64,7 +67,7 @@ ITEMS: dict[str, Item] = {
         Item(WAY_HOME, 2000, "Yours for good: takes you to the very center of Camp, whenever you like.", "walk", keep=True),
         Item(TOME, 2000, "One pet gets a level in one of its types, but not a real level.", "pick", limit=3),
         Item(WEIGHT, 2000, "One pet gets +1 to power, speed, {energy} or {mana}.", "pick", limit=3),
-        Item(TOKEN, 1000, "After you win a fight, it lets you befriend the creature, if both fighters have the {mana}. Not bosses.", "auto", limit=1),
+        Item(TOKEN, 1000, "Give it to a friend waiting at Camp, and they become one of your pets, ready to join your party and level up.", "auto", limit=1),
     ]
 }
 STATS = ("power", "speed", "energy", "mana")

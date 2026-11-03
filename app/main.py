@@ -977,7 +977,19 @@ def wander_use_item(body: WanderItemRequest, conn=Depends(get_db), learner_id: i
 
 @app.post("/api/wander/befriend")
 def wander_befriend(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return _wander_act(conn, learner_id, lambda: wander.befriend(conn, learner_id))
+    return _wander_act(conn, learner_id, lambda: wander.befriend_at(conn, learner_id))
+
+
+@app.post("/api/wander/camp/welcome")
+def wander_camp_welcome(body: WanderItemRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Give a friend at Camp a Friendship Token (`item`: the friend's id)."""
+    return _wander_act(conn, learner_id, lambda: wander.welcome_friend(conn, learner_id, body.item))
+
+
+@app.post("/api/wander/camp/leave")
+def wander_camp_leave(body: WanderItemRequest, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Ask a friend at Camp to leave (`item`: the friend's id)."""
+    return _wander_act(conn, learner_id, lambda: wander.send_friend_off(conn, learner_id, body.item))
 
 
 @app.post("/api/wander/battle/leave")

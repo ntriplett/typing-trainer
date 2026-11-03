@@ -182,7 +182,7 @@ def test_temples_want_the_key_and_a_pet_of_their_type():
     opened = sv.act(keyed, "temple")
     assert region in opened["temples"]
     assert opened["items"][tale.relic] == 1
-    assert opened["charms"] == 1 and opened["buffs"][region] == tale.buff
+    assert opened["buffs"][region] == tale.buff
     assert sv.screen(opened)["action"] is None
 
 

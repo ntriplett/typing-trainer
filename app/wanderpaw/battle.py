@@ -129,8 +129,7 @@ BOSS_FIRST_LEVEL = 13
 # side of it (measured with tools/wander_balance.py), so every boss is about
 # as hard at every level, and BOSS_EASE moves them all together.
 TYPE_POWER = 1  # of a pet's level in a type, added to its power for plain attacks of that type
-BOSS_EASE = 0.95
-BOSS_TYPE_EDGE = 0.6  # of a strong type's extra damage (x2 is x1.6): levels and good play can stand in for the right types
+BOSS_EASE = 1.14
 BOSS_SPECIES_ENERGY = {"dragon": 0.96, "phoenix": 0.99, "unicorn": 1.0, "mermaid": 1.15, "flower_fairy": 0.95}
 BOSS_LEVEL_ENERGY = {13: 1.03, 15: 1.0, 17: 0.95, 19: 1.0, 21: 1.02}  # pets don't gain evenly: level 17 is a lean one
 # Each boss's own move, every BOSS_MOVE_EVERY rounds.
@@ -423,25 +422,22 @@ def matchup(move: str, target: str) -> float:
 
 def guide() -> dict:
     """What the guidebook shows, all from the game's real rules and words."""
-    wanted = ("Energy", "Mana", "Round", "Fast", "Goes last", "Mark", "Combo", "Focus", "Mix", "Worn out")
+    wanted = ("Energy", "Mana", "Round", "Fast", "Goes last", "Focus", "Mix", "Worn out")
+    # a level 10 pet's hits, for the page on how fights work
+    pet = {**wp.starter("ember", 10)}
+    plain, typed = pet_hit(pet["power"]), pet_hit(type_power(pet, "ember"))
     return {
         "order": list(wd.REGIONS),
         "chart": {m: {t: round(matchup(m, t), 2) for t in wd.REGIONS} for m in wd.REGIONS},
-        "boss_edge": BOSS_TYPE_EDGE,
         "types": terms.TYPES,
         "marks": terms.MARKS,
         "effects": terms.EFFECTS,
-        "fight": {**terms.GUIDE_FIGHT, **{k: terms.TERMS[k] for k in wanted if k in terms.TERMS}},
+        "fight": terms.GUIDE_FIGHT,
+        "terms": {k: terms.TERMS[k] for k in wanted if k in terms.TERMS},
         "lands": terms.LANDS,
         "bosses": {k: list(v) for k, v in terms.BOSS_MOVES.items()},
+        "hits": {"level": 10, "plain": round(plain), "typed": round(typed), "big": round(plain * big_strength(pet))},
     }
-
-
-def against(b: dict, kind: str) -> float:
-    """A hit's type multiplier on this creature. A boss takes less of a strong
-    type's extra: the right types help a lot, but levels and play count too."""
-    mult = matchup(kind, b["kind"])
-    return 1 + (mult - 1) * BOSS_TYPE_EDGE if b.get("tier") == "boss" and mult > 1 else mult
 
 
 def accuracy(slips: int) -> float:
@@ -1230,7 +1226,7 @@ def _mix(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     if m.lift:
         b["boost"] = {"round": b["round"] + 1, "mult": m.lift, "first": m.lift_first}
     if m.later:
-        power = pet_hit(me["power"]) * against(b, _mix_kind(me, b["kind"], move)) * strength * m.later
+        power = pet_hit(me["power"]) * matchup(_mix_kind(me, b["kind"], move), b["kind"]) * strength * m.later
         at = b["round"] + (1 if m.later_when == "start" else 0)
         b["later"] = [*(b.get("later") or []), {"who": who, "kind": _mix_kind(me, b["kind"], move), "power": power, "name": m.name, "at": at, "when": m.later_when}]
     if m.self_energy > 0:
@@ -1255,8 +1251,8 @@ def _hit(b: dict, team: list[dict], who: int, move: str, strength: float, energy
     foe = b["species"]
     mix = is_mix(move)
     kind = _mix_kind(team[who], b["kind"], move) if mix else next(m["type"] for m in moves(team[who], b["kind"]) if m["id"] == move)
-    mult = matchup(kind, b["kind"])  # for what it says; what it does is against()
-    power = pet_hit(type_power(team[who], kind) if move in ATTACKS else team[who]["power"]) * against(b, kind) * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
+    mult = matchup(kind, b["kind"])
+    power = pet_hit(type_power(team[who], kind) if move in ATTACKS else team[who]["power"]) * mult * strength * (big_strength(team[who]) if move == "big" else attack_strength(team[who], move)) * scale
     if "battle_cry" in (b.get("bench") or []):
         power *= BATTLE_CRY
     if "hardened" in b["effects"]:

@@ -1698,14 +1698,6 @@ def test_plain_attacks_grow_with_the_pets_level_in_that_type():
     assert first_hit("big", {"ember": 13}) == first_hit("big", {"ember": 1})  # a big move, spending mana, doesn't
 
 
-def test_a_boss_takes_less_from_a_strong_type_but_the_rest_dont():
-    boss, tough = {"kind": "ember", "tier": "boss"}, {"kind": "ember", "tier": "tough"}
-    assert bt.matchup("splash", "ember") == 2 == bt.against(tough, "splash")
-    assert 1 < bt.against(boss, "splash") < 2
-    assert bt.against(boss, "ember") == 1  # nothing changes for neutral ...
-    assert bt.against(boss, "dream") == bt.matchup("dream", "ember") == 0.5  # ... or weak hits
-
-
 def test_rekindle_gives_energy_back():
     b, team, energy, _, out, intent = _boss_round("phoenix", "ember", energy=100)
     assert b["energy"] == 100 + round(b["max"] * bt.REKINDLE)

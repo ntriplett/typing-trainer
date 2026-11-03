@@ -400,7 +400,11 @@ main.wander {
 }
 
 .wander-books [data-menu="bag"] {
-  --book: #c98a2e;
+  --book: #b8432f;
+}
+
+.wander-books [data-menu="bag"].nothing {
+  --book: #9a948a;
 }
 
 .wander-books [data-menu="journal"] {
@@ -416,7 +420,7 @@ main.wander {
 }
 
 .wander-books [data-menu="map"] {
-  --book: #b8432f;
+  --book: #d8a72e;
 }
 
 .wander-book-wide {
@@ -1376,15 +1380,23 @@ main.wander {
 .wander-battle-tools button {
   font-size: 18px;
   padding: 0.15rem 0.5rem;
-  background: #fbf1dc;
-  color: #3b2417;
+  background: #b8432f;
+  color: #fff;
   text-shadow: none;
-  border: 2px solid #8b5a2b;
+  border: 2px solid #7a2a1e;
   cursor: pointer;
 }
 .wander-battle-tools button.teal {
-  border-color: #2a8a8a;
-  color: #1e6a6a;
+  background: #2a8a8a;
+  border-color: #1e6a6a;
+}
+.wander-battle-tools button:disabled {
+  background: #b8b2a8;
+  border-color: #9a948a;
+  cursor: default;
+}
+.wander-battle-tools .keycap {
+  color: #3b2417;
 }
 
 /* The guidebook */
@@ -1468,4 +1480,143 @@ main.wander {
 }
 .wander-guide-terms dd {
   margin: 0 0 0 0.75rem;
+}
+
+/* One steady page at a time: the book never changes size or stacks scrollbars */
+.wander-menu.guide {
+  overflow: hidden;
+  width: min(900px, 97%);
+}
+.wander-guide-page {
+  height: min(60vh, 520px);
+  overflow-y: scroll;
+  padding-right: 0.5rem;
+}
+.wander-menu-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0.05rem 0.45rem;
+  background: transparent;
+  color: #3b2417;
+  text-shadow: none;
+  border: 2px solid #8b5a2b;
+  cursor: pointer;
+  z-index: 2;
+}
+.wander-menu-list li {
+  cursor: pointer;
+}
+.wander-item-icon {
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+.wander-menu-detail .wander-item-icon {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.wander-menu-detail button {
+  margin: 0.2rem 0.25rem 0.2rem 0;
+}
+#camp-friend {
+  display: block;
+  image-rendering: pixelated;
+}
+#befriend-button {
+  margin-left: 0.5rem;
+}
+#camp-friends-button {
+  margin-top: 0.5rem;
+  cursor: pointer;
+}
+.wander-guide-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.6rem;
+}
+.wander-guide-card {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  background: #fff8e8;
+  border: 1px solid #e0cfa8;
+  border-left: 6px solid #2a8a8a;
+  padding: 0.3rem 0.5rem;
+  font-size: 16px;
+}
+.wander-guide-icon {
+  font-size: 24px;
+  line-height: 1.1;
+}
+.wander-guide-example {
+  background: #e8f4f0;
+  border: 1px dashed #2a8a8a;
+  padding: 0.3rem 0.5rem;
+}
+.wander-guide-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0.3rem 0 0.6rem;
+}
+.wander-guide-steps li {
+  counter-increment: step;
+  background: #fff8e8;
+  border: 2px solid #2a8a8a;
+  padding: 0.1rem 0.5rem;
+  font-size: 16px;
+}
+.wander-guide-steps li::before {
+  content: counter(step) ". ";
+  font-weight: bold;
+  color: #1e6a6a;
+}
+.wander-guide-bars {
+  margin: 0.3rem 0 0.6rem;
+}
+.wander-guide-bar {
+  display: grid;
+  grid-template-columns: minmax(170px, 300px) 1fr 2.5rem;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 16px;
+}
+.wander-guide-bar .track {
+  background: #efe4c8;
+  height: 14px;
+  display: block;
+}
+.wander-guide-bar .track span {
+  display: block;
+  height: 100%;
+}
+.wander-guide-land {
+  border-left: 6px solid;
+  background: #fff8e8;
+  padding: 0.3rem 0.6rem;
+  margin: 0.4rem 0;
+}
+.wander-guide-land h3 {
+  margin: 0.1rem 0 0.2rem;
+}
+.wander-guide-land p {
+  margin: 0.15rem 0;
+}
+.wander-guide-land ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.2rem 0;
+}
+.wander-guide-hex {
+  display: inline-block;
+  width: 18px;
+  height: 16px;
+  vertical-align: middle;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
 }

@@ -179,21 +179,61 @@ def test_type_and_stat_bonuses_count_but_arent_real_levels():
     assert wp.record_from(wp.record_json(book)) == book
 
 
-def test_befriending_is_offered_only_with_a_token_after_a_win_and_never_for_bosses():
+def test_befriending_is_offered_after_a_win_for_mana_and_never_for_bosses():
     won = lambda save, **b: {**save, "battle": {**save["battle"], "over": "won", **b}}  # noqa: E731
-    save = _battle(_trip(sh.TOKEN), level=5)
+    save = _battle(_trip(), level=5)
     assert sv._befriend_offer(save, save["battle"]) is None  # not over yet
     done = won(save)
-    assert sv._befriend_offer(done, done["battle"])["cost"] == 5
-    tough = won(_battle(_trip(sh.TOKEN), tier="tough", level=5))
+    assert sv._befriend_offer(done, done["battle"]) == {"cost": 5, "can": True, "why": None}  # no token needed yet
+    tough = won(_battle(_trip(), tier="tough", level=5))
     assert sv._befriend_offer(tough, tough["battle"])["cost"] == 5 + sh.BEFRIEND_EXTRA_MANA["tough"]
-    champ = won(_battle(_trip(sh.TOKEN), tier="champion", level=5))
+    champ = won(_battle(_trip(), tier="champion", level=5))
     assert sv._befriend_offer(champ, champ["battle"])["cost"] == 5 + sh.BEFRIEND_EXTRA_MANA["champion"]
-    assert sv._befriend_offer(won(_battle(_trip())), won(_battle(_trip()))["battle"]) is None  # no token
-    boss = won(_battle(_trip(sh.TOKEN), tier="boss", species="dragon", kind="shock", level=13))
+    boss = won(_battle(_trip(), tier="boss", species="dragon", kind="shock", level=13))
     assert sv._befriend_offer(boss, boss["battle"]) is None
     poor = {**done, "trip": {**done["trip"], "mana": [0] * len(done["trip"]["mana"])}}
     assert not sv._befriend_offer(poor, poor["battle"])["can"]
+
+
+def test_befriending_brings_them_to_camp_and_costs_each_fighter_mana():
+    save = _battle(_trip(), level=5, species="goat", kind="leaf")
+    save = {**save, "battle": {**save["battle"], "over": "won"}}
+    who = save["battle"]["fighters"]
+    before = [save["trip"]["mana"][i] for i in who]
+    after = sv.befriend(save)
+    assert [after["trip"]["mana"][i] for i in who] == [m - 5 for m in before]
+    friend = after["camp_friends"][0]
+    assert (friend["species"], friend["level"]) == ("goat", 5)
+    assert sv._befriend_offer(after, after["battle"]) is None  # just the once
+    with pytest.raises(sv.WanderError):
+        sv.befriend(after)
+
+
+def test_camp_holds_five_friends():
+    friends = [{"id": str(i), "species": "dog", "name": "Dog", "level": 1, "genes": {}} for i in range(sh.CAMP_SPOTS)]
+    save = _battle(_trip(camp_friends=friends), level=3)
+    full = {**save, "battle": {**save["battle"], "over": "won"}}
+    offer = sv._befriend_offer(full, full["battle"])
+    assert not offer["can"] and "Camp is full" in offer["why"]
+
+
+def test_friends_are_only_sent_off_from_the_fire_at_camp():
+    friend = {"id": "a", "species": "dog", "name": "Dog", "level": 1, "genes": {}}
+    save = _trip(camp_friends=[friend])
+    gone = sv.friend_leaves(save, "a")
+    assert gone["camp_friends"] == []
+    away = {**save, "at": [2, 0], "spot": list(sv.local_of(save, (2, 0)).campfire)}
+    with pytest.raises(sv.WanderError):
+        sv.friend_leaves(away, "a")
+    with pytest.raises(sv.WanderError):
+        sv.friend_leaves(save, "nobody")
+
+
+def test_only_the_fire_at_camp_offers_your_friends():
+    save = _trip()
+    assert sv.screen(save)["friends"]
+    away = {**save, "at": [2, 0], "spot": list(sv.local_of(save, (2, 0)).campfire)}
+    assert "friends" not in sv.screen(away)
 
 
 def test_a_worn_cloak_gets_you_past_a_plain_creature_but_not_a_tough_one(monkeypatch):

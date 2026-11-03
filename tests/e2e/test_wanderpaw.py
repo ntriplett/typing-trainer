@@ -472,12 +472,12 @@ def test_the_guidebook_turns_pages_and_shows_match_ups(page: Page, live_server, 
     expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
     page.keyboard.press("6")
     expect(page.locator("#menu-title")).to_have_text("Guidebook")
-    expect(page.locator(".wander-type-chart")).to_be_visible()
+    expect(page.locator(".wander-type-chart")).to_contain_text("0.7x")
     page.keyboard.press("ArrowRight")
     result = page.locator(".wander-guide-result")
-    expect(result).to_contain_text("x2")  # splash on ember, the page's opening pair
+    expect(result).to_contain_text("2x")  # splash on ember, the page's opening pair
     page.locator("[data-guide-me='shock']").click()
-    expect(result).to_contain_text("x1.5")  # shock is strong against ember
+    expect(result).to_contain_text("1.5x")  # shock is strong against ember
     page.keyboard.press("j")
     for _ in range(5):
         page.keyboard.press("ArrowRight")
@@ -498,16 +498,84 @@ def test_using_something_from_the_bag_while_walking(page: Page, live_server, tmp
     expect(page.locator("#where-name")).to_contain_text("Camp")
 
 
-def test_befriending_is_offered_when_you_win_with_a_token(page: Page, live_server, tmp_path):
+def test_befriending_button_calls_out_the_cost_on_the_win_page(page: Page, live_server, tmp_path):
     from app import db
     from app.wanderpaw import save as sv
-    _in_a_fight(page, live_server, tmp_path, {"Friendship Token": 1})
+    _in_a_fight(page, live_server, tmp_path, {})
     with db.open_db(tmp_path / "e2e.db") as conn:
         save = sv.load(conn, 1)
         db.save_wander(conn, 1, {**save, "battle": {**save["battle"], "over": "won"}, "trip": {**save["trip"], "mana": [50 for _ in save["trip"]["mana"]]}})
     page.goto(f"{live_server}/wanderpaw")
-    keys = page.locator("#battle-keys")
-    expect(keys).to_contain_text("Befriend it")
-    page.keyboard.press("b")
-    expect(keys).not_to_contain_text("Befriend it")
-    expect(page.locator("#battle-log")).to_contain_text("wants to come with you")
+    button = page.locator("#befriend-button")
+    expect(button).to_contain_text("Befriend")
+    expect(button).to_contain_text("3")  # the level 3 creature's mana, from each fighter
+    button.click()
+    expect(button).to_have_count(0)
+    expect(page.locator("#battle-log")).to_contain_text("wait for you at Camp")
+
+
+def test_friends_wait_at_camp_and_can_be_asked_to_leave(page: Page, live_server, tmp_path):
+    from app import db
+    from app import pet_genes as g
+    from app.wanderpaw import save as sv
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _set_up(page, live_server, tmp_path, items={"Friendship Token": 1})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        friends = [{"id": "a", "species": "goat", "name": "Goat", "level": 4, "genes": g.roll("goat", None, None, 1)},
+                   {"id": "b", "species": "dog", "name": "Dog", "level": 2, "genes": g.roll("dog", None, None, 2)}]
+        db.save_wander(conn, 1, {**save, "camp_friends": friends})
+        sv.teleport(conn, 1, (0, 0), (0, 0))
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Rest by the fire", timeout=5000)
+    page.keyboard.press("Enter")
+    page.get_by_role("button", name="Visit your friends").click()
+    menu = page.locator("#menu-body")
+    expect(menu).to_contain_text("Goat")
+    expect(menu).to_contain_text("Dog")
+    page.get_by_role("button", name="Ask them to leave").click()
+    expect(menu).not_to_contain_text("Goat")
+    page.get_by_role("button", name="Give a Friendship Token").click()
+    expect(page.locator("#levelup")).to_be_visible()
+    assert not errors
+
+
+def test_guidebook_tabs_and_shop_rows_work_with_the_mouse(page: Page, live_server, tmp_path):
+    _set_up(page, live_server, tmp_path)
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.locator("[data-menu='guide']").click()
+    page.get_by_role("button", name="Match-ups").click()
+    expect(page.locator(".wander-guide-result")).to_be_visible()
+    page.get_by_role("button", name="Next page").click()
+    expect(page.locator(".wander-guide-page")).to_contain_text("Found")
+    page.get_by_role("button", name="Previous page").click()
+    expect(page.locator(".wander-guide-result")).to_be_visible()
+    page.locator("#menu-close").click()
+    expect(page.locator("#menu")).to_be_hidden()
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen")).to_contain_text("Alchemist")
+    page.keyboard.press("Enter")
+    page.locator("#menu-body li[data-i='2']").click()
+    page.get_by_role("button", name="Buy").click()
+    expect(page.locator("#menu-body")).to_contain_text("19,200")
+    expect(page.locator("#menu-body img.wander-item-icon").first).to_be_visible()
+
+
+def test_the_guidebook_page_isnt_rebuilt_while_you_read_it(page: Page, live_server, tmp_path):
+    _set_up(page, live_server, tmp_path)
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#keys")).to_contain_text("Go in", timeout=5000)
+    page.keyboard.press("6")
+    expect(page.locator(".wander-guide-tabs")).to_be_visible()
+    page.evaluate("document.querySelector('.wander-guide-page').dataset.same = 'yes'")
+    page.wait_for_timeout(400)  # the map's animating under it
+    assert page.evaluate("document.querySelector('.wander-guide-page').dataset.same") == "yes"
+
+
+def test_every_shop_item_has_a_picture(page: Page, live_server, tmp_path):
+    from app.wanderpaw import shop as sh
+    page.goto(f"{live_server}/wanderpaw")
+    missing = page.evaluate("(names) => names.filter((n) => !ITEM_ART[n])", list(sh.ITEMS))
+    assert missing == []

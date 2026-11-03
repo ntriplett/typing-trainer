@@ -169,10 +169,11 @@ def shield_tip(who: str, double: bool, types: list[str] | None = None) -> str:
 
 # The guidebook's page on how a fight works, beyond TERMS.
 GUIDE_FIGHT = {
-    "Your first type": "A pet's big moves are of its first type, and it's what Enemy hits. A counter in the first slot does far more than one in the second.",
-    "Plain attacks": "Attacks that cost no {mana} get stronger with the pet's level in that type: level 10 {ember} adds 10 to its {ember} attack's power.",
+    "Your first type": "A pet's big moves are of its first type, and it's what Enemy hits. A counter in the first slot does the most.",
+    "Plain attacks": "Attacks that cost no {mana} get stronger with the pet's level in that type.",
     "Out of mana": "Big moves do far more than plain attacks, so a long fight often turns when your {mana} runs out.",
-    "Bosses": "A temple's guardian takes less than most from a strong type. Bring counters, or come a few levels up and play well. If you lose, try again another day.",
+    "Mixes": "A mix hits as whichever of its two types is stronger against Enemy.",
+    "Bosses": "A temple's guardian is hard. Bring counters, or come a few levels up and play well. If you lose, try again another day.",
     "Bag": "In a fight, press 1 to open your bag. Using something doesn't cost your turn.",
     "Slips": "A wrong key while typing a move's word weakens that move.",
 }

@@ -729,7 +729,7 @@ def test_a_tome_raises_a_type_for_good_but_not_the_pets_level():
         assert wp.record_from(db.get_wander_pets(conn, 1)[fox]).type_bonus == {"ember": 1}
 
 
-def test_befriending_a_beaten_creature_makes_it_yours_at_its_level():
+def test_befriending_takes_two_steps_mana_then_a_token_at_camp():
     from app.wanderpaw import critters as cr
     from app.wanderpaw import shop as sh
     fox, bunny = _add_pet("fox", 1), _add_pet("bunny", 2)
@@ -738,23 +738,35 @@ def test_befriending_a_beaten_creature_makes_it_yours_at_its_level():
     with db.open_db(main.DB_PATH) as conn:
         save = sv.load(conn, 1)
         c = cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "goat", "leaf", 6, False, 77, None, "")
-        save = sv._start_battle({**save, "items": {sh.TOKEN: 1}}, c)
+        save = sv._start_battle(save, c)
         mana = [100 for _ in save["trip"]["mana"]]
         save = {**save, "battle": {**save["battle"], "over": "won"}, "trip": {**save["trip"], "mana": mana}, "events": []}
         db.save_wander(conn, 1, save)
-    state = client.get("/api/wander").json()
-    assert state["battle"]["befriend"] == {"cost": 6, "can": True, "tokens": 1}
-    r = client.post("/api/wander/befriend")
-    assert r.status_code == 200
-    data = r.json()
-    assert "Friendship Token" not in data["items"] and data["battle"]["befriend"] is None
+    assert client.get("/api/wander").json()["battle"]["befriend"]["cost"] == 6
+    data = client.post("/api/wander/befriend").json()
     assert [f["mana"] for f in data["battle"]["fighters"]] == [94, 94]
-    assert data["levelups"]  # every level's choices to make, as she catches up
+    assert data["battle"]["befriend"] is None and data["levelups"] == []
+    friend = data["camp_friends"][0]
+    assert (friend["species"], friend["level"]) == ("goat", 6) and friend["genes"]["hex"]
     with db.open_db(main.DB_PATH) as conn:
-        friend = [p for p in db.list_v3_pets(conn, 1) if p["source"] == "friend"]
-        assert len(friend) == 1 and friend[0]["species"] == "goat" and friend[0]["growth"] == 10
-        assert wp.level(wp.record_from(db.get_wander_pets(conn, 1)[friend[0]["id"]]).xp) == 6
+        assert not [p for p in db.list_v3_pets(conn, 1) if p["source"] == "friend"]  # at Camp, not one of your pets yet
     assert client.post("/api/wander/befriend").status_code == 400  # only once
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "battle": None})
+        sv.teleport(conn, 1, (0, 0), (0, 0))
+    nope = client.post("/api/wander/camp/welcome", json={"item": friend["id"]})
+    assert nope.status_code == 400 and "Friendship Token" in nope.json()["detail"]
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "items": {sh.TOKEN: 1}})
+    data = client.post("/api/wander/camp/welcome", json={"item": friend["id"]}).json()
+    assert data["camp_friends"] == [] and "Friendship Token" not in data["items"]
+    assert data["levelups"]  # every level's choices to make
+    with db.open_db(main.DB_PATH) as conn:
+        pet = next(p for p in db.list_v3_pets(conn, 1) if p["source"] == "friend")
+        assert pet["species"] == "goat" and pet["growth"] == 10
+        assert wp.level(wp.record_from(db.get_wander_pets(conn, 1)[pet["id"]]).xp) == 6
 
 
 def test_the_guidebook_comes_from_the_real_type_chart():
@@ -762,4 +774,4 @@ def test_the_guidebook_comes_from_the_real_type_chart():
     assert g["chart"]["shock"]["ember"] == bt.matchup("shock", "ember") == 1.5  # shock IS strong against ember
     assert g["chart"]["splash"]["ember"] == 2 and g["chart"]["dream"]["ember"] == 0.5
     assert set(g["order"]) == set(wd.REGIONS) and g["marks"] and g["effects"] and g["lands"]
-    assert "Your first type" in g["fight"]
+    assert "Your first type" in g["fight"] and "Mixes" in g["fight"] and g["hits"]["typed"] > g["hits"]["plain"]

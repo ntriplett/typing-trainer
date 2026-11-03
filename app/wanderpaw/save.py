@@ -77,7 +77,7 @@ DEFAULTS = {
     "trip": None, "note": None, "seen": {}, "visited": [], "party": None, "team": wp.team([]), "items": {},
     "found": [], "clues": {}, "log": [], "bridges": {}, "menders": {}, "rumors": [],
     "battle": None, "fighters": None, "combos": [], "camps": [], "levelups": [],
-    "bosses": [], "cleared": [], "chests": [], "quests": {}, "temples": [], "charms": 0, "buffs": {}, "bought": {}, "friends": [],
+    "bosses": [], "cleared": [], "chests": [], "quests": {}, "temples": [], "buffs": {}, "bought": {}, "camp_friends": [],
     "finished": False, "stats": {"trips": 0, "steps": 0}, "events": [],
 }
 
@@ -862,9 +862,10 @@ def screen(save: dict) -> dict | None:
         return _giver_screen(save, where["giver"])
     if kind == "campfire":
         known = tuple(save["at"]) in campfires_rested(save)
-        return {"title": "Campfire", "rest": True, "action": "camp", "label": "Rest by the fire",
-                "text": "A warm, crackly fire." + (" A new day can start here." if known else
-                                                   " Rest a while, and a new day can start here.")}
+        shown = {"title": "Campfire", "rest": True, "action": "camp", "label": "Rest by the fire",
+                 "text": "A warm, crackly fire." + (" A new day can start here." if known else
+                                                    " Rest a while, and a new day can start here.")}
+        return {**shown, "friends": True} if tuple(save["at"]) == CAMP else shown
     if kind == "board":
         item = st.FORAGE[region]
         wanted = trip["side"].get(pid)
@@ -1091,10 +1092,10 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
         return _start_battle(save, cr.temple_boss(save["seed"], region, tuple(save["at"]), relics_out(save)))
     if action == "temple":
         tale = st.STORIES[region]
-        save = {**save, "temples": [*save["temples"], region], "charms": save["charms"] + 1,
+        save = {**save, "temples": [*save["temples"], region],
                 "buffs": {**save["buffs"], region: tale.buff}}
         save = _xp(_give(save, tale.relic), st.XP_TEMPLE)
-        return _event(save, kind="relic", text=f"You found the {tale.relic}! Your {st.TYPE_NAMES[region]} pet becomes {tale.buff}, and you get a befriending charm.")
+        return _event(save, kind="relic", text=f"You found the {tale.relic}! Your {st.TYPE_NAMES[region]} pet becomes {tale.buff}.")
     if action == "heartstone":
         return _event({**save, "finished": True}, kind="credits")
     if action == "credits":
@@ -1687,44 +1688,88 @@ def use(conn, learner_id: int, name: str, arg: str | None = None) -> dict:
     return _write(conn, learner_id, lambda s: use_item(s, name, arg))
 
 
-# --- befriending: a Friendship Token, and mana from each fighter ---------------------
+# --- befriending: mana brings them to Camp, a Friendship Token makes them a pet -------
 
 
 def _befriend_offer(save: dict, b: dict) -> dict | None:
     """What befriending this creature takes (None: it isn't on offer)."""
-    if b["over"] != "won" or b.get("tier") == "boss" or b.get("befriended") or not save["items"].get(sh.TOKEN):
+    if b["over"] != "won" or b.get("tier") == "boss" or b.get("befriended"):
         return None
     cost = b["level"] + sh.BEFRIEND_EXTRA_MANA.get(b.get("tier") or "", 0)
     mana = _mana(save)
-    return {"cost": cost, "can": all(mana[i] >= cost for i in b["fighters"]), "tokens": save["items"][sh.TOKEN]}
+    full = len(save["camp_friends"]) >= sh.CAMP_SPOTS
+    can_pay = all(mana[i] >= cost for i in b["fighters"])
+    why = "Camp is full. Ask a friend to leave first." if full else None if can_pay else "Your fighters don't have enough mana."
+    return {"cost": cost, "can": not why, "why": why}
 
 
-def befriend(conn, learner_id: int) -> dict:
-    """Your Token and each fighter's mana: the creature you just beat joins your
-    pets at the level you found it, with all those levels' choices to make."""
+def befriend(save: dict) -> dict:
+    """Each fighter's mana, and the creature you just beat waits for you at Camp."""
+    b = save.get("battle")
+    offer = b and _befriend_offer(save, b)
+    if not offer:
+        raise WanderError("There's nobody to befriend right now.")
+    if not offer["can"]:
+        raise WanderError(offer["why"])
+    species = b["species"].replace(" ", "_")
+    genes = pet_genes.wild_rare(species, b["seed"], wp.TIER_COLORS[b["tier"]]) if b.get("tier") else pet_genes.roll(species, None, None, b["seed"])
+    companion = species in pet_genes.COMPANIONS
+    name = pet_genes.companion_name(species, b["seed"]) if companion else pet_genes.species_name(species)
+    friend = {"id": f"{b['seed']}:{save['stats']['trips']}:{len(save['camp_friends'])}", "species": species, "name": name, "level": b["level"], "genes": genes}
+    mana = _mana(save)
+    for i in b["fighters"]:
+        mana[i] -= offer["cost"]
+    save = {**save, "events": [], "battle": {**b, "befriended": True}, "trip": {**save["trip"], "mana": mana}, "camp_friends": [*save["camp_friends"], friend]}
+    return _event(save, kind="found", text=f"The {b['species']} follows you home! It'll wait for you at Camp.")
+
+
+def _at_camp_fire(save: dict) -> bool:
+    return tuple(save["at"]) == CAMP and bool(save["trip"]) and (place(save) or {}).get("kind") == "campfire"
+
+
+def camp_friends_view(save: dict) -> list[dict]:
+    return [{"id": f["id"], "species": f["species"], "name": f["name"], "level": f["level"], "genes": pet_genes.resolve(f["genes"]),
+             "types": list(t for t in wp.SPECIES_TYPES[f["species"]] if t)} for f in save["camp_friends"]]
+
+
+def _camp_friend(save: dict, friend_id: str) -> dict:
+    if not _at_camp_fire(save):
+        raise WanderError("Your friends are waiting at the fire at Camp.")
+    friend = next((f for f in save["camp_friends"] if f["id"] == friend_id), None)
+    if not friend:
+        raise WanderError("That friend isn't here.")
+    return friend
+
+
+def friend_leaves(save: dict, friend_id: str) -> dict:
+    friend = _camp_friend(save, friend_id)
+    save = {**save, "events": [], "camp_friends": [f for f in save["camp_friends"] if f["id"] != friend_id]}
+    return _event(save, kind="found", text=f"{friend['name']} waves goodbye and wanders off.")
+
+
+def welcome_friend(conn, learner_id: int, friend_id: str) -> dict:
+    """A Friendship Token: a friend at Camp becomes one of your pets, at the level
+    you found them, with all those levels' choices to make."""
     def change(save: dict) -> dict:
-        b = save.get("battle")
-        offer = b and _befriend_offer(save, b)
-        if not offer:
-            raise WanderError("There's nobody to befriend right now.")
-        if not offer["can"]:
-            raise WanderError(f"It takes {offer['cost']} mana from each fighter.")
-        species = b["species"].replace(" ", "_")
-        genes = pet_genes.wild_rare(species, b["seed"], wp.TIER_COLORS[b["tier"]]) if b.get("tier") else pet_genes.roll(species, None, None, b["seed"])
-        companion = species in pet_genes.COMPANIONS
-        name = pet_genes.companion_name(species, b["seed"]) if companion else pet_genes.species_name(species)
-        pet_id = db.add_v3_pet(conn, learner_id, genes, name, "friend", growth=10)
+        friend = _camp_friend(save, friend_id)
+        if not save["items"].get(sh.TOKEN):
+            raise WanderError(f"You need a {sh.TOKEN} to give them. Shops in town have them.")
+        pet_id = db.add_v3_pet(conn, learner_id, friend["genes"], friend["name"], "friend", growth=10)
         pet = db.get_v3_pet(conn, learner_id, pet_id)
-        rec = wp.gain_xp(wp.Record(), wp.xp_for(b["level"]))
+        rec = wp.gain_xp(wp.Record(), wp.xp_for(friend["level"]))
         db.save_wander_pet(conn, learner_id, pet_id, wp.record_json(rec))
-        mana = _mana(save)
-        for i in b["fighters"]:
-            mana[i] -= offer["cost"]
-        save = _give({**save, "events": [], "battle": {**b, "befriended": True}, "trip": {**save["trip"], "mana": mana},
-                      "friends": [*save["friends"], pet_id]}, sh.TOKEN, -1)
+        save = _give({**save, "events": [], "camp_friends": [f for f in save["camp_friends"] if f["id"] != friend_id]}, sh.TOKEN, -1)
         save = _celebrate(save, pet, wp.Record(), rec)
-        return _event(save, kind="found", text=f"{name} wants to come with you! Add them to your party before your next trip.")
+        return _event(save, kind="found", text=f"{friend['name']} is one of your pets now! Add them to your party before your next trip.")
     return _write(conn, learner_id, change)
+
+
+def befriend_at(conn, learner_id: int) -> dict:
+    return _write(conn, learner_id, befriend)
+
+
+def send_friend_off(conn, learner_id: int, friend_id: str) -> dict:
+    return _write(conn, learner_id, lambda s: friend_leaves(s, friend_id))
 
 
 # --- what the player sees ---------------------------------------------------------
@@ -1901,7 +1946,8 @@ def view(save: dict) -> dict:
         "levelups": save["levelups"],
         "quests": quests_view(save),
         "temples": save["temples"],
-        "charms": save["charms"],
+        "camp_friends": camp_friends_view(save),
+        "camp_spots": sh.CAMP_SPOTS,
         "buffs": save["buffs"],
         "finished": save["finished"],
         "credits": st.CREDITS if any(e["kind"] == "credits" for e in save["events"]) else None,

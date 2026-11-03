@@ -10,7 +10,7 @@ region's animals (HOUSES, INNS, SHOPS).
 Lost things hide in a region's pocket or in a nook that takes 3 levels of
 a type (FETCH_HINTS). Finishing either quest in a town gets you a rumor of
 where the region's temple key is hidden. The temple wants the key and a
-pet of its type; inside are the relic, a befriending charm, and an Elder
+pet of its type; inside are the relic and an Elder
 buff for that type's pets. All five relics open the Heartstone in the
 heartland: the end of the story.
 

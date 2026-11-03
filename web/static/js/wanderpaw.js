@@ -130,6 +130,11 @@ function render() {
     document.getElementById("energy-pets").style.width = `${(100 * (state.trip.energy - walk)) / state.trip.max}%`;
     document.getElementById("energy-text").textContent = `${state.trip.energy}`;
   }
+  const usable = bagUsable();
+  document.querySelector('[data-menu="bag"]').classList.toggle("nothing", !usable);
+  const battleBag = document.getElementById("battle-bag");
+  battleBag.disabled = !usable;
+  battleBag.title = usable ? "Your bag" : "Nothing in your bag can help right now";
   renderKeys();
   renderScreen();
   renderLevelup();
@@ -269,7 +274,10 @@ function renderBattle() {
   if (b.over) {
     keys.innerHTML = `<span class="wander-battle-over">${b.over === "won" ? "You won!" : "Your fighters are worn out."}</span>
       <kbd class="keycap">Enter</kbd> ${b.over === "won" ? "walk on" : "back away"}
-      ${b.befriend ? (b.befriend.can ? `&nbsp; <kbd class="keycap">B</kbd> Befriend it (a Friendship Token, and ${b.befriend.cost} ${MANA_ICON} from each fighter)` : `&nbsp; <small>Befriending it takes ${b.befriend.cost} ${MANA_ICON} from each fighter.</small>`) : ""}`;
+      ${b.befriend ? `<button type="button" id="befriend-button" class="button-gold" ${b.befriend.can ? "" : "disabled"}><kbd class="keycap">B</kbd> Befriend the ${esc(b.species)}: ${b.befriend.cost} ${MANA_ICON} from each fighter</button>
+        ${b.befriend.why ? `<small>${esc(b.befriend.why)}</small>` : `<small>It'll wait for you at Camp.</small>`}` : ""}`;
+    const friendly = document.getElementById("befriend-button");
+    if (friendly) friendly.onclick = befriendIt;
     return;
   }
   keys.innerHTML = `Type a word to pick that move. <kbd class="keycap">Esc</kbd> run away`;
@@ -505,15 +513,22 @@ function showStep(s) {
   );
 }
 
+async function befriendIt() {
+  const data = await send("/api/wander/befriend", {});
+  if (data) apply(data);
+}
+
+// Is there anything in the bag you could use right now?
+function bagUsable() {
+  return Object.values(state.item_uses || {}).some((u) => !u.why);
+}
+
 async function battleKey(e) {
   if (replay) return; // let it play
   const b = state.battle;
-  if (e.key === "1" || e.key === "2") return openMenu(e.key === "1" ? "bag" : "guide");
-  if (b.over && b.befriend && b.befriend.can && (e.key === "b" || e.key === "B")) {
-    const data = await send("/api/wander/befriend", {});
-    if (data) apply(data);
-    return;
-  }
+  if (e.key === "2") return openMenu("guide");
+  if (e.key === "1") return bagUsable() ? openMenu("bag") : say("Nothing in your bag can help right now.");
+  if (b.over && b.befriend && b.befriend.can && (e.key === "b" || e.key === "B")) return befriendIt();
   if (e.key === "Escape") {
     e.preventDefault();
     if (!b.over) {
@@ -633,6 +648,16 @@ async function useItem(name, arg = null) {
   apply(data);
 }
 
+async function campFriend(what, id) {
+  const data = await send(`/api/wander/camp/${what}`, { item: id });
+  if (!data) return;
+  if (what === "welcome") {
+    menu = null;
+    mode = "walk";
+  }
+  apply(data);
+}
+
 async function buyItem(name) {
   const data = await send("/api/wander/shop/buy", { item: name });
   if (data) apply(data);
@@ -644,6 +669,8 @@ function menuRows() {
       return bagRows();
     case "shop":
       return (state.screen && state.screen.stock) || [];
+    case "camp":
+      return state.camp_friends || [];
     case "journal":
       return [...state.quests.map((q) => ({ quest: q })), ...state.clues.map((c) => ({ clue: c }))];
     case "log":
@@ -780,39 +807,50 @@ function renderMenu() {
   const title = document.getElementById("menu-title");
   const body = document.getElementById("menu-body");
   const keys = document.getElementById("menu-keys");
+  box.classList.toggle("guide", menu.name === "guide");
+  // The map underneath can redraw many times a second. Leave the page alone
+  // unless it changed, or scrollbars flicker and clicks get lost.
+  const setBody = (html) => {
+    if (menu.shown !== html) {
+      body.innerHTML = html;
+      menu.shown = html;
+    }
+  };
   const list = (items, fn) =>
     `<ul class="wander-menu-list">${items.map((x, i) => `<li class="${i === menu.at ? "on" : ""}" data-i="${i}">${fn(x, i)}</li>`).join("")}</ul>`;
   keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look &nbsp; <kbd class="keycap">Esc</kbd> close`;
   if (menu.name === "bag" && menu.picking) {
     title.textContent = `${menu.picking}: on who?`;
-    body.innerHTML = list(rows, (c) => wanderText(c.label));
+    setBody(list(rows, (c) => wanderText(c.label)));
     keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look &nbsp; <kbd class="keycap">Enter</kbd> use it &nbsp; <kbd class="keycap">Esc</kbd> back`;
   } else if (menu.name === "bag") {
     title.textContent = "Bag";
     const item = rows[menu.at];
     const use = item && (state.item_uses || {})[item];
     const fighting = Boolean(state.battle);
-    body.innerHTML = rows.length
-      ? `<div class="wander-menu-split">${list(rows, (k, i) => `${fighting ? `<kbd class="keycap">${i + 1}</kbd> ` : ""}${esc(k)}${state.items[k] > 1 ? ` x${state.items[k]}` : ""}`)}
-          <p class="wander-menu-detail"><b>${esc(item)}</b><br>${wanderText(state.about[item] || "")}${use && use.why ? `<br><small>${esc(use.why)}</small>` : ""}</p></div>`
-      : `<p class="hint">${fighting ? "Nothing in your bag can help right now." : "Nothing yet. Things you find go here."}</p>`;
+    setBody(rows.length
+      ? `<div class="wander-menu-split">${list(rows, (k, i) => `${itemIcon(k, 24)} ${fighting ? `<kbd class="keycap">${i + 1}</kbd> ` : ""}${esc(k)}${state.items[k] > 1 ? ` x${state.items[k]}` : ""}`)}
+          <div class="wander-menu-detail">${itemIcon(item, 64)}<p><b>${esc(item)}</b><br>${wanderText(state.about[item] || "")}${use && use.why ? `<br><small>${esc(use.why)}</small>` : ""}</p>
+          ${use && !use.why ? `<button type="button" class="button-go" data-use-item="${esc(item)}">Use it</button>` : ""}</div></div>`
+      : `<p class="hint">${fighting ? "Nothing in your bag can help right now." : "Nothing yet. Things you find go here."}</p>`);
     keys.innerHTML = `${fighting ? "Press a number to use it, without losing your turn." : `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look`} ${use && !use.why ? `&nbsp; <kbd class="keycap">Enter</kbd> use it` : ""} &nbsp; <kbd class="keycap">Esc</kbd> close`;
   } else if (menu.name === "shop") {
     title.innerHTML = wanderText(state.screen ? state.screen.title : "Shop");
     const x = rows[menu.at];
     const coins = state.coin_balance ?? 0;
-    const line = (r) => `${esc(r.name)} <small>${r.sold_out ? (r.keep ? "yours" : "sold out") : `${r.price.toLocaleString()} coins${r.left !== null ? `, ${r.left} left` : ""}`}</small>${r.owned && !r.keep ? ` <small>(you have ${r.owned})</small>` : ""}`;
-    body.innerHTML = `<p>You have <b>${coins.toLocaleString()}</b> coins.</p>
-      <div class="wander-menu-split">${list(rows, line)}
-        <p class="wander-menu-detail"><b>${esc(x ? x.name : "")}</b><br>${wanderText(x ? x.about : "")}${x && x.keep ? "<br><small>You keep this one.</small>" : ""}</p></div>`;
+    const line = (r) => `${itemIcon(r.name, 24)} ${esc(r.name)} <small>${r.sold_out ? (r.keep ? "yours" : "sold out") : `${r.price.toLocaleString()} coins${r.left !== null ? `, ${r.left} left` : ""}`}</small>${r.owned && !r.keep ? ` <small>(you have ${r.owned})</small>` : ""}`;
     const can = x && !x.sold_out && coins >= x.price;
+    setBody(`<p>You have <b>${coins.toLocaleString()}</b> coins.</p>
+      <div class="wander-menu-split">${list(rows, line)}
+        <div class="wander-menu-detail">${x ? itemIcon(x.name, 64) : ""}<p><b>${esc(x ? x.name : "")}</b><br>${wanderText(x ? x.about : "")}${x && x.keep ? "<br><small>You keep this one.</small>" : ""}</p>
+        ${can ? `<button type="button" class="button-gold" data-buy-item="${esc(x.name)}">Buy for ${x.price.toLocaleString()} coins</button>` : ""}</div></div>`);
     keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look ${can ? `&nbsp; <kbd class="keycap">Enter</kbd> buy` : x && !x.sold_out ? "&nbsp; Not enough coins yet." : ""} &nbsp; <kbd class="keycap">Esc</kbd> leave`;
   } else if (menu.name === "journal") {
     title.textContent = "Journal";
     const row = rows[menu.at];
     const lit = !row ? [] : row.quest ? row.quest.hexes : [row.clue.hex];
     body.innerHTML = `
-      <p>Relics: ${state.temples.length} of 5${state.charms ? ` &nbsp; Befriending charms: ${state.charms}` : ""}</p>
+      <p>Relics: ${state.temples.length} of 5</p>
       <div class="wander-menu-split">
         ${rows.length ? list(rows, (r) => (r.quest ? questLine(r.quest) : clueLine(r.clue))) : `<p class="hint">Visit a town and see who needs help.</p>`}
         <canvas id="journal-map" class="wander-map"></canvas>
@@ -824,9 +862,27 @@ function renderMenu() {
     title.textContent = "Log";
     body.innerHTML = rows.length ? list([...rows].reverse(), (t) => wanderText(t)) : `<p class="hint">Nothing has happened yet.</p>`;
     keys.innerHTML = `<kbd class="keycap">Esc</kbd> close`;
+  } else if (menu.name === "camp") {
+    title.textContent = "Friends at Camp";
+    const friends = state.camp_friends;
+    const f = rows[menu.at];
+    const tokens = state.items["Friendship Token"] || 0;
+    setBody(friends.length
+      ? `<p>${friends.length} of ${state.camp_spots} spots taken. You have ${tokens} Friendship Token${tokens === 1 ? "" : "s"}.</p>
+        <div class="wander-menu-split">${list(rows, (x) => `${esc(x.name)} <small>level ${x.level}</small>`)}
+          <div class="wander-menu-detail"><canvas id="camp-friend" width="220" height="150"></canvas>
+            <p><b>${esc(f.name)}</b>, level ${f.level} ${chips(Object.fromEntries(f.types.map((t) => [t, ""])))}</p>
+            <button type="button" class="button-go" data-camp-welcome="${esc(f.id)}" ${tokens ? "" : "disabled"}>Give a Friendship Token</button>
+            <button type="button" data-camp-leave="${esc(f.id)}">Ask them to leave</button>
+            ${tokens ? "" : `<p class="hint">Shops in town have Friendship Tokens.</p>`}
+          </div></div>`
+      : `<p class="hint">Nobody yet. Win a fight and befriend a creature, and it'll wait for you here.</p>`);
+    const art = document.getElementById("camp-friend");
+    if (art && f) paintPet(art, { genes: f.genes, growth: 10 }, 5);
+    keys.innerHTML = `<kbd class="keycap">&uarr;</kbd><kbd class="keycap">&darr;</kbd> look &nbsp; <kbd class="keycap">Esc</kbd> back to the fire`;
   } else if (menu.name === "guide") {
     title.textContent = "Guidebook";
-    renderGuide(body, keys);
+    renderGuide(setBody, keys);
   } else if (menu.name === "home") {
     title.textContent = "Heading home?";
     body.innerHTML = list(rows, (c, i) => `<kbd class="keycap">${i + 1}</kbd> ${wanderText(c.label)}`);
@@ -837,6 +893,16 @@ function renderMenu() {
       menu.at = Number(li.dataset.i);
       if (menu.name === "home") chooseHome(menu.at);
       else render();
+    };
+  });
+  body.querySelectorAll("[data-use-item]").forEach((b) => (b.onclick = () => useItem(b.dataset.useItem)));
+  body.querySelectorAll("[data-buy-item]").forEach((b) => (b.onclick = () => buyItem(b.dataset.buyItem)));
+  body.querySelectorAll("[data-camp-welcome]").forEach((b) => (b.onclick = () => campFriend("welcome", b.dataset.campWelcome)));
+  body.querySelectorAll("[data-camp-leave]").forEach((b) => (b.onclick = () => campFriend("leave", b.dataset.campLeave)));
+  body.querySelectorAll("[data-guide-turn]").forEach((b) => {
+    b.onclick = () => {
+      menu.page = (menu.page + Number(b.dataset.guideTurn) + GUIDE_PAGES.length) % GUIDE_PAGES.length;
+      render();
     };
   });
   body.querySelectorAll("[data-guide-page]").forEach((b) => {
@@ -863,7 +929,8 @@ function renderMenu() {
 // Pages you turn with the arrows, all from the real rules (battle.guide).
 
 const GUIDE_PAGES = ["Types", "Match-ups", "Combo chart", "Combos found", "Marks & effects", "How fights work", "The lands"];
-const TIMES = (x) => (x === 0.67 ? "x⅔" : x === 0.5 ? "x½" : `x${x}`);
+// Shown as 2x, 1.5x, 1x, 0.7x, 0.5x (the rules really use 2/3, not 0.7).
+const TIMES = (x) => `${Math.round(x * 10) / 10}x`;
 const STRENGTH_WORD = { 2: "Super strong", 1.5: "Strong", 1: "Even", 0.67: "Weak", 0.5: "Very weak" };
 
 function guideKey(e) {
@@ -891,7 +958,7 @@ function guideKey(e) {
   }
 }
 
-// Who beats whom: a ring of the five types. Thick arrows are x2, the dashed x1.5.
+// Who beats whom: a ring of the five types. Thick arrows are 2x, the dashed 1.5x.
 function typeRing(g) {
   const R = 96;
   const C = 130;
@@ -926,7 +993,7 @@ function guideTypes(g) {
   return `<div class="wander-guide-types">
       ${typeRing(g)}
       <div>
-        <p>Each type is <b>super strong</b> (x2, thick arrow) against the next one round the ring, and <b>strong</b> (x1.5, dashed) against the one after that. It's weak against the two that beat it.</p>
+        <p>Each type is <b>super strong</b> (2x, thick arrow) against the next one round the ring, and <b>strong</b> (1.5x, dashed) against the one after that. It's weak against the two that beat it.</p>
         <table class="wander-combos wander-type-chart"><tr><th>hit / on</th>${head}</tr>${rows}</table>
         <p class="hint">Read across for attacking, and down for defending: a column shows what hits that type hard.</p>
       </div>
@@ -949,7 +1016,7 @@ function guideMatchups(g) {
       <li>Bring against it: ${bring}</li>
       <li>It hits these hard: ${avoid}</li>
     </ul>
-    <p class="hint">Against a temple's guardian, a strong type's extra is ${Math.round(g.boss_edge * 100)}% as much, so x2 acts like x${1 + g.boss_edge}. A counter does the most as a pet's first type.</p>`;
+    <p class="hint">A counter does the most as a pet's first type.</p>`;
 }
 
 function guideComboChart() {
@@ -974,18 +1041,82 @@ function guideCombosFound() {
     : `<p class="hint">None yet. Set one off in a fight, and it's written down here.</p>`;
 }
 
-const guideList = (entries) => `<dl class="wander-guide-terms">${entries.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${wanderText(v)}</dd>`).join("")}</dl>`;
+// A card: a little picture, a name, and what it means, edged in a color.
+const guideCard = (icon, name, text, color = "#2a8a8a", extra = "") =>
+  `<div class="wander-guide-card" style="border-left-color:${color}"><span class="wander-guide-icon" aria-hidden="true">${icon}</span><div><b>${esc(name)}</b><br>${wanderText(text)}${extra}</div></div>`;
 
-function guideLands(g) {
-  return `<p>The land round Camp is ordinary heartland. Past it, each of the five types has its own country, its temple, and a town.</p>
-    ${guideList(Object.entries(g.lands).map(([k, v]) => [words(k), v]))}`;
+const MARK_ICONS = { Soaked: "💧", Glowing: "🔥", Drowsy: "💤", Static: "⚡", Tangled: "🌿" };
+// What each effect does to a fight, so the page reads in groups.
+const EFFECT_GROUPS = [
+  ["It loses its turn", "#8a4fb8", { Asleep: "😴", Rooted: "🌱", Sleepy: "💤", Wired: "⚡", Poppies: "🌺", Lull: "🌙" }],
+  ["It gets hurt", "#c8382a", { Burning: "🔥", Thorns: "🌵", Brambles: "🌿", Dizzy: "💫", Bubble: "🫧" }],
+  ["It hits softer", "#3a7fc8", { Drenched: "🌊", Scalded: "♨️", Sanctuary: "🛡️" }],
+  ["It's bracing or hitting hard", "#b8842a", { Hardened: "🪨", "Heavy Blow": "💥", Sweep: "🌀" }],
+  ["It helps you", "#4f8f2a", { Mending: "💚" }],
+];
+
+function guideMarks(g) {
+  const markType = (name) => WanderMap.TYPE_COLORS[MARK_TYPE[name.toLowerCase()]];
+  const found = state.combo_book.find((c) => c.name);
+  const example = found
+    ? `For example, <b>${esc(found.mark)}</b> plus a ${wanderText(`{${found.hit}}`)} hit is <b>${esc(found.name)}</b>: ${wanderText(found.says || "")}`
+    : "Find one in a fight, and it'll be your example here.";
+  const seen = new Set();
+  const groups = EFFECT_GROUPS.map(([label, color, icons]) => {
+    const cards = Object.entries(icons).filter(([k]) => g.effects[k]).map(([k, icon]) => {
+      seen.add(k);
+      return guideCard(icon, k, g.effects[k], color);
+    }).join("");
+    return `<h3>${esc(label)}</h3><div class="wander-guide-cards">${cards}</div>`;
+  }).join("");
+  const rest = Object.keys(g.effects).filter((k) => !seen.has(k)).map((k) => guideCard("✨", k, g.effects[k])).join("");
+  return `<h3>Marks</h3>
+    <p>A big move leaves a mark. The next hit of the right type uses it up and sets off a combo.</p>
+    <div class="wander-guide-cards">${Object.entries(g.marks).map(([k, v]) => guideCard(MARK_ICONS[k] || "✨", k, v, markType(k))).join("")}</div>
+    <p class="wander-guide-example">${example}</p>
+    ${groups}${rest ? `<h3>Others</h3><div class="wander-guide-cards">${rest}</div>` : ""}`;
 }
 
-function renderGuide(body, keys) {
+function guideFight(g) {
+  const h = g.hits;
+  const most = Math.max(h.big, h.typed, h.plain);
+  const bar = (label, n, color) => `<div class="wander-guide-bar"><span>${label}</span><span class="track"><span style="width:${(100 * n) / most}%;background:${color}"></span></span><b>${n}</b></div>`;
+  const round = ["You pick each pet's move", "Fast moves go first", "Your pets act", "Enemy acts", "Burns and such, at the end"];
+  const icons = { "Your first type": "🥇", "Plain attacks": "👊", "Out of mana": "💧", Mixes: "🔀", Bosses: "👑", Bag: "🎒", Slips: "⌨️" };
+  const termIcons = { Energy: "⚡", Mana: "💧", Round: "🔁", Fast: "⏩", "Goes last": "🐢", Focus: "🎯", Mix: "🔀", "Worn out": "😴" };
+  return `<h3>A round</h3>
+    <ol class="wander-guide-steps">${round.map((r) => `<li>${esc(r)}</li>`).join("")}</ol>
+    <h3>How hard a level ${h.level} pet hits</h3>
+    <div class="wander-guide-bars">
+      ${bar("Plain attack, if it weren't for its type level", h.plain, "#c8b48c")}
+      ${bar(`Plain attack at level ${h.level} in that type`, h.typed, "#e8a03a")}
+      ${bar("Big move, spending mana", h.big, "#3a7fc8")}
+    </div>
+    <div class="wander-guide-cards">${Object.entries(g.fight).map(([k, v]) => guideCard(icons[k] || "✨", k, v)).join("")}</div>
+    <h3>Words to know</h3>
+    <div class="wander-guide-cards">${Object.entries(g.terms).map(([k, v]) => guideCard(termIcons[k] || "✨", k, v, "#c8b48c")).join("")}</div>`;
+}
+
+function guideLands(g) {
+  const hex = (biome) => `<span class="wander-guide-hex" style="background:${WanderMap.BIOME_COLORS[biome] || "#d8c7a0"}"></span>`;
+  const place = (biome, text) => `<li>${hex(biome)} <b>${esc(words(biome).replace(/^./, (c) => c.toUpperCase()))}:</b> ${wanderText(text.replace(/^\{\w+\}: /, ""))}</li>`;
+  const entries = Object.entries(g.lands);
+  const mine = (t) => entries.filter(([, text]) => text.startsWith(`{${t}}`));
+  const home = entries.filter(([, text]) => !text.startsWith("{"));
+  return `<p>The land round Camp is ordinary heartland. Past it, each of the five types has its own country, with a town and a temple.</p>
+    <div class="wander-guide-land" style="border-color:#b8a878"><h3>Heartland</h3><ul>${home.map(([b, t]) => place(b, t)).join("")}</ul></div>
+    ${g.order.map((t) => `<div class="wander-guide-land" style="border-color:${WanderMap.TYPE_COLORS[t]}">
+      <h3>${chips({ [t]: "" })}</h3>
+      <p>${wanderText(g.types[t])}</p>
+      <ul>${mine(t).map(([b, text]) => place(b, text)).join("")}</ul>
+    </div>`).join("")}`;
+}
+
+function renderGuide(setBody, keys) {
   const g = guideData;
   menu.page = menu.page || 0;
   if (!g) {
-    body.innerHTML = `<p class="hint">Opening the book...</p>`;
+    setBody(`<p class="hint">Opening the book...</p>`);
     return;
   }
   const tabs = GUIDE_PAGES.map((p, i) => `<button type="button" class="wander-guide-tab ${i === menu.page ? "on" : ""}" data-guide-page="${i}">${esc(p)}</button>`).join("");
@@ -994,12 +1125,16 @@ function renderGuide(body, keys) {
     () => guideMatchups(g),
     guideComboChart,
     guideCombosFound,
-    () => `<h3>Marks</h3>${guideList(Object.entries(g.marks))}<h3>Effects</h3>${guideList(Object.entries(g.effects))}`,
-    () => guideList(Object.entries(g.fight)),
+    () => guideMarks(g),
+    () => guideFight(g),
     () => guideLands(g),
   ][menu.page]();
-  body.innerHTML = `<nav class="wander-guide-tabs">${tabs}</nav><div class="wander-guide-page">${page}</div>`;
-  keys.innerHTML = `<kbd class="keycap">&larr;</kbd><kbd class="keycap">&rarr;</kbd> turn the page &nbsp; <kbd class="keycap">Esc</kbd> close`;
+  setBody(`<nav class="wander-guide-tabs">
+      <button type="button" class="wander-guide-tab" data-guide-turn="-1" aria-label="Previous page">&larr;</button>
+      ${tabs}
+      <button type="button" class="wander-guide-tab" data-guide-turn="1" aria-label="Next page">&rarr;</button>
+    </nav><div class="wander-guide-page">${page}</div>`);
+  keys.innerHTML = `<kbd class="keycap">&larr;</kbd><kbd class="keycap">&rarr;</kbd> or click to turn the page &nbsp; <kbd class="keycap">Esc</kbd> close`;
 }
 
 // The map window: everywhere you've found, over the whole play area, with
@@ -1100,14 +1235,14 @@ function menuKey(e) {
     return closeMenu();
   }
   if (menu.name === "guide") return guideKey(e);
-  if (menu.name === "shop") {
+  if (menu.name === "shop" || menu.name === "camp") {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       menu.at += e.key === "ArrowDown" ? 1 : -1;
       render();
     } else if (e.key === "Enter") {
       const x = menuRows()[menu.at];
-      if (x && !x.sold_out) buyItem(x.name);
+      if (menu.name === "shop" && x && !x.sold_out) buyItem(x.name);
     }
     return;
   }
@@ -1289,6 +1424,11 @@ function renderScreen() {
   }
   title.innerHTML = wanderText(s.title);
   text.innerHTML = wanderText(s.text);
+  if (s.friends) {
+    const n = (state.camp_friends || []).length;
+    text.insertAdjacentHTML("beforeend", `<br><button type="button" id="camp-friends-button"><kbd class="keycap">F</kbd> Visit your friends${n ? ` (${n})` : ""}</button>`);
+    document.getElementById("camp-friends-button").onclick = () => openMenu("camp");
+  }
   if (mode === "line") {
     const chars = [...typing.line];
     line.innerHTML = chars
@@ -1519,6 +1659,15 @@ for (const [id, name] of [["battle-bag", "bag"], ["battle-guide", "guide"]]) {
     if (state && !busy && !replay) openMenu(name);
   });
 }
+document.getElementById("menu-close").addEventListener("click", (e) => {
+  e.currentTarget.blur(); // keep Enter for the map
+  if (!menu) return;
+  if (menu.picking) {
+    menu.picking = null;
+    menu.at = 0;
+    render();
+  } else closeMenu();
+});
 document.querySelectorAll("[data-menu]").forEach((b) => {
   b.addEventListener("click", (e) => {
     e.currentTarget.blur();
@@ -1574,6 +1723,7 @@ function screenKey(e) {
   }
   const s = state.screen;
   if (e.key === "Enter" && s && s.action === "shop") return openMenu("shop");
+  if ((e.key === "f" || e.key === "F") && s && s.friends) return openMenu("camp");
   // several choices: a number picks one
   const pick = s && s.options && s.options.length > 1 ? s.options[Number(e.key) - 1] : null;
   if (pick) {
