@@ -279,6 +279,22 @@ const HOME_ICONS = {
       });
     },
   },
+  wanderpaw: {
+    w: 16,
+    h: 22,
+    draw(px, frame) {
+      cabinet(px, frame, { p: "#6a5ab8", P: "#43397e" }, () => {
+        // a tiny hex land: green hill, blue water, a paw stepping across
+        px(4, 10, 8, 1, "#4a6627");
+        px(4, 9, 3, 1, "#4a8ab0");
+        px(9, 8, 3, 2, "#7fa346");
+        const x = 5 + (frame % 4);
+        px(x, 6, 2, 2, "#fbf1dc");
+        px(x - 1, 5, 1, 1, "#fbf1dc");
+        px(x + 2, 5, 1, 1, "#fbf1dc");
+      });
+    },
+  },
   game_pet_battle_v1: {
     w: 16,
     h: 22,

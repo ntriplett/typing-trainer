@@ -163,6 +163,16 @@ def test_a_save_left_with_a_fight_but_no_trip_still_loads():
     assert sv.view(save)["battle"] is None
 
 
+def test_paying_for_a_day_ends_any_old_trip_and_setting_off_uses_it_up():
+    save = _on_trip()
+    paid = sv.buy_day(save)
+    assert paid["trip"] is None and sv.has_paid(paid) and not sv.is_night(paid)
+    assert paid["spot"] == list(sv.local_of(paid).campfire)
+    fresh = sv.start_trip(paid)
+    assert fresh["trip"]["energy"] == fresh["trip"]["max"]
+    assert not sv.has_paid(fresh)
+
+
 def test_going_home_ends_the_day_from_anywhere():
     save = _on_trip()
     to = next(n for n in hx.neighbors((0, 0)) if sv.local_of(save).walkable(n))

@@ -158,6 +158,19 @@ KEEPERS = {
         "\"Uncle says you're tough. Can I come? I'm nearly as loud as he is!\"",
     ),
 }
+# The ending: pages to read in front of the Heartstone. Tumble's there from TUMBLE_PAGE on.
+ENDING = (
+    "One by one, the five relics settle into their pillars. The great hall fills with light.",
+    "The Keepers come, from all five lands. Nerissa. Solenne. Lunelle. Primrose. Old Rumble. For the first time in 100 years, they're all in one room.",
+    "Nobody knows what to say. Then Old Rumble clears a very big throat. \"I got your letter,\" says Nerissa, and everybody starts talking at once.",
+    "The Heartstone wakes! Out steps a wizard in silver robes, with five little lights bobbing over his tall hat.",
+    "It's Tumble! He went into the stone that last night, to keep its last ember lit. He has been in there ever since.",
+    "\"You took your time,\" says Tumble, and he winks at you. \"Good. It's a long walk.\"",
+    "The five friends are laughing again. The land is calm, and the letters can start moving.",
+    "You're truly the Wanderpaw now. Thank you for playing!",
+)
+TUMBLE_PAGE = 3
+
 KEEPSAKES = {k.keepsake: k.keepsake_about for k in KEEPERS.values()}
 KEEPER_TALKS = {"about": "How are you?", "friends": "Tell me about your friends", "tumble": "Who was Tumble?"}
 LETTER_LABEL = "Read the letter to them"

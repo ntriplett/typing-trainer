@@ -150,3 +150,65 @@ def test_a_shopkeeper_talks_and_still_sells(page: Page, live_server):
     expect(page.locator("#screen-text")).to_contain_text("Madame Morrow")
     page.keyboard.press("1")  # see what's for sale
     expect(page.locator("#menu")).to_be_visible()
+
+
+def test_the_ending_gathers_the_five_and_tumble_steps_out(page: Page, live_server, tmp_path):
+    from app import db
+    from app.wanderpaw import save as sv
+    from app.wanderpaw import world as wd
+
+    page.request.post(f"{live_server}/api/wander/tutorial", data={"step": "skip"})
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        world = sv.world_of(save)
+        final = next(c for c, b in world.hexes.items() if b.special == "final")
+        stone = next(h for h, kind in sv.local_of(save, final).tiles.items() if kind == "stone")
+        sv.teleport(conn, 1, final, stone)
+        db.save_wander(conn, 1, {**sv.load(conn, 1), "temples": list(wd.REGIONS)})
+    page.reload()
+    page.wait_for_function("state && state.screen")
+    page.keyboard.press("Enter")  # go in
+    expect(page.locator("#screen-text")).to_contain_text("Five hollows")
+    page.keyboard.press("Enter")  # place the relics
+    expect(page.locator("#day-title")).to_have_text("The Heartstone")
+    expect(page.locator("#day-text")).to_have_text(lore.ENDING[0])
+    page.wait_for_function("liveScene && liveScene.posed && liveScene.world.walkers.length === 5")
+    names = page.evaluate("liveScene.world.walkers.map((w) => w.p.name)")
+    assert names == [lore.KEEPERS[r].name for r in wd.REGIONS]
+    assert not page.evaluate("tumbleShown()")  # he's not out yet
+    assert page.evaluate("liveScene.scene.spec.setting") == "heartstone"
+    for at in range(1, lore.TUMBLE_PAGE + 1):
+        page.keyboard.press("Enter")
+        expect(page.locator("#day-text")).to_have_text(lore.ENDING[at])
+    assert page.evaluate("tumbleShown()")
+    page.wait_for_function("ending.cameAt !== null")  # really drawn
+    for at in range(lore.TUMBLE_PAGE + 1, len(lore.ENDING)):
+        page.keyboard.press("Enter")
+    expect(page.locator("#day-go")).to_contain_text("The end")
+    page.keyboard.press("Enter")
+    expect(page.locator("#day")).to_be_hidden()
+    expect(page.locator("#wander-local")).to_be_visible()
+    assert page.evaluate("state.finished")
+    # and you can watch it again
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen-text")).to_contain_text("hums happily")
+    page.keyboard.press("Enter")
+    expect(page.locator("#day-title")).to_have_text("The Heartstone")
+
+
+def test_the_labs_button_takes_you_to_the_heartstone_ready_to_end(page: Page, live_server):
+    page.request.post(f"{live_server}/api/wander/tutorial", data={"step": "skip"})
+    page.on("dialog", lambda d: d.accept())
+    page.goto(f"{live_server}/wander-lab")
+    page.click("#ending-button")
+    page.wait_for_url(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.screen")
+    expect(page.locator("#where-name")).to_contain_text("Heartstone")
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen-text")).to_contain_text("Five hollows")
+    page.keyboard.press("Enter")
+    expect(page.locator("#day-text")).to_have_text(lore.ENDING[0])
+

@@ -828,3 +828,65 @@ def test_the_scene_lab_shows_every_biome():
 
 def test_the_scene_of_home_is_the_campfire_going_home_would_take_you_to():
     assert client.get("/api/wander/scene?home=1").json()["setting"] == "camp"
+
+
+@pytest.fixture()
+def days_cost_tokens(monkeypatch):
+    from app import arcade, config
+
+    monkeypatch.setattr(config, "WANDER_FREE_DAYS", False)
+    monkeypatch.setattr(arcade, "_ready", lambda *a: True)
+
+
+def _card():
+    return next(g for g in client.get("/api/arcade").json()["games"] if g["id"] == "wanderpaw")
+
+
+def test_a_day_needs_paying_for(days_cost_tokens):
+    assert not client.get("/api/wander").json()["can_start_day"]
+    assert client.post("/api/wander/trip/start", json={}).status_code == 400
+    assert client.post("/api/wander/day").status_code == 400
+
+
+def test_two_tokens_buy_a_new_day_at_full_energy_once(days_cost_tokens):
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_tokens(conn, 1, 5, "test")
+    assert client.post("/api/arcade/play/wanderpaw").json()["tokens"] == 3
+    assert _card()["paid"]
+    assert client.post("/api/arcade/play/wanderpaw").json()["tokens"] == 3  # paid: never twice
+    trip = client.post("/api/wander/trip/start", json={}).json()["trip"]
+    assert trip["energy"] == trip["max"]
+    card = _card()
+    assert card["unfinished"] and not card["paid"]
+    # the old trip's free to go back to; or two more tokens start a fresh one
+    assert client.get("/api/wander").json()["trip"]
+    assert client.post("/api/arcade/play/wanderpaw").json()["tokens"] == 1
+    fresh = client.get("/api/wander").json()
+    assert fresh["trip"] is None and fresh["can_start_day"]
+
+
+def test_the_parent_pages_way_in_is_free(days_cost_tokens):
+    client.post("/api/wander-lab/day-pass")
+    assert client.get("/api/wander").json()["can_start_day"]
+    assert client.post("/api/wander/trip/start", json={}).status_code == 200
+    before = client.get("/api/wander").json()["trip"]
+    client.post("/api/wander-lab/day-pass")  # on a trip: it stays as it is
+    assert client.get("/api/wander").json()["trip"] == before
+
+
+def test_the_ending_can_be_watched_without_finishing():
+    ending = client.get("/api/wander-lab/ending").json()
+    assert len(ending["friends"]) == 5 and ending["pages"]
+    assert not client.get("/api/wander").json()["finished"]
+
+
+def test_the_lab_sets_up_the_ending_and_you_still_place_the_relics():
+    assert client.post("/api/wander-lab/to-the-end").status_code == 200
+    data = client.get("/api/wander").json()
+    assert data["trip"] and not data["finished"]
+    assert data["screen"]["action"] == "heartstone"
+    assert client.post("/api/wander/act", json={"action": "heartstone"}).json()["ending"]
+    assert client.get("/api/wander").json()["finished"]
+    client.post("/api/wander-lab/to-the-end")  # and again
+    assert client.get("/api/wander").json()["screen"]["action"] == "heartstone"
+

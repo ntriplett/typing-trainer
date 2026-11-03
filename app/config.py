@@ -12,5 +12,9 @@ import os
 
 DEV_START_COINS = int(os.environ.get("TYPING_TRAINER_DEV_START_COINS", "50000"))
 
+# Wanderpaw days normally cost arcade tokens. On: anyone can start one (the test suite,
+# which sets it in tests/conftest.py).
+WANDER_FREE_DAYS = os.environ.get("TYPING_TRAINER_WANDER_FREE_DAYS") == "1"
+
 # What revealing the keyboard-with-hands hint costs, once per short lesson.
 KEYBOARD_HINT_PRICE = 10

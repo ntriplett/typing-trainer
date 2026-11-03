@@ -465,3 +465,10 @@ opt("gallery-button").onclick = showGallery;
   }));
 
 show();
+
+// Straight to the Heartstone with all five relics, in your own world, to place them and watch.
+document.getElementById("ending-button").addEventListener("click", async () => {
+  if (!confirm("This puts you at the Heartstone with all five relics, in your own save, and can't be undone: creatures and gates get harder for all five. Go ahead?")) return;
+  const res = await fetch("/api/wander-lab/to-the-end", { method: "POST" });
+  if (res.ok) location.href = "/wanderpaw";
+});

@@ -59,7 +59,7 @@ from __future__ import annotations
 import dataclasses
 import random
 
-from app import db, pet_genes
+from app import config, db, pet_genes
 from app.wanderpaw import folk
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import battle as bt
@@ -68,6 +68,7 @@ from app.wanderpaw import local as lc
 from app.wanderpaw import lore
 from app.wanderpaw import pets as wp
 from app.wanderpaw import quests as qs
+from app.wanderpaw import scene as sc
 from app.wanderpaw import shop as sh
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
@@ -614,10 +615,13 @@ def _critter_by_id(save: dict, cid: str) -> cr.Critter:
     big = tuple(int(v) for v in cid.split(":")[1].split(","))
     if cid.startswith("boss:"):
         return cr.temple_boss(save["seed"], cid.split(":")[2], big, relics_out(save))
+    if cid.startswith(f"{cr.SLEEPER_PREFIX}:"):
+        h = tuple(int(v) for v in cid.split(":")[2].split(","))
+        return cr.sleeper(save["seed"], big, h, relics_out(save))
     return next(c for c in cr.at(save["seed"], big, day(save), relics_out(save)).values() if c.id == cid)
 
 
-def _start_battle(save: dict, c: cr.Critter) -> dict:
+def _start_battle(save: dict, c: cr.Critter, says: str | None = None) -> dict:
     who = fighters(save)
     if not who:
         raise WanderError("Your pets are too tired to fight. Rest at a campfire, or go round.")
@@ -630,7 +634,7 @@ def _start_battle(save: dict, c: cr.Critter) -> dict:
         name = lore.KEEPERS[c.kind].name
         return _event({**save, "battle": {**battle, "keeper": name}}, kind="battle", text=f"{name} rises to meet you!")
     return _event({**save, "battle": battle}, kind="battle",
-                  text=f"A level {c.level} {title.lower()}{c.species.replace('_', ' ')} blocks the way!")
+                  text=says or f"A level {c.level} {title.lower()}{c.species.replace('_', ' ')} blocks the way!")
 
 
 def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None) -> dict:
@@ -681,6 +685,8 @@ def battle_turn(save: dict, picks: list[dict], rng: random.Random | None = None)
                 save = {**save, "camps": [*save["camps"], _key(c.big)]}
         if b.get("coins"):
             save = _event(save, kind="coins", amount=b["coins"], text=f"Golden Flame! {b['coins']} coins.")
+        if c.id.startswith(f"{cr.SLEEPER_PREFIX}:"):
+            save = _sleeper_loot(save, b, c)
         if ids:
             save = _event(save, kind="xp", amount=gain, pets=ids)
             for i in b["fighters"]:
@@ -710,8 +716,8 @@ def end_battle(save: dict) -> dict:
     if not b or not b["over"]:
         raise WanderError("The battle isn't over.")
     save = _ward_fades({**save, "battle": None, "events": []}, b)
-    if b["over"] == "won" and b.get("tier") == "boss":
-        return save  # it stood in the temple's door: you're still there
+    if b["over"] == "won" and (b.get("tier") == "boss" or b["critter"].startswith(f"{cr.SLEEPER_PREFIX}:")):
+        return save  # it stood in the temple's door, or slept in this nook: you're still there
     if b["over"] == "won":
         c = _critter_by_id(save, b["critter"])
         save = _see({**save, "at": list(c.big), "spot": list(c.at)}, c.big, c.at)
@@ -839,10 +845,27 @@ def start_trip(save: dict, from_camp: bool = False) -> dict:
     if from_camp:
         save = {**save, "at": list(CAMP), "spot": [0, 0]}
     stats = {**save["stats"], "trips": save["stats"]["trips"] + 1}
-    save = {**save, "trip": _trip(save["team"], walk_max(save) - WALK_ENERGY), "note": None, "events": [], "stats": stats, "battle": None, "fighters": None}
+    save = {**save, "trip": _trip(save["team"], walk_max(save) - WALK_ENERGY), "note": None, "events": [], "stats": stats, "battle": None, "fighters": None, "day_pass": False}
     if save["tutorial"] in ("intro", "party"):
         save = {**save, "tutorial": "walk", "tutorial_from": stats["steps"]}
     return _see(save, tuple(save["at"]), tuple(save["spot"]))
+
+
+def buy_day(save: dict) -> dict:
+    """Paid for a new day: it starts at full energy when you set off. A trip
+    you'd left unfinished is over, and you start from the fire it'd take you to."""
+    if save["trip"]:
+        big, fire = home_fire(save)
+        save = _see({**save, "at": list(big), "spot": list(fire), "trip": None, "battle": None}, big, fire)
+    return {**save, "day_pass": True, "note": None, "events": []}
+
+
+def has_paid(save: dict) -> bool:
+    return bool(save.get("day_pass"))
+
+
+def can_start_day(save: dict) -> bool:
+    return has_paid(save) or config.WANDER_FREE_DAYS
 
 
 def home_fire(save: dict) -> tuple[Hex, Hex]:
@@ -1231,7 +1254,9 @@ def _nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict:
             options.append(f)
         else:
             lines.append(f"Something glints in here, out of reach. It takes {need} {st.TYPE_NAMES[kind]} levels (you have {levels(save, kind)}).")
-    if shown["action"]:
+    if shown.get("options"):
+        options += shown["options"]
+    elif shown["action"]:
         options.append({"action": shown["action"], "label": shown["label"]})
     out = {**shown, "text": " ".join(lines)}
     if options:
@@ -1245,7 +1270,11 @@ def _plain_nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict
     lines = [words.text]
     lines += [st.LORE[pick % len(st.LORE)]] if "lore" in nook.finds else []
     lines += [st.TIPS[pick % len(st.TIPS)]] if "tip" in nook.finds else []
-    lines += [st.CREATURE_LINE] if "creature" in nook.finds else []
+    sleeping = "creature" in nook.finds and not _sleeper_gone(save, pid)
+    if "creature" in nook.finds:
+        big, spot = tuple(save["at"]), tuple(save["spot"])
+        c = cr.sleeper(save["seed"], big, spot, relics_out(save))
+        lines.append(st.CREATURE_LINE.format(level=c.level, species=words_for(c.species)) if sleeping else st.CREATURE_GONE)
     out = {"title": words.title, "action": None}
     if not has_levels(save, nook.need):
         kind, need = nook.need
@@ -1258,7 +1287,35 @@ def _plain_nook_screen(save: dict, nook: lc.Nook, region: str, pid: str) -> dict
     elif any(f in st.ONCE_FINDS + st.DAILY_FINDS for f in nook.finds):
         lines.append("You've found everything here." if not any(f in st.DAILY_FINDS for f in nook.finds)
                      else "Nothing more today. Come back next trip.")
+    if sleeping and has_levels(save, nook.need):
+        wake = {"action": "wake", "label": st.WAKE_LABEL}
+        if out["action"]:
+            out["options"] = [{"action": out["action"], "label": out["label"]}, wake]
+        else:
+            out.update(wake)
     return {**out, "text": " ".join(lines)}
+
+
+def _sleeper_gone(save: dict, pid: str) -> bool:
+    return f"{pid}:{cr.SLEEPER_PREFIX}" in save["found"]
+
+
+def words_for(species: str) -> str:
+    return species.replace("_", " ")
+
+
+def _sleeper_loot(save: dict, b: dict, c: cr.Critter) -> dict:
+    """Beating what slept here: its hoard, once."""
+    pid = _place_id(c.big, c.at)
+    if _sleeper_gone(save, pid):
+        return save
+    items, coins = sh.loot(random.Random(f"wanderpaw-loot:{save['seed']}:{c.id}"), c.level)
+    for item, n in items:
+        save = _give(save, item, n)
+    things = " and ".join(f"{n} {item}{'s' if n > 1 else ''}" for item, n in items)
+    save = {**save, "found": [*save["found"], f"{pid}:{cr.SLEEPER_PREFIX}"]}
+    save = _event(save, kind="loot", text=st.LOOT_TEXT.format(things=things))
+    return _event(save, kind="coins", amount=coins, text=f"And {coins:,} coins!")
 
 
 def _search(save: dict, nook: lc.Nook, region: str, pid: str, accuracy: float) -> dict:
@@ -1316,6 +1373,12 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
     trip = save["trip"]
     if action in ("search", "fish"):
         return _search(save, place(save)["nook"], region, pid, accuracy)
+    if action == "wake":
+        nook = (place(save) or {}).get("nook")
+        if not nook or "creature" not in nook.finds or _sleeper_gone(save, pid) or not has_levels(save, nook.need):
+            raise WanderError("There's nothing asleep here.")
+        c = cr.sleeper(save["seed"], tuple(save["at"]), tuple(save["spot"]), relics_out(save))
+        return _start_battle(save, c, st.WAKE_TEXT.format(level=c.level, species=words_for(c.species)))
     if action == "camp":
         # a new day can start here from now on, however the rest goes
         texts = []
@@ -1855,12 +1918,22 @@ def walk_world(conn, learner_id: int, to: Hex) -> dict:
     return _write(conn, learner_id, step)
 
 
+def _paid_for(save: dict) -> dict:
+    if not can_start_day(save):
+        raise WanderError("A new day costs tokens. Visit the arcade!")
+    return save
+
+
 def begin(conn, learner_id: int, from_camp: bool) -> dict:
-    return _write(conn, learner_id, lambda s: start_trip(s, from_camp))
+    return _write(conn, learner_id, lambda s: start_trip(_paid_for(s), from_camp))
 
 
 def new_day(conn, learner_id: int) -> dict:
-    return _write(conn, learner_id, next_day)
+    return _write(conn, learner_id, lambda s: next_day(_paid_for(s)))
+
+
+def day_bought(conn, learner_id: int) -> dict:
+    return _write(conn, learner_id, buy_day)
 
 
 def finish(conn, learner_id: int) -> dict:
@@ -2302,6 +2375,19 @@ def is_night(save: dict) -> bool:
     return not save["trip"] and save["note"] in ("napped", "rested")
 
 
+def ending_view(save: dict) -> dict:
+    """The ending: its pages, the five friends together, and the hall they're in."""
+    world = world_of(save)
+    temples = {b.region: c for c, b in world.hexes.items() if b.special == "temple"}
+    friends = []
+    for region in wd.REGIONS:
+        boss = cr.temple_boss(save["seed"], region, temples[region], 0)
+        friends.append({"name": lore.KEEPERS[region].name, "species": boss.species, "genes": wp.tier_looks(boss.species, boss.seed, "boss"), "growth": 10})
+    final = next(c for c, b in world.hexes.items() if b.special == "final")
+    stone = next(h for h, kind in local_of(save, final).tiles.items() if kind == "stone")
+    return {"pages": list(lore.ENDING), "tumble_page": lore.TUMBLE_PAGE, "friends": friends, "scene": sc.describe(save["seed"], final, stone)}
+
+
 def team_view(save: dict) -> list[dict]:
     """The team for the party book: how far along each is, and its moves."""
     mana = _mana(save) if save["trip"] else [m["mana"] for m in save["team"]]
@@ -2344,7 +2430,8 @@ def view(save: dict) -> dict:
         "tutorial": tutorial_view(save),
         "pip_looks": _pip_looks(),
         "pages": next((e["pages"] for e in save["events"] if e["kind"] == "pages"), None),
-        "credits": st.CREDITS if any(e["kind"] == "credits" for e in save["events"]) else None,
+        "ending": ending_view(save) if any(e["kind"] == "credits" for e in save["events"]) else None,
+        "can_start_day": can_start_day(save),
         "stats": save["stats"],
     }
 
@@ -2387,6 +2474,24 @@ def keeper_beaten(conn, learner_id: int, region: str) -> dict:
     to_temple(conn, learner_id, region)
     save = load(conn, learner_id)
     save = {**save, "bosses": sorted({*save["bosses"], region}), "camps": sorted({*save["camps"], _key(tuple(save["at"]))})}
+    db.save_wander(conn, learner_id, save)
+    return save
+
+
+def to_the_end(conn, learner_id: int) -> dict:
+    """The lab's way to the ending: at the Heartstone, on a trip, with every Keeper
+    beaten and all five relics in hand, not yet placed."""
+    save = load(conn, learner_id)
+    world = world_of(save)
+    final = next(c for c, b in world.hexes.items() if b.special == "final")
+    stone = next(h for h, kind in local_of(save, final).tiles.items() if kind == "stone")
+    save = save if save["trip"] else start_trip(save)
+    for region in wd.REGIONS:
+        relic = st.STORIES[region].relic
+        if not save["items"].get(relic):
+            save = _give(save, relic)
+    save = _see({**save, "at": list(final), "spot": list(stone), "battle": None, "events": [], "finished": False,
+                 "bosses": list(wd.REGIONS), "temples": list(wd.REGIONS)}, final, stone)
     db.save_wander(conn, learner_id, save)
     return save
 

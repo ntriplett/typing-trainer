@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.wanderpaw import hexes as hx
 from app.wanderpaw import local as lc
+from app.wanderpaw import lore
 from app.wanderpaw import pets as wp
 from app.wanderpaw import save as sv
 from app.wanderpaw import story as st
@@ -195,7 +196,12 @@ def test_the_heartstone_wants_all_five_relics():
     ready = {**save, "temples": list(wd.REGIONS)}
     done = sv.act(ready, "heartstone")
     assert done["finished"]
-    assert sv.view(done)["credits"] == st.CREDITS
+    ending = sv.view(done)["ending"]
+    assert ending["pages"] == list(lore.ENDING) and ending["scene"]["setting"] == "heartstone"
+    assert [f["name"] for f in ending["friends"]] == [lore.KEEPERS[r].name for r in wd.REGIONS]
+    assert all(f["genes"] for f in ending["friends"])
+    assert "Tumble" in lore.ENDING[lore.TUMBLE_PAGE + 1] and "wizard" in lore.ENDING[lore.TUMBLE_PAGE]
+    assert sv.view(sv.act(done, "credits"))["ending"]  # and you can watch it again
     assert sv.screen(done)["action"] == "credits"
 
 

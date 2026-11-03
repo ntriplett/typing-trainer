@@ -909,6 +909,21 @@ def scene_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "scene_lab.html")
 
 
+@app.post("/api/wander-lab/day-pass")
+def wander_lab_day_pass(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """A new day for free, keeping any trip you're on (the parent page's way in)."""
+    save = wander.current(conn, learner_id)
+    if not save["trip"]:
+        wander.day_bought(conn, learner_id)
+    return {"ok": True}
+
+
+@app.get("/api/wander-lab/ending")
+def wander_lab_ending(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The ending, to look at without finishing the game."""
+    return wander.ending_view(wander.current(conn, learner_id))
+
+
 @app.get("/api/scene-lab")
 def scene_lab(seed: int = 3) -> dict:
     """A picture's facts for every biome and setting of a world, for the scene lab."""
@@ -1154,6 +1169,13 @@ def wander_lab_keeper_beaten(body: WanderBossRequest, conn=Depends(get_db), lear
     except wander.WanderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return wander_lab_world(None, conn, learner_id)
+
+
+@app.post("/api/wander-lab/to-the-end")
+def wander_lab_to_the_end(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Stand at the Heartstone with all five relics, ready to place them and see the ending."""
+    wander.to_the_end(conn, learner_id)
+    return {"ok": True}
 
 
 @app.post("/api/wander-lab/refill")

@@ -50,6 +50,17 @@ BOOTS_WALK = 25
 CAMP_SPOTS = 5  # friends waiting at Camp
 BEFRIEND_EXTRA_MANA = {"": 0, "tough": 2, "champion": 4}  # on top of the creature's level, for each fighter
 
+# What a sleeping mythical was lying on (once each): one of BIG, a pair of one of PAIRS, and coins per level.
+LOOT_BIG = (TOME, WEIGHT)
+LOOT_PAIRS = (FULL_MANA, FEATHER, WARD)
+LOOT_COINS_PER_LEVEL = 100
+
+
+def loot(rng, level: int) -> tuple[list[tuple[str, int]], int]:
+    """A sleeping mythical's hoard: [(item, how many)], and coins."""
+    return [(rng.choice(LOOT_BIG), 1), (rng.choice(LOOT_PAIRS), 2)], LOOT_COINS_PER_LEVEL * level
+
+
 ITEMS: dict[str, Item] = {
     i.name: i
     for i in [

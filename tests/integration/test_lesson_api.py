@@ -205,7 +205,8 @@ def give_tokens(n: int):
 def test_arcade_lists_games_with_prices():
     games = {g["id"]: g for g in client.get("/api/arcade").json()["games"]}
     assert games["game_crow_patrol_v1"]["price"] == 1
-    assert games["game_pet_battle_v1"]["price"] == 2
+    assert games["wanderpaw"]["price"] == 2 and games["wanderpaw"]["url"] == "/wanderpaw"
+    assert "game_pet_battle_v1" not in games  # Wanderpaw took its place
     assert not any(g["affordable"] for g in games.values())
 
 
@@ -221,8 +222,9 @@ def test_playing_spends_tokens():
     home_row_player()
     give_tokens(2)
     assert client.post("/api/arcade/play/game_crow_patrol_v1").json()["tokens"] == 1
-    poor = client.post("/api/arcade/play/game_pet_battle_v1")
+    poor = client.post("/api/arcade/play/wanderpaw")
     assert poor.status_code == 400 and "2 tokens" in poor.json()["detail"]
+    assert client.post("/api/arcade/play/game_pet_battle_v1").status_code == 400
     assert client.post("/api/arcade/play/nope").status_code == 400
 
 

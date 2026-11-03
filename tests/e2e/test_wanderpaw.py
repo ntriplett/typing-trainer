@@ -804,3 +804,53 @@ def test_camp_friends_are_only_in_the_picture_at_camp(page: Page, live_server):
         friend,
     )
     assert "Buddy" in names[0] and "Buddy" not in names[1]
+
+
+def test_with_no_day_paid_for_the_morning_points_to_the_arcade(page: Page, live_server):
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    page.evaluate("state.can_start_day = false; render()")  # (the tests run with free days)
+    expect(page.locator("#day-go")).to_contain_text("Go to the arcade")
+    expect(page.locator("#day-text")).to_contain_text("2 tokens")
+    page.keyboard.press("Enter")
+    page.wait_for_url(f"{live_server}/arcade")
+
+
+def test_a_picture_still_on_its_way_doesnt_replace_a_newer_one(page: Page, live_server):
+    page.goto(f"{live_server}/wanderpaw?lab=1&ending=1")
+    page.wait_for_function("mode === 'ending' && liveScene && liveScene.key.startsWith('ending')")
+    page.wait_for_timeout(500)  # anything still on its way has landed
+    assert page.evaluate("liveScene.key.startsWith('ending') && liveScene.scene.spec.setting") == "heartstone"
+
+
+def test_waking_whats_asleep_in_a_cave_starts_a_fight_with_no_go_home_button(page: Page, live_server, tmp_path):
+    from app import db
+    from app.wanderpaw import save as sv
+    from app.wanderpaw import story as st
+
+    page.goto(f"{live_server}/wanderpaw")
+    page.wait_for_function("state && state.local")
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        save = sv.load(conn, 1)
+        big, h = next((b, s) for b in sv.world_of(save).hexes for s, n in sorted(sv.local_of(save, b).nooks.items())
+                      if "creature" in n.finds and not n.need)
+        sv.teleport(conn, 1, big, h)
+    page.reload()
+    page.wait_for_function("state && state.screen")
+    expect(page.locator("#go-home")).to_be_visible()
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen-text")).to_contain_text("asleep in here")
+    expect(page.locator("#screen-keys")).to_contain_text(st.WAKE_LABEL)
+    n = page.evaluate("(state.screen.options || []).length")
+    page.keyboard.press("2" if n > 1 else "Enter")
+    expect(page.locator("#battle")).to_be_visible()
+    expect(page.locator("#go-home")).to_be_hidden()  # you run away instead
+    assert page.evaluate("state.battle.tier") == "champion"
+    expect(page.locator("#battle-keys")).to_contain_text("run away")
+    page.keyboard.press("Escape")
+    expect(page.locator("#battle")).to_be_hidden()
+    expect(page.locator("#go-home")).to_be_visible()
+    page.keyboard.press("Enter")
+    expect(page.locator("#screen-text")).to_contain_text("asleep in here")  # back to sleep
+

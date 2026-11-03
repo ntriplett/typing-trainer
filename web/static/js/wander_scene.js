@@ -20,6 +20,7 @@ const WanderScene = (() => {
   const FEET_BOTTOM = 88;
   const MID_RINGS = 2; // scene.py's: nearer than this, it's drawn as itself
   const NEAR_IS_MID = new Set(["cave", "shrine", "house"]);
+  const HALL_NEAR = 4; // a hall's other tiles, this close, are the hall you're in
   const FAR_WATER = 0.06; // of the horizon: less and it doesn't show
   const FAR_SPILL = 14; // far hills run this far past their land, sloping to the ground
   const NEAR_SPILL = 8;
@@ -562,6 +563,7 @@ const WanderScene = (() => {
     for (const m of [...spec.landmarks].reverse()) {
       if (m.dist <= MID_RINGS && NEAR_IS_MID.has(m.kind)) continue; // already there, in the middle distance
       if (!(m.kind in MARK_HALF)) continue;
+      if (m.kind === spec.setting && m.dist <= HALL_NEAR) continue; // you're inside it: it's the big one in front
       const s = m.dist <= 4 ? 1 : m.dist <= 8 ? 0.75 : 0.55;
       const half = MARK_HALF[m.kind] * s;
       const { x, y } = standing(spec, plan, m.at, half);
@@ -928,9 +930,72 @@ const WanderScene = (() => {
     }
   }
 
+  // Tumble, the last Wanderpaw: a wizard in silver robes and a tall hat, feet at (x, y),
+  // with an orb for each of the five lands bobbing over his hat, in their ring.
+  function tumble(r, x, y, tick, orbs) {
+    const silver = "#c9ced8";
+    const light = "#e8ebf0";
+    const shade = "#9299a8";
+    const dark = "#6b7282";
+    const hat = "#8f96a6";
+    r(x - 11, y - 1, 22, 2, "rgba(40, 30, 20, 0.28)"); // his shadow
+    // the robe, wider toward the hem, lit from the left
+    for (let i = 0; i < 20; i++) {
+      const half = 4 + Math.round((i / 19) * 6);
+      const top = y - 20 + i;
+      r(x - half, top, 2 * half, 1, silver);
+      r(x - half, top, 2, 1, light);
+      r(x + half - 3, top, 3, 1, shade);
+      r(x - half - 1, top, 1, 1, dark);
+      r(x + half, top, 1, 1, dark);
+    }
+    r(x - 10, y - 2, 20, 2, shade); // the hem, with the toes of his boots
+    r(x - 6, y, 4, 1, "#4a3a30");
+    r(x + 2, y, 4, 1, "#4a3a30");
+    r(x - 6, y - 11, 12, 2, dark); // his belt
+    r(x - 1, y - 11, 2, 2, "#e8b33e");
+    // his sleeves, and a hand out to the side with a staff
+    r(x - 9, y - 17, 3, 7, shade);
+    r(x - 10, y - 11, 3, 2, "#e8c8a0");
+    r(x + 6, y - 17, 4, 5, silver);
+    r(x + 9, y - 14, 3, 2, "#e8c8a0");
+    r(x + 11, y - 26, 2, 27, "#6e4a2a");
+    r(x + 11, y - 26, 1, 27, "#8b5a2b");
+    // his face and big white beard
+    r(x - 4, y - 25, 8, 5, "#e8c8a0");
+    r(x - 3, y - 24, 2, 2, "#3b2417");
+    r(x + 1, y - 24, 2, 2, "#3b2417");
+    r(x - 3, y - 24, 1, 1, "#ffffff");
+    r(x + 1, y - 24, 1, 1, "#ffffff");
+    for (let i = 0; i < 8; i++) {
+      const half = 5 - Math.floor(i / 2);
+      r(x - half, y - 21 + i, 2 * half, 1, i % 3 === 2 ? "#dcd8cc" : "#f6f3ea");
+    }
+    // his tall hat, bending a little at the tip, and its band
+    r(x - 9, y - 27, 18, 2, dark);
+    r(x - 8, y - 28, 16, 1, hat);
+    for (let i = 0; i < 12; i++) {
+      const half = Math.max(1, 5 - Math.floor(i / 2.6));
+      const lean = i > 8 ? i - 8 : 0;
+      r(x - half + lean, y - 29 - i, 2 * half, 1, hat);
+      r(x - half + lean, y - 29 - i, 1, 1, silver);
+    }
+    r(x - 5, y - 31, 10, 2, "#6a5ab8");
+    r(x - 1, y - 31, 2, 2, "#f4d35e");
+    // the five orbs, in an arc over his hat
+    orbs.forEach((color, i) => {
+      const off = i - (orbs.length - 1) / 2;
+      const ox = x + off * 8;
+      const oy = y - 47 + off * off * 2 + Math.round(Math.sin(tick / 5 + i * 1.3));
+      drawHabitatDisc(r, ox, oy, 4, 4, `${color}44`); // its glow
+      drawHabitatDisc(r, ox, oy, 2, 2, color);
+      r(ox - 1, oy - 1, 1, 1, "#ffffff");
+    });
+  }
+
   function shade(scene, ctx) {
     if (scene.nightLayer) ctx.drawImage(scene.nightLayer, 0, 0);
   }
 
-  return { build, animate, shade, BIOMES, REGIONS };
+  return { build, animate, shade, tumble, BIOMES, REGIONS };
 })();

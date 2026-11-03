@@ -41,6 +41,8 @@ CHAMPION_CHANCE = 0.03
 TIERS_FROM_LEVEL = 5  # no tougher ones while it's still easy going
 BOSS_LEVEL = 13  # a temple's boss, and RELIC_LEVELS more for each relic out
 TIER_LEVELS = {"tough": 2, "champion": 4}  # on top of its own: battle.TIERS's
+SLEEPER_PREFIX = "sleeper"  # a mythical asleep in a nook: its id's first part
+SLEEPER_LEAST = 7  # however gentle the land, what's asleep in its caves is no pushover
 MYTHICAL_CHANCE = {"": 0.01, "tough": 0.05, "champion": 0.2}
 WILD_MYTHICAL = sorted(wp.MYTHICAL)
 COMMON = sorted(s for s, (_, second) in wp.SPECIES_TYPES.items() if not second)
@@ -58,6 +60,18 @@ class Critter:
     seed: int  # its looks (pet_genes.roll)
     second: str | None = None  # its second type, once it's strong enough (at)
     tier: str = ""  # "", tough, champion or boss (battle.TIERS)
+
+
+def sleeper(seed: int, big: Hex, h: Hex, relics: int = 0) -> Critter:
+    """What's asleep in a nook: its land's mythical, a Champion, the same every time."""
+    here = wd.generate(seed).hexes[big]
+    rng = random.Random(f"wanderpaw-sleeper:{seed}:{big}:{h}")
+    mythicals = [s for s in WILD_MYTHICAL if wp.SPECIES_TYPES[s][0] == here.region] or WILD_MYTHICAL
+    species = rng.choice(mythicals)
+    kind, second = wp.SPECIES_TYPES[species]
+    lv = max(SLEEPER_LEAST, _level(rng, seed, big)) + TIER_LEVELS["champion"] + RELIC_LEVELS * relics
+    return Critter(f"{SLEEPER_PREFIX}:{big[0]},{big[1]}:{h[0]},{h[1]}", big, h, species, kind, min(wp.MAX_LEVEL, lv), True,
+                   rng.randrange(2**31), second, "champion")
 
 
 def _region_species(region: str) -> list[str]:

@@ -237,16 +237,6 @@ SHRINE_LINES = [
     "a warm fire waits at the end of the road",
 ]
 
-CREDITS = [
-    "Wanderpaw",
-    "",
-    "The five relics are home.",
-    "The Heartstone glows, and the whole land hums.",
-    "",
-    "Thank you for playing!",
-]
-
-
 # --- nooks ---------------------------------------------------------------------
 
 
@@ -307,7 +297,11 @@ FISH_LINES = [
     "slow and steady reel",
     "the bobber dips down",
 ]
-CREATURE_LINE = "Something big is curled up asleep in here. Better not wake it yet."
+CREATURE_LINE = "Something big is curled up asleep in here: a level {level} {species}, a Champion! It's lying on something shiny."
+CREATURE_GONE = "There's a big warm hollow in here where something used to sleep."
+WAKE_LABEL = "Wake it up! (a Champion fight)"
+WAKE_TEXT = "It opens one eye. A level {level} champion {species} is awake!"
+LOOT_TEXT = "It was sleeping on a hoard: {things}!"
 LORE = [
     "Scratched on the wall: the five temples were built by five friends.",
     "An old carving shows pets of every type dancing round a glowing stone.",

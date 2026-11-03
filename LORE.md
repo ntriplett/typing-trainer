@@ -244,6 +244,8 @@ orbs over his head, one for each type. "You took your time. Good. It's a long wa
 
 The land calms: **the +10 levels from the relics go away.** You're now truly the Wanderpaw.
 
+*Built 2026-11-03:* the pages are `lore.ENDING`, with the five friends and Tumble in front of the Heartstone. Dropping the relic levels is left for a later version (v1.x), along with the challenge arena.
+
 ## After the ending (later, not now)
 
 - **Challenge arena:** appears after you finish the game, for trying out hard fights.

@@ -45,7 +45,8 @@ def test_arcade_play_spends_tokens_and_opens_the_game(page: Page, live_server, t
     give_tokens(tmp_path, 1)
     page.goto(f"{live_server}/arcade")
     expect(page.locator("#arcade-balance")).to_have_text("1")
-    expect(page.locator("[data-play='game_pet_battle_v1']")).to_be_disabled()  # costs 2
+    expect(page.locator("[data-play='wanderpaw']")).to_be_disabled()  # costs 2
+    expect(page.locator("[data-play='game_pet_battle_v1']")).to_have_count(0)  # Wanderpaw took its place
     page.click("[data-play='game_crow_patrol_v1']")
     expect(page).to_have_url(re.compile(r"/game/game_crow_patrol_v1\?arcade=1"))
     expect(page.locator("#token-count")).to_have_text("0")
@@ -54,6 +55,22 @@ def test_arcade_play_spends_tokens_and_opens_the_game(page: Page, live_server, t
     expect(page.locator(".game-screen")).to_contain_text("back to the arcade")
     page.keyboard.press("Enter")
     expect(page).to_have_url(f"{live_server}/arcade")
+
+
+def test_two_tokens_open_wanderpaw_at_a_new_morning(page: Page, live_server, tmp_path):
+    place_on_home_row(page, live_server)
+    give_tokens(tmp_path, 3)
+    page.request.post(f"{live_server}/api/wander/tutorial", data={"step": "skip"})
+    page.goto(f"{live_server}/arcade")
+    page.click("[data-play='wanderpaw']")
+    expect(page).to_have_url(f"{live_server}/wanderpaw")
+    expect(page.locator("#token-count")).to_have_text("1")
+    expect(page.locator("#day-go")).to_contain_text("Start playing a new day")
+    # paid for, not started: back to the arcade, it's free to go on
+    page.goto(f"{live_server}/arcade")
+    expect(page.locator("[data-play='wanderpaw']")).to_have_count(0)
+    page.click("[data-keep-playing='wanderpaw']")
+    expect(page.locator("#day-go")).to_contain_text("Start playing a new day")
 
 
 def test_arcade_games_wait_for_enough_letters(page: Page, live_server, tmp_path):

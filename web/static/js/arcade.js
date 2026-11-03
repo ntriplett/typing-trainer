@@ -19,13 +19,14 @@ function render() {
   $("arcade-games").innerHTML = state.games
     .map(
       (g) => `
-      <article class="game-card${g.affordable && g.ready ? "" : " locked"}">
+      <article class="game-card${(g.affordable || g.paid || g.unfinished) && g.ready ? "" : " locked"}">
         <canvas class="game-art" data-icon="${g.id}" width="160" height="200"></canvas>
         <h2>${escapeHtml(g.title)}</h2>
         <p class="game-blurb">${escapeHtml(g.ready ? g.blurb : "Learn a few more letters to unlock this game!")}</p>
-        <button class="${g.affordable && g.ready ? "button-go" : ""} big-button" data-play="${g.id}" ${g.affordable && g.ready ? "" : "disabled"}>
-          Play · <span class="token-icon"></span> ${g.price}
-        </button>
+        ${g.paid ? "" : `<button class="${g.affordable && g.ready ? "button-go" : ""} big-button" data-play="${g.id}" ${g.affordable && g.ready ? "" : "disabled"}>
+          ${g.unfinished ? "New day" : "Play"} · <span class="token-icon"></span> ${g.price}
+        </button>`}
+        ${g.paid || g.unfinished ? `<a class="button button-go big-button" href="${g.url}" data-keep-playing="${g.id}">Keep playing</a>` : ""}
       </article>`
     )
     .join("");
@@ -53,7 +54,8 @@ $("arcade-games").addEventListener("click", async (e) => {
     button.disabled = false;
     return;
   }
-  location.href = `/game/${button.dataset.play}?arcade=1`;
+  const game = state.games.find((g) => g.id === button.dataset.play);
+  location.href = game.url || `/game/${button.dataset.play}?arcade=1`;
 });
 
 Header.ready.then((me) => {

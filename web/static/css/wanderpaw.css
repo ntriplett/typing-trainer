@@ -235,10 +235,6 @@ main.wander {
   color: var(--type-wrong);
 }
 
-.wander-credits {
-  text-align: center;
-}
-
 .wander-bag {
   font-size: 20px;
 }

@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.wanderpaw import critters as cr
 from app.wanderpaw import local as lc
 from app.wanderpaw import lore
 from app.wanderpaw import pets as wp
@@ -200,3 +201,64 @@ def test_a_relic_taken_before_letters_catches_up():
     assert new["letters"]["leaf"] == 3
     assert new["items"][lore.KEEPERS["leaf"].keepsake] == 1
     assert sv._catch_up(new) is new
+
+
+# --- what sleeps in the caves -----------------------------------------------------------
+
+
+def _sleeper_nook(save):
+    """A nook with something asleep in it, walkable with no levels needed."""
+    for big in sv.world_of(save).hexes:
+        local = sv.local_of(save, big)
+        for h, nook in sorted(local.nooks.items()):
+            if "creature" in nook.finds and not nook.need:
+                return big, h, nook
+    raise AssertionError("no sleeper in this world")
+
+
+def _beside_sleeper():
+    save = sv.start_trip(_new())
+    big, h, nook = _sleeper_nook(save)
+    return {**save, "at": list(big), "spot": list(h)}, big, h, nook
+
+
+def test_a_sleeper_is_its_lands_mythical_champion_and_always_the_same():
+    save, big, h, _ = _beside_sleeper()
+    c = cr.sleeper(save["seed"], big, h)
+    assert c == cr.sleeper(save["seed"], big, h)
+    assert c.tier == "champion" and c.species in wp.MYTHICAL and c.level >= cr.SLEEPER_LEAST
+    region = sv.world_of(save).hexes[big].region
+    if region in wd.REGIONS:
+        assert wp.SPECIES_TYPES[c.species][0] == region
+    assert cr.sleeper(save["seed"], big, h, 2).level >= c.level  # relics stir it too
+
+
+def test_you_can_wake_a_sleeper_and_running_lets_it_sleep_again():
+    save, big, h, _ = _beside_sleeper()
+    shown = sv.screen(save)
+    assert "asleep in here" in shown["text"]
+    labels = [o["label"] for o in shown.get("options", [])] or [shown["label"]]
+    assert st.WAKE_LABEL in labels
+    fight = sv.act(save, "wake")
+    assert fight["battle"]["tier"] == "champion"
+    assert sv.view(fight)["battle"]["looks"]
+    ran = sv.flee(fight)
+    assert not ran["battle"] and "asleep in here" in sv.screen(ran)["text"]
+
+
+def test_beating_a_sleeper_pays_its_hoard_once_and_leaves_you_in_the_nook(monkeypatch):
+    save, big, h, _ = _beside_sleeper()
+    fight = sv.act(save, "wake")
+    before = dict(fight["items"])
+    monkeypatch.setattr(sv.bt, "turn", lambda b, team, pets, picks, rng, mana: ({**b, "over": "won", "log": []}, pets, mana))
+    done = sv.battle_turn(fight, [])
+    got = {k: v - before.get(k, 0) for k, v in done["items"].items() if v != before.get(k, 0)}
+    assert sum(got.values()) == 3 and len(got) == 2
+    assert any(k in sh.LOOT_BIG for k in got) and any(k in sh.LOOT_PAIRS for k in got)
+    assert any(e["kind"] == "coins" and e["amount"] == sh.LOOT_COINS_PER_LEVEL * fight["battle"]["level"] for e in done["events"])
+    left = sv.end_battle(done)
+    assert left["at"] == list(big) and left["spot"] == list(h)
+    shown = sv.screen(left)
+    assert "hollow" in shown["text"] and shown["action"] != "wake"
+    with pytest.raises(sv.WanderError):
+        sv.act(left, "wake")

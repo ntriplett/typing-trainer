@@ -42,7 +42,7 @@ const typer = new Typer();
 let state = null;
 let targets = [];
 let busy = false;
-let mode = "walk"; // walk | screen | line | menu | battle | credits | levelup (the picker shows between trips)
+let mode = "walk"; // walk | screen | line | menu | battle | ending | levelup (the picker shows between trips)
 let afterLevelup = "walk"; // where to go back to when the level-up pop-ups are done
 let levelupShown = null; // the pop-up on screen, so it only draws (and celebrates) once
 let levelPick = null; // which of its choices is being looked at
@@ -122,6 +122,7 @@ function render() {
   document.getElementById("where-land").textContent = here.special ? "" : `(${words(here.biome)})`;
   document.getElementById("campfires").textContent = `Campfires rested at: ${state.campfires}`;
 
+  document.getElementById("go-home").hidden = Boolean(state.battle); // in a fight, you run away instead
   const energy = document.getElementById("energy");
   energy.hidden = !state.trip || dayScreen === "evening";
   if (state.trip) {
@@ -600,7 +601,7 @@ function renderKeys() {
 const BOOKS = ["bag", "journal", "party", "log", "map", "guide"];
 
 function openMenu(name) {
-  if (["line", "credits", "letter", "pages"].includes(mode)) return;
+  if (["line", "ending", "letter", "pages"].includes(mode)) return;
   typer.release();
   const from = mode === "menu" ? menu.from : mode;
   menu = { name, at: 0, picked: name === "map" ? state.big.at : null, from, page: 0, me: guideSides.me, enemy: guideSides.enemy, picking: null };
@@ -710,6 +711,7 @@ const SCENE_TICK_MS = 120;
 const sceneSpecs = new Map(); // where -> the facts (they never change)
 let liveScene = null; // {key, canvasId, scene, world, timer, tick}
 let sceneAvatar = null; // what you're wearing (from /api/me)
+let sceneAsk = 0; // the latest picture asked for
 let morning = false; // opened the game between trips: that's a new day, whatever ended the last
 
 // Between days: "morning" (the full picture, then) "picker"; "evening" (the full
@@ -722,6 +724,7 @@ const eveningAhead = () => dayScreen === "evening" && Boolean(state.trip);
 const sceneNight = () => eveningAhead() || (Boolean(state.night) && !morning);
 
 async function sceneFacts() {
+  if (mode === "ending") return { where: "ending", spec: ending.scene };
   // Heading home for the evening, you're not there yet: it's the campfire you'd go to.
   const home = eveningAhead();
   const where = `${home ? `home:${state.campfires}:` : ""}${state.local.spot.join()}`;
@@ -735,20 +738,28 @@ async function sceneFacts() {
 
 // Who's in the picture: your party, and your friends when it's of Camp.
 function scenePets(spec) {
+  if (mode === "ending") return ending.friends;
   const friends = spec.special === "camp" ? (state.camp_friends || []).map((f) => ({ ...f, growth: 10 })) : [];
   return [...state.team.filter((m) => m.genes), ...friends];
 }
 
 async function sceneShow(canvasId) {
+  const ask = ++sceneAsk;
   if (window.Header && !sceneAvatar) sceneAvatar = (await Header.ready.catch(() => null))?.avatar || null;
   const facts = await sceneFacts();
+  if (ask !== sceneAsk) return; // the screen's moved on while this was on its way
   if (!facts || !document.getElementById(canvasId)) return;
   const who = scenePets(facts.spec);
   const key = `${facts.where}:${sceneNight()}:${who.map((m) => m.id || m.name).join()}`;
   if (!liveScene || liveScene.key !== key) {
     if (liveScene) clearInterval(liveScene.timer);
     const scene = WanderScene.build(facts.spec, SCENE_PX, { night: sceneNight() });
-    liveScene = { key, scene, world: PetMotion.create(who, scene.area, SCENE_PET_SCALE), timer: null, tick: 0 };
+    if (mode === "ending") {
+      scene.avatar = { ...ENDING_AVATAR };
+    }
+    const scale = mode === "ending" ? ENDING_PET_SCALE : SCENE_PET_SCALE;
+    liveScene = { key, scene, world: PetMotion.create(who, scene.area, scale), timer: null, tick: 0, posed: mode === "ending" };
+    if (liveScene.posed) poseFriends(liveScene.world);
   }
   liveScene.canvasId = canvasId;
   if (!liveScene.timer) {
@@ -758,8 +769,9 @@ async function sceneShow(canvasId) {
         liveScene.timer = null;
         return;
       }
-      PetMotion.step(liveScene.world);
       liveScene.tick++;
+      if (!liveScene.posed) PetMotion.step(liveScene.world);
+      else if (liveScene.tick % ENDING_FRAME_TICKS === 0) liveScene.world.walkers.forEach((w) => { w.frame += 1; });
       sceneDraw();
     }, SCENE_TICK_MS);
   }
@@ -782,16 +794,21 @@ function sceneDraw() {
   WanderScene.animate(scene, ctx, tick);
   const px = habitatPainter(ctx, SCENE_PX);
   const opts = { ctx, unit: SCENE_PX };
-  const order = [...world.walkers].sort((a, b) => a.y - b.y);
-  order.filter((w) => w.y <= scene.avatar.y).forEach((w) => PetMotion.drawOne(world, w, px, opts));
-  if (sceneAvatar) {
+  // everyone back to front: pets, you, and (in the ending) Tumble
+  const avatar = () => {
+    if (!sceneAvatar) return;
     const left = scene.avatar.x - (SCENE_AVATAR_SIZE * SCENE_AVATAR_SCALE) / 2;
     const top = scene.avatar.y - SCENE_AVATAR_SIZE * SCENE_AVATAR_SCALE;
     px(scene.avatar.x - 6, scene.avatar.y - 1, 12, 1.5, "rgba(40, 30, 20, 0.25)");
     paintAvatar((x, y, w, h, c) => px(left + x * SCENE_AVATAR_SCALE, top + y * SCENE_AVATAR_SCALE, w * SCENE_AVATAR_SCALE, h * SCENE_AVATAR_SCALE, c),
       sceneAvatar, { background: false, pets: false, frame: Math.floor(tick / 8) });
-  }
-  order.filter((w) => w.y > scene.avatar.y).forEach((w) => PetMotion.drawOne(world, w, px, opts));
+  };
+  const standing = [
+    ...world.walkers.map((w) => ({ y: w.y, draw: () => PetMotion.drawOne(world, w, px, opts) })),
+    { y: scene.avatar.y, draw: avatar },
+  ];
+  if (tumbleShown()) standing.push({ y: ENDING_TUMBLE.y, draw: () => paintTumble(px, tick) });
+  standing.sort((a, b) => a.y - b.y).forEach((s) => s.draw());
   WanderScene.shade(scene, ctx);
   PetMotion.drawTags(world, ctx, SCENE_PX);
 }
@@ -1302,6 +1319,67 @@ function askHome() {
   location.href = "/";
 }
 
+// --- the ending: everyone together in front of the Heartstone ----------------------
+
+// A group picture, not a crowd: the five either side of the stone, facing it, with
+// you and Tumble in front, off its middle so it still shows.
+const ENDING_TUMBLE = { x: 100, y: 82 };
+const ENDING_AVATAR = { x: 60, y: 84 };
+const ENDING_PET_SCALE = 0.5;
+const ENDING_FRAME_TICKS = 6;
+const ENDING_SPOTS = [[42, 66], [20, 76], [122, 68], [146, 76], [32, 88]]; // x (their middle), y (feet)
+const TUMBLE_FLASH_TICKS = 14;
+const TUMBLE_ORBS = ["splash", "ember", "dream", "leaf", "shock"];
+let ending = null; // {pages, tumble_page, friends, scene, at, cameAt}
+
+function openEnding(data) {
+  ending = { ...data, at: 0, cameAt: null };
+  mode = "ending";
+  typer.release();
+}
+
+function poseFriends(world) {
+  world.walkers.forEach((w, i) => {
+    const [x, y] = ENDING_SPOTS[i % ENDING_SPOTS.length];
+    w.x = x - w.width / 2;
+    w.y = y;
+    w.dir = x < 80 ? 1 : -1;
+  });
+}
+
+const tumbleShown = () => mode === "ending" && ending.at >= ending.tumble_page;
+
+function paintTumble(px, tick) {
+  ending.cameAt ??= tick;
+  const since = tick - ending.cameAt;
+  WanderScene.tumble(px, ENDING_TUMBLE.x, ENDING_TUMBLE.y, tick, TUMBLE_ORBS.map((t) => WanderMap.TYPE_COLORS[t]));
+  if (since < TUMBLE_FLASH_TICKS) {
+    // he steps out in a burst of light
+    const r = 8 + since * 4;
+    drawHabitatDisc(px, ENDING_TUMBLE.x, ENDING_TUMBLE.y - 28, r, r, `rgba(255, 246, 200, ${(0.7 * (1 - since / TUMBLE_FLASH_TICKS)).toFixed(2)})`);
+  }
+}
+
+function nextEnding() {
+  if (ending.at + 1 < ending.pages.length) {
+    ending.at += 1;
+    return render();
+  }
+  ending = null;
+  mode = "walk";
+  render();
+}
+
+function endingKey(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    nextEnding();
+  } else if (e.key === "Escape") {
+    ending.at = ending.pages.length - 1;
+    nextEnding();
+  }
+}
+
 // --- the day's start and end: a whole screen of where you are ----------------------
 
 async function exitGame() {
@@ -1318,7 +1396,11 @@ function keepPlaying() {
   render();
 }
 
-function startDay() {
+function morningGo() {
+  if (!state.can_start_day) {
+    location.href = "/arcade"; // a new day costs tokens
+    return;
+  }
   dayScreen = "picker";
   render();
 }
@@ -1326,7 +1408,7 @@ function startDay() {
 function dayKey(e) {
   if (e.key === "Enter") e.preventDefault(); // not a click on a button too
   if (dayScreen === "morning") {
-    if (e.key === "Enter") startDay();
+    if (e.key === "Enter") morningGo();
     else if (e.key === "Escape") location.href = "/";
     else if (BOOKS[Number(e.key) - 1]) openMenu(BOOKS[Number(e.key) - 1]); // a look before you go
   } else if (e.key === "Enter") {
@@ -1338,26 +1420,35 @@ function dayKey(e) {
 
 function renderDay() {
   const box = document.getElementById("day");
-  const on = mode === "walk" && (dayScreen === "morning" || dayScreen === "evening");
+  const on = mode === "ending" || (mode === "walk" && (dayScreen === "morning" || dayScreen === "evening"));
   box.hidden = !on;
   if (!on) return;
   box.parentElement.classList.add("partying");
+  const go = document.getElementById("day-go");
+  const stay = document.getElementById("day-stay");
+  if (mode === "ending") {
+    document.getElementById("day-title").textContent = "The Heartstone";
+    document.getElementById("day-text").innerHTML = wanderText(ending.pages[ending.at]);
+    go.innerHTML = `<kbd class="keycap">Enter</kbd> ${ending.at + 1 < ending.pages.length ? "Next" : "The end"}`;
+    stay.hidden = true;
+    sceneShow("day-scene");
+    return;
+  }
   const morningNow = dayScreen === "morning";
   document.getElementById("day-title").textContent = morningNow ? "Good morning!" : "Good night!";
   document.getElementById("day-text").textContent = morningNow
-    ? `The sun's up over ${state.local.name}, and everyone's ready to go.`
+    ? (state.can_start_day ? `The sun's up over ${state.local.name}, and everyone's ready to go.` : "A new day costs 2 tokens. Practice to earn them, and spend them in the arcade!")
     : state.trip ? "Everyone's gathered by the fire. Tomorrow you'll set off from here."
     : state.note === "napped" ? "The fire's warm, and everyone's ready for sleep."
     : "Everyone's gathered by the fire. Tomorrow you'll set off from here.";
-  const go = document.getElementById("day-go");
-  const stay = document.getElementById("day-stay");
-  go.innerHTML = `<kbd class="keycap">Enter</kbd> ${morningNow ? "Start playing a new day" : "Exit game"}`;
+  go.innerHTML = `<kbd class="keycap">Enter</kbd> ${!morningNow ? "Exit game" : state.can_start_day ? "Start playing a new day" : "Go to the arcade"}`;
   stay.hidden = morningNow;
   sceneShow("day-scene");
 }
 document.getElementById("day-go").addEventListener("click", (e) => {
   e.currentTarget.blur(); // keep Enter for the next screen
-  if (dayScreen === "morning") startDay();
+  if (mode === "ending") nextEnding();
+  else if (dayScreen === "morning") morningGo();
   else exitGame();
 });
 document.getElementById("day-stay").addEventListener("click", (e) => {
@@ -1540,7 +1631,7 @@ function pickerKey(e) {
 }
 
 function renderScreen() {
-  screenBox.hidden = !["screen", "line", "credits", "letter", "pages"].includes(mode);
+  screenBox.hidden = !["screen", "line", "letter", "pages"].includes(mode);
   if (screenBox.hidden) return;
   document.getElementById("screen-letter").hidden = mode !== "letter";
   paintPortrait(mode === "pages" ? { genes: state.pip_looks, growth: 10 } : mode === "screen" ? state.screen && state.screen.portrait : null);
@@ -1549,7 +1640,6 @@ function renderScreen() {
   const line = document.getElementById("screen-line");
   const keys = document.getElementById("screen-keys");
   line.hidden = mode !== "line";
-  screenBox.classList.toggle("wander-credits", mode === "credits");
   screenBox.classList.toggle("wander-pip-pages", mode === "pages");
   if (mode === "pages") {
     title.textContent = "Pip";
@@ -1562,12 +1652,6 @@ function renderScreen() {
     title.innerHTML = wanderText(state.screen.title);
     text.innerHTML = "";
     keys.innerHTML = `Read it out by typing. The ink writes any letters you haven't learned yet. <kbd class="keycap">Esc</kbd> stop, and come back any time`;
-    return;
-  }
-  if (mode === "credits") {
-    title.textContent = "The End";
-    text.innerHTML = state.credits.map((l) => wanderText(l) || "&nbsp;").join("<br>");
-    keys.innerHTML = `<kbd class="keycap">Enter</kbd> back to the map`;
     return;
   }
   const s = state.screen;
@@ -1754,10 +1838,10 @@ function apply(data) {
   slideTo(data.local.spot);
   typer.release();
   pickTargets();
-  if (data.credits) mode = "credits";
-  if (data.pages && mode !== "credits") openPages(data.pages, null);
+  if (data.ending) openEnding(data.ending);
+  if (data.pages && mode !== "ending") openPages(data.pages, null);
   else if (data.tutorial && data.tutorial.pages && mode === "walk" && !pages) openPages(data.tutorial.pages, data.tutorial.step);
-  if (data.levelups.length && !data.battle && mode !== "line" && mode !== "credits") {
+  if (data.levelups.length && !data.battle && mode !== "line" && mode !== "ending") {
     if (mode !== "levelup") afterLevelup = mode === "screen" ? "screen" : "walk";
     mode = "levelup";
   } else if (mode === "levelup" && !data.levelups.length) {
@@ -1794,6 +1878,8 @@ async function send(url, body) {
 }
 
 async function load() {
+  const asked = new URLSearchParams(location.search);
+  if (asked.get("lab")) await fetch("/api/wander-lab/day-pass", { method: "POST" }); // the parent page's free way in
   const res = await fetch("/api/wander");
   if (!res.ok) {
     say((await res.json()).detail || "Couldn't load the map.");
@@ -1803,6 +1889,13 @@ async function load() {
   if (!state.trip) {
     say(noteFor(state) || "Ready for an adventure?", true);
     if (!pets) loadPets();
+  }
+  if (asked.get("ending")) {
+    const shown = await fetch("/api/wander-lab/ending");
+    if (shown.ok) {
+      openEnding(await shown.json());
+      render();
+    }
   }
 }
 
@@ -1906,7 +1999,7 @@ function screenKey(e) {
     return;
   }
   if (e.key !== "Enter") return;
-  if (mode === "credits" || !s || !s.action) {
+  if (!s || !s.action) {
     mode = "walk";
     render();
   } else if (s.line) {
@@ -2063,7 +2156,8 @@ function lineKey(e) {
 
 document.addEventListener("keydown", (e) => {
   if (!state || busy || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (mode === "walk" && (dayScreen === "morning" || dayScreen === "evening")) dayKey(e);
+  if (mode === "ending") endingKey(e);
+  else if (mode === "walk" && (dayScreen === "morning" || dayScreen === "evening")) dayKey(e);
   else if (mode === "walk") walkKey(e);
   else if (mode === "battle") battleKey(e);
   else if (mode === "menu") menuKey(e);
