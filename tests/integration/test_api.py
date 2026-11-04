@@ -6,6 +6,7 @@ This just proves the app wiring (routes, static files, activity module).
 
 from fastapi.testclient import TestClient
 
+from app import main
 from app.main import app
 
 client = TestClient(app)
@@ -63,8 +64,11 @@ def test_page_routes_are_never_cached_either():
         assert resp.headers["cache-control"] == "no-store", path
 
 
-def test_update_endpoints_are_off_in_dev(monkeypatch):
+def test_update_endpoints_are_off_in_dev(monkeypatch, tmp_path):
     monkeypatch.delenv("TYPING_TRAINER_HOME", raising=False)
+    monkeypatch.setattr(main, "DB_PATH", tmp_path / "test.db")  # the PIN file goes beside it
     assert client.get("/api/update").json()["installed"] is False
+    assert client.post("/api/update").status_code == 403  # only grown-ups can start one
+    client.post("/api/grownups/pin", json={"pin": "1234"})
     assert client.post("/api/update").status_code == 409
     assert client.post("/api/alive").json() == {"ok": True}

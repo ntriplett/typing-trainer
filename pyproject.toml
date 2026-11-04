@@ -20,6 +20,8 @@ dev = [
 
 [tool.pytest.ini_options]
 markers = [
+    "first_run: e2e test starts with no grown-ups' PIN chosen yet",
+    "installed: e2e test runs the server as an install does (no labs, no free days)",
     "no_player: e2e test starts with no player picked (welcome screen)",
 ]
 testpaths = ["tests"]

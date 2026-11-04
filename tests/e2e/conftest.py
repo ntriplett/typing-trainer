@@ -19,6 +19,9 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from app import grownup_pin
+
+GROWNUP_PIN = "1234"
 HOST = "127.0.0.1"
 PORT = 8421
 BASE_URL = f"http://{HOST}:{PORT}"
@@ -57,14 +60,20 @@ def _wait_for_health(timeout_s: float = 15.0) -> bool:
 
 
 @pytest.fixture()
-def live_server(tmp_path):
-    """A real server process for one test, with its own temp DB."""
+def live_server(tmp_path, request):
+    """A real server process for one test, with its own temp DB. The grown-ups' PIN is
+    already chosen (GROWNUP_PIN), unless the test's marked `first_run`; `installed`
+    runs it as an install does: no labs, no free days."""
     assert _wait_for(lambda: not _port_in_use(HOST, PORT), timeout_s=5.0), (
         "port 8421 still occupied from a previous test"
     )
 
     db_path = tmp_path / "e2e.db"
     env = {**os.environ, "TYPING_TRAINER_DB_PATH": str(db_path)}
+    if "first_run" not in request.keywords:
+        grownup_pin.set_pin(grownup_pin.path_for(db_path), GROWNUP_PIN)
+    if "installed" in request.keywords:
+        env.update(TYPING_TRAINER_DEV="0", TYPING_TRAINER_WANDER_FREE_DAYS="0")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--host", HOST, "--port", str(PORT)],
         cwd=REPO_ROOT,
@@ -97,6 +106,12 @@ def player(request):
     page = request.getfixturevalue("page")
     live_server = request.getfixturevalue("live_server")
     resp = page.request.post(f"{live_server}/api/profiles", data={"name": "Tester"})
+    assert resp.ok, resp.text()
+
+
+def unlock_grownups(page: Page, live_server: str) -> None:
+    """Open the For Grown-ups APIs, as typing the PIN does."""
+    resp = page.request.post(f"{live_server}/api/grownups/unlock", data={"pin": GROWNUP_PIN})
     assert resp.ok, resp.text()
 
 

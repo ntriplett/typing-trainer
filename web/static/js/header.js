@@ -93,9 +93,8 @@ const DayTracker = {
         <nav class="profile-menu" hidden>
           <p class="profile-menu-name"></p>
           <a href="/profile">My profile</a>
-          <a href="/bedroom?room=dressing">Dressing Room</a>
-          <a href="/bedroom?room=mirror">Change my look</a>
-          <button class="switch-player">Switch player</button>
+          <button class="switch-player">Switch user</button>
+          <a href="/parent">For grown-ups</a>
         </nav>
       </div>
     </div>`;
@@ -299,11 +298,6 @@ const DayTracker = {
   const ready = fetch("/api/me")
     .then((r) => {
       if (r.status === 401) {
-        // Pages for everyone (the parent page) work without a player.
-        if ("anyPlayer" in document.body.dataset) {
-          bar.querySelector(".topbar-right").hidden = true;
-          return Promise.reject(new Error("no player picked"));
-        }
         window.location.href = "/welcome"; // nobody picked in this browser yet
         return new Promise(() => {}); // never resolves; we're leaving
       }

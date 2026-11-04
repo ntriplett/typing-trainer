@@ -30,7 +30,8 @@ def home_row_player():
 
 
 def set_goal(minutes: int, learn: float = 0.5):
-    assert client.put("/api/parent/1/settings", json={"goal_minutes": minutes, "learn_vs_practice": learn}).status_code == 200
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    assert client.put("/api/parent/settings", json={"goal_minutes": minutes, "learn_vs_practice": learn}).status_code == 200
 
 
 # --- the lesson loop -------------------------------------------------------------
@@ -178,20 +179,44 @@ def test_me_carries_tokens_and_the_day():
 # --- parent page ------------------------------------------------------------------------
 
 
-def test_parent_overview_lists_every_player_with_the_brains_next_pick():
-    client.post("/api/profiles", json={"name": "Second"})
-    players = client.get("/api/parent").json()
-    assert [p["name"] for p in players] == ["Tester", "Second"]
-    assert players[0]["brain"]["kind"] == "learn" and players[0]["brain"]["reasons"]
-    assert players[0]["settings"] == {"goal_minutes": 10, "learn_vs_practice": 0.5}
+def test_grownups_see_just_the_current_player_with_the_brains_next_pick():
+    assert client.get("/api/parent").status_code == 403  # no PIN yet
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    me = client.get("/api/parent").json()
+    assert me["name"] == "Tester"
+    assert me["brain"]["kind"] == "learn" and me["brain"]["reasons"]
+    assert me["settings"] == {"goal_minutes": 10, "learn_vs_practice": 0.5}
+    client.post("/api/profiles", json={"name": "Second"})  # becomes the current player
+    assert client.get("/api/parent").json()["name"] == "Second"
+
+
+def test_the_pin_is_needed_once_chosen():
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    client.post("/api/grownups/lock")
+    assert client.get("/api/parent").status_code == 403
+    assert client.post("/api/grownups/pin", json={"pin": "9999"}).status_code == 403  # can't just choose another
+    assert client.post("/api/grownups/unlock", json={"pin": "0000"}).status_code == 403
+    assert client.post("/api/grownups/unlock", json={"pin": "1234"}).status_code == 200
+    assert client.get("/api/parent").status_code == 200
+    assert client.post("/api/grownups/pin", json={"pin": "abcd"}).status_code == 400
+    client.post("/api/grownups/pin", json={"pin": "5555"})
+    client.post("/api/grownups/lock")
+    assert client.post("/api/grownups/unlock", json={"pin": "1234"}).status_code == 403
+    assert client.post("/api/grownups/unlock", json={"pin": "5555"}).status_code == 200
+
+
+def test_only_a_salted_hash_of_the_pin_is_kept():
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    saved = (main.DB_PATH.parent / "grownup_pin.json").read_text()
+    assert "1234" not in saved
 
 
 def test_parent_settings_save_and_validate():
-    resp = client.put("/api/parent/1/settings", json={"goal_minutes": 15, "learn_vs_practice": 0.0})
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    resp = client.put("/api/parent/settings", json={"goal_minutes": 15, "learn_vs_practice": 0.0})
     assert resp.json()["settings"] == {"goal_minutes": 15, "learn_vs_practice": 0.0}
     assert resp.json()["solid_bar"] == 0.98
-    assert client.put("/api/parent/1/settings", json={"goal_minutes": 0, "learn_vs_practice": 0.5}).status_code == 422
-    assert client.put("/api/parent/9/settings", json={"goal_minutes": 10, "learn_vs_practice": 0.5}).status_code == 404
+    assert client.put("/api/parent/settings", json={"goal_minutes": 0, "learn_vs_practice": 0.5}).status_code == 422
 
 
 # --- arcade ---------------------------------------------------------------------------------
@@ -226,6 +251,24 @@ def test_playing_spends_tokens():
     assert poor.status_code == 400 and "2 tokens" in poor.json()["detail"]
     assert client.post("/api/arcade/play/game_pet_battle_v1").status_code == 400
     assert client.post("/api/arcade/play/nope").status_code == 400
+
+
+def test_outside_dev_mode_a_game_only_pays_for_the_rounds_you_bought(monkeypatch):
+    from app import config
+
+    monkeypatch.setattr(config, "DEV_MODE", False)
+    home_row_player()
+    crows = "game_crow_patrol_v1"
+    pay = lambda: client.post(f"/api/game/{crows}/round", json={"keys": ["a"], "keystrokes": [], "score": 1000}).json()  # noqa: E731
+    assert pay()["coins_earned"] == []  # none bought
+    page = client.get(f"/game/{crows}?arcade=1", follow_redirects=False)
+    assert page.status_code in (302, 307) and page.headers["location"] == "/arcade"
+    give_tokens(1)
+    assert client.post(f"/api/arcade/play/{crows}").status_code == 200
+    assert client.get(f"/game/{crows}?arcade=1", follow_redirects=False).status_code == 200
+    rounds = [pay()["coins_earned"] for _ in range(6)]
+    assert [bool(r) for r in rounds] == [True] * 5 + [False]  # its 5 rounds, then no more
+    assert client.get(f"/game/{crows}?arcade=1", follow_redirects=False).status_code in (302, 307)  # used up
 
 
 def test_pages_are_served():

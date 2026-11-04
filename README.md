@@ -20,7 +20,10 @@ the build order and PLAN.md Section 11b for known issues.
    it takes a minute the first time.
 2. It adds a **Typing Trainer** shortcut to the desktop and Start menu. The app opens in its own
    Chrome window (Edge if there's no Chrome); closing the window stops it.
-3. Updates: when a newer release exists, the home page says so and the **Grown-ups** page has an
+3. The first time it opens, a grown-up chooses a 4-number PIN. It guards **For grown-ups** (in the
+   profile menu, top right): the current player's daily goal, practice-vs-learn slider and updates.
+   Forgot it? The page shows which file to delete, and you'll choose a new one next time.
+4. Updates: when a newer release exists, the home page says so and **For grown-ups** has an
    *Update now* button. The app closes, updates, and reopens. Running the installer again also
    updates (or repairs) it.
 
@@ -44,3 +47,13 @@ pip install -e ".[dev]"
 playwright install chromium   # one-time, for the e2e test suite (tests/e2e/)
 pytest
 ```
+
+## Developing
+
+Run with `TYPING_TRAINER_DEV=1` for the labs (start at `/labs`) and free starting coins:
+
+```
+TYPING_TRAINER_DEV=1 .venv/bin/python -m uvicorn app.main:app --port 8420
+```
+
+Without it, as in an install, they don't exist. The tests turn it on themselves.

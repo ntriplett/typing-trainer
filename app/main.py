@@ -12,17 +12,18 @@ from __future__ import annotations
 
 import os
 import random
+import re
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -75,9 +76,27 @@ async def no_cache_responses(request, call_next):
     front-end stabilizes.
     """
     desktop.touch()
+    if not config.DEV_MODE and _dev_only(request):
+        if request.url.path.startswith("/game/"):
+            return RedirectResponse("/arcade")  # games are played from the arcade
+        return Response(status_code=404)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+# Dev only (config.DEV_MODE): the labs, and the ways they play things outside the
+# real flow, where a lesson comes from the brain and a game from the arcade.
+DEV_ONLY = re.compile(r"^/(labs|teach-lab|practice-lab|game-lab|pet-lab|wander-lab|scene-lab|move-lab|practice/.*|api/(pet-lab|wander-lab|scene-lab|move-lab|practice|teach)(/.*)?)$")
+
+
+def _dev_only(request: Request) -> bool:
+    path = request.url.path
+    if DEV_ONLY.match(path):
+        return True
+    if path.startswith("/teach/"):
+        return "lesson" not in request.query_params
+    return path.startswith("/game/") and "arcade" not in request.query_params
 
 
 def now() -> datetime:
@@ -112,6 +131,28 @@ def current_learner(request: Request, conn=Depends(get_db)) -> int:
     return learner_id
 
 
+# The For Grown-ups page's unlock, remembered for a short while (app/grownup_pin.py).
+GROWNUP_COOKIE = "typing_grownup"
+
+
+def _pin_path() -> Path:
+    return grownup_pin.path_for(DB_PATH)
+
+
+def _unlocked(request: Request) -> bool:
+    good = grownup_pin.pass_for(_pin_path())
+    return bool(good) and request.cookies.get(GROWNUP_COOKIE) == good
+
+
+def require_grownup(request: Request) -> None:
+    if not _unlocked(request):
+        raise HTTPException(status_code=403, detail="This part is for grown-ups.")
+
+
+def _unlock(response: Response) -> None:
+    response.set_cookie(GROWNUP_COOKIE, grownup_pin.pass_for(_pin_path()), max_age=grownup_pin.COOKIE_SECONDS, httponly=True, samesite="lax")
+
+
 def _remember(response: Response, learner_id: int) -> None:
     response.set_cookie(LEARNER_COOKIE, str(learner_id), max_age=COOKIE_MAX_AGE, httponly=True, samesite="lax")
 
@@ -144,7 +185,7 @@ def update_status() -> dict:
     return desktop.status()
 
 
-@app.post("/api/update")
+@app.post("/api/update", dependencies=[Depends(require_grownup)])
 def start_update() -> dict:
     """Installed copy only: the server exits and the launcher updates
     and reopens the app (app/desktop.py)."""
@@ -577,9 +618,16 @@ def game_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "game_lab.html")
 
 
-@app.get("/game/{activity_id}")
-def game_page(activity_id: str) -> FileResponse:
+@app.get("/game/{activity_id}", response_model=None)
+def game_page(activity_id: str, request: Request, conn=Depends(get_db)) -> FileResponse | RedirectResponse:
     _game_module(activity_id)
+    if not config.DEV_MODE:
+        try:
+            learner_id = current_learner(request, conn)
+        except HTTPException:
+            return RedirectResponse("/welcome")
+        if not arcade.rounds_left(conn, learner_id, activity_id):
+            return RedirectResponse("/arcade")  # no play bought
     return FileResponse(WEB_DIR / "game.html")
 
 
@@ -652,7 +700,8 @@ def game_round(
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
     content = ActivityContent(activity_id, module.kind, body.keys, prompt="")
     result = module.score(content, keystrokes)
-    amount = module.coins_for(body.score)
+    # dev mode's labs pay as they go; otherwise it takes a play bought in the arcade
+    amount = module.coins_for(body.score) if config.DEV_MODE or arcade.spend_round(conn, learner_id, activity_id) else 0
     coins_earned = []
     if amount > 0:
         db.add_coins(conn, learner_id, amount, "game", ref=f"game_lab:{activity_id}")
@@ -745,14 +794,48 @@ def complete_lesson(
     return {**done, "unlocked": unlocks.newly_unlocked(before, after)}
 
 
-# --- parent page -----------------------------------------------------------------------
-# Open for now (a password may come later). Shows every player, so it
-# doesn't use the current-player cookie.
-
+# --- For Grown-ups ---------------------------------------------------------------------
+# The current player's settings, behind a 4-digit PIN (app/grownup_pin.py).
 
 class SettingsIn(BaseModel):
     goal_minutes: int = Field(ge=daily.MIN_GOAL_MINUTES, le=daily.MAX_GOAL_MINUTES)
     learn_vs_practice: float = Field(ge=0.0, le=1.0)
+
+
+class PinIn(BaseModel):
+    pin: str
+
+
+@app.get("/api/grownups/status")
+def grownups_status(request: Request) -> dict:
+    return {"set": grownup_pin.is_set(_pin_path()), "unlocked": _unlocked(request), "file": str(_pin_path())}
+
+
+@app.post("/api/grownups/pin")
+def grownups_set_pin(body: PinIn, request: Request, response: Response) -> dict:
+    """Choose the PIN: anyone the first time, and after that only once unlocked."""
+    if grownup_pin.is_set(_pin_path()) and not _unlocked(request):
+        raise HTTPException(status_code=403, detail="Enter the current PIN first.")
+    try:
+        grownup_pin.set_pin(_pin_path(), body.pin)
+    except grownup_pin.PinError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    _unlock(response)
+    return {"ok": True}
+
+
+@app.post("/api/grownups/unlock")
+def grownups_unlock(body: PinIn, response: Response) -> dict:
+    if not grownup_pin.check(_pin_path(), body.pin):
+        raise HTTPException(status_code=403, detail="That's not the PIN.")
+    _unlock(response)
+    return {"ok": True}
+
+
+@app.post("/api/grownups/lock")
+def grownups_lock(response: Response) -> dict:
+    response.delete_cookie(GROWNUP_COOKIE)
+    return {"ok": True}
 
 
 def _parent_entry(conn, learner_id: int) -> dict:
@@ -775,15 +858,13 @@ def _parent_entry(conn, learner_id: int) -> dict:
     }
 
 
-@app.get("/api/parent")
-def parent_overview(conn=Depends(get_db)) -> list[dict]:
-    return [_parent_entry(conn, p["id"]) for p in profiles.list_profiles(conn)]
+@app.get("/api/parent", dependencies=[Depends(require_grownup)])
+def parent_overview(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return _parent_entry(conn, learner_id)
 
 
-@app.put("/api/parent/{learner_id}/settings")
-def parent_settings(learner_id: int, body: SettingsIn, conn=Depends(get_db)) -> dict:
-    if not profiles.exists(conn, learner_id):
-        raise HTTPException(status_code=404, detail="There's no player like that.")
+@app.put("/api/parent/settings", dependencies=[Depends(require_grownup)])
+def parent_settings(body: SettingsIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     daily.save_settings(conn, learner_id, daily.Settings(body.goal_minutes, body.learn_vs_practice))
     return _parent_entry(conn, learner_id)
 
@@ -917,6 +998,15 @@ def wanderpaw_page() -> FileResponse:
 @app.get("/wander-lab")
 def wander_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "wander_lab.html")
+
+
+@app.get("/labs")
+def labs_page() -> HTMLResponse:
+    """Dev mode's way into the labs."""
+    links = {"Teach lessons": "/teach-lab", "Practice themes": "/practice-lab", "Games": "/game-lab", "Pet colors": "/pet-lab",
+             "Wanderpaw (a free day)": "/wanderpaw?lab=1", "Wanderpaw lab": "/wander-lab", "Move tiles": "/move-lab", "Scenes": "/scene-lab"}
+    rows = "".join(f'<li><a href="{href}">{name}</a></li>' for name, href in links.items())
+    return HTMLResponse(f"<!DOCTYPE html><title>Labs</title><h1>Labs (dev mode)</h1><ul>{rows}</ul>")
 
 
 @app.get("/scene-lab")

@@ -93,3 +93,28 @@
   white-space: pre-wrap;
   font-size: 16px;
 }
+
+.pin-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.pin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pin-input {
+  width: 7em;
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+
+.pin-forgot code {
+  word-break: break-all;
+}

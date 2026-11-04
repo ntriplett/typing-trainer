@@ -1,6 +1,7 @@
 // Who's playing? Pick your player (each shown as their avatar), or make a
 // new one: name -> your look (the Home's vanity mirror) -> a quick placement -> home.
-// Picking sets this browser's player cookie (PLAN.md 11d).
+// Picking sets this browser's player cookie (PLAN.md 11d). The very first time the
+// app opens, a grown-up chooses the For Grown-ups PIN before anything else.
 
 const playersEl = document.getElementById("players");
 const newPanel = document.getElementById("new-player");
@@ -8,6 +9,28 @@ const nameInput = document.getElementById("new-name");
 const messageEl = document.getElementById("welcome-message");
 
 applyTheme({ background: "bg_meadow" }); // nobody's place yet: the default look
+
+function showPlayers(on) {
+  document.getElementById("who").hidden = !on;
+  document.getElementById("players-panel").hidden = !on;
+}
+
+async function start() {
+  const status = await (await fetch("/api/grownups/status")).json();
+  if (status.set) return load();
+  showPlayers(false);
+  const box = document.getElementById("first-pin");
+  box.hidden = false;
+  choosePinForm(box, {
+    title: "Hello, grown-up!",
+    intro: "Choose a 4-number PIN. It keeps the daily goal and other settings just for you. Then hand over the keyboard!",
+    onDone: () => {
+      box.hidden = true;
+      showPlayers(true);
+      load();
+    },
+  });
+}
 
 async function load() {
   const r = await fetch("/api/profiles");
@@ -61,4 +84,4 @@ document.getElementById("new-player-form").addEventListener("submit", async (e) 
   window.location.href = "/bedroom?room=mirror&setup=1"; // next: make your character
 });
 
-load();
+start();

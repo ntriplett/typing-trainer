@@ -4,6 +4,7 @@ __pycache__/
 venv/
 *.db
 *.db-journal
+grownup_pin.json
 .pytest_cache/
 .coverage
 htmlcov/

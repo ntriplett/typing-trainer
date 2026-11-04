@@ -13,11 +13,12 @@ from playwright.sync_api import Page, expect
 
 from app import db
 
-from .conftest import place_on_home_row, start_practice_lesson, type_current_lesson
+from .conftest import unlock_grownups, place_on_home_row, start_practice_lesson, type_current_lesson
 
 
 def set_goal(page: Page, live_server: str, minutes: int) -> None:
-    resp = page.request.put(f"{live_server}/api/parent/1/settings", data={"goal_minutes": minutes, "learn_vs_practice": 0.5})
+    unlock_grownups(page, live_server)
+    resp = page.request.put(f"{live_server}/api/parent/settings", data={"goal_minutes": minutes, "learn_vs_practice": 0.5})
     assert resp.ok
 
 

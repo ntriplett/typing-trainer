@@ -340,13 +340,19 @@ button:focus-visible,
   color: var(--link);
 }
 
+/* A button (it logs out first), but it looks like the links around it. */
 .profile-menu .switch-player {
-  margin-top: 0.3rem;
-  align-self: start;
-  border-image-source: url("/static/assets/ui/button-gold.svg");
-  color: var(--outline);
-  text-shadow: none;
-  padding: 0 0.4rem 0.1rem;
+  all: unset;
+  display: block;
+  padding: 0.1rem 0;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.profile-menu .switch-player:hover {
+  color: var(--link);
 }
 
 /* Avatars are pixel art: never smooth them when scaled. */
@@ -988,3 +994,4 @@ button.signpost:active {
   color: var(--on-wood);
   outline: none;
 }
+

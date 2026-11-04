@@ -1,6 +1,6 @@
-// The parent page: every player's daily goal and practice-vs-learn
-// setting, how today is going, and what the lesson brain will pick next
-// (with its reasons). Settings save as soon as a slider is let go.
+// For Grown-ups, behind the PIN (asked every visit): the current player's daily goal and
+// practice-vs-learn setting, how today is going, and what the lesson brain will pick
+// next (with its reasons). Settings save as soon as a slider is let go.
 
 const $ = (id) => document.getElementById(id);
 const KIND_NAMES = { warmup: "a warmup", learn: "a new-letter lesson", practice: "practice" };
@@ -48,14 +48,12 @@ function card(p) {
     </section>`;
 }
 
-function render(players) {
-  $("players").innerHTML = players.map(card).join("");
-  players.forEach((p) => {
-    const el = document.querySelector(`.player[data-id="${p.id}"]`);
-    drawAvatar(el.querySelector(".player-avatar"), p.avatar);
-    DayTracker.render(el.querySelector(".player-day"), p.day, { big: true });
-    wire(el, p);
-  });
+function render(p) {
+  $("players").innerHTML = card(p);
+  const el = document.querySelector(".player");
+  drawAvatar(el.querySelector(".player-avatar"), p.avatar);
+  DayTracker.render(el.querySelector(".player-day"), p.day, { big: true });
+  wire(el, p);
 }
 
 function wire(el, p) {
@@ -71,7 +69,7 @@ function wire(el, p) {
     el.querySelector(".bar-out").textContent = bar(learn.value / 100);
   });
   const save = async () => {
-    const res = await fetch(`/api/parent/${p.id}/settings`, {
+    const res = await fetch("/api/parent/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ goal_minutes: Number(goal.value), learn_vs_practice: learn.value / 100 }),
@@ -119,11 +117,78 @@ function renderUpdate(u) {
   };
 }
 
-fetch("/api/update")
-  .then((r) => r.json())
-  .then(renderUpdate)
-  .catch(() => {});
+function askPin(status) {
+  const box = $("lock");
+  box.hidden = false;
+  box.innerHTML = `
+    <h1 class="panel-title">For grown-ups</h1>
+    <form class="pin-form">
+      <label>PIN <input class="pin-input" id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" /></label>
+      <button type="submit" class="button-go">Open</button>
+    </form>
+    <p class="error-text" id="pin-message" role="status"></p>
+    <details class="pin-forgot"><summary>Forgot the PIN?</summary>
+      <p>Close the app, delete this file, and you'll choose a new PIN next time: <code>${escapeHtml(status.file)}</code></p>
+    </details>`;
+  $("pin").focus();
+  box.querySelector("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const res = await fetch("/api/grownups/unlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: $("pin").value }),
+    });
+    if (!res.ok) {
+      $("pin-message").textContent = "That's not the PIN.";
+      $("pin").value = "";
+      $("pin").focus();
+      return;
+    }
+    openPage();
+  });
+}
 
-fetch("/api/parent")
-  .then((r) => r.json())
-  .then(render);
+function openPage() {
+  $("lock").hidden = true;
+  $("grownups").hidden = false;
+  fetch("/api/update")
+    .then((r) => r.json())
+    .then(renderUpdate)
+    .catch(() => {});
+  fetch("/api/parent")
+    .then((r) => r.json())
+    .then(render);
+  showChangePin();
+}
+
+function showChangePin() {
+  const box = $("change-pin");
+  box.innerHTML = `<h2 class="panel-title">PIN</h2><p><button id="change-pin-go">Change the PIN</button></p>`;
+  $("change-pin-go").onclick = () =>
+    choosePinForm(box, {
+      title: "Change the PIN",
+      intro: "Choose a new 4-number PIN.",
+      onDone: () => {
+        showChangePin();
+        box.insertAdjacentHTML("beforeend", `<p class="saved">Saved!</p>`);
+      },
+    });
+}
+
+// The PIN's asked for on every visit: leaving this page locks it again.
+async function start() {
+  await fetch("/api/grownups/lock", { method: "POST" });
+  const status = await (await fetch("/api/grownups/status")).json();
+  if (status.set) return askPin(status);
+  const box = $("lock");
+  box.hidden = false;
+  choosePinForm(box, {
+    title: "Choose a PIN",
+    intro: "This page is for grown-ups. Choose a 4-number PIN to keep it that way.",
+    onDone: openPage,
+  });
+}
+
+Header.ready.then((me) => {
+  if (me) start();
+});

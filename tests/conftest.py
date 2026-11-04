@@ -6,5 +6,7 @@ import os
 # by 50K; tests start from zero. Set in the environment (not just patched)
 # so e2e tests' server subprocesses inherit it too.
 os.environ["TYPING_TRAINER_DEV_START_COINS"] = "0"
+# The tests use the labs to set up their situations.
+os.environ["TYPING_TRAINER_DEV"] = "1"
 # Wanderpaw's tests are about the game: starting a day is free unless a test says otherwise.
 os.environ["TYPING_TRAINER_WANDER_FREE_DAYS"] = "1"

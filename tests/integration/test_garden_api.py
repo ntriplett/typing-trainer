@@ -17,7 +17,8 @@ def isolated_db(tmp_path, monkeypatch):
     client.cookies.clear()
     client.post("/api/profiles", json={"name": "Tester"})
     client.put("/api/profiles/placement", json={"keys": "home_row", "speed": "some"})
-    client.put("/api/parent/1/settings", json={"goal_minutes": 2, "learn_vs_practice": 0.5})
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    client.put("/api/parent/settings", json={"goal_minutes": 2, "learn_vs_practice": 0.5})
     yield
 
 
