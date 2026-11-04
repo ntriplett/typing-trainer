@@ -116,7 +116,7 @@ def test_a_learn_lesson_comes_back_to_practice(page: Page, live_server):
 
     page.goto(f"{live_server}/session")
     expect(page).to_have_url(re.compile(r"/teach/"))
-    page.wait_for_function("steps.length > 0")
+    page.wait_for_function("typeof steps !== 'undefined' && steps.length > 0")
     play_through(page)
     expect(page.locator("#teach-next")).to_contain_text("next lesson")
     assert page.evaluate("fetch('/api/day').then(r => r.json()).then(d => d.practiced_seconds)") > 0
