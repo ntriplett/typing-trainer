@@ -57,3 +57,7 @@ TYPING_TRAINER_DEV=1 .venv/bin/python -m uvicorn app.main:app --port 8420
 ```
 
 Without it, as in an install, they don't exist. The tests turn it on themselves.
+
+## License
+
+All rights reserved; see [LICENSE](LICENSE). The fonts have their own license, in their folder.

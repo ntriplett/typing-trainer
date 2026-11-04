@@ -1,9 +1,9 @@
 name: release
 
 # Tag a version to ship it to Windows installs:
-#   (bump version in pyproject.toml, commit)  git tag v0.2.0 && git push origin v0.2.0
+#   (bump version in pyproject.toml, run uv lock, commit)  git tag -a v1.1.0 -m v1.1.0 && git push origin v1.1.0
 # Runs the tests, then publishes a GitHub release with the app zip and the
-# installer. Installed copies offer the update on the Grown-ups page.
+# installer. Installed copies offer the update on the For grown-ups page.
 
 on:
   push:
