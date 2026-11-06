@@ -31,6 +31,7 @@ from __future__ import annotations
 import colorsys
 import math
 import random
+import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -308,6 +309,10 @@ SPECIES_PATTERNS = {
     "fish": {"solid": 22, "twotone": 16, "gradient": 12, "stripe": 12, "bars": 11, "spots": 10, "marbled": 9, "scaled": 8},
     "unicorn": {"solid": 22, "blaze": 16, "dapple": 14, "pinto": 12, "appaloosa": 12, "rainbow": 12, "starry": 12},
 }
+# Patterns any animal can wear: pet_render.js paintCoat draws them on any body
+# (a species' own painter takes its own patterns; anything else draws as patches).
+ANY_PATTERNS = ("patches", "spots", "belly", "stripes", "points", "mask")
+ALL_PATTERNS = tuple(dict.fromkeys([*ANY_PATTERNS, *(p for odds in SPECIES_PATTERNS.values() for p in odds)]))
 # Species whose fins wear a pattern of their own (all fins the same one).
 FIN_PATTERNS = {
     "fish": {"clear": 24, "solid": 18, "edged": 14, "tipped": 12, "gradient": 10, "striped": 9, "spotted": 8, "rayed": 5},
@@ -808,6 +813,119 @@ def roll(species: str, primary: str | None, secondary: str | None, seed: int, un
 def _genes(species: str, primary: str, secondary: str, seed: int, unlocked: set[str]) -> dict:
     genes = {"version": GENES_VERSION, "species": species, "seed": seed}
     return fill_missing(genes, {"primary": primary, "secondary": secondary, "unlocked": unlocked})
+
+
+# --- a design made by hand (the pet lab), checked before it joins a game -------------------
+
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Shape numbers: whole steps for these, -1..1 for the rest.
+SHAPE_STEPS = {"length", "height"}
+
+
+def _same_kind(value, like) -> bool:
+    if like is None:  # an empty choice (no shiny, no third color...): the checks below judge it
+        return True
+    if isinstance(like, bool) or isinstance(value, bool):
+        return isinstance(value, bool) and isinstance(like, bool)
+    if isinstance(like, (int, float)):
+        return isinstance(value, (int, float))
+    return type(value) is type(like)
+
+
+def design_from(raw: object) -> dict:
+    """Genes from a hand-made design (the pet lab's JSON), made safe: any part
+    missing or not like a real pet's comes from a pet rolled on the same seed,
+    choices must be the species' own, numbers are kept in range, and it starts
+    at level 1. Raises GeneError when it isn't a pet at all."""
+    if not isinstance(raw, dict):
+        raise GeneError("That isn't a pet.")
+    species = raw.get("species")
+    if species not in SPECIES_COLORS or species in COMPANIONS:
+        raise GeneError("That isn't a kind of pet that can be given.")
+    seed = raw.get("seed")
+    seed = seed if isinstance(seed, int) and not isinstance(seed, bool) and 0 < seed < 2**31 else new_seed()
+    base = roll(species, None, None, seed)
+    genes = {"version": GENES_VERSION, "species": species, "seed": seed}
+    optional = {"coat": {"fins"}, "shape": {"mix"}, "face": {"odd_eye", "shine", "skin", "tint"}}
+    for group, fields in base.items():
+        if not isinstance(fields, dict):
+            continue
+        given = raw.get(group) if isinstance(raw.get(group), dict) else {}
+        keys = set(fields) | (optional.get(group, set()) & set(given))
+        genes[group] = {k: given[k] if k in given and (k not in fields or _same_kind(given[k], fields[k])) else fields.get(k) for k in keys}
+    _check_coat(species, genes["coat"], base["coat"])
+    _check_shape(species, genes["shape"], base["shape"])
+    _check_face(species, genes["face"], base["face"])
+    p = genes["personality"]
+    for k, v in base["personality"].items():
+        if isinstance(v, float):
+            p[k] = min(1.0, max(0.0, float(p[k])))
+    if p.get("favorite") not in VEGGIES:
+        p["favorite"] = base["personality"]["favorite"]
+    genes["battle"] = {**base["battle"], **{k: v for k, v in genes["battle"].items() if k in ("strength", "speed", "stamina")
+                                            and isinstance(v, int) and 1 <= v <= 10}, "level": 1, "xp": 0}
+    resolve(genes)  # every color known
+    return genes
+
+
+def _check_coat(species: str, coat: dict, base: dict) -> None:
+    colors = coat["colors"] if isinstance(coat["colors"], list) and len(coat["colors"]) == 3 else base["colors"]
+
+    def ok(c, i):
+        if c is None:
+            return i > 0
+        if not isinstance(c, str) or c not in COLORS:
+            return False
+        return fits(species, c) or (i == 2 and species in TREASURE_THIRD and c in METALS)
+
+    if not all(ok(c, i) for i, c in enumerate(colors)) or (colors[1] is not None and colors[1] == colors[0]):
+        raise GeneError("Those colors don't fit that pet.")
+    coat["colors"] = list(colors)
+    shares = coat["shares"] if isinstance(coat["shares"], list) and len(coat["shares"]) == 3 else base["shares"]
+    shares = [max(0.0, float(x)) if c is not None and isinstance(x, (int, float)) else 0.0 for x, c in zip(shares, colors, strict=True)]
+    total = sum(shares) or 1.0
+    coat["shares"] = [round(x / total, 3) for x in shares]
+    if coat["style"] not in COAT_STYLES:
+        coat["style"] = base["style"]
+    if coat["pattern"] not in ALL_PATTERNS:  # a design may borrow any animal's (pet lab)
+        raise GeneError("That isn't a pattern.")
+    if species in FIN_PATTERNS:
+        if coat.get("fins") not in FIN_PATTERNS[species]:
+            coat["fins"] = base.get("fins")
+    else:
+        coat.pop("fins", None)
+    coat["splotch"] = min(1.0, max(0.0, float(coat["splotch"])))
+
+
+def _check_shape(species: str, shape: dict, base: dict) -> None:
+    breeds = BREEDS.get(species)
+    for k, v in list(shape.items()):
+        if k == "breed":
+            if v not in (breeds or ()):
+                raise GeneError(f"A {species_name(species).lower()} can't be that breed.")
+        elif k == "mix":
+            parts = MIX_PARTS.get(species, ())
+            shape["mix"] = {part: donor for part, donor in (v or {}).items() if part in parts and donor in (breeds or ())} if isinstance(v, dict) else {}
+        elif isinstance(v, str):
+            if v not in PARTS.get(species, {}).get(k, ()):
+                shape[k] = base[k]
+        elif isinstance(v, (int, float)):
+            shape[k] = int(min(3, max(-3, round(v)))) if k in SHAPE_STEPS else min(1.0, max(-1.0, float(v)))
+
+
+def _check_face(species: str, face: dict, base: dict) -> None:
+    for k in ("eyes", "odd_eye"):
+        if k in face and not (isinstance(face[k], str) and HEX_COLOR.match(face[k])):
+            if k == "eyes":
+                face[k] = base["eyes"]
+            else:
+                face.pop(k)
+    if face.get("shine") not in SHINE_ODDS:
+        face["shine"] = None
+    face.pop("sparkle", None)
+    for k in ("skin", "tint"):  # a person's skin and tint: only the species that have them
+        if k in face and k not in base:
+            face.pop(k)
 
 
 def wild_rare(species: str, seed: int, families: tuple[str, ...]) -> dict:

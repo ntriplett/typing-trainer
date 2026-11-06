@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_gift, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -442,6 +442,18 @@ def pet_lab_species() -> dict:
             "colors": pet_genes.color_catalog(pet_genes.starting_unlocks(), species),
             "starters": list(pet_genes.STARTER_COLORS[species]),
             "always_grown": species in pet_genes.COMPANIONS,
+            # every choice a design can make (the lab's designer)
+            "breeds": list(pet_genes.BREEDS.get(species, ())),
+            "mix_parts": list(pet_genes.MIX_PARTS.get(species, ())),
+            "patterns": list(pet_genes.SPECIES_PATTERNS.get(species, pet_genes.PATTERNS)),
+            "any_patterns": list(pet_genes.ANY_PATTERNS),
+            "all_patterns": list(pet_genes.ALL_PATTERNS),
+            "fin_patterns": list(pet_genes.FIN_PATTERNS.get(species, {})),
+            "eyes": list(pet_genes.SPECIES_EYES.get(species, pet_genes.EYES)),
+            "styles": list(pet_genes.COAT_STYLES),
+            "veggies": list(pet_genes.VEGGIES),
+            "metals": [{"id": c, "name": pet_genes.COLORS[c].name, "hex": pet_genes.COLORS[c].hex} for c in pet_genes.METALS]
+            if species in pet_genes.TREASURE_THIRD else [],
         }
         for species in pet_genes.SPECIES_COLORS
     }
@@ -469,6 +481,7 @@ def pet_lab_roll(species: str, primary: str = "", secondary: str = "", seed: int
 class PetLabAdoptRequest(BaseModel):
     genes: dict
     growth: int = Field(ge=0, le=pet_care.MAX_GROWTH)
+    name: str = ""
 
 
 @app.post("/api/pet-lab/adopt")
@@ -483,7 +496,7 @@ def pet_lab_adopt(body: PetLabAdoptRequest, conn=Depends(get_db), learner_id: in
         pet_genes.resolve(genes)
     except (KeyError, TypeError) as exc:
         raise HTTPException(status_code=400, detail="Those aren't a pet's genes.") from exc
-    name = pet_genes.species_name(genes["species"])
+    name = body.name.strip()[: pet_care.MAX_NAME] or pet_genes.species_name(genes["species"])
     growth = pet_care.MAX_GROWTH if genes["species"] in pet_genes.COMPANIONS else body.growth
     return {"id": db.add_v3_pet(conn, learner_id, genes, name, "lab", growth=growth), "name": name}
 
@@ -891,6 +904,21 @@ def parent_extra(conn=Depends(get_db), learner_id: int = Depends(current_learner
     except daily.ExtraError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return _parent_entry(conn, learner_id)
+
+
+class GiftIn(BaseModel):
+    to: int
+    from_name: str = "Dad"
+    design: dict
+
+
+@app.post("/api/parent/gift", dependencies=[Depends(require_grownup)])
+def parent_gift(body: GiftIn, conn=Depends(get_db)) -> dict:
+    """Wrap up a pet designed in the pet lab for a player (app/pet_gift.py)."""
+    try:
+        return {"gift": pet_gift.send(conn, body.to, body.from_name, body.design)}
+    except pet_gift.GiftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 # --- Farm Stand (PLAN.md 11m) -----------------------------------------------------------
@@ -1582,15 +1610,34 @@ def _share_call(action, *args):
 
 @app.get("/api/pets/hub")
 def pets_hub(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return {**_me(conn, learner_id), **pet_shop.hub_state(conn, learner_id, _today())}
+    return {**_me(conn, learner_id), **pet_shop.hub_state(conn, learner_id, _today()), "gift": pet_gift.waiting(conn, learner_id) is not None}
 
 
 @app.get("/api/pets/shop")
 def pet_shop_front(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return pet_shop_front_state(conn, learner_id)
+
+
+def pet_shop_front_state(conn, learner_id: int) -> dict:
     return {
         **_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today()),
         "shared_waiting": len(pet_share.waiting_for(conn, learner_id, _today())),
+        "gift": pet_gift.waiting(conn, learner_id),
     }
+
+
+class GiftOpenIn(BaseModel):
+    name: str = ""
+
+
+@app.post("/api/pets/shop/gift/{gift_id}/open")
+def open_pet_gift(gift_id: int, body: GiftOpenIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Unwrap a grown-up's gift: the pet comes home, named, free."""
+    try:
+        pet = pet_gift.open_gift(conn, learner_id, gift_id, body.name)
+    except pet_gift.GiftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {**pet_shop_front_state(conn, learner_id), "opened": pet}
 
 
 @app.post("/api/pets/shop/shared/{share_id}/adopt")

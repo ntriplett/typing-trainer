@@ -1116,3 +1116,21 @@ function renderScenery(place, night) {
 window.renderScenery = renderScenery;
 window.Scenery = Scenery;
 })();
+
+// A wrapped-up present (a pet a grown-up gave, app/pet_gift.py): red with a white
+// ribbon and bow, 8x8 units with its top-left at (x, y), each unit `s` big.
+function drawGiftBox(r, x, y, s = 1) {
+  const u = (dx, dy, w, h, c) => r(x + dx * s, y + dy * s, w * s, h * s, c);
+  u(0, 3, 8, 5, "#c8302a"); // the box
+  u(0, 3, 8, 1, "#e0483a");
+  u(0, 7, 8, 1, "#9a2018");
+  u(-0.5, 2, 9, 1.5, "#d83a30"); // its lid
+  u(3, 2, 2, 6, "#fbf6ec"); // the ribbon, down and across
+  u(0, 4.5, 8, 1, "#fbf6ec");
+  u(3, 7, 2, 1, "#e8dcc8");
+  u(1, 0, 2, 2, "#fbf6ec"); // the bow
+  u(5, 0, 2, 2, "#fbf6ec");
+  u(1.5, 0.5, 1, 1, "#e8dcc8");
+  u(5.5, 0.5, 1, 1, "#e8dcc8");
+  u(3, 1, 2, 1, "#fbf6ec");
+}

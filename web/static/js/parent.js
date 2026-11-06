@@ -188,6 +188,37 @@ function openPage() {
     .then(render);
   showChangePin();
   showScale();
+  showGift();
+}
+
+// A pet designed in the pet lab, wrapped up for a player (app/pet_gift.py).
+async function showGift() {
+  const players = await (await fetch("/api/profiles")).json();
+  const me = ((await Header.ready) || {}).learner?.id;
+  $("gift-to").innerHTML = players.map((p) => `<option value="${p.id}"${p.id === me ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("");
+  document.querySelector(".gift-form").onsubmit = async (e) => {
+    e.preventDefault();
+    let design;
+    try {
+      design = JSON.parse($("gift-design").value);
+    } catch {
+      $("gift-message").textContent = "That isn't a pet's design: copy the whole thing from the pet lab's JSON box.";
+      return;
+    }
+    const res = await fetch("/api/parent/gift", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: Number($("gift-to").value), from_name: $("gift-from").value, design }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      $("gift-message").textContent = typeof data.detail === "string" ? data.detail : "That pet couldn't be wrapped up.";
+      return;
+    }
+    const who = $("gift-to").selectedOptions[0].textContent;
+    $("gift-message").textContent = `🎁 ${data.gift.name} is wrapped up for ${who}, from ${data.gift.from}! It's waiting at the Pet Shop.`;
+    $("gift-design").value = "";
+  };
 }
 
 // How big the whole app draws on this computer (ui_scale.js).

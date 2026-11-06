@@ -277,6 +277,18 @@ CREATE TABLE IF NOT EXISTS pet_share (
 );
 CREATE INDEX IF NOT EXISTS idx_pet_share_to ON pet_share(to_learner, status);
 
+-- A pet a grown-up gives a player (app/pet_gift.py): a design made in the pet lab,
+-- waiting wrapped up at the Pet Shop until they open it and give it a name.
+CREATE TABLE IF NOT EXISTS pet_gift (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    to_learner INTEGER NOT NULL REFERENCES learner(id),
+    from_name TEXT NOT NULL,
+    name TEXT NOT NULL,
+    genes TEXT NOT NULL,
+    sent_at TEXT NOT NULL,
+    pet_id INTEGER  -- the pet, once opened
+);
+
 -- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
 -- placed furniture, keyed by room name.
 CREATE TABLE IF NOT EXISTS room_surface (
@@ -1575,3 +1587,33 @@ def pet_senders(conn: sqlite3.Connection, learner_id: int) -> dict[int, str]:
         (learner_id,),
     )
     return {r["pet_id"]: r["name"] for r in rows}
+
+
+# --- gifts from grown-ups (app/pet_gift.py) ---------------------------------------------
+
+
+def add_pet_gift(conn: sqlite3.Connection, to_learner: int, from_name: str, name: str, genes: dict) -> int:
+    cur = conn.execute(
+        "INSERT INTO pet_gift (to_learner, from_name, name, genes, sent_at) VALUES (?, ?, ?, ?, ?)",
+        (to_learner, from_name, name, json.dumps(genes), _now_iso()),
+    )
+    return cur.lastrowid
+
+
+def waiting_pet_gifts(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    """Gifts not opened yet, oldest first."""
+    rows = conn.execute(
+        "SELECT id, from_name, name, genes, sent_at FROM pet_gift WHERE to_learner = ? AND pet_id IS NULL ORDER BY id",
+        (learner_id,),
+    )
+    return [{**dict(r), "genes": json.loads(r["genes"])} for r in rows]
+
+
+def open_pet_gift(conn: sqlite3.Connection, gift_id: int, pet_id: int) -> None:
+    conn.execute("UPDATE pet_gift SET pet_id = ? WHERE id = ?", (pet_id, gift_id))
+
+
+def pet_givers(conn: sqlite3.Connection, learner_id: int) -> dict[int, str]:
+    """pet id -> who gave it, for a player's opened gifts."""
+    rows = conn.execute("SELECT pet_id, from_name FROM pet_gift WHERE to_learner = ? AND pet_id IS NOT NULL", (learner_id,))
+    return {r["pet_id"]: r["from_name"] for r in rows}

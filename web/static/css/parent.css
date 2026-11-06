@@ -144,3 +144,23 @@
 .scale-pick.current {
   outline: 4px solid var(--leaf-gold);
 }
+
+.gift-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 1rem;
+  font-size: 20px;
+}
+
+.gift-form .gift-json {
+  flex-basis: 100%;
+}
+
+.gift-form textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-type);
+  font-size: 14px;
+}

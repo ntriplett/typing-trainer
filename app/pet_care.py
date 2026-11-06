@@ -294,6 +294,7 @@ def care_state(conn, learner_id: int, today: date) -> dict:
     for p in rows:
         schools.setdefault(p["school"] or p["id"], []).append(p)
     senders = db.pet_senders(conn, learner_id)  # pets a friend shared (app/pet_share.py)
+    givers = db.pet_givers(conn, learner_id)  # gifts from grown-ups (app/pet_gift.py)
     pets = []
     for row, v in zip(rows, every, strict=True):
         if row["school"]:
@@ -302,6 +303,8 @@ def care_state(conn, learner_id: int, today: date) -> dict:
         entry = {**v, "school": len(members), "school_tanks": sorted({aquarium.tank_spot(m["home"]) for m in members} - {None})}
         if row["id"] in senders:
             entry["from_friend"] = senders[row["id"]]
+        if row["id"] in givers:
+            entry["gift_from"] = givers[row["id"]]
         if v["water"]:
             from app import pet_shop  # pet_shop imports this module; prices live there
 

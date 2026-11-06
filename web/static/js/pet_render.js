@@ -695,13 +695,18 @@ function speciesDesign(genes) {
 //   3. ears: solid, to suit the pattern
 // The lighter of the two picked colors plays the light part (band, blaze,
 // underside) and the darker the color, whichever was picked first. The rolled
-// shares only nudge how much shows (patch size, band width). A rare third
-// color makes tri-color patches on broken coats.
+// shares only nudge how much shows (patch size, band width). A third color makes
+// tri-color patches on broken coats, and spots over every other one, about its
+// share of the coat. Splotch shapes every pattern (BUNNY_SPLOTCH_MID looks as
+// they always did): patch and spot size, ticking, how much tan, the Dutch
+// band's edge, how far Himalayan points reach, the English chain, a shaded
+// back on a self coat.
 
 const BUNNY_PATTERNS = new Set(["self", "agouti", "broken", "dutch", "himalayan", "tan", "english"]);
 const BUNNY_BODY = new Set(["body", "fluff", "leg", "farleg", "cotton"]);
 const BUNNY_HEAD = new Set(["head", "snout", "mane"]);
 const BUNNY_EARS = new Set(["ear", "farear", "flop", "fold"]);
+const BUNNY_SPLOTCH_MID = 0.85;
 
 function paintBunny(out, grid, genes, built, hex) {
   const coat = genes.coat;
@@ -714,12 +719,22 @@ function paintBunny(out, grid, genes, built, hex) {
   const dark = light === c0 ? c1 : c0;
   const accent = hex[2];
   const main = pattern === "self" ? c0 : dark;
-  const amount = coat.shares[1] || 0; // nudges patch size and band width
+  // How much each part shows follows its color's share: the light part (band,
+  // underside, the white of broken and English) the lighter color's, the dark
+  // part (patches, points, chain) the darker's. Around 30% second color they
+  // look as they always did.
+  const twoTone = Boolean(hex[1]) && hex[1] !== hex[0];
+  const [s0, s1] = [coat.shares[0] || 0, coat.shares[1] || 0];
+  const lightShare = twoTone ? (light === c1 ? s1 : s0) / Math.max(0.01, s0 + s1) : 0.3;
+  const darkShare = 1 - lightShare;
   const noise = valueNoise(genes.seed);
   const noise2 = valueNoise(genes.seed ^ 0x5bd1e995);
   const s = built.scale;
   built.coatDone = true; // the cotton tail is painted here, not a fixed white
   const tick = (x, y) => ((Math.imul(x * 31 + y * 977, 2654435761) ^ genes.seed) >>> 0) % 1000 / 1000;
+  const sp = Math.max(0, Math.min(1, coat.splotch ?? BUNNY_SPLOTCH_MID));
+  const k = BUNNY_SPLOTCH_MID - sp; // + finer and less, - bolder and more
+  const ticking = Math.max(0.01, 0.07 * (1 + k * 2.2));
 
   // body extents (it faces right: the front is at maxX)
   let minX = GRID_W;
@@ -740,9 +755,11 @@ function paintBunny(out, grid, genes, built, hex) {
   }
   const bw = Math.max(1, maxX - minX);
   const bh = Math.max(1, maxY - minY);
+  let legTop = GROUND;
+  for (let y = 0; y < GRID_H; y++) for (let x = 0; x < GRID_W; x++) if (grid[y][x] && (grid[y][x].l === "leg" || grid[y][x].l === "farleg")) legTop = Math.min(legTop, y);
 
   // 1. the body
-  const patchCut = 0.62 - amount * 0.5; // more second color -> bigger patches
+  const patchCut = 0.95 - darkShare * 1.6; // more of the dark color -> bigger patches
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
       const c = grid[y][x];
@@ -754,37 +771,46 @@ function paintBunny(out, grid, genes, built, hex) {
       let color = main;
       switch (pattern) {
         case "agouti":
-          if (c.l === "cotton" || (fy > 0.82 && fx > 0.35 && !leg)) color = light;
-          else if (tick(x, y) < 0.07) color = blend(dark, light, 0.35); // ticking
+          if (c.l === "cotton" || (fy > 1 - lightShare * 0.6 && fx > 0.35 && !leg)) color = light;
+          else if (tick(x, y) < ticking) color = blend(dark, light, 0.35); // ticking
           break;
         case "tan":
-          if (c.l === "cotton" || (fy > 0.75 && !leg)) color = light;
+          if (c.l === "cotton" || (fy > 1 - lightShare * 0.83 + Math.max(-0.2, Math.min(0.12, k * 0.2)) && !leg)) color = light;
           break;
         case "broken": {
           const u = (x - geo.cx) / s;
           const v = (y - geo.cy) / s;
-          const n = noise(u * 0.16 + 50, v * 0.16 + 50) * 0.75 + noise2(u * 0.3, v * 0.3) * 0.25;
+          const f = 0.16 * Math.max(0.45, 1 + k * 2); // splotch: bigger or smaller patches
+          const n = noise(u * f + 50, v * f + 50) * 0.75 + noise2(u * f * 1.875, v * f * 1.875) * 0.25; // 0.16 and 0.3 at the middle
           color = light;
           if (spine || (c.l !== "cotton" && !leg && n > patchCut)) color = accent && noise2(u * 0.12 + 9, v * 0.12) > 0.55 ? accent : dark;
           break;
         }
         case "dutch": {
-          const band = 0.42 + Math.max(-0.08, Math.min(0.12, (amount - 0.25) * 0.4)); // front share that's white
-          color = fx > 1 - band || (leg && fx > 0.55) ? light : dark;
+          const band = Math.max(0.12, Math.min(0.85, 0.12 + lightShare * 0.75)); // the front share that's light
+          const ragged = Math.max(0, k) * 0.35 * (noise(((y - geo.cy) / s) * 0.5 + 7, 3) - 0.5); // lower splotch: a ragged edge
+          color = fx > 1 - band + ragged || (leg && fx > 0.55) ? light : dark;
           if (c.l === "leg" && y >= GROUND - 1 && fx < 0.55) color = light; // white "stops" on the hind feet
           break;
         }
-        case "himalayan":
-          color = leg || c.l === "cotton" ? dark : light;
+        case "himalayan": {
+          // splotch: how far up the legs the dark points reach
+          const reach = Math.min(1, Math.max(0.1, darkShare * 3.3 * (1 - k * 1.6)));
+          color = (leg && y >= GROUND - (GROUND - legTop) * reach - 0.5) || c.l === "cotton" ? dark : light;
           break;
+        }
         case "english": {
           color = light;
-          const chain = Math.abs(fy - 0.55) < 0.12 && Math.floor((fx * bw) / 3) % 2 === 0 && fx > 0.15 && fx < 0.85;
+          const step = Math.max(2, Math.round(3 - k * 4)); // splotch: chain spot size
+          const width = Math.max(0.05, Math.min(0.3, 0.12 * (darkShare / 0.3))) * (1 - k); // more dark color -> a wider chain
+          const chain = Math.abs(fy - 0.55) < width && Math.floor((fx * bw) / step) % 2 === 0 && fx > 0.15 && fx < 0.85;
           if (spine || chain) color = dark;
           break;
         }
-        default: // self
+        default: // self, its back shaded a little darker as splotch goes down
           if (c.l === "cotton") color = blend(main, "#ffffff", 0.25);
+          else if (twoTone && fy < s1 * 1.6) color = blend(main, c1, Math.min(0.6, 0.25 + (s1 * 1.6 - fy))); // the second color washed over its back
+          else if (k > 0 && fy < Math.min(0.55, k * 0.7)) color = blend(main, SHADOW_TINT, Math.min(0.22, (Math.min(0.55, k * 0.7) - fy) * 0.6 + 0.06));
       }
       out[y][x] = color;
     }
@@ -834,7 +860,8 @@ function paintBunny(out, grid, genes, built, hex) {
           break;
         }
         case "himalayan": {
-          const smudge = ((x - nx) / 2.6) ** 2 + ((y - ny - 0.5) / 1.8) ** 2 <= 1;
+          const r = Math.max(0.5, 1 - k * 1.2); // splotch: the nose smudge's size
+          const smudge = ((x - nx) / (2.6 * r)) ** 2 + ((y - ny - 0.5) / (1.8 * r)) ** 2 <= 1;
           color = smudge ? dark : light;
           break;
         }
@@ -859,6 +886,29 @@ function paintBunny(out, grid, genes, built, hex) {
       }
       out[y][x] = color;
     }
+  }
+
+  // 4. a third color (not broken's: it makes tri-color patches) spots the coat,
+  // body and head but not the face, as much as its share; splotch sets the spots' size
+  const third = Math.min(0.6, coat.shares[2] || 0);
+  if (accent && third > 0 && pattern !== "broken") {
+    const f = 0.62 - 0.5 * sp;
+    const spot = (x, y) => {
+      const u = ((x - geo.cx) / s) * f;
+      const v = ((y - geo.cy) / s) * f;
+      return noise2(u + 31, v + 17) * 0.8 + noise(u * 2.3, v * 2.3) * 0.2;
+    };
+    const pool = [];
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        const c = grid[y][x];
+        if (!c || !(BUNNY_BODY.has(c.l) || BUNNY_HEAD.has(c.l))) continue;
+        if (BUNNY_HEAD.has(c.l) && (eyeCells.has(`${x},${y}`) || nearEye(x, y) || (Math.abs(x - nx) <= 3 && y >= ny - 2))) continue;
+        pool.push([spot(x, y), x, y]);
+      }
+    }
+    pool.sort((a, b) => b[0] - a[0]);
+    pool.slice(0, Math.round(pool.length * third)).forEach(([, x, y]) => (out[y][x] = accent));
   }
 }
 

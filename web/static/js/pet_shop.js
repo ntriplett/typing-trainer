@@ -172,7 +172,10 @@ function renderEntrance() {
   $("shop-scene").hidden = false;
   const open = { ...Object.fromEntries(front.departments.map((d) => [d.id, d.open])), friend: front.friend };
   const bg = sceneCanvas();
-  (floor ? drawShopUpstairs : drawShopEntrance)(habitatPainter(bg.getContext("2d"), SCENE_PX), open);
+  const r = habitatPainter(bg.getContext("2d"), SCENE_PX);
+  (floor ? drawShopUpstairs : drawShopEntrance)(r, open);
+  const gift = !floor && front.gift;
+  if (gift) drawGiftBox(r, SHOP_GIFT_ART.x, SHOP_GIFT_ART.y, 2); // on the welcome rug
   scene = { bg, front: null, pets: [] };
   drawScene();
   const stairs = document.createElement("button");
@@ -201,6 +204,64 @@ function renderEntrance() {
       return btn;
     })
   );
+  if (gift) {
+    const box = document.createElement("button");
+    box.className = "shop-spot gift-spot";
+    box.dataset.gift = gift.id;
+    place(box, SHOP_GIFT);
+    box.setAttribute("aria-label", "A gift for you!");
+    box.innerHTML = `<span class="spot-sign">🎁 <span class="spot-name">A gift for you!</span></span>`;
+    box.onclick = () => showGiftTag(gift);
+    $("shop-spots").append(box);
+    $("dept-hint").textContent = "There's a present on the rug! Click it to see who it's from.";
+  }
+}
+
+// --- a grown-up's gift: the tag, then the pet to name and take home ----------------------
+
+function showGiftTag(gift) {
+  const body = $("detail-body");
+  body.innerHTML = `
+    <div class="gift-tag"><span class="gift-tag-hole"></span>A gift from<b>${escapeHtml(gift.from)}</b></div>
+    <div class="detail-pets"><figure><canvas class="gift-box-art" width="160" height="160"></canvas></figure></div>
+    <div class="detail-actions"><button class="button-gold big-button">🎀 Open it!</button></div>`;
+  drawGiftBox(habitatPainter(body.querySelector("canvas").getContext("2d"), 18), 0.5, 0.5, 1);
+  body.querySelector("button").onclick = () => showGiftPet(gift);
+  const dialog = $("pet-detail");
+  if (!dialog.open) dialog.showModal();
+}
+
+function showGiftPet(gift) {
+  const body = $("detail-body");
+  const kind = speciesName(gift.species).toLowerCase();
+  body.innerHTML = `
+    <h2 class="panel-title">🎉 A ${kind}, just for you!</h2>
+    <p class="hint">From <b>${escapeHtml(gift.from)}</b>, with love. What will you call it?</p>
+    <div class="detail-pets"><figure><div class="detail-canvas"></div><figcaption>Now</figcaption></figure>
+      <figure><div class="detail-canvas grown"></div><figcaption>All grown up</figcaption></figure></div>
+    <form class="gift-name"><label>Name <input id="gift-name" maxlength="16" value="${escapeHtml(gift.name)}" /></label>
+      <button class="button-go big-button">Take ${escapeHtml(gift.name)} home (free!)</button></form>`;
+  const slot = { ...gift, index: "gift" }; // not a slot: the shop's tick leaves it be
+  const scale = fitScale([gift.genes], GROWN, 220, 160, 6);
+  body.querySelector(".detail-canvas").appendChild(petCanvas(slot, BABY, 220, 160, Math.min(fitScale([gift.genes], BABY, 220, 160, 8), scale * 2)));
+  body.querySelector(".detail-canvas.grown").appendChild(petCanvas(slot, GROWN, 220, 160, scale));
+  const input = $("gift-name");
+  const go = body.querySelector(".gift-name button");
+  input.oninput = () => (go.textContent = `Take ${input.value.trim() || gift.name} home (free!)`);
+  input.focus();
+  input.select();
+  body.querySelector(".gift-name").onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const data = await call(`/api/pets/shop/gift/${gift.id}/open`, "POST", { name: input.value });
+      front = data;
+      renderEntrance();
+      welcome(data.opened);
+    } catch (err) {
+      say(err.message);
+      closeDetail();
+    }
+  };
 }
 
 // --- the letter desk: a friend writes to ask if she can visit ----------------------------

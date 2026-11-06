@@ -55,6 +55,10 @@ const SHOP_SPOTS = {
   down: { x: 4, y: 58, w: 36, h: 28 }, // back down the stairs
 };
 const SHOP_DESK_ART = { x: 104, y: 56, w: 34, h: 26 };
+// A grown-up's gift, waiting on the welcome rug: the box (drawn 2x, 16x16) and,
+// around it, its button (the sign hangs under the box).
+const SHOP_GIFT_ART = { x: 69, y: 58 };
+const SHOP_GIFT = { x: 61, y: 56, w: 32, h: 32 };
 // The spiral stairs as drawn: a third of them past the right edge.
 const SHOP_STAIRS_ART = { x: 144, y: 6, w: 24, h: 80 };
 const SHOP_TOP_SIGNS = new Set(["household", "farm", "reptiles", "mythical", "fish", "aqua", "habitats", "supplies"]);

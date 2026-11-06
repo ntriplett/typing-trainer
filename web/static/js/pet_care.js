@@ -250,7 +250,7 @@ function renderDetail() {
       ${p.water ? "" : `<dt>${p.companion ? "Friendship" : "Happy"}</dt><dd class="hearts" title="${p.joy} of 5">${"♥".repeat(p.joy)}<span class="empty">${"♡".repeat(5 - p.joy)}</span>${p.joy ? "" : p.companion ? " Bring her a gift in her habitat!" : " Play with it in its habitat!"}</dd>`}
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
       ${p.companion ? "" : `<dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>`}
-      ${p.companion ? `<dt>Came to stay</dt><dd>${days(p.adopted_at)}</dd>` : `<dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.from_friend ? `shared by <b>${escapeHtml(p.from_friend)}</b>` : p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>`}
+      ${p.companion ? `<dt>Came to stay</dt><dd>${days(p.adopted_at)}</dd>` : `<dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.gift_from ? `a gift from <b>${escapeHtml(p.gift_from)}</b>` : p.from_friend ? `shared by <b>${escapeHtml(p.from_friend)}</b>` : p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>`}
       ${rare ? `<dt>Rare</dt><dd><ul class="detail-rare">${rare}</ul></dd>` : ""}
     </dl>
     <div class="traits">${traits}</div>`;

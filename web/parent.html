@@ -28,6 +28,17 @@
       <p><button id="update-go" hidden>Update now</button></p>
     </section>
     <div id="players"></div>
+    <section class="panel" id="gift">
+      <h2 class="panel-title">Gift a pet</h2>
+      <p class="parent-intro">Paste a pet designed in the pet lab (its JSON). It waits wrapped up at the Pet Shop for them to open, name and take home, free, as a baby.</p>
+      <form class="gift-form">
+        <label>For <select id="gift-to"></select></label>
+        <label>From <input id="gift-from" maxlength="20" value="Dad" /></label>
+        <label class="gift-json">The pet's design <textarea id="gift-design" rows="4" spellcheck="false" placeholder='{"name": "...", "genes": {...}}'></textarea></label>
+        <button class="button-go" type="submit">🎁 Wrap it up</button>
+      </form>
+      <p class="saved" id="gift-message" role="status"></p>
+    </section>
     <section class="panel" id="ui-scale">
       <h2 class="panel-title">Screen size</h2>
       <p class="parent-intro">Make everything bigger on a high-resolution screen. This is saved for this computer, for every player.</p>

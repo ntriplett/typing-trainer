@@ -2,6 +2,7 @@
 shares, the color pool and unlock rules, and the hook for future stats."""
 
 import collections
+import json
 
 import pytest
 
@@ -621,3 +622,62 @@ def test_pets_that_were_sparkly_are_sparkly_still():
         g._pick(rng, g.SPECIES_EYES.get("dog", g.EYES))
         was_sparkly = rng.random() < 0.02  # the old roll: face.sparkle
         assert (g.shine(g.shop_roll("dog", set(), seed)) == "sparkle") == was_sparkly
+
+
+# --- designs made by hand (the pet lab's JSON) ---------------------------------------
+
+
+def test_a_rolled_pet_is_a_fine_design_as_it_is():
+    for species in ("bunny", "cat", "fish", "dragon", "unicorn"):
+        pet = g.roll(species, None, None, 31)
+        design = g.design_from(json.loads(json.dumps(pet)))
+        assert {k: v for k, v in design.items() if k != "battle"} == {k: v for k, v in pet.items() if k != "battle"}
+
+
+def test_a_design_keeps_its_choices_and_starts_at_level_one():
+    pet = g.roll("bunny", None, None, 8)
+    pet["coat"] |= {"colors": ["snow", "chestnut", None], "shares": [6, 4, 3], "pattern": "dutch", "style": "accent"}
+    pet["shape"] |= {"breed": "halflop", "mix": {"ears": "sidelop"}, "ears": 9, "length": 2.6}
+    pet["face"] |= {"eyes": "#101010", "odd_eye": "#3a6ab8", "sparkle": True, "shine": "glow"}
+    pet["battle"] |= {"level": 40, "xp": 9999}
+    d = g.design_from(pet)
+    assert d["coat"]["colors"] == ["snow", "chestnut", None] and d["coat"]["shares"] == [0.6, 0.4, 0.0]
+    assert d["shape"]["breed"] == "halflop" and d["shape"]["mix"] == {"ears": "sidelop"}
+    assert d["shape"]["ears"] == 1.0 and d["shape"]["length"] == 3
+    assert d["face"] == {"eyes": "#101010", "odd_eye": "#3a6ab8", "shine": "glow"}
+    assert d["battle"]["level"] == 1 and d["battle"]["xp"] == 0
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda p: p.update(species="mermaid"),  # a companion isn't a pet to give
+        lambda p: p.update(species="gryphon"),
+        lambda p: p["coat"].update(colors=["nope", None, None]),
+        lambda p: p["coat"].update(colors=["snow", "snow", None]),
+        lambda p: p["coat"].update(pattern="plaid"),  # no such pattern
+        lambda p: p["shape"].update(breed="husky"),
+    ],
+)
+def test_a_design_that_isnt_that_pet_is_refused(change):
+    pet = g.roll("bunny", None, None, 8)
+    change(pet)
+    with pytest.raises(g.GeneError):
+        g.design_from(pet)
+
+
+def test_odd_bits_of_a_design_are_filled_in_or_dropped():
+    d = g.design_from({"species": "bunny", "coat": {"colors": ["snow", None, None], "shares": [1, 0, 0], "pattern": "self"},
+                       "shape": {"breed": "dwarf", "wings": 1, "weight": "heavy"}, "face": {"eyes": "black"}, "extra": 1})
+    base = g.roll("bunny", None, None, d["seed"])
+    assert set(d["shape"]) == set(base["shape"]) and d["shape"]["weight"] == base["shape"]["weight"]
+    assert d["face"]["eyes"] == base["face"]["eyes"] and "extra" not in d
+    assert 0 < d["seed"] < 2**31
+
+
+def test_a_design_may_borrow_another_animals_pattern_and_any_splotch():
+    pet = g.roll("bunny", None, None, 8)
+    pet["coat"] |= {"pattern": "tabby", "splotch": 0.1}
+    d = g.design_from(pet)
+    assert d["coat"]["pattern"] == "tabby" and d["coat"]["splotch"] == 0.1
+    assert set(g.ANY_PATTERNS) <= set(g.ALL_PATTERNS) and set(g.SPECIES_PATTERNS["bunny"]) <= set(g.ALL_PATTERNS)

@@ -138,6 +138,7 @@ function drawBackground() {
     r(tx + 2, ty - 1, 1, 2, "#5a7a2e");
   }
   for (const b of BUILDINGS) b.draw(r, b);
+  if (hub.gift) drawGiftBox(r, 29, 43); // a present on the shop's doorstep
   return canvas;
 }
 
@@ -187,6 +188,7 @@ function renderBuildings() {
 // A bubble over the shop's door when something's waiting there.
 function news(b) {
   if (b.id !== "shop") return "";
+  if (hub.gift) return `<span class="hub-news">🎁 A gift for you!</span>`;
   if (hub.coupon) return `<span class="hub-news">🎟️ A free pet!</span>`;
   if (hub.order && hub.order.status === "ready") return `<span class="hub-news">📦 Your order is here!</span>`;
   return "";

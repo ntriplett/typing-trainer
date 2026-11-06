@@ -16,6 +16,7 @@ let species = {}; // /api/pet-lab/species
 let litter = [];
 let selected = null; // a copy of one litter pet, knobs applied
 let frame = 0;
+let designName = ""; // the name a design is given (it goes along in its JSON)
 
 function canvasPx(canvas) {
   const ctx = canvas.getContext("2d");
@@ -119,11 +120,13 @@ function select(pet) {
   selected = JSON.parse(JSON.stringify(pet));
   $("closeup").hidden = false;
   $("close-seed").textContent = pet.seed;
+  fillDesigner();
   $("opt-pattern").value = selected.coat.pattern;
   // a fin pattern of its own (fish)
   $("finpat-knob").hidden = !selected.coat.fins;
   if (selected.coat.fins) $("opt-finpat").value = selected.coat.fins;
   $("opt-splotch").value = selected.coat.splotch;
+  $("splotch-value").textContent = Number(selected.coat.splotch).toFixed(2);
   $("opt-length").value = selected.shape.length;
   $("opt-height").value = selected.shape.height;
   // ears show as 0 (smallest) .. 2 (biggest); the gene itself is -1..1
@@ -152,7 +155,130 @@ function showStats() {
     `battle: ${JSON.stringify(battle)}`,
     ...(selected.behavior ? [`behavior: ${JSON.stringify(selected.behavior)}`] : []),
   ].join("\n");
+  if (document.activeElement !== $("design-json")) $("design-json").value = JSON.stringify(designJson());
 }
+
+// --- the designer: every gene by hand, and the design as JSON ------------------------
+
+const info = () => species[selected.species];
+const options = (list, value, label = (x) => x) =>
+  list.map((x) => `<option value="${x}"${x === value ? " selected" : ""}>${label(x)}</option>`).join("");
+
+// Every color this species can wear (and, as a third color, treasure metals for some).
+function colorChoices(i) {
+  const list = [...info().colors, ...(i === 2 ? info().metals : [])];
+  return (i ? `<option value="">(none)</option>` : "") + list.map((c) => `<option value="${c.id}" style="background:${c.hex}">${c.name}</option>`).join("");
+}
+
+function colorById(id) {
+  return [...info().colors, ...info().metals].find((c) => c.id === id);
+}
+
+function fillDesigner() {
+  const sp = info();
+  const { coat, shape, face, personality } = selected;
+  $("opt-pattern").innerHTML = patternOptions(sp);
+  $("opt-pattern").value = coat.pattern;
+  $("breed-knob").hidden = !sp.breeds.length;
+  $("opt-breed").innerHTML = options(sp.breeds, shape.breed);
+  $("mix-knob").hidden = !sp.mix_parts.length;
+  const [part, donor] = Object.entries(shape.mix || {})[0] || ["", ""];
+  $("opt-mixpart").innerHTML = `<option value="">(not mixed)</option>` + options(sp.mix_parts, part);
+  $("opt-mixdonor").innerHTML = options(sp.breeds, donor);
+  $("opt-style").innerHTML = options(sp.styles, coat.style);
+  for (const i of [0, 1, 2]) {
+    $(`opt-c${i}`).innerHTML = colorChoices(i);
+    $(`opt-c${i}`).value = coat.colors[i] || "";
+  }
+  showShares();
+  $("opt-eyes").value = face.eyes;
+  $("opt-eyes-pick").innerHTML = `<option value="">(the species' eyes)</option>` + sp.eyes.map((h) => `<option value="${h}" style="background:${h}">${h}</option>`).join("");
+  $("opt-odd").checked = Boolean(face.odd_eye);
+  $("opt-oddeye").value = face.odd_eye || face.eyes;
+  $("opt-favorite").innerHTML = options(sp.veggies, personality.favorite);
+  $("opt-name").value = designName;
+}
+
+// Its own patterns starred first, then ones any animal can wear, then other
+// animals' (on this body they draw as patches).
+function patternOptions(sp) {
+  const own = new Set(sp.patterns);
+  const any = sp.any_patterns.filter((p) => !own.has(p));
+  const rest = sp.all_patterns.filter((p) => !own.has(p) && !any.includes(p));
+  const name = selected.species.replace("_", " ");
+  return `<optgroup label="★ ${name} patterns">${sp.patterns.map((p) => `<option value="${p}">★ ${p}</option>`).join("")}</optgroup>
+    <optgroup label="Any animal">${options(any)}</optgroup>
+    <optgroup label="Other animals' (draw as patches on a ${name})">${options(rest)}</optgroup>`;
+}
+
+function showShares() {
+  $("opt-s1").value = selected.coat.shares[1];
+  $("opt-s2").value = selected.coat.shares[2];
+  $("s1-value").textContent = `${Math.round(selected.coat.shares[1] * 100)}%`;
+  $("s2-value").textContent = `${Math.round(selected.coat.shares[2] * 100)}%`;
+}
+
+function setColor(i, id) {
+  const c = id ? colorById(id) : null;
+  selected.coat.colors[i] = c ? c.id : null;
+  selected.hex[i] = c ? c.hex : null;
+  selected.color_names[i] = c ? c.name : null;
+  if (!c) setShares(i === 1 ? 0 : selected.coat.shares[1], i === 2 || i === 1 ? 0 : selected.coat.shares[2]);
+}
+
+// The second and third colors' shares; the main color has the rest.
+function setShares(s1, s2) {
+  s1 = selected.coat.colors[1] ? s1 : 0;
+  s2 = selected.coat.colors[2] ? Math.min(s2, 1 - s1 - 0.1) : 0;
+  const r = (x) => Math.round(x * 1000) / 1000;
+  selected.coat.shares = [r(1 - s1 - s2), r(s1), r(s2)];
+  showShares();
+}
+
+// What the JSON box shows: the genes as the game stores them, and a name.
+function designJson() {
+  const { hex, color_names, shine, variant, ...genes } = selected;
+  return { name: designName || undefined, genes };
+}
+
+// A design's genes ready to draw: colors' hex and names from the species' palette.
+function drawable(genes) {
+  const sp = species[genes.species];
+  const find = (id) => [...sp.colors, ...sp.metals].find((c) => c.id === id);
+  const colors = genes.coat.colors.map((id) => (id ? find(id) : null));
+  if (colors.some((c, i) => genes.coat.colors[i] && !c)) throw new Error("a color that species can't wear");
+  return { ...genes, hex: colors.map((c) => (c ? c.hex : null)), color_names: colors.map((c) => (c ? c.name : null)), shine: petShine(genes) };
+}
+
+function loadJson() {
+  try {
+    const data = JSON.parse($("design-json").value);
+    const genes = data.genes || data;
+    if (!species[genes.species]) throw new Error("no species");
+    designName = data.name || "";
+    if ($("opt-species").value !== genes.species) {
+      $("opt-species").value = genes.species;
+      fillColors();
+      buildRows();
+    }
+    select(drawable(genes));
+    $("json-message").textContent = "Loaded!";
+  } catch (err) {
+    $("json-message").textContent = `That isn't a design (${err.message}).`;
+  }
+}
+
+$("json-copy").onclick = async () => {
+  $("design-json").value = JSON.stringify(designJson());
+  try {
+    await navigator.clipboard.writeText($("design-json").value);
+    $("json-message").textContent = "Copied!";
+  } catch {
+    $("design-json").select();
+    $("json-message").textContent = "Selected: press Ctrl+C to copy.";
+  }
+};
+$("json-load").onclick = loadJson;
 
 // One row per design, each with all five stages side by side, walking.
 // Species built from parts (fish) show a row per part, every option drawn on
@@ -233,8 +359,41 @@ function knob(id, apply) {
 }
 
 knob("opt-pattern", (el) => (selected.coat.pattern = el.value));
+knob("opt-breed", (el) => (selected.shape.breed = el.value));
+const setMix = () => {
+  const part = $("opt-mixpart").value;
+  selected.shape.mix = part ? { [part]: $("opt-mixdonor").value } : {};
+};
+knob("opt-mixpart", setMix);
+knob("opt-mixdonor", setMix);
+knob("opt-style", (el) => (selected.coat.style = el.value));
+for (const i of [0, 1, 2]) {
+  knob(`opt-c${i}`, (el) => {
+    if (i === 0 && !el.value) return;
+    setColor(i, el.value);
+  });
+}
+knob("opt-s1", (el) => setShares(Number(el.value), selected.coat.shares[2]));
+knob("opt-s2", (el) => setShares(selected.coat.shares[1], Number(el.value)));
+knob("opt-eyes", (el) => (selected.face.eyes = el.value));
+knob("opt-eyes-pick", (el) => {
+  if (!el.value) return;
+  selected.face.eyes = el.value;
+  $("opt-eyes").value = el.value;
+});
+const setOdd = () => {
+  if ($("opt-odd").checked) selected.face.odd_eye = $("opt-oddeye").value;
+  else delete selected.face.odd_eye;
+};
+knob("opt-odd", setOdd);
+knob("opt-oddeye", setOdd);
+knob("opt-favorite", (el) => (selected.personality.favorite = el.value));
+knob("opt-name", (el) => (designName = el.value.trim()));
 knob("opt-finpat", (el) => (selected.coat.fins = el.value));
-knob("opt-splotch", (el) => (selected.coat.splotch = Number(el.value)));
+knob("opt-splotch", (el) => {
+  selected.coat.splotch = Number(el.value);
+  $("splotch-value").textContent = selected.coat.splotch.toFixed(2);
+});
 knob("opt-length", (el) => (selected.shape.length = Number(el.value)));
 knob("opt-height", (el) => (selected.shape.height = Number(el.value)));
 knob("opt-ears", (el) => {
@@ -303,7 +462,7 @@ async function adopt() {
   const res = await fetch("/api/pet-lab/adopt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ genes: pet, growth: growth() }),
+    body: JSON.stringify({ genes: pet, growth: growth(), name: designName }),
   });
   const data = await res.json();
   $("adopt-message").innerHTML = res.ok ? `Adopted! <a href="/pets/care?pet=${data.id}">See ${data.name} in the Pet Care Center</a>` : data.detail;

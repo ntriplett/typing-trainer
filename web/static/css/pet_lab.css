@@ -76,3 +76,16 @@
   font-size: 20px;
   color: var(--heading);
 }
+
+/* the close-up's designer: every gene, and its JSON */
+.designer select, .designer input[type="color"] {
+  vertical-align: middle;
+}
+
+.design-json textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-type);
+  font-size: 14px;
+}
