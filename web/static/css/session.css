@@ -16,6 +16,7 @@
 
 .result-rewards {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
   font-size: 30px;
@@ -65,4 +66,10 @@
 
 .rest-screen .day-label {
   display: none; /* the sentence above already says it */
+}
+
+/* "⭐ F is solid!": a key's bonus, on its own line under the coins */
+.result-rewards .key-bonuses {
+  flex-basis: 100%;
+  color: var(--leaf-orange);
 }

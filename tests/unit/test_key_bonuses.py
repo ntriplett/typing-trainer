@@ -20,10 +20,11 @@ def good(attempts=MIN_RECENT_ATTEMPTS, right=None):
 
 
 def reasons(**kw):
-    args = {"keys": ["f"], "stats": {}, "records": {}, "bar": BAR, "paid": set(), **kw}
+    args = {"keys": ["f"], "stats": {}, "records": {}, "bar": BAR, "paid": set(), "practiced": PRACTICED, **kw}
     return [r for _, r, _ in ls.key_bonuses(**args)]
 
 
+PRACTICED = {k: ls.PRACTICE_LESSONS_FOR_BONUS for k in "fF "}
 TYPED = KeyRecord(MIN_SAMPLES_FOR_MASTERY, 0, 0, 0)  # enough real tries, too few for solid
 
 
@@ -61,4 +62,10 @@ def test_only_real_keys_count():
 
 
 def test_each_is_worth_five_hundred():
-    assert ls.key_bonuses(["f"], {}, {"f": good()}, BAR, set()) == [(500, ls.KEY_SOLID, "f")]
+    assert ls.key_bonuses(["f"], {}, {"f": good()}, BAR, set(), PRACTICED) == [(500, ls.KEY_SOLID, "f")]
+
+
+def test_nothing_pays_until_the_key_is_in_enough_practice_lessons():
+    for n in range(ls.PRACTICE_LESSONS_FOR_BONUS):
+        assert reasons(stats={"f": stat(350)}, records={"f": good()}, practiced={"f": n}) == []
+    assert reasons(stats={"f": stat(350)}, records={"f": good()}) == [ls.KEY_SOLID, ls.KEY_HALFWAY, ls.KEY_MASTERED]

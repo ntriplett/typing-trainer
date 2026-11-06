@@ -25,6 +25,26 @@ def test_walk_the_trail_and_use_the_map(page: Page, live_server):
     expect(page.locator("#trail-up")).to_be_disabled()
 
 
+def test_a_grown_trail_walks_on_and_its_map_has_sections(page: Page, live_server, tmp_path):
+    page.goto(f"{live_server}/pets/trail")  # makes the player
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        for spot in range(11):
+            db.add_habitat(conn, 1, spot, "cherry" if spot == 10 else "meadow", f"Lot {spot + 1}")
+        conn.commit()
+    page.goto(f"{live_server}/pets/trail?at=9")
+    expect(page.locator("#trail-stop")).to_have_text("Stop 10 of 20")
+    page.keyboard.press("ArrowUp")
+    expect(page.locator("#trail-stop")).to_have_text("Stop 11 of 20")
+    page.get_by_role("button", name="🗺️ Map").click()
+    expect(page.locator("#map-sections")).to_contain_text("Stops 11–20")
+    expect(page.locator(".map-spot")).to_have_count(10)
+    expect(page.locator("[data-spot='10']")).to_contain_text("11. Lot 11")
+    page.locator("#map-sections .map-down").click()
+    expect(page.locator("#map-sections")).to_contain_text("Stops 1–10")
+    page.locator("[data-spot='2']").click()
+    expect(page.locator("#trail-stop")).to_have_text("Stop 3 of 20")
+
+
 def test_visit_a_habitat_with_its_pets(page: Page, live_server, tmp_path):
     page.goto(f"{live_server}/pets/trail")  # makes the player
     page.request.post(f"{live_server}/api/pets/shop/habitats/meadow")

@@ -15,7 +15,7 @@ PAIR = "teach_key_pair_v1"
 
 def open_lesson(page: Page, url: str) -> None:
     page.goto(url)
-    page.wait_for_function("steps.length > 0 && !busy")
+    page.wait_for_function("typeof steps !== 'undefined' && steps.length > 0 && !busy")
 
 
 def press_with_right_shift(page: Page, key: str) -> None:

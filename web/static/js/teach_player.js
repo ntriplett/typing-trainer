@@ -152,6 +152,28 @@ function handleTypeKey(typed) {
   }
 }
 
+// New letters, and anything they opened: each line pops in after the last.
+// The letters' key bonuses come later, from practice (app/lessons.py).
+function showFanfare(data) {
+  const learned = data.learned || [];
+  const lines = [];
+  if (learned.length) {
+    const caps = learned.map((k) => keycap(k)).join(" and ");
+    const them = learned.length > 1 ? "them" : "it";
+    const each = learned.length > 1 ? "each one" : "it";
+    lines.push(`<p class="fanfare-big">🎉 You learned ${caps}!</p>`);
+    lines.push(`<p>Practice ${them}, and once ${them === "them" ? "they're" : "it's"} solid ${each} pays a ` +
+      `<span class="coin-icon"></span>${(data.key_bonus || 0).toLocaleString()} coin bonus!</p>`);
+  }
+  for (const d of data.shop_opened || []) lines.push(`<p class="fanfare-shop">🐾 ${escapeHtml(d.name)} just opened at the Pet Shop!</p>`);
+  if (data.pet_coupon) lines.push(`<p class="fanfare-shop">🎟️ You got a free pet coupon for Household Pets!</p>`);
+  if (!lines.length) return;
+  const box = el("teach-fanfare");
+  box.innerHTML = lines.join("");
+  [...box.children].forEach((line, i) => (line.style.animationDelay = `${0.25 + i * 0.45}s`));
+  box.hidden = false;
+}
+
 async function finish() {
   finished = true;
   busy = true;
@@ -188,6 +210,7 @@ async function finish() {
       el("teach-unlock").textContent = `🎉 You unlocked ${data.unlocked.map((r) => opened[r]).join(" and ")}!`;
       el("teach-unlock").hidden = false;
     }
+    showFanfare(data);
     if (window.Header) {
       Header.setDay(data.day);
       Header.celebrateTokens(data.tokens_earned, data.token_balance);

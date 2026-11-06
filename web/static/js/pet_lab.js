@@ -83,7 +83,7 @@ function label(pet) {
   const names = pet.color_names.filter(Boolean);
   const pct = pet.coat.shares.filter(Boolean).map((s) => `${Math.round(s * 100)}%`);
   const breed = pet.shape.breed ? `${pet.shape.breed}${Object.entries(pet.shape.mix || {}).map(([p, d]) => ` + ${d} ${p}`).join("")}<br>` : "";
-  return `${breed}${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.coat.fins ? `, ${pet.coat.fins} fins` : ""}${pet.face.sparkle ? " ✨" : ""}`;
+  return `${breed}${names.map((n, i) => `${n} ${pct[i]}`).join(" / ")}<br>${pet.coat.pattern}${pet.coat.fins ? `, ${pet.coat.fins} fins` : ""}${petShine(pet) ? ` ✨ ${SHINE_NAMES[petShine(pet)]}` : ""}`;
 }
 
 function renderLitter() {
@@ -130,7 +130,7 @@ function select(pet) {
   $("opt-ears").value = selected.shape.ears + 1;
   $("ears-value").textContent = (selected.shape.ears + 1).toFixed(1);
   $("opt-tail").value = selected.shape.tail;
-  $("opt-sparkle").checked = selected.face.sparkle;
+  $("opt-shine").value = petShine(selected) || "";
   // species-only looks show their sliders when this pet has them
   for (const key of ["weight", "snout", "legs", "wool", "horns", "neck", "dome", "crest", "thick", "wings", "fins", "tailh", "size"]) {
     $(`${key}-knob`).hidden = !(key in selected.shape);
@@ -242,7 +242,10 @@ knob("opt-ears", (el) => {
   $("ears-value").textContent = Number(el.value).toFixed(1);
 });
 knob("opt-tail", (el) => (selected.shape.tail = Number(el.value)));
-knob("opt-sparkle", (el) => (selected.face.sparkle = el.checked));
+knob("opt-shine", (el) => {
+  selected.shine = el.value || null;
+  selected.face = { ...selected.face, shine: selected.shine, sparkle: false };
+});
 knob("opt-weight", (el) => (selected.shape.weight = Number(el.value)));
 knob("opt-snout", (el) => (selected.shape.snout = Number(el.value)));
 knob("opt-legs", (el) => (selected.shape.legs = Number(el.value)));

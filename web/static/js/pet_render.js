@@ -1900,7 +1900,7 @@ const petCache = new Map();
 // pet's frames (see stableBox), so the pet doesn't shift as it animates.
 function petPixels(genes, growth, frame = 0) {
   const stage = petStage(growth);
-  const anim = genes.face && genes.face.sparkle ? frame % 36 : `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
+  const anim = `${frame % 2}${frame % 9 === 8}${frame % 4 < 2}`;
   const base = `${genes.seed}|${genes.species}|${genes.variant}|${genes.scene}|${stage.id}|${JSON.stringify(genes.coat)}|${JSON.stringify(genes.shape)}|${genes.hex}`;
   const key = `${base}|${anim}`;
   if (petCache.has(key)) return petCache.get(key);
@@ -2089,15 +2089,6 @@ function petFrame(genes, growth, frame) {
 
   }
 
-  // sparkly pets glint now and then
-  if (genes.face && genes.face.sparkle && frame % 4 < 2) {
-    const fx = Math.round(built.center[0] + ((frame * 7) % 9) - 4);
-    const fy = Math.round(built.center[1] - 2 - ((frame * 3) % 4));
-    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (at(fx + dx, fy + dy)) dot(fx + dx, fy + dy, dx || dy ? "#fff6c8" : "#ffffff");
-    }
-  }
-
   applyGlass(out, built);
   return { out, noShadow: !!built.noShadow };
 }
@@ -2113,11 +2104,206 @@ function drawPet(px, x, bottom, genes, growth, { frame = 0, faceLeft = false, sc
     px(sx + scale, bottom - scale, (sw - 2) * scale, scale, "rgba(40, 24, 16, 0.28)");
     px(sx + 3 * scale, bottom, (sw - 6) * scale, scale, "rgba(40, 24, 16, 0.18)");
   }
+  const shine = petShine(genes);
+  const t = shineClock();
+  const at = (i, j) => [x + (faceLeft ? w - 1 - i : i) * scale, top + j * scale];
+  if (shine === "glow") drawGlow(px, pix, genes, t, at, scale);
+  const recolor = shine === "holo" ? holoColor : shine === "starry" ? starryColor(genes) : shine === "glow" ? glowRim(genes, pix, t) : null;
   pix.forEach((row, j) =>
     row.forEach((c, i) => {
-      if (c) px(x + (faceLeft ? w - 1 - i : i) * scale, top + j * scale, scale, scale, c);
+      if (c) px(...at(i, j), scale, scale, recolor ? recolor(c, i, j, t, genes) : c);
     })
   );
+  if (shine === "sparkle") drawSparkles(px, pix, genes, t, at, scale);
+  if (shine === "starry") drawShineStars(px, pix, genes, t, at, scale);
+}
+
+// --- shiny pets ------------------------------------------------------------------------
+// A pet can be one kind of shiny (genes.shine, app/pet_genes.py): sparkle
+// (stars twinkling on and around it), holo (a rainbow sheen sweeping across),
+// glow (a soft halo pulsing around it) or starry (its second color a night sky
+// full of twinkling stars). Older genes said face.sparkle. They run on their own
+// clock, not the walk frame, so they keep going while a pet stands still.
+
+const SHINES = ["sparkle", "holo", "glow", "starry"];
+const GLOW_COLORS = ["#7cf0ff", "#ff8ce8", "#a8ff7c", "#ffe27c", "#b89cff"];
+
+const SHINE_NAMES = { sparkle: "Sparkly", holo: "Holo", glow: "Glowing", starry: "Starry" };
+
+function petShine(genes) {
+  if (genes.shine !== undefined) return genes.shine;
+  const face = genes.face || {};
+  return face.shine || (face.sparkle ? "sparkle" : null);
+}
+
+// A rare feature's name for people: the shiny one says which kind.
+function rareLabel(name, genes, labels) {
+  return name === "shiny" ? `Shiny pet: ${SHINE_NAMES[petShine(genes)] || "shiny"}` : labels[name] || name;
+}
+
+function shineClock() {
+  return (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+}
+
+// A steady pseudo-random number in [0, 1) for these integers.
+function shineHash(...ns) {
+  let h = 2166136261;
+  for (const n of ns) h = Math.imul(h ^ (n | 0), 16777619);
+  h = Math.imul(h ^ (h >>> 13), 0x5bd1e995);
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
+}
+
+function hslHex(h, s, l) {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return rgbHex([f(0) * 255, f(8) * 255, f(4) * 255]);
+}
+
+// Coat pixels only: the outline, pupils and see-through bits keep their color.
+function shineable(c) {
+  return c.length === 7 && c[0] === "#" && luminance(c) > 0.2;
+}
+
+const shineMemo = new Map();
+function shineBlend(c, tint, amount) {
+  const key = `${c}${tint}${amount}`;
+  let out = shineMemo.get(key);
+  if (!out) {
+    if (shineMemo.size > 20000) shineMemo.clear();
+    out = blend(c, tint, amount);
+    shineMemo.set(key, out);
+  }
+  return out;
+}
+
+// Holo: a faint rainbow over the whole coat, and every few seconds a bright
+// band of it sweeping across on the diagonal, like a holographic card.
+function holoColor(c, i, j, t) {
+  if (!shineable(c)) return c;
+  const d = i + j;
+  const hue = Math.round(((d * 14 + t * 90) % 360) / 20) * 20;
+  const sweep = d - ((t * 28) % 110) + 20;
+  const band = Math.abs(sweep) < 2.5 ? 0.62 : Math.abs(sweep) < 5 ? 0.42 : 0.24;
+  return shineBlend(c, hslHex(hue, 0.95, 0.68), band);
+}
+
+// Glow: its color, steady per pet.
+function glowColor(genes) {
+  return GLOW_COLORS[Math.floor(shineHash(genes.seed || 0, 7) * GLOW_COLORS.length)];
+}
+
+// Each pet's pixels' surroundings: empty cells within 3 of the pet, and how far.
+const haloMemo = new WeakMap();
+function haloCells(pix) {
+  if (haloMemo.has(pix)) return haloMemo.get(pix);
+  const filled = (i, j) => j >= 0 && j < pix.length && i >= 0 && i < pix[j].length && pix[j][i];
+  const out = [];
+  const h = pix.length;
+  const w = pix[0] ? pix[0].length : 0;
+  for (let j = -3; j < h + 3; j++) {
+    for (let i = -3; i < w + 3; i++) {
+      if (filled(i, j)) continue;
+      let d = 9;
+      for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) if (filled(i + di, j + dj)) d = Math.min(d, Math.hypot(di, dj));
+      if (d <= 3) out.push([i, j, d]);
+    }
+  }
+  haloMemo.set(pix, out);
+  return out;
+}
+
+function drawGlow(px, pix, genes, t, at, scale) {
+  const [r, g, b] = hexRgb(glowColor(genes));
+  const pulse = 0.7 + 0.3 * Math.sin(t * 2.4);
+  const [lr, lg, lb] = hexRgb(blend(glowColor(genes), "#ffffff", 0.45));
+  const ring = [`rgba(${lr}, ${lg}, ${lb}, ${(0.95 * pulse).toFixed(2)})`, `rgba(${r}, ${g}, ${b}, ${(0.55 * pulse).toFixed(2)})`, `rgba(${r}, ${g}, ${b}, ${(0.22 * pulse).toFixed(2)})`];
+  for (const [i, j, d] of haloCells(pix)) px(...at(i, j), scale, scale, ring[d <= 1.5 ? 0 : d <= 2.3 ? 1 : 2]);
+}
+
+// The glow lights its own edge: outline pixels next to the air take the glow's color.
+function glowRim(genes, pix, t) {
+  const glow = glowColor(genes);
+  const amount = Math.round((0.5 + 0.2 * Math.sin(t * 2.4)) * 10) / 10;
+  const open = (i, j) => !(pix[j] && pix[j][i]);
+  return (c, i, j) => (!shineable(c) && (open(i - 1, j) || open(i + 1, j) || open(i, j - 1) || open(i, j + 1)) && c[0] === "#" ? shineBlend(c, glow, amount) : c);
+}
+
+// Starry: the coat's second color (or its only one) becomes a night sky.
+function starryColor(genes) {
+  const hex = genes.hex || [];
+  const shares = (genes.coat && genes.coat.shares) || [];
+  const sky = hex[1] && (shares[1] || 0) >= 0.3 ? hex[1] : hex[0];
+  const other = sky === hex[1] ? hex[0] : null;
+  // how far a pixel is from a color's shading: the color toward shadow or highlight
+  const near = (c, target) => Math.min(...["#2a1840", "#ffffff", "#000000"].map((tint) => segmentGap(hexRgb(c), hexRgb(target), hexRgb(tint))));
+  return (c, i, j) => {
+    if (!sky || !shineable(c)) return c;
+    const memoKey = `starry${sky}${other}${c}`;
+    let out = shineMemo.get(memoKey);
+    if (out === undefined) {
+      const isSky = !other || near(c, sky) < near(c, other);
+      // keep its light and shade, in midnight blues and purples
+      out = isSky ? blend("#1c1848", "#6a58c8", Math.min(1, luminance(c) * 1.1)) : c;
+      shineMemo.set(memoKey, out);
+    }
+    return out;
+  };
+}
+
+// RGB distance from point p to the segment a..b.
+function segmentGap(p, a, b) {
+  const ab = a.map((v, k) => b[k] - v);
+  const len = ab.reduce((n, v) => n + v * v, 0) || 1;
+  const t = Math.max(0, Math.min(1, ab.reduce((n, v, k) => n + v * (p[k] - a[k]), 0) / len));
+  return Math.hypot(...p.map((v, k) => v - (a[k] + ab[k] * t)));
+}
+
+// Stars in the night-sky part: a few dots twinkle, now and then one flashes into a cross.
+function drawShineStars(px, pix, genes, t, at, scale) {
+  const recolor = starryColor(genes);
+  pix.forEach((row, j) =>
+    row.forEach((c, i) => {
+      if (!c || recolor(c, i, j) === c) return;
+      const h = shineHash(i, j, genes.seed || 0);
+      if (h > 0.09) return;
+      const glow = Math.sin(t * (1.5 + h * 20) + h * 60);
+      if (glow < -0.2) return;
+      px(...at(i, j), scale, scale, glow > 0.6 ? "#ffffff" : "#c8c0ff");
+      if (glow > 0.93 && h < 0.03) {
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (pix[j + dj] && pix[j + dj][i + di]) px(...at(i + di, j + dj), scale, scale, "#e8e4ff");
+      }
+    })
+  );
+}
+
+// Sparkle: three stars at a time, on it and in the air around it, each growing,
+// flashing and fading at a new spot every time.
+const SPARKLE_SLOTS = 3;
+const SPARKLE_SECONDS = 1.3;
+
+function drawSparkles(px, pix, genes, t, at, scale) {
+  const h = pix.length;
+  const w = pix[0] ? pix[0].length : 0;
+  for (let k = 0; k < SPARKLE_SLOTS; k++) {
+    const phase = t / SPARKLE_SECONDS + k / SPARKLE_SLOTS + shineHash(genes.seed || 0, k) ;
+    const round = Math.floor(phase);
+    const p = phase - round; // 0..1 through this star's life
+    const life = Math.sin(p * Math.PI); // grows, peaks, fades
+    const r1 = shineHash(genes.seed || 0, k, round);
+    const r2 = shineHash(round, k, genes.seed || 0, 3);
+    const ci = Math.round(-3 + r1 * (w + 5));
+    const cj = Math.round(-3 + r2 * (h * 0.85 + 3));
+    const size = life > 0.85 ? 3 : life > 0.55 ? 2 : life > 0.25 ? 1 : 0;
+    if (life < 0.08) continue;
+    px(...at(ci, cj), scale, scale, "#ffffff");
+    for (let a = 1; a <= size; a++) {
+      const tip = a === size;
+      const color = tip ? "#ffd86a" : "#fff6c8";
+      for (const [di, dj] of [[a, 0], [-a, 0], [0, a], [0, -a]]) px(...at(ci + di, cj + dj), scale, scale, color);
+    }
+    if (size >= 2) for (const [di, dj] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) px(...at(ci + di, cj + dj), scale, scale, "rgba(255, 246, 200, 0.7)");
+  }
 }
 
 function petSize(genes, growth) {

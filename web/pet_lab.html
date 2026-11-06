@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/css/app.css" />
   <link rel="stylesheet" href="/static/css/theme.css" />
+  <script src="/static/js/ui_scale.js"></script>
   <link rel="stylesheet" href="/static/css/teach.css" />
   <link rel="stylesheet" href="/static/css/pet_lab.css" />
 </head>
@@ -68,7 +69,7 @@
         <label id="fins-knob">Fins <input id="opt-fins" type="range" min="-1" max="1" step="0.1" /></label>
         <label id="tailh-knob">Tail height <input id="opt-tailh" type="range" min="-1" max="1" step="0.1" /></label>
         <label id="size-knob">Size <input id="opt-size" type="range" min="-1" max="1" step="0.1" /></label>
-        <label><input id="opt-sparkle" type="checkbox" /> Sparkly</label>
+        <label>Shiny <select id="opt-shine"><option value="">none</option><option value="sparkle">Sparkly</option><option value="holo">Holo</option><option value="glow">Glowing</option><option value="starry">Starry</option></select></label>
       </div>
       <canvas id="solo" class="stages-art" width="960" height="320"></canvas>
       <pre id="close-stats" class="lab-stats"></pre>

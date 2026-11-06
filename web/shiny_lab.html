@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Typing Trainer — Shiny Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+  <link rel="stylesheet" href="/static/css/theme.css" />
+  <script src="/static/js/ui_scale.js"></script>
+  <style>
+    main.shiny-lab { max-width: 1500px; width: calc(100% - 32px); }
+    .shiny-grid { display: grid; grid-template-columns: 110px repeat(5, 1fr); gap: 0.4rem; align-items: center; }
+    .shiny-grid .head { font-size: 22px; text-align: center; }
+    .shiny-grid .species { font-size: 20px; }
+    .shiny-grid canvas { width: 100%; image-rendering: pixelated; border: 3px solid var(--wood-light); background: #cfe8c0; }
+    .shiny-lab.night .shiny-grid canvas { background: #1e2440; }
+    .lab-options { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; font-size: 20px; margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+  <main class="shiny-lab">
+    <section class="panel">
+      <h1>Shiny pets</h1>
+      <p class="hint">Every shiny type on the same pets, side by side. Nothing here is saved.</p>
+      <div class="lab-options">
+        <button id="reroll" class="button-go">New pets</button>
+        <label><input id="night" type="checkbox" /> Night background</label>
+        <label>Growth <input id="growth" type="range" min="0" max="10" value="10" /></label>
+        <label><input id="walk" type="checkbox" checked /> Walking</label>
+      </div>
+      <div class="shiny-grid" id="grid"></div>
+    </section>
+  </main>
+  <script src="/static/js/sprites.js"></script>
+  <script src="/static/js/pet_render.js"></script>
+  <script>
+    // The shiny lab (dev only): pets from the real roller, drawn plain and as each
+    // kind of shiny (pet_render.js SHINES), animated.
+    const SPECIES = ["cat", "dog", "bunny", "fish", "goat", "turtle", "dragon", "unicorn"];
+    const KINDS = [null, ...SHINES];
+    const W = 260, H = 190;
+    let rows = [];
+    let frame = 0;
+
+    async function reroll() {
+      const seed = Math.floor(Math.random() * 1e6);
+      rows = await Promise.all(SPECIES.map(async (sp, i) => (await (await fetch(`/api/pet-lab/roll?species=${sp}&seed=${seed + i * 31}`)).json()).pets[0]));
+      const grid = document.getElementById("grid");
+      grid.innerHTML = `<span></span>` + KINDS.map((k) => `<span class="head">${k || "plain"}</span>`).join("");
+      rows.forEach((pet, r) => {
+        grid.insertAdjacentHTML("beforeend", `<span class="species">${pet.species}</span>`);
+        KINDS.forEach((k, c) => grid.insertAdjacentHTML("beforeend", `<canvas width="${W}" height="${H}" data-r="${r}" data-c="${c}"></canvas>`));
+      });
+    }
+
+    function draw() {
+      frame += 1;
+      const growth = Number(document.getElementById("growth").value);
+      const walk = document.getElementById("walk").checked;
+      for (const canvas of document.querySelectorAll("#grid canvas")) {
+        const pet = rows[canvas.dataset.r];
+        const kind = KINDS[canvas.dataset.c];
+        const genes = { ...pet, face: { ...pet.face, sparkle: false }, shine: kind };
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, W, H);
+        const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), Math.ceil(w), Math.ceil(h)); };
+        const size = petSize(genes, growth);
+        const scale = Math.max(1, Math.min(6, Math.floor((W - 40) / size.w), Math.floor((H - 30) / size.h)));
+        drawPet(px, Math.round((W - size.w * scale) / 2), H - 12, genes, growth, { frame: walk ? Math.floor(frame / 3) : 0, scale });
+      }
+    }
+
+    document.getElementById("reroll").onclick = reroll;
+    document.getElementById("night").onchange = (e) => document.querySelector(".shiny-lab").classList.toggle("night", e.target.checked);
+    reroll().then(() => setInterval(draw, 80));
+  </script>
+</body>
+</html>

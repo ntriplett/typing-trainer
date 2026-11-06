@@ -261,6 +261,22 @@ CREATE TABLE IF NOT EXISTS special_order (
     leaves_on TEXT NOT NULL
 );
 
+-- A pet's design shared with another player on this computer (app/pet_share.py):
+-- it waits in their Special Orders from the day after sent_on until they adopt
+-- or decline it. One waiting share per sender and friend.
+CREATE TABLE IF NOT EXISTS pet_share (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_learner INTEGER NOT NULL REFERENCES learner(id),
+    to_learner INTEGER NOT NULL REFERENCES learner(id),
+    species TEXT NOT NULL,
+    genes TEXT NOT NULL,
+    sent_on TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'waiting',
+    done_on TEXT,
+    pet_id INTEGER  -- the friend's new pet, once adopted
+);
+CREATE INDEX IF NOT EXISTS idx_pet_share_to ON pet_share(to_learner, status);
+
 -- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
 -- placed furniture, keyed by room name.
 CREATE TABLE IF NOT EXISTS room_surface (
@@ -319,6 +335,18 @@ CREATE TABLE IF NOT EXISTS practice_chunk (
     seed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_practice_chunk_learner ON practice_chunk(learner_id);
+
+-- Extra practice a grown-up allowed (app/daily.py): it counts after its chunk's
+-- regular practice is full, and goes when the chunk ends.
+CREATE TABLE IF NOT EXISTS extra_practice (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    chunk_id INTEGER NOT NULL REFERENCES practice_chunk(id),
+    seconds INTEGER NOT NULL,
+    practiced_seconds REAL NOT NULL DEFAULT 0,
+    granted_at TEXT NOT NULL,
+    done_at TEXT
+);
 
 -- Seeds: the third currency (same shape as token_ledger). Earned at half
 -- the daily goal, spent by planting in the garden (app/garden.py).
@@ -952,6 +980,31 @@ def create_chunk(conn: sqlite3.Connection, learner_id: int, started_at: datetime
     return cur.lastrowid
 
 
+def add_extra_practice(conn: sqlite3.Connection, learner_id: int, chunk_id: int, seconds: int, granted_at: datetime) -> int:
+    cur = conn.execute(
+        "INSERT INTO extra_practice (learner_id, chunk_id, seconds, granted_at) VALUES (?, ?, ?, ?)",
+        (learner_id, chunk_id, seconds, granted_at.isoformat()),
+    )
+    return cur.lastrowid
+
+
+def open_extra_practice(conn: sqlite3.Connection, learner_id: int, chunk_id: int) -> dict | None:
+    """The chunk's extra practice that isn't done yet, if any."""
+    row = conn.execute(
+        "SELECT id, seconds, practiced_seconds FROM extra_practice"
+        " WHERE learner_id = ? AND chunk_id = ? AND done_at IS NULL ORDER BY id DESC LIMIT 1",
+        (learner_id, chunk_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_extra_practice(conn: sqlite3.Connection, extra_id: int, practiced_seconds: float, done_at: datetime | None) -> None:
+    conn.execute(
+        "UPDATE extra_practice SET practiced_seconds = ?, done_at = ? WHERE id = ?",
+        (practiced_seconds, done_at.isoformat() if done_at else None, extra_id),
+    )
+
+
 def update_chunk(
     conn: sqlite3.Connection,
     chunk_id: int,
@@ -1000,20 +1053,41 @@ def recent_lesson_events(conn: sqlite3.Connection, learner_id: int, limit: int =
     ]
 
 
-def recent_keystrokes(conn: sqlite3.Connection, learner_id: int, limit: int = 8000) -> list[tuple[str, bool]]:
-    """(expected_char, correct) for the learner's newest keystrokes, newest first."""
+def recent_keystrokes(
+    conn: sqlite3.Connection, learner_id: int, limit: int = 8000, practice_only: bool = False
+) -> list[tuple[str, bool]]:
+    """(expected_char, correct) for the learner's newest keystrokes, newest
+    first; practice_only leaves out the learn lessons' (teach pages)."""
     rows = conn.execute(
-        """
+        f"""
         SELECT k.expected_char, k.correct
         FROM keystroke_log k
         JOIN session_event se ON k.session_event_id = se.id
         JOIN session s ON se.session_id = s.id
-        WHERE s.learner_id = ?
+        WHERE s.learner_id = ? {"AND se.phase != 'learn'" if practice_only else ""}
         ORDER BY k.id DESC LIMIT ?
         """,
         (learner_id, limit),
     ).fetchall()
     return [(r["expected_char"], bool(r["correct"])) for r in rows]
+
+
+def practice_lesson_counts(conn: sqlite3.Connection, learner_id: int, keys: list[str]) -> dict[str, int]:
+    """key -> how many lessons, not counting learn lessons, it was typed in."""
+    if not keys:
+        return {}
+    rows = conn.execute(
+        f"""
+        SELECT k.expected_char AS key, COUNT(DISTINCT se.id) AS n
+        FROM keystroke_log k
+        JOIN session_event se ON k.session_event_id = se.id
+        JOIN session s ON se.session_id = s.id
+        WHERE s.learner_id = ? AND se.phase != 'learn' AND k.expected_char IN ({",".join("?" * len(keys))})
+        GROUP BY k.expected_char
+        """,
+        (learner_id, *keys),
+    ).fetchall()
+    return {r["key"]: r["n"] for r in rows}
 
 
 def latest_session(conn: sqlite3.Connection, learner_id: int) -> Session | None:
@@ -1452,3 +1526,52 @@ def put_special_order(conn: sqlite3.Connection, learner_id: int, order: dict) ->
         f"INSERT OR REPLACE INTO special_order (learner_id, {_ORDER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (learner_id, *(order[k] for k in _ORDER_COLUMNS.split(", "))),
     )
+
+
+# --- pet sharing (app/pet_share.py) ------------------------------------------------------
+
+_SHARE_COLUMNS = "id, from_learner, to_learner, species, genes, sent_on, status, done_on, pet_id"
+
+
+def _share(row: sqlite3.Row) -> dict:
+    return {**dict(row), "genes": json.loads(row["genes"])}
+
+
+def add_pet_share(conn: sqlite3.Connection, from_learner: int, to_learner: int, genes: dict, sent_on: str) -> int:
+    cur = conn.execute(
+        "INSERT INTO pet_share (from_learner, to_learner, species, genes, sent_on) VALUES (?, ?, ?, ?, ?)",
+        (from_learner, to_learner, genes["species"], json.dumps(genes), sent_on),
+    )
+    return cur.lastrowid
+
+
+def waiting_pet_shares(conn: sqlite3.Connection, *, from_learner: int | None = None, to_learner: int | None = None) -> list[dict]:
+    """Shares not yet adopted or declined, sent by and/or to a player, oldest first."""
+    where, args = ["status = 'waiting'"], []
+    if from_learner is not None:
+        where.append("from_learner = ?")
+        args.append(from_learner)
+    if to_learner is not None:
+        where.append("to_learner = ?")
+        args.append(to_learner)
+    rows = conn.execute(f"SELECT {_SHARE_COLUMNS} FROM pet_share WHERE {' AND '.join(where)} ORDER BY id", args)
+    return [_share(r) for r in rows]
+
+
+def get_pet_share(conn: sqlite3.Connection, share_id: int) -> dict | None:
+    row = conn.execute(f"SELECT {_SHARE_COLUMNS} FROM pet_share WHERE id = ?", (share_id,)).fetchone()
+    return _share(row) if row else None
+
+
+def finish_pet_share(conn: sqlite3.Connection, share_id: int, status: str, done_on: str, pet_id: int | None = None) -> None:
+    conn.execute("UPDATE pet_share SET status = ?, done_on = ?, pet_id = ? WHERE id = ?", (status, done_on, pet_id, share_id))
+
+
+def pet_senders(conn: sqlite3.Connection, learner_id: int) -> dict[int, str]:
+    """pet id -> the name of the friend who shared it, for a player's adopted shares."""
+    rows = conn.execute(
+        "SELECT s.pet_id, l.name FROM pet_share s JOIN learner l ON l.id = s.from_learner"
+        " WHERE s.to_learner = ? AND s.status = 'adopted'",
+        (learner_id,),
+    )
+    return {r["pet_id"]: r["name"] for r in rows}

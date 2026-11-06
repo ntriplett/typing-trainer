@@ -460,18 +460,21 @@ function showStep(s) {
   if (!target) return;
   const at = target.getBoundingClientRect();
   const home = box.getBoundingClientRect();
-  const x = at.left - home.left + at.width / 2;
-  const y = at.top - home.top + at.height / 2;
+  const z = box.currentCSSZoom || 1; // boxes are in screen px, styles in the page's (ui_scale.js)
+  const x = (at.left - home.left + at.width / 2) / z;
+  const y = (at.top - home.top + at.height / 2) / z;
   // a shot in the move's color, from the one acting to its target
   if (s.act === "hit" && actor) {
     const from = actor.getBoundingClientRect();
+    const sx = (from.left - home.left + from.width / 2) / z;
+    const sy = (from.top - home.top + from.height / 2) / z;
     const shot = document.createElement("div");
     shot.className = "wander-shot";
     shot.style.setProperty("--fx", color);
-    shot.style.left = `${from.left - home.left + from.width / 2}px`;
-    shot.style.top = `${from.top - home.top + from.height / 2}px`;
-    shot.style.setProperty("--dx", `${x - (from.left - home.left + from.width / 2)}px`);
-    shot.style.setProperty("--dy", `${y - (from.top - home.top + from.height / 2)}px`);
+    shot.style.left = `${sx}px`;
+    shot.style.top = `${sy}px`;
+    shot.style.setProperty("--dx", `${x - sx}px`);
+    shot.style.setProperty("--dy", `${y - sy}px`);
     box.appendChild(shot);
     setTimeout(() => shot.remove(), 520);
   }

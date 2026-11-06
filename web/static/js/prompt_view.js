@@ -13,6 +13,11 @@
 //   view.typed           // characters marked so far
 //   view.typeable        // exactly what a perfect typist types (tests use it)
 //   view.skipped         // wrap spaces dropped (not typed)
+//
+// The fit is measured again when the typing font finishes loading or the
+// box changes size, and whatever isn't typed yet is wrapped again, so a
+// line never runs out of the box (the first measure can happen in the
+// fallback font, which is narrower).
 
 class PromptView {
   constructor(container) {
@@ -24,15 +29,44 @@ class PromptView {
     this.nextEl.className = "prompt-line prompt-next";
     container.replaceChildren(this.currentEl, this.nextEl);
     this.lines = [];
+    if (window.ResizeObserver) new ResizeObserver(() => this.refit()).observe(container);
+    if (document.fonts) document.fonts.addEventListener("loadingdone", () => this.refit());
   }
 
   load(prompt) {
     this.chars = [...prompt];
-    this.lines = PromptView.wrap(this.chars, this.fitChars());
+    this.marks = []; // char index -> "correct" / "incorrect", kept through a refit
+    this.missed = new Set();
+    this.maxChars = this.fitChars();
+    this.lines = PromptView.wrap(this.chars, this.maxChars);
     this.lineIndex = 0;
     this.col = 0;
     this.typed = 0;
     this.locked = false;
+    this.render();
+    if (document.fonts) {
+      document.fonts.load(getComputedStyle(this.currentEl).font).then(() => this.refit(), () => {});
+      document.fonts.ready.then(() => this.refit());
+    }
+  }
+
+  // Wrap the rest again if the box now fits a different number of
+  // characters; typed characters keep their marks and the place moves with them.
+  refit() {
+    if (this.done || !this.lines.length || !this.currentEl.clientWidth) return;
+    const fit = this.fitChars();
+    if (fit === this.maxChars) return;
+    this.maxChars = fit;
+    const line = this.lines[this.lineIndex];
+    const at = line[this.col];
+    const start = line[0];
+    const rest = PromptView.wrap(this.chars.slice(start), fit).map((l) => l.map((i) => i + start));
+    let li = rest.findIndex((l) => l[l.length - 1] >= at);
+    if (li < 0) li = rest.length - 1;
+    const col = rest[li].findIndex((i) => i >= at);
+    this.lines = this.lines.slice(0, this.lineIndex).concat(rest);
+    this.lineIndex += li;
+    this.col = col < 0 ? 0 : col;
     this.render();
   }
 
@@ -56,6 +90,7 @@ class PromptView {
     const span = this.spans[this.col];
     span.classList.remove("current", "locked", "pending", "shake");
     span.classList.add(correct ? "correct" : "incorrect");
+    this.marks[this.lines[this.lineIndex][this.col]] = correct ? "correct" : "incorrect";
     this.typed += 1;
     this.col += 1;
     if (this.col >= this.lines[this.lineIndex].length) {
@@ -74,6 +109,7 @@ class PromptView {
     span.classList.remove("shake");
     void span.offsetWidth; // restart the shake on repeated misses
     span.classList.add("shake", "missed");
+    this.missed.add(this.lines[this.lineIndex][this.col]);
   }
 
   setLocked(locked) {
@@ -93,7 +129,8 @@ class PromptView {
     const spans = indices.map((i) => {
       const span = document.createElement("span");
       const ch = this.chars[i];
-      span.className = ch === " " ? "space pending" : "pending";
+      span.className = (ch === " " ? "space " : "") + (this.marks[i] || "pending");
+      if (this.missed.has(i)) span.classList.add("missed");
       span.textContent = ch;
       return span;
     });
@@ -113,8 +150,9 @@ class PromptView {
   fitChars() {
     const probe = document.createElement("span");
     probe.textContent = "MMMMMMMMMM";
-    this.currentEl.replaceChildren(probe);
-    const charWidth = probe.getBoundingClientRect().width / 10;
+    probe.style.cssText = "position: absolute; visibility: hidden";
+    this.currentEl.appendChild(probe);
+    const charWidth = probe.getBoundingClientRect().width / 10 / (probe.currentCSSZoom || 1); // in the box's own px
     const width = this.currentEl.clientWidth;
     probe.remove();
     return charWidth && width ? Math.max(8, Math.floor(width / charWidth) - 1) : 24;

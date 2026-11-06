@@ -15,7 +15,7 @@ MAX_GROWTH = 10
 FAVORITE_GROWTH = 2  # its favorite veggie grows a pet twice as much
 MAX_ALONG = 2  # avatar slots 1 (right) and 2 (left)
 MAX_NAME = 16
-TRAIL_SPOTS = 10
+TRAIL_SPOTS = 10  # a section of the trail: it grows another section when it's full
 HABITAT_PETS = 6
 WATER_ONLY = {"fish"}  # they wait for the Aquarium
 SWIMMERS_ONLY = {"mermaid"}  # habitats with enough water to swim in, and nowhere else
@@ -50,6 +50,7 @@ HABITAT_KINDS: dict[str, HabitatKind] = {
         HabitatKind("orchard", "Autumn Orchard", "everyday"),
         HabitatKind("pond", "Pond & Marsh", "everyday", water=True),
         HabitatKind("savanna", "Savanna", "everyday", water=True),
+        HabitatKind("cherry", "Cherry Blossom Grove", "everyday"),
         HabitatKind("cottage", "Cozy Cottage", "cozy"),
         HabitatKind("greenhouse", "Greenhouse", "cozy"),
         HabitatKind("treehouse", "Treehouse Village", "cozy"),
@@ -206,6 +207,12 @@ def guard_pet(conn, learner_id: int) -> dict:
 # --- habitats -------------------------------------------------------------------------
 
 
+def trail_length(habitats: list[dict]) -> int:
+    """Spots on the trail: whole sections of TRAIL_SPOTS, always with one empty."""
+    used = max([len(habitats)] + [h["spot"] + 1 for h in habitats])
+    return (used // TRAIL_SPOTS + 1) * TRAIL_SPOTS
+
+
 def habitat_price(conn, learner_id: int, kind: str) -> int:
     tier = HABITAT_KINDS[kind].tier
     if tier == FREE_TIER and not db.list_habitats(conn, learner_id):
@@ -214,17 +221,15 @@ def habitat_price(conn, learner_id: int, kind: str) -> int:
 
 
 def buy_habitat(conn, learner_id: int, kind: str, magical_open: bool = False) -> dict:
-    """A new habitat takes the first empty spot on the trail. The same kind
-    can be bought again ("Forest 2")."""
+    """A new habitat takes the first empty spot on the trail (it grows when
+    full). The same kind can be bought again ("Forest 2")."""
     if kind not in HABITAT_KINDS:
         raise CareError("There's no habitat like that.")
     if HABITAT_KINDS[kind].tier == "magical" and not magical_open:
         raise CareError("Magical habitats open with the Mythical Pets department.")
     habitats = db.list_habitats(conn, learner_id)
     taken = {h["spot"] for h in habitats}
-    spot = next((s for s in range(TRAIL_SPOTS) if s not in taken), None)
-    if spot is None:
-        raise CareError("Your trail is full!")
+    spot = next(s for s in range(trail_length(habitats)) if s not in taken)
     cost = habitat_price(conn, learner_id, kind)
     if cost:
         balance = db.get_coin_balance(conn, learner_id)
@@ -249,7 +254,7 @@ def habitats_state(conn, learner_id: int, magical_open: bool = False) -> dict:
             for h in HABITAT_KINDS.values()
         ],
         "owned": len(habitats),
-        "spots": TRAIL_SPOTS,
+        "spots": trail_length(habitats),
         "capacity": HABITAT_PETS,
     }
 
@@ -260,11 +265,14 @@ def _habitat_view(habitat: dict, pets: list[dict]) -> dict:
 
 
 def trail(conn, learner_id: int, today: date) -> dict:
-    """All 10 spots along the trail: a habitat with its pets, or an empty lot (None)."""
+    """Every spot along the trail: a habitat with its pets, or an empty lot (None).
+    It comes in sections of TRAIL_SPOTS, a new one once the last is full."""
     pets = [view(p, today) for p in db.list_v3_pets(conn, learner_id)]
-    by_spot = {h["spot"]: h for h in db.list_habitats(conn, learner_id)}
+    habitats = db.list_habitats(conn, learner_id)
+    by_spot = {h["spot"]: h for h in habitats}
     return {
-        "spots": [_habitat_view(by_spot[s], pets) if s in by_spot else None for s in range(TRAIL_SPOTS)],
+        "spots": [_habitat_view(by_spot[s], pets) if s in by_spot else None for s in range(trail_length(habitats))],
+        "section": TRAIL_SPOTS,
     }
 
 
@@ -285,12 +293,15 @@ def care_state(conn, learner_id: int, today: date) -> dict:
     schools: dict[int, list[dict]] = {}
     for p in rows:
         schools.setdefault(p["school"] or p["id"], []).append(p)
+    senders = db.pet_senders(conn, learner_id)  # pets a friend shared (app/pet_share.py)
     pets = []
     for row, v in zip(rows, every, strict=True):
         if row["school"]:
             continue
         members = schools[row["id"]]
         entry = {**v, "school": len(members), "school_tanks": sorted({aquarium.tank_spot(m["home"]) for m in members} - {None})}
+        if row["id"] in senders:
+            entry["from_friend"] = senders[row["id"]]
         if v["water"]:
             from app import pet_shop  # pet_shop imports this module; prices live there
 

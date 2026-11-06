@@ -105,7 +105,7 @@
 /* --- the map --- */
 
 .trail-map {
-  width: min(560px, 94vw);
+  width: min(560px, calc(94vw / var(--ui-zoom, 1)));
 }
 
 .trail-map .map-close {
@@ -294,4 +294,14 @@
   from {
     transform: translate(-50%, -50%) scale(0.6);
   }
+}
+
+/* the map's sections, when the trail has grown past 10 stops */
+.map-sections {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 20px;
 }

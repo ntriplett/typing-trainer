@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -87,7 +87,7 @@ async def no_cache_responses(request, call_next):
 
 # Dev only (config.DEV_MODE): the labs, and the ways they play things outside the
 # real flow, where a lesson comes from the brain and a game from the arcade.
-DEV_ONLY = re.compile(r"^/(labs|teach-lab|practice-lab|game-lab|pet-lab|wander-lab|scene-lab|move-lab|practice/.*|api/(pet-lab|wander-lab|scene-lab|move-lab|practice|teach)(/.*)?)$")
+DEV_ONLY = re.compile(r"^/(labs|teach-lab|practice-lab|game-lab|pet-lab|shiny-lab|wander-lab|scene-lab|move-lab|practice/.*|api/(pet-lab|wander-lab|scene-lab|move-lab|practice|teach)(/.*)?)$")
 
 
 def _dev_only(request: Request) -> bool:
@@ -428,6 +428,11 @@ def buy_keyboard_hint(body: HintIn, conn=Depends(get_db), learner_id: int = Depe
 @app.get("/pet-lab")
 def pet_lab_page() -> FileResponse:
     return FileResponse(WEB_DIR / "pet_lab.html")
+
+
+@app.get("/shiny-lab")
+def shiny_lab_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "shiny_lab.html")
 
 
 @app.get("/api/pet-lab/species")
@@ -784,6 +789,7 @@ def complete_lesson(
 ) -> dict:
     keystrokes = [KeystrokeEvent(**k.model_dump()) for k in body.keystrokes]
     before = unlocks.status(conn, learner_id)
+    depts_before = pet_shop.open_departments(conn, learner_id)
     try:
         done = lessons.complete(
             conn, learner_id, lesson_id, keystrokes, body.active_ms, body.skipped_chars, now()
@@ -791,7 +797,15 @@ def complete_lesson(
     except lessons.LessonError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     after = unlocks.status(conn, learner_id)
-    return {**done, "unlocked": unlocks.newly_unlocked(before, after)}
+    opened = [
+        {"id": d.id, "name": d.name}
+        for d in pet_shop.DEPARTMENTS.values()
+        if d.id in pet_shop.open_departments(conn, learner_id) - depts_before
+    ]
+    return {
+        **done, "unlocked": unlocks.newly_unlocked(before, after), "shop_opened": opened,
+        "pet_coupon": after["pet_coupon"] and not before["pet_coupon"], "key_bonus": lessons.KEY_BONUS,
+    }
 
 
 # --- For Grown-ups ---------------------------------------------------------------------
@@ -866,6 +880,16 @@ def parent_overview(conn=Depends(get_db), learner_id: int = Depends(current_lear
 @app.put("/api/parent/settings", dependencies=[Depends(require_grownup)])
 def parent_settings(body: SettingsIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
     daily.save_settings(conn, learner_id, daily.Settings(body.goal_minutes, body.learn_vs_practice))
+    return _parent_entry(conn, learner_id)
+
+
+@app.post("/api/parent/extra", dependencies=[Depends(require_grownup)])
+def parent_extra(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Allow 15 more minutes of practice today, for 2 more tokens."""
+    try:
+        daily.grant_extra(conn, learner_id, now())
+    except daily.ExtraError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     return _parent_entry(conn, learner_id)
 
 
@@ -1003,7 +1027,7 @@ def wander_lab_page() -> FileResponse:
 @app.get("/labs")
 def labs_page() -> HTMLResponse:
     """Dev mode's way into the labs."""
-    links = {"Teach lessons": "/teach-lab", "Practice themes": "/practice-lab", "Games": "/game-lab", "Pet colors": "/pet-lab",
+    links = {"Teach lessons": "/teach-lab", "Practice themes": "/practice-lab", "Games": "/game-lab", "Pet colors": "/pet-lab", "Shiny pets": "/shiny-lab",
              "Wanderpaw (a free day)": "/wanderpaw?lab=1", "Wanderpaw lab": "/wander-lab", "Move tiles": "/move-lab", "Scenes": "/scene-lab"}
     rows = "".join(f'<li><a href="{href}">{name}</a></li>' for name, href in links.items())
     return HTMLResponse(f"<!DOCTYPE html><title>Labs</title><h1>Labs (dev mode)</h1><ul>{rows}</ul>")
@@ -1543,7 +1567,17 @@ def _shop_call(action, *args):
 
 
 def _department(conn, learner_id: int, dept: str) -> dict:
-    return {**_me(conn, learner_id), **_shop_call(pet_shop.department_state, conn, learner_id, dept, _today())}
+    out = {**_me(conn, learner_id), **_shop_call(pet_shop.department_state, conn, learner_id, dept, _today())}
+    if dept == "orders":  # friends' pets wait here too (app/pet_share.py)
+        out["shared"] = pet_share.waiting_for(conn, learner_id, _today())
+    return out
+
+
+def _share_call(action, *args):
+    try:
+        return action(*args)
+    except pet_share.ShareError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @app.get("/api/pets/hub")
@@ -1553,7 +1587,22 @@ def pets_hub(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -
 
 @app.get("/api/pets/shop")
 def pet_shop_front(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    return {**_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today())}
+    return {
+        **_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today()),
+        "shared_waiting": len(pet_share.waiting_for(conn, learner_id, _today())),
+    }
+
+
+@app.post("/api/pets/shop/shared/{share_id}/adopt")
+def adopt_shared_pet(share_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    bought = _share_call(pet_share.adopt, conn, learner_id, share_id, _today())
+    return {**_department(conn, learner_id, "orders"), "bought": bought}
+
+
+@app.post("/api/pets/shop/shared/{share_id}/decline")
+def decline_shared_pet(share_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    _share_call(pet_share.decline, conn, learner_id, share_id, _today())
+    return _department(conn, learner_id, "orders")
 
 
 @app.get("/api/pets/shop/orders/preview")
@@ -1660,6 +1709,21 @@ def care_tank(pet_id: int, body: HomeIn, conn=Depends(get_db), learner_id: int =
     members = _care_call(pet_care.school_of, conn, learner_id, pet_id)
     _aqua_call(aquarium.set_school_tank, conn, learner_id, members, body.spot)
     return _care(conn, learner_id)
+
+
+class ShareIn(BaseModel):
+    to: int
+
+
+@app.get("/api/care/{pet_id}/share")
+def care_share_friends(pet_id: int, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    return {"friends": _share_call(pet_share.friends, conn, learner_id, pet_id)}
+
+
+@app.post("/api/care/{pet_id}/share")
+def care_share(pet_id: int, body: ShareIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    shared = _share_call(pet_share.send, conn, learner_id, pet_id, body.to, _today())
+    return _care(conn, learner_id, shared=shared)
 
 
 @app.post("/api/care/{pet_id}/copy")

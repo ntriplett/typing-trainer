@@ -1,6 +1,6 @@
 // The everyday ("Outdoors") habitats past the first four (PLAN.md 11j):
 // Farmyard, Backyard, Beach, Desert, Jungle, Snowy Tundra, Autumn Orchard,
-// Pond & Marsh, Savanna. Each look draws on the 160x90 grid and describes
+// Pond & Marsh, Savanna, Cherry Blossom Grove. Each look draws on the 160x90 grid and describes
 // its terrain for pet_motion.js; shared helpers are in habitats.js.
 
 // --- Farmyard -----------------------------------------------------------------------
@@ -290,6 +290,86 @@ function drawSavannaHabitat(r) {
   drawHabitatDisc(r, 138, 59, 9, 3, "#c0b4a0");
 }
 
+// --- Cherry Blossom Grove ------------------------------------------------------------
+// The Cherry Grove background's look (scenery.js cherryTree, stoneLantern):
+// a pink sky, bent trunks under flat clouds of blossom, petals on the grass.
+
+const CHERRY = { shade: "#d880a0", bloom: "#f2a6c0", light: "#fbd0de", trunk: "#5c3a2a" };
+
+// A cherry tree with its trunk's foot at (x, base), `h` tall, leaning d (1 right, -1 left).
+function drawHabitatCherryTree(r, x, base, h, d) {
+  const k = h / 50;
+  const lean = (i) => Math.round(Math.sin(i / 9) * 2 * k) * d;
+  for (let i = 0; i < h * 0.5; i++) r(x + lean(i), base - i, 4 * k, 1, CHERRY.trunk);
+  r(x - 1.5 * k, base - 1.5 * k, 7 * k, 1.5 * k, CHERRY.trunk); // roots spreading at its foot
+  const top = [x + lean(h * 0.5) + 1.5 * k, base - h * 0.5];
+  const ends = [[d * 22, -14], [d * 10, -24], [-d * 12, -18], [d * 30, -4]].map(([dx, dy]) => [top[0] + dx * k, top[1] + dy * k]);
+  for (const [ex, ey] of ends) {
+    const n = Math.ceil(Math.hypot(ex - top[0], ey - top[1]));
+    for (let i = 0; i <= n; i++) r(top[0] + ((ex - top[0]) * i) / n, top[1] + ((ey - top[1]) * i) / n, 2 * k, 2 * k, CHERRY.trunk);
+  }
+  const rand = habitatSeeded(x + h);
+  for (const [ex, ey] of ends) {
+    drawHabitatDisc(r, ex, ey + 2 * k, 11 * k, 5 * k, CHERRY.shade);
+    drawHabitatDisc(r, ex, ey, 11 * k, 5 * k, CHERRY.bloom);
+    drawHabitatDisc(r, ex - 3 * k, ey - 2 * k, 6 * k, 3 * k, CHERRY.light);
+    for (let i = 0; i < 6; i++) r(ex + (rand() - 0.5) * 18 * k, ey + (rand() - 0.5) * 8 * k, 1, 1, "#ffffff");
+  }
+}
+
+function drawHabitatLantern(r, x, base) {
+  r(x - 2, base - 4, 5, 4, "#9a948a");
+  r(x - 1, base - 9, 3, 5, "#b0aaa0");
+  r(x - 3, base - 11, 7, 2, "#9a948a");
+  r(x - 1, base - 10, 3, 1, "#f6d465"); // its little light
+  r(x - 4, base - 13, 9, 2, "#8a847a");
+  r(x - 1, base - 14, 3, 1, "#8a847a");
+}
+
+function drawCherryHabitat(r) {
+  r(0, 0, HABITAT_W, 44, "#fdf0f2"); // pink sky, paler down to the hills
+  r(0, 0, HABITAT_W, 10, "#f2c8d8");
+  r(0, 10, HABITAT_W, 8, "#f6d6e2");
+  r(0, 18, HABITAT_W, 8, "#f9e2ea");
+  r(24, 5, 8, 8, "#fbeeb0"); // a soft sun
+  r(25, 6, 6, 6, "#fdf6d8");
+  drawHabitatCloud(r, 70, 7);
+  drawHabitatCloud(r, 112, 3);
+  drawHabitatHills(r, 34, 46, 4, "#c4e09a", 1.4);
+  drawHabitatGround(r, 44, "#9cc46a", ["#f2a6c0", "#fbd0de", "#ffffff", "#8ab45a", "#b0d47e"], 23, 140);
+  r(0, 44, HABITAT_W, 1, "#b0d47e");
+  // the koi pond, in its ring of stones
+  drawHabitatDisc(r, 118, 70, 22, 8, "#b0aaa0");
+  drawHabitatDisc(r, 118, 70, 20, 6.5, "#5aa0c0");
+  drawHabitatDisc(r, 116, 68, 14, 3, "#7cc0dc");
+  for (const [fx, fy, c] of [[108, 71, "#f08a3a"], [124, 68, "#ffffff"], [130, 72, "#f08a3a"]]) {
+    r(fx, fy, 3, 1, c); // koi
+    r(fx + (fx > 118 ? 3 : -1), fy, 1, 1, c === "#ffffff" ? "#e8502a" : "#ffffff");
+  }
+  drawHabitatDisc(r, 102, 68, 3, 1.5, "#4a8a3a"); // a lily pad with a bloom
+  r(102, 67, 1, 1, CHERRY.bloom);
+  for (const [bx, by] of [[96, 74], [99, 64], [137, 64], [140, 75], [118, 78]]) drawHabitatDisc(r, bx, by, 2, 1, "#9a948a");
+  // the trees: a big one leaning out on the left, a small one behind the pond
+  drawHabitatCherryTree(r, 138, 50, 30, -1);
+  drawHabitatCherryTree(r, 16, 58, 52, 1);
+  drawHabitatLantern(r, 58, 62);
+  // the stone bench, for sunning on
+  r(66, 62, 18, 2, "#b0aaa0");
+  r(66, 62, 18, 0.6, "#c8c2b8");
+  r(68, 64, 3, 4, "#8a847a");
+  r(79, 64, 3, 4, "#8a847a");
+  // petal piles to jump in
+  for (const [lx, ly] of [[30, 80], [80, 84]]) {
+    drawHabitatDisc(r, lx, ly, 9, 3, CHERRY.shade);
+    drawHabitatDisc(r, lx - 1, ly - 1, 6.5, 2, CHERRY.bloom);
+    r(lx - 3, ly - 2, 2, 1, CHERRY.light);
+    r(lx + 2, ly - 1, 1, 1, "#ffffff");
+  }
+  // petals drifting down
+  const rand = habitatSeeded(41);
+  for (let i = 0; i < 26; i++) r(rand() * HABITAT_W, 6 + rand() * 70, 1, 1, i % 3 ? CHERRY.bloom : CHERRY.light);
+}
+
 Object.assign(HABITAT_LOOKS, {
   farmyard: {
     name: "Farmyard",
@@ -462,6 +542,28 @@ Object.assign(HABITAT_LOOKS, {
         { x: 39, y: 54, w: 5, h: 14 },
         { x: 127, y: 56, w: 26, h: 12 },
       ],
+    },
+  },
+  cherry: {
+    name: "Cherry Blossom Grove",
+    draw: drawCherryHabitat,
+    groundTop: 50,
+    groundBottom: 88,
+    props: [
+      { id: "petals", x: 30, y: 80, action: "jump", color: "#f2a6c0" },
+      { id: "more petals", x: 80, y: 84, action: "jump", color: "#fbd0de" },
+      { id: "stone bench", x: 75, y: 62, action: "bask", ledge: 0 },
+      { id: "lantern", x: 52, y: 64 },
+      { id: "under the blossoms", x: 22, y: 60, action: "nap" },
+      { id: "koi pond", x: 96, y: 80 },
+    ],
+    terrain: {
+      water: [
+        { x: 101, y: 66, w: 34, h: 9, color: "#5aa0c0" }, // a koi pond: too small for a mermaid (under 36 wide)
+        { x: 106, y: 64, w: 24, h: 13, color: "#5aa0c0" },
+      ],
+      ledges: [{ x0: 66, x1: 84, y: 62 }],
+      blocks: [{ x: 65, y: 62, w: 20, h: 6 }],
     },
   },
 });

@@ -26,7 +26,6 @@ const RARE_LABEL = {
   mix: "Mixed breed",
   eyes: "Rare eyes",
   "odd eyes": "Odd eyes",
-  sparkle: "Sparkly eyes",
   "main color": "Rare color",
 };
 // The row of keys each locked department waits for (app/pet_shop.py needs).
@@ -48,7 +47,10 @@ let preview = null; // a sample pet for the order form
 const PLURAL = { bunny: "bunnies", fish: "fish", fox: "foxes", sheep: "sheep", phoenix: "phoenixes", flower_fairy: "flower fairies" };
 const speciesName = petSpeciesName;
 const plural = (s) => PLURAL[s] || `${s}s`;
-const slotAt = (index) => dept && dept.slots.find((s) => s.index === index);
+// A friend's shared pet (app/pet_share.py) is drawn like a slot, at index -its id.
+const sharedSlots = () => (dept && dept.shared ? dept.shared.map((s) => ({ ...s, dept: "orders", index: -s.id, share: s.id, sold: false, last_day: false })) : []);
+const slotAt = (index) => dept && (dept.slots.find((s) => s.index === index) || sharedSlots().find((s) => s.index === index));
+const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const coins = (n) => `<span class="coins-inline"><span class="coin-icon"></span>${n.toLocaleString()}</span>`;
 
 // --- drawing -----------------------------------------------------------------------
@@ -193,6 +195,7 @@ function renderEntrance() {
       btn.setAttribute("aria-label", d.open ? d.name : `${d.name}: ${lock}`);
       btn.innerHTML = `<span class="spot-sign">${DEPT_ICON[d.id] || "🐾"} <span class="spot-name">${d.name}</span>${d.open ? "" : `<small>${lock}</small>`}</span>`;
       if (d.id === "companions" && d.open) btn.querySelector(".spot-sign").insertAdjacentHTML("beforeend", `<small>${front.friend ? "A letter for you!" : "No letters today"}</small>`);
+      if (d.id === "orders" && d.open && front.shared_waiting) btn.querySelector(".spot-sign").insertAdjacentHTML("beforeend", `<small>🎁 A pet from a friend!</small>`);
       btn.onclick = () =>
         d.open ? openDept(d.id) : say(d.soon ? `${d.name} is coming soon!` : `${d.name} opens when you learn ${keys}.`);
       return btn;
@@ -471,7 +474,7 @@ function rareList(slot) {
   return Object.entries(slot.rare)
     .filter(([, mult]) => mult >= RARE_SHOWN)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, mult]) => ({ label: RARE_LABEL[name] || name, superRare: mult >= SUPER_RARE }));
+    .map(([name, mult]) => ({ label: rareLabel(name, slot.genes, RARE_LABEL), superRare: mult >= SUPER_RARE }));
 }
 
 function badges(slot) {
@@ -503,7 +506,7 @@ function renderHabitats() {
   page = Math.min(page, rooms.length - 1);
   const room = rooms[page];
   $("dept-title").textContent = `Habitats: ${room.name}`;
-  $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned} of ${h.spots}. Click a picture to look closer!`;
+  $("dept-hint").textContent = `A habitat is a home on the Trailhead where ${h.capacity} of your pets can live and play. You have ${h.owned}${h.owned ? `, and your trail grows when it's full` : ""}. Click a picture to look closer!`;
   $("shop-scene").hidden = false;
 
   const bg = sceneCanvas();
@@ -544,20 +547,17 @@ function showHabitat(kind) {
     <p>A home on your Trailhead for up to ${h.capacity} pets.${kind.price ? "" : " Your first habitat is free!"}</p>
     <div class="detail-actions"></div>`;
   body.querySelector(".habitat-preview").appendChild(habitatBackground(kind.id, 3));
-  const full = h.owned >= h.spots;
   const short = dept.coins < kind.price;
   const btn = document.createElement("button");
   btn.className = "button-gold big-button";
-  btn.disabled = full || short || !kind.open;
+  btn.disabled = short || !kind.open;
   btn.textContent = !kind.open
     ? "Opens with Mythical Pets"
-    : full
-      ? "Your trail is full"
-      : short
-        ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
-        : kind.price
-          ? `Buy for ${kind.price.toLocaleString()} coins`
-          : "Get it free!";
+    : short
+      ? `Need ${(kind.price - dept.coins).toLocaleString()} more coins`
+      : kind.price
+        ? `Buy for ${kind.price.toLocaleString()} coins`
+        : "Get it free!";
   btn.onclick = () => buyHabitat(kind);
   body.querySelector(".detail-actions").appendChild(btn);
   const dialog = $("pet-detail");
@@ -912,6 +912,11 @@ function renderOrders() {
   const grid = $("shop-grid");
   grid.className = "shop-grid orders-floor";
   const parts = [];
+  const shared = sharedSlots();
+  if (shared.length) {
+    parts.push(friendShelf(shared));
+    $("dept-hint").textContent = "💌 A friend shared a pet with you! It's waiting just below.";
+  }
   const o = dept.order;
   if (o) {
     const colors = [o.primary, o.secondary].filter(Boolean).map((c) => c.name).join(" and ");
@@ -926,6 +931,26 @@ function renderOrders() {
   parts.push(orderForm());
   grid.replaceChildren(...parts);
   if (!preview) loadPreview();
+}
+
+// "From a friend": pets other players here shared with you, waiting until you adopt them or say no thanks.
+function friendShelf(shared) {
+  const shelf = document.createElement("section");
+  shelf.className = "friend-shelf";
+  shelf.innerHTML = `<h3>💌 From a friend</h3>`;
+  for (const slot of shared) {
+    const card = document.createElement("button");
+    card.className = "friend-pet";
+    card.dataset.share = slot.share;
+    card.appendChild(petCanvas(slot, BABY, 140, 100, fitScale([slot.genes], BABY, 140, 100, 6)));
+    card.insertAdjacentHTML(
+      "beforeend",
+      `<span><b>${escapeHtml(slot.from)}</b> shared a ${speciesName(slot.species).toLowerCase()} with you!<small>${coins(slot.price)} coins · click to meet it</small></span>`
+    );
+    card.onclick = () => showDetail(slot.index);
+    shelf.appendChild(card);
+  }
+  return shelf;
 }
 
 function orderForm() {
@@ -1037,6 +1062,7 @@ function renderDetail() {
     .join("");
   body.innerHTML = `
     <h2 class="panel-title">${name}${slot.last_day ? ' <span class="badge badge-last">Last day!</span>' : ""}</h2>
+    ${slot.share ? `<p class="hint">💌 Shared by <b>${escapeHtml(slot.from)}</b>. It waits here until you adopt it or say no thanks.</p>` : ""}
     <div class="detail-pets dept-${slot.dept}">
       <figure><div class="detail-canvas" data-stage="baby"></div><figcaption>Now</figcaption></figure>
       <figure><div class="detail-canvas" data-stage="grown"></div><figcaption>All grown up</figcaption></figure>
@@ -1063,7 +1089,7 @@ function actions(slot) {
     out.push(b);
     return b;
   };
-  if (dept.coupon) {
+  if (dept.coupon && !slot.share) {
     button("Use my coupon (free!)", "button-gold big-button", () => buy(slot, true));
   }
   const coinsLeft = dept.coins;
@@ -1075,6 +1101,7 @@ function actions(slot) {
     short
   );
   const saved = front.saved;
+  if (slot.share) button("No thanks", "", () => declineShared(slot));
   if (slot.dept === "orders") return out; // they already wait just for you
   if (slot.saved) button("Let it go", "", unsave);
   else if (saved) button("Save for me", "", null, true).title = "You're already saving a pet. Buy it or let it go first.";
@@ -1083,9 +1110,21 @@ function actions(slot) {
   return out;
 }
 
+async function declineShared(slot) {
+  try {
+    setDept(await call(`/api/pets/shop/shared/${slot.share}/decline`, "POST"));
+    closeDetail();
+    say(`${slot.from}'s ${speciesName(slot.species).toLowerCase()} went home.`);
+  } catch (err) {
+    say(err.message);
+    closeDetail();
+  }
+}
+
 async function buy(slot, coupon) {
   try {
-    const data = await call(`/api/pets/shop/${deptId}/${slot.index}/buy`, "POST", { coupon });
+    const url = slot.share ? `/api/pets/shop/shared/${slot.share}/adopt` : `/api/pets/shop/${deptId}/${slot.index}/buy`;
+    const data = await call(url, "POST", slot.share ? null : { coupon });
     const pet = data.bought;
     setDept(data);
     if (!data.coupon) front.coupon = false;

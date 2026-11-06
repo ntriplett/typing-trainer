@@ -300,3 +300,37 @@
   border: 3px solid var(--moss);
   padding: 0.2rem 0.6rem;
 }
+
+/* After a learn lesson: the new letters and what they opened (teach_player.js showFanfare). */
+.teach-fanfare {
+  font-size: 30px;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.teach-fanfare p {
+  margin: 0.3rem 0;
+  animation: fanfare-pop 0.45s ease-out both;
+}
+
+.teach-fanfare .fanfare-big {
+  font-size: 40px;
+  color: var(--leaf-orange);
+  text-shadow: 2px 2px 0 var(--outline);
+}
+
+.teach-fanfare .fanfare-shop {
+  color: var(--moss-dark);
+  background: var(--card-good);
+  border: 3px solid var(--moss);
+  padding: 0.2rem 0.6rem;
+}
+
+@keyframes fanfare-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teach-fanfare p { animation: none; }
+}

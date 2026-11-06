@@ -40,12 +40,26 @@ function card(p) {
       </div>
       <p class="saved" aria-live="polite"></p>
 
+      <div class="extra-practice">${extraHtml(p)}</div>
+
       <div class="brain">
         <h3>Next lesson: ${KIND_NAMES[p.brain.kind] || p.brain.kind}</h3>
         <ul>${p.brain.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>
         <p class="next-new">${p.next_new_lesson ? `Next new lesson: <b>${escapeHtml(p.next_new_lesson)}</b>` : "Every lesson is learned!"}</p>
       </div>
     </section>`;
+}
+
+// A grown-up's extra 15 minutes (app/daily.py): counts once today's practice is done.
+function extraHtml(p) {
+  const x = p.day.extra;
+  const name = escapeHtml(p.name);
+  if (!x) {
+    return `<button class="button-go extra-go">⏱️ Allow 15 more minutes (+2 tokens)</button>
+      <small>${name} can keep practicing after today's practice is done, until the next practice day starts.</small>`;
+  }
+  if (!x.active) return `<p>⏱️ <b>15 extra minutes allowed.</b> They start once today's practice is done.</p>`;
+  return `<p>⏱️ <b>Extra practice going:</b> ${Math.floor(x.practiced_seconds / 60)} of ${Math.floor(x.seconds / 60)} minutes, then ${x.tokens} more tokens.</p>`;
 }
 
 function render(p) {
@@ -84,6 +98,20 @@ function wire(el, p) {
   };
   goal.addEventListener("change", save);
   learn.addEventListener("change", save);
+  const extra = el.querySelector(".extra-go");
+  if (extra)
+    extra.onclick = async () => {
+      extra.disabled = true;
+      const res = await fetch("/api/parent/extra", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        el.querySelector(".saved").textContent = data.detail;
+        extra.disabled = false;
+        return;
+      }
+      render(data);
+      if (window.Header) Header.setDay(data.day);
+    };
 }
 
 // The installed app's updates (app/desktop.py). Progress is kept: the
@@ -159,6 +187,22 @@ function openPage() {
     .then((r) => r.json())
     .then(render);
   showChangePin();
+  showScale();
+}
+
+// How big the whole app draws on this computer (ui_scale.js).
+function showScale() {
+  const box = document.querySelector(".scale-picks");
+  const now = UIScale.get();
+  box.innerHTML = UIScale.SIZES.map(
+    (v) => `<button class="scale-pick${v === now ? " current" : ""}" role="radio" aria-checked="${v === now}" data-scale="${v}">${v === 1 ? "Normal" : `${Math.round(v * 100)}%`}</button>`
+  ).join("");
+  for (const b of box.querySelectorAll("button")) {
+    b.onclick = () => {
+      UIScale.set(Number(b.dataset.scale));
+      showScale();
+    };
+  }
 }
 
 function showChangePin() {

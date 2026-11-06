@@ -86,10 +86,20 @@ function rewardsHtml(data) {
   if (coins) parts.push(`<span class="coin-icon"></span>+${coins.toLocaleString()} coins`);
   if (tokens) parts.push(`<span class="token-icon big"></span>+${tokens} arcade token${tokens > 1 ? "s" : ""}!`);
   if (data.seeds_earned && data.seeds_earned.length) parts.push(`<span class="seed-icon big"></span>+1 seed!`);
-  return parts.join(" ");
+  const keyLines = data.coins_earned.filter((c) => KEY_BONUS_SAYS[c.reason]).map(
+    (c) => `<span class="key-bonus">⭐ ${keycap(c.key)} ${KEY_BONUS_SAYS[c.reason]}</span>`,
+  );
+  return parts.join(" ") + (keyLines.length ? `<span class="key-bonuses">${keyLines.join(" ")}</span>` : "");
 }
 
+// A key's milestone bonuses (app/lessons.py key_bonuses), named on the result.
+const KEY_BONUS_SAYS = { key_solid: "is solid!", key_halfway: "hit 15 WPM!", key_mastered: "is mastered: 30 WPM!" };
+
 function dayLine(day) {
+  if (day.extra && day.extra.active) {
+    const left = Math.max(1, Math.ceil((day.extra.seconds - day.extra.practiced_seconds) / 60));
+    return `Extra practice: ${left} more minute${left > 1 ? "s" : ""} for ${day.extra.tokens} more tokens.`;
+  }
   if (day.resting_until) return "That's all your practice for today. Every token earned!";
   if (day.goal_reached) {
     const left = Math.max(1, Math.ceil((day.bonus_seconds - day.practiced_seconds) / 60));

@@ -393,7 +393,27 @@ SHAPE_EXTRAS = {
 }
 VEGGIES = ("carrot", "tomato", "pepper", "zucchini", "corn", "pumpkin", "peas", "radish", "eggplant", "broccoli")
 
-SPARKLE_CHANCE = 0.02
+# Shiny pets: at most one kind each, drawn by web/static/js/pet_render.js. Sparkle came
+# first (genes from then say face.sparkle); its 2% stays first in line, so a seed that
+# rolled sparkly then still does.
+SHINE_ODDS = {"sparkle": 0.02, "holo": 0.01, "glow": 0.005, "starry": 0.005}
+SHINE_NAMES = {"sparkle": "Sparkly", "holo": "Holo", "glow": "Glowing", "starry": "Starry"}
+
+
+def _pick_shine(r: float) -> str | None:
+    """One roll in [0, 1) -> a kind of shiny, or None."""
+    edge = 0.0
+    for kind, chance in SHINE_ODDS.items():
+        edge = round(edge + chance, 6)
+        if r < edge:
+            return kind
+    return None
+
+
+def shine(genes: dict) -> str | None:
+    """A pet's kind of shiny, or None (genes from before kinds say face.sparkle)."""
+    face = genes.get("face", {})
+    return face.get("shine") or ("sparkle" if face.get("sparkle") else None)
 SPLOTCH_RANGE = (0.65, 1.0)  # below ~0.6 the coat looks too busy
 MIN_THIRD_SHARE = 0.04  # less than this folds into the secondary
 # How fast a third color's chance falls off with distance from unlocked
@@ -685,7 +705,7 @@ def _roll_face(seed: int, species: str, ctx: dict) -> dict:
     rng = _rng(seed, "face")
     palette = SPECIES_EYES.get(species, EYES)
     eyes = _pick(rng, palette)
-    face = {"eyes": eyes, "sparkle": rng.random() < SPARKLE_CHANCE}
+    face = {"eyes": eyes, "shine": _pick_shine(rng.random())}
     if rng.random() < ODD_EYES_CHANCE.get(species, 0):
         face["odd_eye"] = _pick(rng, {c: w for c, w in palette.items() if c != eyes})
     if species in HAS_SKIN:
@@ -820,6 +840,7 @@ def resolve(genes: dict) -> dict:
         genes = {**genes, "personality": _roll_personality(genes["seed"], genes["species"], {})}
     return {
         **genes,
+        "shine": shine(genes),
         "hex": [COLORS[c].hex if c else None for c in colors],
         "color_names": [COLORS[c].name if c else None for c in colors],
     }
@@ -969,7 +990,7 @@ RARE_FEATURES = (
     RareFeature("mix", lambda sp: _yes_no(MIX_CHANCE) if sp in BREEDS else None, lambda g: bool(g["shape"].get("mix"))),
     RareFeature("eyes", lambda sp: SPECIES_EYES.get(sp, EYES), lambda g: g["face"]["eyes"]),
     RareFeature("odd eyes", lambda sp: _yes_no(ODD_EYES_CHANCE.get(sp, 0)), lambda g: "odd_eye" in g["face"]),
-    RareFeature("sparkle", lambda sp: _yes_no(SPARKLE_CHANCE), lambda g: g["face"]["sparkle"]),
+    RareFeature("shiny", lambda sp: {None: 1 - sum(SHINE_ODDS.values()), **SHINE_ODDS}, shine),
     # only where the game picks the main color is there a table to compare to
     RareFeature(
         "main color", lambda sp: primary_color_weights(sp) if sp in GAME_PICKED else None, lambda g: g["coat"]["colors"][0]

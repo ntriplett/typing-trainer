@@ -139,6 +139,21 @@ def test_the_trail_has_ten_spots():
     assert client.get("/api/trail/1").status_code == 404
 
 
+def test_a_full_trail_grows_another_ten_spots():
+    with db.open_db(main.DB_PATH) as conn:
+        db.add_coins(conn, 1, 100_000, "test")
+    for _ in range(9):
+        assert client.post("/api/pets/shop/habitats/meadow").status_code == 200
+    assert len(client.get("/api/trail").json()["spots"]) == 10
+    assert client.get("/api/pets/shop/habitats").json()["habitats"]["spots"] == 10
+    assert client.post("/api/pets/shop/habitats/cherry").status_code == 200  # the 10th fills the first section
+    trail = client.get("/api/trail").json()
+    assert len(trail["spots"]) == 20 and trail["section"] == 10 and trail["spots"][10] is None
+    bought = client.post("/api/pets/shop/habitats/forest").json()["bought"]
+    assert bought["spot"] == 10
+    assert client.get("/api/trail/10").json()["habitat"]["kind"] == "forest"
+
+
 def test_homes_hold_six_land_pets():
     client.post("/api/pets/shop/habitats/meadow")
     pets = [add_pet(seed=s) for s in range(7)]

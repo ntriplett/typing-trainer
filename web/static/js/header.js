@@ -46,7 +46,27 @@ const DayTracker = {
     return `Practice ${this.minutes(day.seed_seconds)} minutes to earn a seed and water your garden, ${this.minutes(day.goal_seconds)} for ${day.goal_tokens} arcade tokens.`;
   },
 
+  // A grown-up's extra practice, once the regular day is full: its own
+  // trail over the usual one, with the tokens it pays at the end.
+  renderExtra(el, day, big) {
+    const x = day.extra;
+    const share = Math.min(1, x.practiced_seconds / x.seconds);
+    el.classList.add("day-tracker", "extra");
+    el.classList.toggle("big", big);
+    el.classList.remove("goal", "resting");
+    el.title = `Extra practice! ${this.minutes(x.seconds)} more minutes earns ${x.tokens} more tokens.`;
+    el.innerHTML = `
+      <span class="day-track" role="progressbar" aria-valuemin="0" aria-valuemax="${x.seconds}" aria-valuenow="${x.practiced_seconds}">
+        <span class="day-fill" style="width:${(share * 100).toFixed(1)}%"></span>
+        <span class="day-chest stack" style="left:100%" aria-label="${x.tokens} tokens">${'<span class="token-icon"></span>'.repeat(x.tokens)}</span>
+      </span>
+      <span class="day-label">Extra: ${this.minutes(x.practiced_seconds)} / ${this.minutes(x.seconds)} min</span>
+      ${big ? `<span class="day-legend"><span></span><span></span><span>Extra practice: +${x.tokens} tokens</span></span>` : ""}`;
+  },
+
   render(el, day, { big = false } = {}) {
+    if (day.extra && day.extra.active) return this.renderExtra(el, day, big);
+    el.classList.remove("extra");
     const share = Math.min(1, day.practiced_seconds / day.bonus_seconds);
     el.classList.add("day-tracker");
     el.classList.toggle("big", big);
@@ -141,6 +161,7 @@ const DayTracker = {
     daily_goal: "Daily goal!",
     king_crow: "King Crow!",
     daily_bonus: "Bonus token!",
+    daily_extra: "Extra practice tokens!",
     daily_seed: "A seed!",
   };
 

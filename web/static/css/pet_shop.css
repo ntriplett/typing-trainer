@@ -357,7 +357,7 @@
 /* --- the close-up ------------------------------------------------------------------- */
 
 .pet-detail {
-  width: min(560px, calc(100vw - 32px));
+  width: min(560px, calc(100vw / var(--ui-zoom, 1) - 32px));
   background: transparent;
   color: var(--ink);
   font-size: 20px;
@@ -479,3 +479,38 @@
 .friend-letter p { margin: 0.35rem 0; }
 .letter-sign { text-align: right; }
 .letter-portrait { display: flex; justify-content: center; }
+
+/* Special Orders' "From a friend" shelf (pet_shop.js friendShelf): pets
+   other players here shared, above your own order. */
+.friend-shelf {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--card-good);
+  border: 3px solid var(--moss);
+}
+
+.friend-shelf h3 {
+  margin: 0 0 0.4rem;
+  font-size: 26px;
+}
+
+.friend-pet {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.4rem;
+  text-align: left;
+  font-size: 22px;
+}
+
+.friend-pet canvas {
+  image-rendering: pixelated;
+  flex: none;
+}
+
+.friend-pet small {
+  display: block;
+  font-size: 18px;
+  color: var(--ink-soft);
+}

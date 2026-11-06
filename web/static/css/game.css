@@ -252,7 +252,7 @@
 /* --- arcade tally (GameShell.roundTally) ----------------------------------------- */
 
 .tally {
-  min-width: min(520px, 80vw);
+  min-width: min(520px, calc(80vw / var(--ui-zoom, 1)));
   margin: 0.4rem auto;
 }
 

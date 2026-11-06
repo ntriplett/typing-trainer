@@ -41,6 +41,9 @@ KEY_SOLID = "key_solid"
 KEY_HALFWAY = "key_halfway"
 KEY_MASTERED = "key_mastered"
 KEY_BONUS_REASONS = (KEY_SOLID, KEY_HALFWAY, KEY_MASTERED)
+# None of them pay from the teach page: a key has to be typed in this many practice
+# lessons first, and only practice keystrokes count toward them.
+PRACTICE_LESSONS_FOR_BONUS = 2
 # A lesson's active time can't be more than its wall-clock time (plus a
 # little slack for clocks), or than this.
 MAX_LESSON_SECONDS = 600
@@ -110,9 +113,9 @@ def record_placement(conn: sqlite3.Connection, learner_id: int, known_keys: set[
 # --- the brain's input ------------------------------------------------------------
 
 
-def key_records(conn: sqlite3.Connection, learner_id: int) -> dict[str, KeyRecord]:
+def key_records(conn: sqlite3.Connection, learner_id: int, practice_only: bool = False) -> dict[str, KeyRecord]:
     counts: dict[str, list[int]] = {}  # key -> [recent n, recent ok, older n, older ok]
-    for key, correct in db.recent_keystrokes(conn, learner_id):
+    for key, correct in db.recent_keystrokes(conn, learner_id, practice_only=practice_only):
         c = counts.setdefault(key, [0, 0, 0, 0])
         if c[0] < RECENT_WINDOW:
             c[0] += 1
@@ -263,13 +266,18 @@ def _sitting(conn: sqlite3.Connection, learner_id: int, now: datetime) -> int:
 
 def key_bonuses(
     keys: list[str], stats: dict[str, KeyStat], records: dict[str, KeyRecord], bar: float, paid: set[tuple[str, str]],
+    practiced: dict[str, int],
 ) -> list[tuple[int, str, str]]:
-    """The milestones `keys` have reached: (coins, reason, key). Speed counts only after
-    enough tries really typed: placement fills in a guessed speed and sample count."""
+    """The milestones `keys` have reached: (coins, reason, key). `records` are practice
+    keystrokes only and `practiced` counts each key's practice lessons, so nothing pays
+    straight after the teach page. Speed counts only after enough tries really typed:
+    placement fills in a guessed speed and sample count."""
     out = []
     for key in keys:
         if key not in skill_model.KEY_ORDER:
             continue  # capitals and the like are the same fingers: only real keys count
+        if practiced.get(key, 0) < PRACTICE_LESSONS_FOR_BONUS:
+            continue
         record = records.get(key, KeyRecord())
         typed = record.recent_attempts >= skill_model.MIN_SAMPLES_FOR_MASTERY
         reached = {
@@ -372,16 +380,20 @@ def complete(
     apply_bigram_model(conn, learner_id, keystrokes)
 
     earned = [_coins(conn, learner_id, lesson, result, typed_part)]
-    earned += key_bonuses(
-        sorted({ke.expected_char for ke in keystrokes}), {s.key: s for s in db.list_key_stats(conn, learner_id)},
-        key_records(conn, learner_id), solid_bar(daily.get_settings(conn, learner_id).learn_vs_practice),
-        db.coin_rows_paid(conn, learner_id, KEY_BONUS_REASONS),
-    )
+    if p.kind != "learn":
+        keys = sorted({ke.expected_char for ke in keystrokes})
+        earned += key_bonuses(
+            keys, {s.key: s for s in db.list_key_stats(conn, learner_id)},
+            key_records(conn, learner_id, practice_only=True),
+            solid_bar(daily.get_settings(conn, learner_id).learn_vs_practice),
+            db.coin_rows_paid(conn, learner_id, KEY_BONUS_REASONS),
+            db.practice_lesson_counts(conn, learner_id, keys),
+        )
     coins_earned = []
     for amount, reason, ref in earned:
         if amount > 0:
             db.add_coins(conn, learner_id, amount, reason, ref=ref)
-            coins_earned.append({"amount": amount, "reason": reason})
+            coins_earned.append({"amount": amount, "reason": reason} | ({"key": ref} if reason in KEY_BONUS_REASONS else {}))
 
     milestones = daily.add_practice(conn, learner_id, active_seconds, now, learned=p.kind == "learn")
     coins_earned += [{"amount": m["coins"], "reason": f"daily_{m['milestone']}"} for m in milestones if m["coins"]]
@@ -391,6 +403,7 @@ def complete(
     return {
         "result": asdict(result),
         "kind": p.kind,
+        "learned": [k for k in new_keys if k in skill_model.KEY_ORDER and k != " "],
         "finished_share": finished_share,
         "active_seconds": active_seconds,
         "coins_earned": coins_earned,

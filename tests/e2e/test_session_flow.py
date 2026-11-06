@@ -122,3 +122,22 @@ def test_a_learn_lesson_comes_back_to_practice(page: Page, live_server):
     assert page.evaluate("fetch('/api/day').then(r => r.json()).then(d => d.practiced_seconds)") > 0
     page.keyboard.press("Enter")
     expect(page).to_have_url(re.compile(r"/teach/teach_key_pair_v1\?keys=fj"))  # F and J next
+
+
+def test_learning_letters_ends_with_a_fanfare(page: Page, live_server):
+    from .test_teach_page import play_through
+
+    page.goto(f"{live_server}/session")
+    page.wait_for_function("typeof steps !== 'undefined' && steps.length > 0")
+    play_through(page)  # the intro: no letters of its own
+    expect(page.locator("#teach-next")).to_contain_text("next lesson")
+    expect(page.locator("#teach-fanfare")).to_be_hidden()
+    page.keyboard.press("Enter")
+    expect(page).to_have_url(re.compile(r"/teach/teach_key_pair_v1\?keys=fj"))
+    page.wait_for_function("typeof steps !== 'undefined' && steps.length > 0 && !busy")
+    play_through(page)
+    fanfare = page.locator("#teach-fanfare")
+    expect(fanfare).to_be_visible()
+    expect(fanfare.locator(".fanfare-big")).to_contain_text("You learned")
+    expect(fanfare.locator(".fanfare-big .keycap")).to_have_text(["F", "J"])
+    expect(fanfare).to_contain_text("500 coin bonus")

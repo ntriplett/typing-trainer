@@ -12,6 +12,11 @@ the learner likes (a few lessons, then the store, then a few more):
     goal (the bonus is forfeit), and one that never reached the goal
     resets UNFINISHED_RESET after its first lesson ("reset overnight").
 
+A grown-up can allow EXTRA_SECONDS more practice (one at a time): it
+counts once the chunk's regular practice is full, keeps practice open
+instead of resting, and pays EXTRA_TOKENS when done. Unused, it goes
+when the chunk ends.
+
 Per-learner settings (goal minutes, the learn-vs-practice slider) live in
 learner_setting and are edited on the parent page.
 """
@@ -35,6 +40,8 @@ SEEDS = 1
 GOAL_TOKENS = 2
 BONUS_TOKENS = 1
 GOAL_COINS = 100
+EXTRA_SECONDS = 15 * 60
+EXTRA_TOKENS = 2
 REST = timedelta(hours=12)
 UNFINISHED_RESET = timedelta(hours=18)
 # A milestone counts within this many seconds of the line, so a lesson
@@ -43,6 +50,10 @@ GRACE_SECONDS = 10
 
 SETTING_GOAL = "daily_goal_minutes"
 SETTING_LEARN = "learn_vs_practice"
+
+
+class ExtraError(ValueError):
+    """Kid-readable, like StoreError."""
 
 
 class PracticeResting(Exception):
@@ -92,13 +103,32 @@ def current_chunk(conn: sqlite3.Connection, learner_id: int, now: datetime) -> d
     return chunk
 
 
+def current_extra(conn: sqlite3.Connection, learner_id: int, now: datetime) -> dict | None:
+    """Extra practice allowed for the current chunk and not done yet."""
+    chunk = current_chunk(conn, learner_id, now)
+    return db.open_extra_practice(conn, learner_id, chunk["id"]) if chunk else None
+
+
+def grant_extra(conn: sqlite3.Connection, learner_id: int, now: datetime) -> None:
+    """A grown-up allows EXTRA_SECONDS more practice today."""
+    chunk = current_chunk(conn, learner_id, now)
+    if chunk is None:
+        db.create_chunk(conn, learner_id, now)
+        chunk = db.latest_chunk(conn, learner_id)
+    if db.open_extra_practice(conn, learner_id, chunk["id"]):
+        raise ExtraError("Extra practice is already allowed. Let them finish it first!")
+    db.add_extra_practice(conn, learner_id, chunk["id"], EXTRA_SECONDS, now)
+
+
 def status(conn: sqlite3.Connection, learner_id: int, now: datetime) -> dict:
-    """Everything the day tracker shows."""
+    """Everything the day tracker shows. "extra" is allowed extra practice,
+    "active" once the regular practice is full (the tracker shows it instead)."""
     settings = get_settings(conn, learner_id)
     chunk = current_chunk(conn, learner_id, now)
     goal = settings.goal_seconds
     practiced = chunk["practiced_seconds"] if chunk else 0.0
-    resting = bool(chunk and chunk["full_at"])
+    extra = db.open_extra_practice(conn, learner_id, chunk["id"]) if chunk else None
+    resting = bool(chunk and chunk["full_at"]) and extra is None
     return {
         "goal_seconds": goal,
         "seed_seconds": round(goal * SEED_SHARE),
@@ -107,17 +137,21 @@ def status(conn: sqlite3.Connection, learner_id: int, now: datetime) -> dict:
         "bonus_seconds": round(goal * BONUS_SHARE),
         "practiced_seconds": round(practiced),
         "goal_reached": bool(chunk and chunk["goal_at"]),
-        "bonus_reached": resting,
+        "bonus_reached": bool(chunk and chunk["full_at"]),
         "resting_until": chunk_ends_at(chunk).isoformat() if resting else None,
         "goal_tokens": GOAL_TOKENS,
         "bonus_tokens": BONUS_TOKENS,
         "learns": chunk["learns"] if chunk else 0,
+        "extra": {
+            "seconds": extra["seconds"], "practiced_seconds": round(extra["practiced_seconds"]),
+            "tokens": EXTRA_TOKENS, "active": bool(chunk["full_at"]),
+        } if extra else None,
     }
 
 
 def check_open(conn: sqlite3.Connection, learner_id: int, now: datetime) -> None:
     chunk = current_chunk(conn, learner_id, now)
-    if chunk and chunk["full_at"]:
+    if chunk and chunk["full_at"] and not db.open_extra_practice(conn, learner_id, chunk["id"]):
         raise PracticeResting(chunk_ends_at(chunk).isoformat())
 
 
@@ -140,7 +174,8 @@ def add_practice(
 
     goal = settings.goal_seconds
     bonus = goal * BONUS_SHARE
-    practiced = min(bonus, chunk["practiced_seconds"] + max(0.0, seconds))
+    total = chunk["practiced_seconds"] + max(0.0, seconds)
+    practiced = min(bonus, total)
     goal_at, full_at, seed_at = chunk["goal_at"], chunk["full_at"], chunk["seed_at"]
     reached = []
     if seed_at is None and practiced >= goal * SEED_SHARE - GRACE_SECONDS:
@@ -154,9 +189,16 @@ def add_practice(
         practiced = bonus
         reached.append({"milestone": "bonus", "tokens": BONUS_TOKENS, "coins": 0, "seeds": 0})
     db.update_chunk(conn, chunk_id, practiced, chunk["learns"] + int(learned), goal_at, full_at, seed_at)
+    extra = db.open_extra_practice(conn, learner_id, chunk_id) if full_at else None
+    if extra:  # whatever goes past the bonus line counts as extra practice
+        extra_practiced = min(extra["seconds"], extra["practiced_seconds"] + max(0.0, total - bonus))
+        done = extra_practiced >= extra["seconds"] - GRACE_SECONDS
+        db.update_extra_practice(conn, extra["id"], extra["seconds"] if done else extra_practiced, now if done else None)
+        if done:
+            reached.append({"milestone": "extra", "tokens": EXTRA_TOKENS, "coins": 0, "seeds": 0, "ref": f"extra:{extra['id']}"})
 
     for m in reached:
-        ref = f"chunk:{chunk_id}"
+        ref = m.pop("ref", f"chunk:{chunk_id}")
         reason = f"daily_{m['milestone']}"
         if m["seeds"] and not db.has_seed_entry(conn, learner_id, reason, ref):
             db.add_seeds(conn, learner_id, m["seeds"], reason, ref=ref)

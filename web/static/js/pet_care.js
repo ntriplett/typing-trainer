@@ -15,7 +15,6 @@ const RARE_LABEL = {
   mix: "Mixed breed",
   eyes: "Rare eyes",
   "odd eyes": "Odd eyes",
-  sparkle: "Sparkly eyes",
   "main color": "Rare color",
 };
 const TRAITS = [
@@ -232,7 +231,7 @@ function renderDetail() {
     .join(" ");
   const rare = Object.entries(p.rare)
     .filter(([, m]) => m >= RARE_SHOWN)
-    .map(([k, m]) => `<li>${m >= SUPER_RARE ? "🌟" : "⭐"} ${RARE_LABEL[k] || k}</li>`)
+    .map(([k, m]) => `<li>${m >= SUPER_RARE ? "🌟" : "⭐"} ${rareLabel(k, g, RARE_LABEL)}</li>`)
     .join("");
   const traits = TRAITS.map(
     ([k, label]) =>
@@ -251,7 +250,7 @@ function renderDetail() {
       ${p.water ? "" : `<dt>${p.companion ? "Friendship" : "Happy"}</dt><dd class="hearts" title="${p.joy} of 5">${"♥".repeat(p.joy)}<span class="empty">${"♡".repeat(5 - p.joy)}</span>${p.joy ? "" : p.companion ? " Bring her a gift in her habitat!" : " Play with it in its habitat!"}</dd>`}
       <dt>Colors</dt><dd class="detail-colors">${colors}</dd>
       ${p.companion ? "" : `<dt>Loves</dt><dd><canvas class="veggie-icon" data-kind="${g.personality.favorite}" width="24" height="30"></canvas> ${care.veggie_names[g.personality.favorite]}</dd>`}
-      ${p.companion ? `<dt>Came to stay</dt><dd>${days(p.adopted_at)}</dd>` : `<dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>`}
+      ${p.companion ? `<dt>Came to stay</dt><dd>${days(p.adopted_at)}</dd>` : `<dt>Got it</dt><dd>${days(p.adopted_at)}, ${p.from_friend ? `shared by <b>${escapeHtml(p.from_friend)}</b>` : p.source === "order" ? "by special order" : "from the Pet Shop"}</dd>`}
       ${rare ? `<dt>Rare</dt><dd><ul class="detail-rare">${rare}</ul></dd>` : ""}
     </dl>
     <div class="traits">${traits}</div>`;
@@ -300,6 +299,7 @@ function renderActions(p) {
   out.push(button("🧪 Use a potion", "", () => openMode("potion")));
   if (p.along) out.push(button("Stay home", "", () => setAlong(p, null)));
   else if (!p.water) out.push(button("🎒 Bring along", "", () => bringAlong(p)));
+  if (!p.companion) out.push(button("💌 Share with a friend", "", () => openMode("share")));
   $("detail-actions").replaceChildren(...out);
 }
 
@@ -340,6 +340,9 @@ function renderPicker(p) {
   } else if (mode === "potion") {
     box.innerHTML = `<p>Loading your potions…</p>`;
     loadPotions(p, box);
+  } else if (mode === "share") {
+    box.innerHTML = `<p>Finding your friends…</p>`;
+    loadFriends(p, box);
   } else if (mode === "tank") {
     const picks = care.tanks
       .filter((h) => h.spot !== p.tank)
@@ -399,6 +402,34 @@ function feed(p, veggie) {
     const news = fed.favorite ? `Yum, its favorite! ${p.name} grew a lot!` : `Yum! ${p.name} grew!`;
     say(fed.growth >= data.max_growth ? `${news} All grown up now!` : news, true);
   });
+}
+
+// Share a copy of this pet's look with another player here (app/pet_share.py):
+// it waits in their Special Orders tomorrow, and you keep yours.
+async function loadFriends(p, box) {
+  const r = await fetch(`/api/care/${p.id}/share`);
+  const friends = (await r.json()).friends || [];
+  if (mode !== "share" || selectedId !== p.id) return;
+  const name = escapeHtml(p.name);
+  if (!friends.length) {
+    box.innerHTML = `<p>Nobody else plays on this computer yet. When a friend makes a player, you can share ${name} with them!</p>`;
+    return;
+  }
+  const ask = friends.length === 1 ? `Share ${name} with ${escapeHtml(friends[0].name)}?` : "Who are you sharing with?";
+  box.innerHTML = `<p class="share-ask"><b>${ask}</b> Tomorrow a baby just like ${name} will wait in their Special Orders for them to adopt. You keep ${name}!</p>`;
+  for (const f of friends) {
+    const row = document.createElement("div");
+    row.className = "share-friend";
+    row.append(button(`💌 ${f.name}`, f.why ? "" : "button-go", () => sharePet(p, f), !!f.why));
+    if (f.why) row.append(Object.assign(document.createElement("span"), { className: "share-why", textContent: f.why }));
+    box.append(row);
+  }
+}
+
+function sharePet(p, friend) {
+  act(`/api/care/${p.id}/share`, "POST", { to: friend.id }, () =>
+    say(`💌 Shared! Tomorrow ${friend.name} will find a baby like ${p.name} in their Special Orders.`, true)
+  );
 }
 
 async function loadPotions(p, box) {

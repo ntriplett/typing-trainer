@@ -952,8 +952,10 @@ const SCENES = {
 const Scenery = { canvas: null, still: null, place: null, night: false, t: 0, timer: null };
 
 function sceneSize() {
-  const W = Math.ceil(window.innerWidth / SCENERY_PX);
-  const H = Math.ceil(window.innerHeight / SCENERY_PX);
+  // in page px: the page may be zoomed (ui_scale.js)
+  const zoom = window.UIScale ? UIScale.zoom() : 1;
+  const W = Math.ceil(window.innerWidth / zoom / SCENERY_PX);
+  const H = Math.ceil(window.innerHeight / zoom / SCENERY_PX);
   const gt = H - Math.max(24, Math.round(H * 0.18));
   // how far in from each edge the page's column starts (things down the
   // sides peek out here; on narrow screens they hide behind the page)

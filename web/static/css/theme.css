@@ -102,7 +102,7 @@ html {
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: calc(100vh / var(--ui-zoom, 1)); /* ui_scale.js zooms the page, viewport units too */
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: 20px;
@@ -719,6 +719,16 @@ button:focus-visible,
 
 .day-tracker.resting .day-fill {
   background: repeating-linear-gradient(90deg, #8a55c4 0 6px, #b48ae6 6px 12px);
+}
+
+/* a grown-up's extra practice: one trail, a chest at the end, no marks */
+.day-tracker.extra .day-fill {
+  background: repeating-linear-gradient(90deg, #3f8fc4 0 6px, #7cc0ea 6px 12px);
+}
+
+.day-tracker.extra .day-track::before,
+.day-tracker.extra .day-track::after {
+  display: none;
 }
 
 /* the 2/3 mark: where the goal is */

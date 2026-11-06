@@ -63,3 +63,38 @@ def test_keyboard_hint_shows_the_hands_and_costs_coins(page: Page, live_server):
     expect(page.locator(".stage-hint-buy")).to_be_hidden()
     expect(page.locator("#coin-count")).to_have_text("90")
     expect(page.locator(".stage-keyboard .tk-finger-lit-fill line")).not_to_have_count(0)
+
+
+LINES_FIT = """() => {
+  const box = document.querySelector('.stage-lines').getBoundingClientRect();
+  return [...document.querySelectorAll('.stage-lines .prompt-line')].every((line) => {
+    const last = line.lastElementChild;
+    return !last || last.getBoundingClientRect().right <= box.right + 0.5;
+  });
+}"""
+
+
+def test_lines_rewrap_to_fit_when_the_box_shrinks(page: Page, live_server):
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    open_practice(page, live_server, query="?keys=home&focus=jf&length=long")
+    page.wait_for_function("document.fonts.status === 'loaded' && view.maxChars === view.fitChars()")
+    before = page.evaluate("view.maxChars")
+    page.keyboard.type(page.evaluate("view.typeable")[:10])
+    page.set_viewport_size({"width": 560, "height": 1000})
+    page.wait_for_function(f"view.maxChars < {before}")
+    page.wait_for_function(LINES_FIT)
+    assert page.locator(".stage-lines .correct").count() == 10 or page.evaluate("view.lineIndex") > 0
+    while (key := page.evaluate("view.expected")) is not None:  # the box may refit again (a scrollbar), so key by key
+        page.keyboard.press("Space" if key == " " else key)
+    expect(page.locator("#practice-done")).to_be_visible()
+    expect(page.locator("#practice-result")).to_contain_text("100% right")
+
+
+def test_lines_fit_when_the_typing_font_loads_late(page: Page, live_server):
+    page.set_viewport_size({"width": 2560, "height": 1440})
+    page.route("**/AtkinsonHyperlegibleMono.ttf", lambda route: (page.wait_for_timeout(1200), route.continue_()))
+    open_practice(page, live_server, query="?keys=home&focus=jf&length=long")
+    page.wait_for_function("document.fonts.status === 'loaded'")
+    page.wait_for_timeout(200)
+    assert page.evaluate("view.maxChars === view.fitChars()")  # measured again in the real font
+    assert page.evaluate(LINES_FIT)

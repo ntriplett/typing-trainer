@@ -37,8 +37,8 @@ def test_departments_open_as_rows_are_learned():
     taught = set()
     opened = lambda: {d.id for d in shop.DEPARTMENTS.values() if shop.is_open(d, taught)}  # noqa: E731
     assert opened() == {"fish", "habitats", "aqua", "supplies"}
-    assert shop.missing_keys(shop.DEPARTMENTS["household"], set("asdf")) == "ghjkl;"
-    taught |= set(shop.HOME_ROW)
+    assert shop.missing_keys(shop.DEPARTMENTS["household"], set("asdf")) == "jkl;"  # G and H are reaches, not home keys
+    taught |= set(shop.HOME_KEYS)
     assert opened() == {"fish", "habitats", "aqua", "supplies", "household", "orders"}
     taught |= set(shop.TOP_ROW) | set(shop.BOTTOM_ROW)
     assert opened() == {"fish", "habitats", "aqua", "supplies", "household", "orders", "farm", "reptiles"}

@@ -14,7 +14,7 @@ from app.activities.teach_curriculum import PAIR_ID
 from app.brain import lesson_ref
 
 client = TestClient(main.app)
-HOME_PAIRS = ("fj", "dk", "sl", "a;", "gh")
+HOME_PAIRS = ("fj", "dk", "sl", "a;")  # the eight home keys: G and H are reaches
 
 
 @pytest.fixture(autouse=True)
@@ -58,7 +58,7 @@ def owned():
 def test_a_new_player_can_shop_for_fish_and_habitats(clock):
     d = depts()
     assert [k for k, v in d.items() if v["open"]] == ["fish", "habitats", "aqua", "supplies"]
-    assert d["household"]["missing"] == "asdfghjkl;"
+    assert d["household"]["missing"] == "asdfjkl;"  # the home keys, not G and H
     fish = client.get("/api/pets/shop/fish").json()
     assert len(fish["slots"]) == 24 and all(s["species"] == "fish" for s in fish["slots"])
     assert not fish["coupon"]

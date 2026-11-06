@@ -118,3 +118,29 @@
 .pin-forgot code {
   word-break: break-all;
 }
+
+.extra-practice {
+  margin: 0.75rem 0;
+  font-size: 20px;
+}
+
+.extra-practice p {
+  margin: 0;
+}
+
+.extra-practice small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 20px;
+}
+
+.scale-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.scale-pick.current {
+  outline: 4px solid var(--leaf-gold);
+}

@@ -493,8 +493,8 @@ def test_every_rare_feature_finds_each_pets_outcome_in_its_table():
 
 def test_rare_looks_are_priced_up_and_common_ones_are_not():
     pets = [g.shop_roll("cat", set(), s) for s in SHOP_SEEDS]
-    sparkly = next(p for p in pets if p["face"]["sparkle"])
-    assert g.rare_features(sparkly)["sparkle"] == pytest.approx(1.5, abs=0.01)
+    sparkly = next(p for p in pets if g.shine(p) == "sparkle")
+    assert g.rare_features(sparkly)["shiny"] == pytest.approx(1.5, abs=0.01)
     plain = [p for p in pets if not g.rare_features(p)]
     assert plain and all(g.rarity(p) == 1.0 for p in plain)
     assert 1.3 < sorted(g.rarity(p) for p in pets)[-len(pets) // 20] < 4  # the top 5% stand out, not absurdly
@@ -602,3 +602,22 @@ def test_a_friends_name_is_steady_until_someone_new_comes():
     first = g.companion_name("mermaid", 5)
     from collections import Counter
     assert g.companion_name("mermaid", 5, Counter({first: 1})) != first
+
+
+def test_shiny_kinds_roll_at_their_odds_one_at_most():
+    assert [g._pick_shine(r) for r in (0.0, 0.019, 0.02, 0.029, 0.03, 0.034, 0.035, 0.039, 0.04, 0.99)] == [
+        "sparkle", "sparkle", "holo", "holo", "glow", "glow", "starry", "starry", None, None]
+    rolled = collections.Counter(g.shine(g.shop_roll("cat", set(), seed)) for seed in range(20000))
+    for kind, chance in g.SHINE_ODDS.items():
+        assert rolled[kind] / 20000 == pytest.approx(chance, abs=0.004), kind
+
+
+def test_pets_that_were_sparkly_are_sparkly_still():
+    old = {"species": "cat", "face": {"eyes": "#3a2a1a", "sparkle": True}}
+    assert g.shine(old) == "sparkle"
+    assert g.shine({"species": "cat", "face": {"eyes": "#3a2a1a", "sparkle": False}}) is None
+    for seed in range(600):  # the very seeds that rolled sparkly before kinds came in
+        rng = g._rng(seed, "face")
+        g._pick(rng, g.SPECIES_EYES.get("dog", g.EYES))
+        was_sparkly = rng.random() < 0.02  # the old roll: face.sparkle
+        assert (g.shine(g.shop_roll("dog", set(), seed)) == "sparkle") == was_sparkly

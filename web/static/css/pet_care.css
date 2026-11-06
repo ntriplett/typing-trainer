@@ -331,3 +331,17 @@
 .potion-pick canvas {
   image-rendering: pixelated;
 }
+
+/* Share with a friend (pet_care.js loadFriends): one row per player here,
+   greyed out with the reason when they can't get this pet yet. */
+.share-friend {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.share-why {
+  font-size: 18px;
+  color: var(--ink-soft);
+}

@@ -4,7 +4,7 @@ its tokens, the parent page API, and the arcade."""
 import pytest
 from fastapi.testclient import TestClient
 
-from app import daily, db, lessons, main
+from app import brain, daily, db, lessons, main
 from app.activities.teach_curriculum import INTRO_ID, PAIR_ID
 from tests.integration.lesson_helpers import keystrokes_for, run_lesson, use_clock
 
@@ -79,6 +79,39 @@ def test_finishing_a_practice_lesson_scores_pays_and_records(clock):
         assert db.list_bigram_stats(conn, 1)
 
 
+def test_key_bonuses_wait_for_practice_after_the_teach_page(clock):
+    run_lesson(client, clock)  # the intro
+    learned = run_lesson(client, clock)["done"]  # F and J
+    assert not [c for c in learned["coins_earned"] if c["reason"].startswith("key_")]
+    paid = []
+    for _ in range(lessons.PRACTICE_LESSONS_FOR_BONUS):
+        done = run_lesson(client, clock)["done"]
+        assert done["kind"] != "learn"
+        paid.append({c["key"] for c in done["coins_earned"] if c["reason"] == lessons.KEY_SOLID})
+    assert paid[:-1] == [set()] * (lessons.PRACTICE_LESSONS_FOR_BONUS - 1)
+    assert {"f", "j"} <= paid[-1]
+
+
+def test_a_learn_lesson_names_its_letters_and_what_they_opened(clock, monkeypatch):
+    monkeypatch.setattr(brain, "MAX_LEARNS_PER_DAY", 99)
+    run_lesson(client, clock)  # the intro
+    fj = run_lesson(client, clock)["done"]
+    assert fj["learned"] == ["f", "j"] and fj["shop_opened"] == [] and not fj["pet_coupon"]
+    assert fj["key_bonus"] == lessons.KEY_BONUS
+    with db.open_db(main.DB_PATH) as conn:  # D K and S L too: A ; is next, the last home key
+        for pair in ("dk", "sl"):
+            db.mark_taught(conn, 1, f"{PAIR_ID}:{pair}", "lesson")
+    for _ in range(30):  # practice until the brain's ready for the next new lesson
+        lesson = run_lesson(client, clock)
+        if lesson["lesson"]["kind"] == "learn":
+            break
+    assert lesson["lesson"]["teach_keys"] == "a;", lesson["lesson"]["reasons"]
+    done = lesson["done"]
+    assert done["learned"] == [";", "a"]
+    assert [d["id"] for d in done["shop_opened"]] == ["household", "orders"]
+    assert done["pet_coupon"]
+
+
 def test_active_time_is_capped_by_the_clock(clock):
     home_row_player()
     nxt = client.post("/api/lesson/next").json()
@@ -147,6 +180,44 @@ def test_goal_pays_two_tokens_and_the_bonus_one_more_then_rests(clock):
     day = client.get("/api/day").json()
     assert day["practiced_seconds"] == 0 and not day["goal_reached"]
     assert client.post("/api/lesson/next").status_code == 200
+
+
+def test_extra_practice_opens_a_resting_day_and_pays_two_tokens(clock):
+    home_row_player()
+    set_goal(2)  # bonus at 3 minutes
+    run_lesson(client, clock, seconds=180)
+    assert client.post("/api/lesson/next").status_code == 409  # resting
+    entry = client.post("/api/parent/extra").json()
+    assert entry["day"]["extra"] == {"seconds": 900, "practiced_seconds": 0, "tokens": 2, "active": True}
+    assert entry["day"]["resting_until"] is None
+    assert client.post("/api/parent/extra").status_code == 400  # one at a time
+    part = run_lesson(client, clock, seconds=500)["done"]
+    assert part["day"]["extra"]["practiced_seconds"] == 500 and part["tokens_earned"] == []
+    done = run_lesson(client, clock, seconds=400)["done"]
+    assert done["tokens_earned"] == [{"amount": daily.EXTRA_TOKENS, "reason": "daily_extra"}]
+    assert done["day"]["extra"] is None and done["day"]["resting_until"]
+    assert client.post("/api/lesson/next").status_code == 409
+    assert client.post("/api/parent/extra").status_code == 200  # another one, if a grown-up says so
+
+
+def test_extra_practice_waits_for_the_regular_day_and_expires_with_it(clock):
+    home_row_player()
+    set_goal(2)
+    client.post("/api/parent/extra")
+    day = client.get("/api/day").json()
+    assert day["extra"]["active"] is False and day["practiced_seconds"] == 0
+    over = run_lesson(client, clock, seconds=300)["done"]  # 3 minutes fill the day, 2 go to extra
+    assert [t["reason"] for t in over["tokens_earned"]] == ["daily_goal", "daily_bonus"]
+    assert over["day"]["extra"] == {"seconds": 900, "practiced_seconds": 120, "tokens": 2, "active": True}
+    clock.advance(hours=12, minutes=1)  # the next practice day: unused extra time is gone
+    assert client.get("/api/day").json()["extra"] is None
+
+
+def test_extra_practice_needs_the_grownups_pin(clock):
+    home_row_player()
+    client.post("/api/grownups/pin", json={"pin": "1234"})
+    client.post("/api/grownups/lock")
+    assert client.post("/api/parent/extra").status_code in (401, 403)
 
 
 def test_skipping_the_bonus_forfeits_it_after_twelve_hours(clock):

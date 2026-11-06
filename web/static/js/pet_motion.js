@@ -283,6 +283,7 @@ const PetMotion = (() => {
         flyOn(world, w);
       } else w.landing = true;
     }
+    w.hop = Math.min(w.hop, Math.max(0, w.y - w.height - 2)); // it may have just moved up: stay in the picture
   }
 
   // --- choosing what to do next ---------------------------------------------------------

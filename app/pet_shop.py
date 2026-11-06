@@ -25,6 +25,8 @@ from app.activities.teach_curriculum import CAPS_GROUPS, CAPS_ID
 from app.brain import lesson_ref
 
 HOME_ROW = "asdfghjkl;"
+# What the shop calls "the home row": the eight home keys, no reaches (G and H come later).
+HOME_KEYS = "asdfjkl;"
 TOP_ROW = "qwertyuiop"
 BOTTOM_ROW = "zxcvbnm,./"
 NUMBERS = "1234567890"
@@ -45,12 +47,12 @@ DEPARTMENTS: dict[str, Department] = {
     d.id: d
     for d in [
         Department("fish", "Fish", ("fish",), 24, 100, ""),
-        Department("household", "Household Pets", ("dog", "cat", "bunny"), 16, 800, HOME_ROW),
+        Department("household", "Household Pets", ("dog", "cat", "bunny"), 16, 800, HOME_KEYS),
         Department("farm", "Farm Pets", ("goat", "sheep", "llama", "fox"), 12, 2000, TOP_ROW),
         Department("reptiles", "Reptiles & Amphibians", ("turtle", "lizard", "snake"), 8, 3000, BOTTOM_ROW),
         Department("mythical", "Mythical Pets", ("dragon", "unicorn", "phoenix"), 2, 7500, NUMBERS),
         Department("companions", "Companions", ("flower_fairy", "mermaid"), 1, 7500, NUMBERS),  # one letter at a time, on the desk
-        Department("orders", "Special Orders", (), 4, 0, HOME_ROW),
+        Department("orders", "Special Orders", (), 4, 0, HOME_KEYS),
         Department("habitats", "Habitats", (), 0, 0, ""),  # sold by app/pet_care.py
         Department("aqua", "Aquarium Supplies", (), 0, 0, ""),  # sold by app/aquarium.py
         Department("supplies", "Pet Supplies", (), 0, 0, ""),  # sold by app/pet_supplies.py
@@ -314,6 +316,12 @@ def _open_dept(conn, learner_id: int, dept_id: str) -> Department:
     return dept
 
 
+def open_departments(conn, learner_id: int) -> set[str]:
+    """Ids of the departments open now (the teach page cheers the new ones)."""
+    taught = lessons.taught_keys(conn, learner_id)
+    return {d.id for d in DEPARTMENTS.values() if is_open(d, taught)}
+
+
 def magical_habitats_open(conn, learner_id: int) -> bool:
     """Magical habitats open with the Mythical department."""
     return is_open(DEPARTMENTS["mythical"], lessons.taught_keys(conn, learner_id))
@@ -425,10 +433,14 @@ def buy(conn, learner_id: int, dept_id: str, index: int, today: date, use_coupon
         pet_id = db.add_v3_pet(conn, learner_id, {**slot.genes, "friend_name": name}, name, "letter", growth=pet_care.MAX_GROWTH)
         pet = db.get_v3_pet(conn, learner_id, pet_id)
         return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": []}
-    new = g.new_to_player(slot.genes, unlocked)
-    db.unlock_pet_colors(conn, learner_id, [c for c in slot.genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
-    source = "order" if dept_id == "orders" else "shop"
-    pet_id = db.add_v3_pet(conn, learner_id, slot.genes, g.species_name(slot.species), source)
+    return adopt(conn, learner_id, slot.genes, "order" if dept_id == "orders" else "shop")
+
+
+def adopt(conn, learner_id: int, genes: dict, source: str) -> dict:
+    """A paid-for pet comes home as a baby and its colors unlock. Returns the new pet."""
+    new = g.new_to_player(genes, db.list_pet_color_unlocks(conn, learner_id))
+    db.unlock_pet_colors(conn, learner_id, [c for c in genes["coat"]["colors"] if c and g.COLORS[c].family != "metal"])
+    pet_id = db.add_v3_pet(conn, learner_id, genes, g.species_name(genes["species"]), source)
     pet = db.get_v3_pet(conn, learner_id, pet_id)
     return {**pet, "genes": g.resolve(pet["genes"]), "new_colors": [g.COLORS[c].name for c in new]}
 

@@ -102,6 +102,60 @@ def test_parent_page_saves_settings_and_explains_the_next_lesson(page: Page, liv
     expect(page.locator("#home-day .day-label")).to_have_text("0 / 15 min")
 
 
+NO_SIDEWAYS_SCROLL = "document.documentElement.scrollWidth <= innerWidth + 1"
+
+
+def test_a_grownup_makes_everything_bigger_for_this_computer(page: Page, live_server):
+    page.set_viewport_size({"width": 2400, "height": 1400})
+    _open_grownups(page, live_server)
+    picks = page.locator(".scale-pick")
+    expect(picks).to_have_text(["Normal", "125%", "150%", "175%", "200%"])
+    expect(picks.first).to_have_class(re.compile("current"))
+    page.get_by_role("radio", name="150%").click()
+    expect(page.get_by_role("radio", name="150%")).to_have_class(re.compile("current"))
+    assert page.evaluate("UIScale.zoom(document.body)") == 1.5
+    page.goto(live_server)  # kept, and every page draws at that size
+    assert page.evaluate("UIScale.zoom(document.body)") == 1.5
+    assert page.evaluate(NO_SIDEWAYS_SCROLL)
+    page.goto(f"{live_server}/welcome")
+    assert page.evaluate("UIScale.zoom(document.body)") == 1.5
+
+
+def test_lines_fit_and_clicks_land_when_zoomed(page: Page, live_server):
+    page.set_viewport_size({"width": 2400, "height": 1400})
+    page.goto(live_server)
+    page.evaluate("UIScale.set(2)")
+    page.goto(f"{live_server}/practice/practice_random_keys_v1?keys=home&focus=jf&length=long")
+    page.wait_for_function("stage.active")
+    assert page.evaluate("view.maxChars") >= 25  # the box's own size, not the zoomed one
+    fits = page.evaluate("""() => {
+      const box = document.querySelector('.stage-lines').getBoundingClientRect();
+      return [...document.querySelectorAll('.stage-lines .prompt-line')].every((l) => !l.lastElementChild || l.lastElementChild.getBoundingClientRect().right <= box.right + 1);
+    }""")
+    assert fits and page.evaluate(NO_SIDEWAYS_SCROLL)
+    page.click(".stage-hint-buy")  # a real click lands on the zoomed button
+    expect(page.locator(".stage-hint")).to_contain_text("You need 10 coins")
+
+
+def test_a_grownup_allows_extra_practice_and_the_tracker_shows_it(page: Page, live_server, tmp_path):
+    from datetime import UTC, datetime
+
+    place_on_home_row(page, live_server)
+    with db.open_db(tmp_path / "e2e.db") as conn:  # today's practice is all done
+        db.create_chunk(conn, 1, datetime.now(UTC))
+        conn.execute("UPDATE practice_chunk SET practiced_seconds = 900, goal_at = started_at, full_at = started_at")
+        conn.commit()
+    page.goto(live_server)
+    expect(page.locator(".topbar .day-label")).to_contain_text("All done")
+    _open_grownups(page, live_server)
+    page.get_by_role("button", name="⏱️ Allow 15 more minutes (+2 tokens)").click()
+    expect(page.locator(".extra-practice")).to_contain_text("Extra practice going: 0 of 15 minutes")
+    expect(page.locator(".topbar .day-tracker")).to_have_class(re.compile("extra"))
+    expect(page.locator(".topbar .day-label")).to_have_text("Extra: 0 / 15 min")
+    page.goto(f"{live_server}/session")
+    expect(page.locator("#lesson-screen")).to_be_visible()  # practice is open again
+
+
 def test_profile_page_has_no_duplicate_hub(page: Page, live_server):
     page.goto(f"{live_server}/profile")
     expect(page.locator(".hub-grid")).to_have_count(0)

@@ -1,5 +1,5 @@
-// The Trailhead (PLAN.md 11i): walk up and down a forest trail past your 10
-// habitat spots. Each stop shows a small live view of its habitat (click it
+// The Trailhead (PLAN.md 11i): walk up and down a forest trail past your
+// habitat spots, 10 to a section (a new section opens when the last fills up). Each stop shows a small live view of its habitat (click it
 // to go in) or an empty lot; the map shows the whole trail like a zoo map.
 // Scenes are drawn on a 160x90 grid at 6x; the window and sign are real
 // elements laid over the scene, so the keyboard works too.
@@ -21,6 +21,7 @@ let trail = null; // /api/trail
 let at = 0; // the stop we're at
 let mini = null; // {world, background} for this stop's habitat
 let backgrounds = {};
+let mapSection = 0; // which 10 stops the map shows
 
 // A little seeded random, so each stop's trees stay put.
 function seeded(n) {
@@ -178,9 +179,15 @@ function go(spot) {
 
 // --- the map --------------------------------------------------------------------------
 
+const sectionSize = () => trail.section || 10;
+const sections = () => Math.ceil(trail.spots.length / sectionSize());
+// The stops on the map's current section: [spot, habitat or null].
+const mapStops = () => trail.spots.map((h, spot) => [spot, h]).filter(([spot]) => Math.floor(spot / sectionSize()) === mapSection);
+
 function plotAt(spot) {
-  const y = MAP_H - 36 - spot * 14.5;
-  const x = spot % 2 ? MAP_W - 6 - PLOT.w : 6;
+  const n = spot % sectionSize();
+  const y = MAP_H - 36 - n * 14.5;
+  const x = n % 2 ? MAP_W - 6 - PLOT.w : 6;
   return { x, y };
 }
 
@@ -198,7 +205,7 @@ function drawMap() {
     r(cx - 4, y, 1, 1, "#d8c090");
     r(cx + 3, y, 1, 1, "#d8c090");
   }
-  trail.spots.forEach((h, spot) => {
+  mapStops().forEach(([spot, h]) => {
     const { x, y } = plotAt(spot);
     r(x - 1, y - 1, PLOT.w + 2, PLOT.h + 2, "#5c3a1a");
     if (h) {
@@ -212,15 +219,39 @@ function drawMap() {
     const tx = MAP_W / 2 + Math.sin((y + PLOT.h / 2) / 14) * 8;
     r(Math.min(sx, tx), y + PLOT.h / 2 - 1, Math.abs(tx - sx), 3, "#e8d3a8");
   });
-  // the gate at the bottom
-  r(MAP_W / 2 - 14, MAP_H - 6, 3, 6, "#8b5a2b");
-  r(MAP_W / 2 + 11, MAP_H - 6, 3, 6, "#8b5a2b");
-  r(MAP_W / 2 - 15, MAP_H - 8, 30, 3, "#5c3a1a");
+  if (mapSection === 0) {
+    // the gate at the bottom
+    r(MAP_W / 2 - 14, MAP_H - 6, 3, 6, "#8b5a2b");
+    r(MAP_W / 2 + 11, MAP_H - 6, 3, 6, "#8b5a2b");
+    r(MAP_W / 2 - 15, MAP_H - 8, 30, 3, "#5c3a1a");
+  }
+}
+
+// Arrows between the map's sections, when the trail has more than one.
+function renderMapSections() {
+  const nav = $("map-sections");
+  const n = sections();
+  nav.hidden = n < 2;
+  if (n < 2) return;
+  const first = mapSection * sectionSize() + 1;
+  const last = Math.min(trail.spots.length, first + sectionSize() - 1);
+  nav.innerHTML = `<button class="map-down" ${mapSection === 0 ? "disabled" : ""}>▼ Down the trail</button>
+    <span>Stops ${first}–${last}</span>
+    <button class="map-up" ${mapSection === n - 1 ? "disabled" : ""}>Up the trail ▲</button>`;
+  nav.querySelector(".map-down").onclick = () => showMapSection(mapSection - 1);
+  nav.querySelector(".map-up").onclick = () => showMapSection(mapSection + 1);
+}
+
+function showMapSection(n) {
+  mapSection = Math.max(0, Math.min(sections() - 1, n));
+  drawMap();
+  renderMapSpots();
+  renderMapSections();
 }
 
 function renderMapSpots() {
   $("map-spots").replaceChildren(
-    ...trail.spots.map((h, spot) => {
+    ...mapStops().map(([spot, h]) => {
       const { x, y } = plotAt(spot);
       const b = document.createElement("button");
       b.className = "map-spot" + (h ? "" : " empty") + (spot === at ? " current" : "");
@@ -244,8 +275,7 @@ function renderMapSpots() {
 }
 
 function openMap() {
-  drawMap();
-  renderMapSpots();
+  showMapSection(Math.floor(at / sectionSize()));
   $("trail-map").showModal();
   const current = document.querySelector(".map-spot.current");
   if (current) current.focus();
