@@ -1861,16 +1861,44 @@ def pets_view(conn, learner_id: int) -> list[dict]:
     return out
 
 
+def party_fresh(save: dict) -> bool:
+    """Whether the party can still change on this trip: not in a fight, and
+    every pet still has all its energy and mana (only your own walking
+    energy's been used), so swapping can't refill anyone."""
+    trip, team = save["trip"], save["team"]
+    if not trip:
+        return True
+    if save.get("battle") or trip.get("reborn") or len(trip.get("pets", [])) != len(team):
+        return False
+    mana = trip.get("mana") or [m["mana"] for m in team]
+    return all(e >= m["energy"] and n >= m["mana"] for e, n, m in zip(trip["pets"], mana, team))
+
+
+def _swap_team(save: dict, team: list[dict]) -> dict:
+    """A fresh party on a trip that hasn't touched the old one: the new pets
+    come at full energy and mana; your own walking energy carries on."""
+    trip = save["trip"]
+    pets = [m["energy"] for m in team]
+    most = trip["max"] - sum(trip["pets"]) + sum(pets)
+    return {**save, "team": team, "fighters": None,
+            "trip": {**trip, "pets": pets, "mana": [m["mana"] for m in team], "energy": trip["walk"] + sum(pets), "max": most}}
+
+
 def set_party(conn, learner_id: int, ids: list[int]) -> dict:
-    """Pick who goes (between trips)."""
+    """Pick who goes: between trips, or on one while the party's still fresh (party_fresh)."""
     mine = {p["id"] for p, _ in roster(conn, learner_id)}
     if len(ids) > PARTY_SIZE or len(set(ids)) != len(ids) or not set(ids) <= mine:
         raise WanderError("Pick up to five of your own pets.")
 
     def change(s: dict) -> dict:
-        if s["trip"]:
-            raise WanderError("Pick your party before you set off.")
-        return {**s, "party": list(ids), "team": _team(conn, learner_id, ids), "events": []}
+        team = _team(conn, learner_id, ids)
+        if not s["trip"]:
+            return {**s, "party": list(ids), "team": team, "events": []}
+        if not party_fresh(s):
+            raise WanderError("Your party's already worn from the trip. You can change it tomorrow morning.")
+        if not ids:
+            raise WanderError("Take at least one pet along.")
+        return {**_swap_team(s, team), "party": list(ids), "events": []}
     return _write(conn, learner_id, change)
 
 
@@ -2432,6 +2460,7 @@ def view(save: dict) -> dict:
         "pages": next((e["pages"] for e in save["events"] if e["kind"] == "pages"), None),
         "ending": ending_view(save) if any(e["kind"] == "credits" for e in save["events"]) else None,
         "can_start_day": can_start_day(save),
+        "can_change_party": bool(save["trip"]) and party_fresh(save),
         "stats": save["stats"],
     }
 

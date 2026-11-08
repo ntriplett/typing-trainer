@@ -187,7 +187,6 @@ function openPage() {
     .then((r) => r.json())
     .then(render);
   showChangePin();
-  showScale();
   showGift();
 }
 
@@ -219,21 +218,6 @@ async function showGift() {
     $("gift-message").textContent = `🎁 ${data.gift.name} is wrapped up for ${who}, from ${data.gift.from}! It's waiting at the Pet Shop.`;
     $("gift-design").value = "";
   };
-}
-
-// How big the whole app draws on this computer (ui_scale.js).
-function showScale() {
-  const box = document.querySelector(".scale-picks");
-  const now = UIScale.get();
-  box.innerHTML = UIScale.SIZES.map(
-    (v) => `<button class="scale-pick${v === now ? " current" : ""}" role="radio" aria-checked="${v === now}" data-scale="${v}">${v === 1 ? "Normal" : `${Math.round(v * 100)}%`}</button>`
-  ).join("");
-  for (const b of box.querySelectorAll("button")) {
-    b.onclick = () => {
-      UIScale.set(Number(b.dataset.scale));
-      showScale();
-    };
-  }
 }
 
 function showChangePin() {

@@ -139,7 +139,49 @@ def test_your_pets_make_the_team():
     assert client.post("/api/wander/party", json={"pets": [999]}).status_code == 400
     data = client.post("/api/wander/trip/start", json={}).json()
     assert data["trip"]["energy"] == sv.WALK_ENERGY + wp.team_energy(data["team"])
-    assert client.post("/api/wander/party", json={"pets": [fox]}).status_code == 400  # not mid-trip
+    assert data["can_change_party"]  # fresh: see the next test
+
+
+def test_the_party_can_change_on_a_trip_till_a_pet_has_used_energy():
+    fox, bunny = _add_pet("fox", 1), _add_pet("bunny", 2)
+    client.post("/api/wander/party", json={"pets": [fox]})
+    start = client.post("/api/wander/trip/start", json={}).json()
+    assert start["can_change_party"]
+    with db.open_db(main.DB_PATH) as conn:  # some walking: only your own energy's used
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "walk": save["trip"]["walk"] - 10, "energy": save["trip"]["energy"] - 10}})
+    data = client.post("/api/wander/party", json={"pets": [bunny, fox]}).json()
+    assert [m["id"] for m in data["team"]][:2] == [bunny, fox]
+    trip = data["trip"]
+    assert trip["walk"] == start["trip"]["walk"] - 10  # your own energy carries on
+    assert trip["pets"] == [m["energy"] for m in data["team"]] and trip["energy"] == trip["walk"] + sum(trip["pets"])
+    assert trip["max"] == start["trip"]["walk"] + sum(trip["pets"])
+    assert data["can_change_party"]
+    assert client.post("/api/wander/party", json={"pets": []}).status_code == 400  # someone has to go
+    with db.open_db(main.DB_PATH) as conn:  # a pet's been hurt
+        save = sv.load(conn, 1)
+        pets = [save["trip"]["pets"][0] - 1, *save["trip"]["pets"][1:]]
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "pets": pets, "energy": save["trip"]["energy"] - 1}})
+    assert not client.get("/api/wander").json()["can_change_party"]
+    worn = client.post("/api/wander/party", json={"pets": [fox]})
+    assert worn.status_code == 400 and "tomorrow" in worn.json()["detail"]
+
+
+def test_used_mana_or_a_fight_locks_the_party_for_the_day():
+    fox, bunny = _add_pet("fox", 1), _add_pet("bunny", 2)
+    client.post("/api/wander/party", json={"pets": [fox]})
+    client.post("/api/wander/trip/start", json={})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "mana": [n - 1 for n in save["trip"]["mana"]]}})
+    assert client.post("/api/wander/party", json={"pets": [bunny]}).status_code == 400
+    from app.wanderpaw import critters as cr
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        save = {**save, "trip": {**save["trip"], "mana": [m["mana"] for m in save["team"]]}}
+        save = sv._start_battle(save, cr.Critter("g:0,0:0,0", (0, 0), (0, 0), "goat", "leaf", 3, False, 7, None, ""))
+        db.save_wander(conn, 1, {**save, "events": []})
+    assert not client.get("/api/wander").json()["can_change_party"]
 
 
 def _level_to(pet, lv):

@@ -107,6 +107,10 @@ const DayTracker = {
         <span class="coin-icon" aria-hidden="true"></span>
         <span id="coin-count">…</span>
       </span>
+      <div class="scale-menu-wrap">
+        <button class="scale-toggle" aria-haspopup="true" aria-expanded="false" title="Make everything bigger or smaller">🔍</button>
+        <div class="scale-menu" role="radiogroup" aria-label="How big everything is" hidden></div>
+      </div>
       <button class="night-toggle" hidden></button>
       <div class="profile-menu-wrap">
         <button class="topbar-avatar" aria-haspopup="true" aria-expanded="false" title="Profile menu"></button>
@@ -140,6 +144,42 @@ const DayTracker = {
   document.addEventListener("click", (e) => {
     if (!menu.contains(e.target)) menu.hidden = true;
   });
+  // How big everything draws on this computer (ui_scale.js). Its buttons
+  // never take the keyboard's focus, so typing carries on mid-lesson or game.
+  const scaleWrap = bar.querySelector(".scale-menu-wrap");
+  const scaleToggle = bar.querySelector(".scale-toggle");
+  const scaleMenu = bar.querySelector(".scale-menu");
+  const scale = typeof UIScale === "undefined" ? null : UIScale; // a top-level const, not on window
+  function showScales() {
+    const now = scale ? scale.get() : 1;
+    scaleMenu.innerHTML = (scale ? scale.SIZES : [1]).map(
+      (v) => `<button class="scale-pick${v === now ? " current" : ""}" role="radio" aria-checked="${v === now}" data-scale="${v}">${Math.round(v * 100)}%</button>`
+    ).join("");
+  }
+  scaleWrap.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus where it was
+  scaleToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showScales();
+    scaleMenu.hidden = !scaleMenu.hidden;
+    scaleToggle.setAttribute("aria-expanded", String(!scaleMenu.hidden));
+  });
+  scaleMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const pick = e.target.closest(".scale-pick");
+    if (!pick || !scale) return;
+    scale.set(Number(pick.dataset.scale));
+    showScales();
+  });
+  document.addEventListener("click", (e) => {
+    if (!scaleWrap.contains(e.target)) {
+      scaleMenu.hidden = true;
+      scaleToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+  window.addEventListener("storage", (e) => {
+    if (e.key === "ui-scale" && !scaleMenu.hidden) showScales();
+  });
+
   bar.querySelector(".switch-player").addEventListener("click", async () => {
     await fetch("/api/profiles/logout", { method: "POST" });
     window.location.href = "/welcome";

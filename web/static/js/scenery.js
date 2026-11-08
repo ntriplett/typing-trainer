@@ -952,14 +952,15 @@ const SCENES = {
 const Scenery = { canvas: null, still: null, place: null, night: false, t: 0, timer: null };
 
 function sceneSize() {
-  // in page px: the page may be zoomed (ui_scale.js)
-  const zoom = window.UIScale ? UIScale.zoom() : 1;
-  const W = Math.ceil(window.innerWidth / zoom / SCENERY_PX);
-  const H = Math.ceil(window.innerHeight / zoom / SCENERY_PX);
+  // in screen px: the canvas isn't zoomed with the page (ui_scale.js), but
+  // the page's column is, so it's wider here
+  const zoom = typeof UIScale === "undefined" ? 1 : UIScale.zoom();
+  const W = Math.ceil(window.innerWidth / SCENERY_PX);
+  const H = Math.ceil(window.innerHeight / SCENERY_PX);
   const gt = H - Math.max(24, Math.round(H * 0.18));
   // how far in from each edge the page's column starts (things down the
   // sides peek out here; on narrow screens they hide behind the page)
-  const margin = Math.max(0, (W - CONTENT_W / SCENERY_PX) / 2);
+  const margin = Math.max(0, (W - (CONTENT_W * zoom) / SCENERY_PX) / 2);
   // things down the sides grow with the screen: a front tree is about a
   // third of it tall
   const k = Math.max(1, gt / 110);

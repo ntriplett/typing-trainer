@@ -135,16 +135,6 @@
   font-size: 20px;
 }
 
-.scale-picks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.scale-pick.current {
-  outline: 4px solid var(--leaf-gold);
-}
-
 .gift-form {
   display: flex;
   flex-wrap: wrap;

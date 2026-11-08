@@ -297,12 +297,48 @@ main.wander {
   padding-left: 1rem;
 }
 
-/* What just happened: big, in the top box. */
-.wander-hero .wander-message {
-  flex: 1 1 260px;
+/* The news bar: every short note in one place, just above the board. It
+   keeps its height when empty so the board never jumps while you type. */
+.wander-news {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 3.1rem;
   margin: 0;
-  font-size: 30px;
+  padding: 6px 14px;
+}
+
+.wander-news .wander-message {
+  margin: 0;
+  min-height: 0;
+  font-size: 24px;
   font-weight: bold;
+  text-align: left;
+}
+
+.wander-news .wander-message.empty::before {
+  content: "🐾";
+  opacity: 0.25;
+}
+
+.wander-news-tag {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  text-align: center;
+  color: #fff;
+  background: var(--type-wrong);
+}
+
+.wander-message.good .wander-news-tag {
+  background: var(--type-correct);
+}
+
+.wander-news-tag.wander-news-who {
+  background: var(--accent, #c8853d);
 }
 
 .wander-message.pop {
@@ -1733,9 +1769,7 @@ main.wander {
 /* Pip's help beside what you're doing, portraits, and reading a Keeper's letter */
 .wander-pip {
   margin: 0;
-  padding: 8px 14px;
-  font-size: 23px;
-  border-left: 6px solid var(--accent, #c8853d);
+  font-size: 22px;
 }
 
 .wander-pip-pages {
@@ -1795,4 +1829,17 @@ main.wander {
 /* Someone's reply can have a few separate things to tell you */
 #screen-text {
   white-space: pre-line;
+}
+
+/* Mid-trip: swap who's coming while the party's still fresh (wanderpaw.js openSwap). */
+.wander-party-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin: 10px 0 0;
+}
+
+.wander-party-change[hidden] {
+  display: none;
 }

@@ -54,6 +54,7 @@ let menu = null; // an open book or the go-home question: {name, at}
 let lastReady = null; // what Enter offered last render, so a new offer glows
 let pets = null; // the picker's list (GET /api/wander/pets)
 let cursor = 0;
+let swapping = false; // the picker, opened mid-trip from the party book (state.can_change_party)
 let typing = null; // a line to type: {action, line, at, slips, wrong}
 let reading = null; // a Keeper's letter being read: {view, lines, at} (the server saves each line)
 let pages = null; // Pip's pages to read: {list, at, done: what to tell the server at the end, back: mode after}
@@ -65,9 +66,12 @@ const SLIDE_MS = 220;
 const words = (name) => name.replace(/_/g, " ");
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
+// The news bar's note (wanderpaw.html): good news or a problem, tagged so
+// it reads the same wherever it came from.
 function say(text, good = false) {
-  message.innerHTML = wanderText(text);
+  message.innerHTML = text ? `<span class="wander-news-tag" aria-hidden="true">${good ? "✔" : "!"}</span> ${wanderText(text)}` : "";
   message.classList.toggle("good", good);
+  message.classList.toggle("empty", !text);
   message.classList.remove("pop");
   void message.offsetWidth; // restart the pop
   if (text) message.classList.add("pop");
@@ -848,6 +852,7 @@ function renderParty() {
   box.hidden = !on;
   box.parentElement.classList.toggle("partying", on);
   if (!on) return;
+  document.getElementById("party-change-row").hidden = !state.can_change_party;
   menu.at = Math.max(0, Math.min(menu.at, state.team.length)); // 0: the whole party
   const list = document.getElementById("party-list");
   const row = (i, html) => `<li class="${i === menu.at ? "on" : ""}" data-i="${i}">${html}</li>`;
@@ -1502,6 +1507,8 @@ function menuKey(e) {
     e.preventDefault();
     menu.at += e.key === "ArrowDown" ? 1 : -1;
     render();
+  } else if (menu.name === "party" && (e.key === "c" || e.key === "C") && state.can_change_party) {
+    openSwap();
   } else if (menu.name === "party" && (e.key === "f" || e.key === "F") && state.trip) {
     // pick who fights next: up to two
     if (menu.at === 0) return; // the whole party's picture
@@ -1541,7 +1548,8 @@ function inParty(id) {
 
 function renderPicker() {
   const box = document.getElementById("picker");
-  box.hidden = !!state.trip || mode !== "walk" || !pets || dayScreen !== "picker";
+  if (swapping && !(state.trip && state.can_change_party)) swapping = false;
+  box.hidden = mode !== "walk" || !pets || (state.trip ? !swapping : dayScreen !== "picker");
   document.getElementById("keys").hidden = !box.hidden || !state.trip;
   if (box.hidden) return;
   const list = document.getElementById("picker-pets");
@@ -1571,7 +1579,8 @@ function renderPicker() {
   document.getElementById("picker-keys").innerHTML = `
     ${starters.length ? `<span class="hint">Starters coming: ${starters.join(", ")}.</span><br>` : ""}
     <kbd class="keycap">Space</kbd> add / take off &nbsp; <kbd class="keycap">S</kbd> star &nbsp;
-    <kbd class="keycap">Enter</kbd> set off${state.at_camp ? "" : ` &nbsp; <kbd class="keycap">C</kbd> set off from Camp`}`;
+    ${swapping ? `<kbd class="keycap">Enter</kbd> done`
+      : `<kbd class="keycap">Enter</kbd> set off${state.at_camp ? "" : ` &nbsp; <kbd class="keycap">C</kbd> set off from Camp`}`}`;
 }
 
 function paintPet(canvas, p, most = 3, faceLeft = false) {
@@ -1610,6 +1619,22 @@ async function petAction(url, body) {
   await load();
 }
 
+// Change who's coming, mid-trip, while the party's still fresh (the server checks too).
+function openSwap() {
+  menu = null;
+  mode = "walk";
+  swapping = true;
+  cursor = 0;
+  typer.release();
+  loadPets(); // fresh levels and energy, then it draws
+}
+
+function closeSwap() {
+  swapping = false;
+  say("Your party's ready. Off you go!", true);
+  render();
+}
+
 function pickerKey(e) {
   const p = pets && pets.pets[cursor];
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -1626,9 +1651,11 @@ function pickerKey(e) {
     petAction(`/api/wander/pets/${p.id}/second`, { type: p.choices[e.key === "ArrowLeft" ? 0 : 1] });
   } else if (BOOKS[Number(e.key) - 1]) {
     openMenu(BOOKS[Number(e.key) - 1]);
+  } else if (e.key === "Enter" && swapping) {
+    closeSwap();
   } else if (e.key === "Enter") {
     startTrip(false);
-  } else if ((e.key === "c" || e.key === "C") && !state.at_camp) {
+  } else if ((e.key === "c" || e.key === "C") && !state.at_camp && !swapping) {
     startTrip(true);
   }
 }
@@ -1877,6 +1904,9 @@ async function send(url, body) {
   say(noteFor(data), true);
   const coins = (data.events || []).filter((e) => e.kind === "coins");
   if (coins.length && window.Header) Header.celebrate(coins.map((e) => ({ amount: e.amount, reason: "game" })), data.coin_balance);
+  else if (window.Header && data.coin_balance !== undefined && document.getElementById("coin-count")?.textContent !== data.coin_balance.toLocaleString()) {
+    Header.setCoins(data.coin_balance); // spends (shops) too
+  }
   return data;
 }
 
@@ -1914,6 +1944,10 @@ async function startTrip(fromCamp) {
   apply(data);
 }
 
+document.getElementById("party-change").addEventListener("click", (e) => {
+  e.currentTarget.blur(); // keep Enter for the picker
+  if (state && !busy && state.can_change_party) openSwap();
+});
 document.getElementById("go-home").addEventListener("click", (e) => {
   e.currentTarget.blur(); // keep Enter for the map
   if (!busy) askHome();
@@ -1947,6 +1981,11 @@ async function act(action, accuracy = 1, arg = null) {
 }
 
 function walkKey(e) {
+  if (swapping && state.trip) {
+    if (e.key === "Escape") closeSwap();
+    else pickerKey(e);
+    return;
+  }
   if (e.key === "Escape" || e.key === "Backspace") {
     e.preventDefault();
     if (typer.target) {
@@ -2069,8 +2108,8 @@ function paintPortrait(who) {
 function renderPip() {
   const box = document.getElementById("pip-hint");
   const t = state.tutorial;
-  box.hidden = !t || !t.hint || !["walk", "battle"].includes(mode) || (mode === "battle" && !state.battle);
-  if (!box.hidden) box.innerHTML = `<b>${esc(t.name)}:</b> ${wanderText(t.hint)}`;
+  box.hidden = !t || !t.hint || !["walk", "battle"].includes(mode) || (mode === "battle" && !state.battle) || dayScreen === "morning" || dayScreen === "evening";
+  if (!box.hidden) box.innerHTML = `<span class="wander-news-tag wander-news-who">${esc(t.name)}</span> ${wanderText(t.hint)}`;
 }
 
 // A letter: each server line is typed in the shared prompt, and saved when it's done.

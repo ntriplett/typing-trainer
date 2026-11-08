@@ -16,7 +16,6 @@
         <h1>Wanderpaw</h1>
         <p class="wander-where"><span id="where-chip" class="type-chip"></span> <b id="where-name"></b> <span id="where-land"></span></p>
       </div>
-      <p id="wander-message" class="wander-message" role="status"></p>
       <div class="wander-energy">
         <span id="energy" class="wander-energy" hidden>
           <span id="energy-label"></span>
@@ -26,7 +25,13 @@
         <button type="button" class="button-go" id="go-home">Go home</button>
       </div>
     </section>
-    <p class="panel wander-pip" id="pip-hint" hidden></p>
+    <!-- Every short note in one place, just above the board: what just happened
+         (good news or a problem) and Pip's tutorial hint. Talking and choosing
+         stay in the boxes on the board. -->
+    <section class="panel wander-news" id="news">
+      <p id="wander-message" class="wander-message empty" role="status"></p>
+      <p class="wander-pip" id="pip-hint" hidden></p>
+    </section>
     <div class="wander-play">
       <section class="panel wander-board">
         <canvas id="wander-local" class="wander-map" aria-label="Where you are"></canvas>
@@ -79,6 +84,10 @@
           <div id="party-detail"></div>
         </div>
         <p class="wander-screen-keys" id="party-keys"></p>
+        <p class="wander-party-change" id="party-change-row" hidden>
+          <button type="button" class="button-go" id="party-change"><kbd class="keycap">C</kbd> Change party members</button>
+          <small>While every pet's still fresh, before anyone's tired or hurt.</small>
+        </p>
       </div>
       <div class="panel wander-battle" id="battle" hidden>
         <div class="wander-battle-tools">

@@ -441,6 +441,8 @@ def test_buy_at_a_town_shop(page: Page, live_server, tmp_path):
     page.keyboard.press("Enter")  # the first thing on the shelf
     expect(page.locator("#menu-body")).to_contain_text("19,500")
     expect(page.locator("#menu-body")).to_contain_text("you have 1")
+    expect(page.locator("#coin-count")).to_have_text("19,500")  # the top bar's coins drop too
+    expect(page.locator("#news #wander-message")).to_contain_text("You bought a Mana Drop")  # notes go in the news bar
     page.keyboard.press("Escape")
     expect(page.locator("#screen")).to_contain_text("Alchemist")
     assert not errors
@@ -854,3 +856,42 @@ def test_waking_whats_asleep_in_a_cave_starts_a_fight_with_no_go_home_button(pag
     page.keyboard.press("Enter")
     expect(page.locator("#screen-text")).to_contain_text("asleep in here")  # back to sleep
 
+
+
+def test_change_the_party_on_a_trip_while_everyone_is_fresh(page: Page, live_server, tmp_path):
+    from app import db, pet_genes
+    from app.wanderpaw import save as sv
+
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(f"{live_server}/wanderpaw")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        fox = db.add_v3_pet(conn, 1, pet_genes.roll("fox", None, None, 1), "Rusty", "shop")
+        bunny = db.add_v3_pet(conn, 1, pet_genes.roll("bunny", None, None, 2), "Clover", "shop")
+    page.request.post(f"{live_server}/api/wander/party", data={"pets": [fox]})
+    page.request.post(f"{live_server}/api/wander/trip/start", data={})
+    page.reload()
+    page.wait_for_function("state && state.trip && !busy")
+    page.keyboard.press("3")  # the party book
+    expect(page.locator("#party-change")).to_be_visible()
+    page.keyboard.press("c")
+    expect(page.locator("#picker")).to_be_visible()
+    expect(page.locator("#picker-keys")).to_contain_text("done")
+    page.locator("#picker-pets li", has_text="Clover").click()  # add Clover
+    page.wait_for_function(f"state.team.some((m) => m.id === {bunny})")
+    page.keyboard.press("Enter")
+    expect(page.locator("#picker")).to_be_hidden()
+    expect(page.locator("#wander-message")).to_contain_text("party's ready")
+    page.wait_for_function("targets.length > 0")  # walking again by typing
+    assert page.evaluate(f"state.team.slice(0, 2).map((m) => m.id)") == [fox, bunny]
+
+    with db.open_db(tmp_path / "e2e.db") as conn:  # a pet gets tired: the party's set for today
+        save = sv.load(conn, 1)
+        pets = [save["trip"]["pets"][0] - 1, *save["trip"]["pets"][1:]]
+        db.save_wander(conn, 1, {**save, "trip": {**save["trip"], "pets": pets, "energy": save["trip"]["energy"] - 1}})
+    page.reload()
+    page.wait_for_function("state && state.trip && !busy")
+    page.keyboard.press("3")
+    expect(page.locator("#party")).to_be_visible()
+    expect(page.locator("#party-change")).to_be_hidden()
+    assert not errors

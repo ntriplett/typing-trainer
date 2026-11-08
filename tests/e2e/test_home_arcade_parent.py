@@ -105,26 +105,43 @@ def test_parent_page_saves_settings_and_explains_the_next_lesson(page: Page, liv
 NO_SIDEWAYS_SCROLL = "document.documentElement.scrollWidth <= innerWidth + 1"
 
 
-def test_a_grownup_makes_everything_bigger_for_this_computer(page: Page, live_server):
+def test_the_top_bar_makes_everything_bigger_but_not_the_background(page: Page, live_server):
     page.set_viewport_size({"width": 2400, "height": 1400})
-    _open_grownups(page, live_server)
-    picks = page.locator(".scale-pick")
-    expect(picks).to_have_text(["Normal", "125%", "150%", "175%", "200%"])
+    page.goto(live_server)
+    expect(page.locator(".scale-menu")).to_be_hidden()
+    page.click(".scale-toggle")
+    picks = page.locator(".scale-menu .scale-pick")
+    expect(picks).to_have_text(["100%", "110%", "125%", "150%"])
     expect(picks.first).to_have_class(re.compile("current"))
     page.get_by_role("radio", name="150%").click()
     expect(page.get_by_role("radio", name="150%")).to_have_class(re.compile("current"))
     assert page.evaluate("UIScale.zoom(document.body)") == 1.5
-    page.goto(live_server)  # kept, and every page draws at that size
+    assert page.evaluate("UIScale.zoom(document.querySelector('.scenery'))") == 1  # the background isn't zoomed
+    assert page.evaluate("document.querySelector('.scenery').getBoundingClientRect().width") >= 2400 - 8
+    page.goto(f"{live_server}/welcome")  # kept, and every page draws at that size
     assert page.evaluate("UIScale.zoom(document.body)") == 1.5
+    page.goto(live_server)
     assert page.evaluate(NO_SIDEWAYS_SCROLL)
-    page.goto(f"{live_server}/welcome")
-    assert page.evaluate("UIScale.zoom(document.body)") == 1.5
+    page.evaluate("localStorage.setItem('ui-scale', '2')")  # a size from before: as big as it goes now
+    assert page.evaluate("UIScale.get()") == 1.5
+
+
+def test_picking_a_size_mid_practice_keeps_the_typing_going(page: Page, live_server):
+    page.goto(f"{live_server}/practice/practice_random_keys_v1?keys=home&focus=jf")
+    page.wait_for_function("stage.active")
+    focused = page.evaluate("document.activeElement && document.activeElement.className")
+    page.click(".scale-toggle")
+    page.get_by_role("radio", name="125%").click()
+    assert page.evaluate("UIScale.zoom(document.body)") == 1.25
+    assert page.evaluate("document.activeElement && document.activeElement.className") == focused
+    page.click(".stage-lines")  # clicking away closes the menu
+    expect(page.locator(".scale-menu")).to_be_hidden()
 
 
 def test_lines_fit_and_clicks_land_when_zoomed(page: Page, live_server):
     page.set_viewport_size({"width": 2400, "height": 1400})
     page.goto(live_server)
-    page.evaluate("UIScale.set(2)")
+    page.evaluate("UIScale.set(1.5)")
     page.goto(f"{live_server}/practice/practice_random_keys_v1?keys=home&focus=jf&length=long")
     page.wait_for_function("stage.active")
     assert page.evaluate("view.maxChars") >= 25  # the box's own size, not the zoomed one

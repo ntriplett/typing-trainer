@@ -96,7 +96,7 @@
 html {
   /* themes.js swaps in a grain tile in the current place's colors */
   background: var(--page-bg) url("/static/assets/ui/sand.svg") repeat;
-  background-size: 32px 32px;
+  background-size: calc(32px * var(--ui-unzoom, 1)); /* the normal size at any UI scale */
   image-rendering: pixelated;
 }
 
@@ -515,6 +515,7 @@ button:focus-visible,
   z-index: -2;
   pointer-events: none;
   image-rendering: pixelated;
+  zoom: var(--ui-unzoom, 1); /* stays its normal size when the page is zoomed (ui_scale.js) */
 }
 
 /* Words straight on a dark scenery sky (space by day) stay readable. */
@@ -528,6 +529,46 @@ button:focus-visible,
 
 .scenery ~ main {
   margin-bottom: 4rem; /* leave the scenery's ground showing */
+}
+
+/* How big everything is (header.js, ui_scale.js): drops down from the top bar. */
+.scale-menu-wrap {
+  position: relative;
+}
+
+.scale-toggle {
+  border: 3px solid var(--wood-light);
+  border-image: none;
+  background: var(--outline);
+  text-shadow: none;
+  font-size: 1.1rem;
+  padding: 0.1rem 0.45rem;
+}
+
+.scale-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  background: var(--parchment);
+  border: 4px solid var(--outline);
+  box-shadow: 4px 4px 0 var(--wood);
+}
+
+.scale-menu[hidden] {
+  display: none;
+}
+
+.scale-menu .scale-pick {
+  min-width: 5.5rem;
+}
+
+.scale-menu .scale-pick.current {
+  outline: 4px solid var(--leaf-gold);
 }
 
 /* Day/night switch in the top bar (shown when night is unlocked here). */
