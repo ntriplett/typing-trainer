@@ -57,6 +57,8 @@ def test_your_place_is_drawn_behind_every_page(page: Page, live_server):
     for path in ("/session", "/game/game_crow_patrol_v1", "/wanderpaw", "/analysis", "/parent", "/arcade",
                  "/game-lab", "/practice-lab", "/teach-lab", "/wander-lab"):
         page.goto(f"{live_server}{path}")
+        if path == "/session":
+            page.wait_for_url("**/teach/**")  # a new player is sent on to their first lesson: let it finish first
         expect(page.locator("canvas.scenery")).to_have_count(1)
     assert errors == []
 

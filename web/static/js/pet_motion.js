@@ -593,7 +593,8 @@ const PetMotion = (() => {
       w.t = Math.min(1, w.t + w.leapRate);
       w.x = w.from[0] + (w.tx - w.from[0]) * w.t;
       w.y = w.from[1] + (w.ty - w.from[1]) * w.t;
-      w.hop = Math.sin(Math.PI * w.t) * w.arc;
+      // a high ledge near the top: the arc stays in the picture, like flight
+      w.hop = Math.min(Math.sin(Math.PI * w.t) * w.arc, Math.max(0, w.y - w.height - 2));
       if (w.t >= 1) {
         w.hop = 0;
         w.ledge = w.toLedge;
