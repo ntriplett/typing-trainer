@@ -27,7 +27,8 @@ def test_the_shop_door_shows_the_free_pet(page: Page, live_server):
     page.goto(live_server)
     expect(page.locator("#pets-sub")).to_have_text("A free pet is waiting!")
     page.goto(f"{live_server}/pets")
-    expect(page.locator("[data-building='shop'] .hub-news")).to_contain_text("free pet")
+    # the home row also earned a reward bunny (app/pet_rewards.py): its gift box gets the door's sign
+    expect(page.locator("[data-building='shop'] .hub-news")).to_contain_text("A gift for you!")
 
 
 def test_the_care_center_and_trailhead_doors_open(page: Page, live_server):

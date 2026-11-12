@@ -46,7 +46,7 @@ def waiting(conn, learner_id: int) -> dict | None:
         return None
     gift = gifts[0]
     return {"id": gift["id"], "from": gift["from_name"], "name": gift["name"], "species": gift["genes"]["species"],
-            "genes": g.resolve(gift["genes"]), "more": len(gifts) - 1}
+            "genes": g.resolve(gift["genes"]), "note": gift["note"], "more": len(gifts) - 1}
 
 
 def open_gift(conn, learner_id: int, gift_id: int, name: object) -> dict:

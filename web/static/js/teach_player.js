@@ -166,6 +166,10 @@ function showFanfare(data) {
       `<span class="coin-icon"></span>${(data.key_bonus || 0).toLocaleString()} coin bonus!</p>`);
   }
   for (const d of data.shop_opened || []) lines.push(`<p class="fanfare-shop">🐾 ${escapeHtml(d.name)} just opened at the Pet Shop!</p>`);
+  for (const r of data.reward_pets || []) {
+    const a = /^[aeiou]/i.test(r.name) ? "an" : "a";
+    lines.push(`<p class="fanfare-shop">🎁 You earned ${a} ${escapeHtml(r.name.toLowerCase())}! It's waiting at the Pet Shop.</p>`);
+  }
   if (data.pet_coupon) lines.push(`<p class="fanfare-shop">🎟️ You got a free pet coupon for Household Pets!</p>`);
   if (!lines.length) return;
   const box = el("teach-fanfare");

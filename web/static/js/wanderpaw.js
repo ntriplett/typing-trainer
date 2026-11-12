@@ -1901,7 +1901,8 @@ async function send(url, body) {
     say(data.detail);
     return null;
   }
-  say(noteFor(data), true);
+  const sparring = (data.events || []).some((e) => e.kind === "spar");
+  if (!sparring) say(noteFor(data), true); // a spar's waits for its match to play (act)
   const coins = (data.events || []).filter((e) => e.kind === "coins");
   if (coins.length && window.Header) Header.celebrate(coins.map((e) => ({ amount: e.amount, reason: "game" })), data.coin_balance);
   else if (window.Header && data.coin_balance !== undefined && document.getElementById("coin-count")?.textContent !== data.coin_balance.toLocaleString()) {
@@ -1977,7 +1978,85 @@ document.querySelectorAll("[data-menu]").forEach((b) => {
 
 async function act(action, accuracy = 1, arg = null) {
   const data = await send("/api/wander/act", { action, accuracy, arg });
-  if (data) apply(data);
+  if (!data) return;
+  const spar = (data.events || []).find((e) => e.kind === "spar");
+  if (spar) {
+    await playSpar(spar);
+    say(noteFor(data), true);
+  }
+  apply(data);
+}
+
+// --- a spar in a town's ring: a few shots each way, then the XP -----------------------
+
+const SPAR_SHOT_MS = 420;
+function playSpar(spar) {
+  const canvas = document.getElementById("screen-spar");
+  const team = state.team;
+  const sides = [team[spar.teacher], team[spar.learner]];
+  if (!canvas || !sides[0] || !sides[1]) return Promise.resolve();
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const shots = still ? 2 : 2 * (spar.rounds || 3); // alternating, the teacher first
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const left = { x: 90, y: H - 40 }, right = { x: W - 90, y: H - 40 };
+  // each pet painted once, off screen, then placed (a hop when hit)
+  const art = sides.map((m, i) => {
+    const c = document.createElement("canvas");
+    c.width = 150;
+    c.height = 120;
+    if (m.genes) paintPet(c, m, 4, i === 1); // facing each other
+    return c;
+  });
+  canvas.hidden = false;
+  busy = true;
+  return new Promise((done) => {
+    const start = performance.now();
+    function frame(now) {
+      const t = (now - start) / SPAR_SHOT_MS;
+      const n = Math.floor(t);
+      const f = t - n;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "rgba(139, 90, 43, 0.25)"; // the ring's dirt
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H - 30, W / 2 - 20, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const from = n % 2 === 0 ? 0 : 1; // who's shooting
+      const hit = n < shots && f > 0.75 ? 1 - from : -1;
+      [left, right].forEach((p, i) => {
+        const hop = i === hit ? -6 : 0;
+        const shove = i === hit ? (i === 0 ? -4 : 4) : 0;
+        ctx.drawImage(art[i], p.x - 75 + shove, p.y - 105 + hop);
+      });
+      if (n < shots && f <= 0.75) {
+        const a = from === 0 ? left : right, b = from === 0 ? right : left;
+        const k = f / 0.75;
+        const x = a.x + (b.x - a.x) * k, y = a.y - 50 - Math.sin(k * Math.PI) * 30;
+        ctx.fillStyle = WanderMap.TYPE_COLORS[spar.shots[from]] || "#e8b33e";
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255, 250, 240, 0.8)";
+        ctx.beginPath();
+        ctx.arc(x - 2, y - 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (n < shots) {
+        requestAnimationFrame(frame);
+        return;
+      }
+      ctx.fillStyle = "#3b2417";
+      ctx.font = `bold 22px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textAlign = "center";
+      ctx.fillText(`${sides[1].name} +${spar.xp} XP`, W / 2, 28);
+      setTimeout(() => {
+        canvas.hidden = true;
+        busy = false;
+        done();
+      }, 900);
+    }
+    requestAnimationFrame(frame);
+  });
 }
 
 function walkKey(e) {

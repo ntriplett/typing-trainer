@@ -960,3 +960,30 @@ def test_punctuation_doesnt_count_toward_wanderpaws_letters():
     _learned("fjdk;")
     assert not _card()["ready"]
 
+
+
+def test_sparring_in_a_town_ring_levels_the_new_pet_and_tires_both():
+    from app.wanderpaw import spar as sp
+    fox, bunny = _add_pet("fox", 1), _add_pet("bunny", 2)
+    client.post("/api/wander/party", json={"pets": [fox, bunny]})
+    with db.open_db(main.DB_PATH) as conn:
+        sv.give_xp(conn, 1, fox, wp.xp_for(15))
+    client.post("/api/wander/trip/start", json={})
+    with db.open_db(main.DB_PATH) as conn:
+        save = sv.load(conn, 1)
+        big = next(h for h, x in sv.world_of(save).hexes.items() if x.special == "town")
+        ring = next(h for h, k in sv.local_of(save, big).pois.items() if k == lc.ARENA)
+        sv.teleport(conn, 1, big, ring)
+    state = client.get("/api/wander").json()
+    assert state["screen"]["title"] == "Sparring Ring"
+    assert state["screen"]["options"][0]["arg"] == "0,1"
+    before = state["trip"]["pets"][:2]
+    gain = sp.xp(*state["team"][:2])
+    assert gain == round(wp.progress(0)[1] * sp.RATE * 14)  # a gap of 14: nearly a whole level
+    data = client.post("/api/wander/act", json={"action": "spar", "arg": "0,1", "accuracy": 1}).json()
+    team = {m["id"]: m for m in data["team"]}
+    assert team[fox]["xp"] == wp.xp_for(15) and team[bunny]["xp"] == gain
+    assert data["trip"]["pets"][:2] == [before[0] - sp.cost(team[fox]), before[1] - sp.cost(team[bunny])]
+    data = client.post("/api/wander/act", json={"action": "spar", "arg": "0,1", "accuracy": 1}).json()
+    assert [u["level"] for u in data["levelups"] if u["pet"] == bunny] == [2]
+    assert any(e["kind"] == "spar" for e in data["events"])

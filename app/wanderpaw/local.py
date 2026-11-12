@@ -77,7 +77,8 @@ WALL_TILES = {"river": "water", "cliff": "cliff", "thicket": "tree", "rocks": "r
 # "quest", by finishing the region's story quest). Blocked until then.
 GATE_TILES = {"ember": "dark", "splash": "flames", "leaf": "gap", "shock": "old_gate", "dream": "guardian", "quest": "broken_bridge"}
 CLEARED_TILES = {"gap": "bridge", "broken_bridge": "bridge"}  # else path
-POI_KINDS = ("forage", "chest", "shrine")
+POI_KINDS = ("forage", "chest", "shrine", "arena")
+ARENA = "arena"  # a town's sparring ring (spar.py)
 # Town buildings: two quest-givers (QUEST_ROLE, one per broken shortcut on
 # the region's borders: quests.py), then these, then houses.
 BUILDING_ROLES = ("board", "inn", "shop")
@@ -361,6 +362,10 @@ def generate(seed: int, big: Hex) -> LocalMap:
         if house:
             tiles[house] = "building"
             roles[house] = f"{HERMIT_ROLE}{hermit_homes(seed)[big]}"
+    if here.special == "town":
+        ring = _arena_spot(seed, big, tiles, exits, campfire, pois)
+        if ring:
+            pois[ring] = ARENA
     return LocalMap(big, here.biome, style.name, tiles, exits, campfire, roles, gates, pois, nooks, here.region)
 
 
@@ -384,6 +389,18 @@ def _hermit_house(seed: int, big: Hex, tiles, exits, campfire: Hex, pois, nooks)
     ground = [h for h in sorted(reachable(tiles, campfire)) if tiles[h] in ("grass", "flowers", "sand")
               and h not in exits and h not in pois and h not in nooks and hx.distance(h, campfire) >= 2]
     return rng.choice(ground) if ground else None
+
+
+def _arena_spot(seed: int, big: Hex, tiles, exits, campfire: Hex, pois) -> Hex | None:
+    """A town's sparring ring: an open plaza hex by the campfire. Placed
+    last, on its own random stream, so nothing else in town moves for it."""
+    rng = random.Random(f"wanderpaw-arena:{seed}:{big[0]}:{big[1]}")
+    for dist in (2, 1, 3):
+        ground = [h for h in hx.ring(campfire, dist) if h in CELL_SET and tiles[h] in ("plaza", "path")
+                  and h not in exits and h not in pois]
+        if ground:
+            return rng.choice(sorted(ground))
+    return None
 
 
 def _building_roles(rng: random.Random, buildings: list[Hex], givers: list[str]) -> dict[Hex, str]:

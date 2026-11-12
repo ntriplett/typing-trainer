@@ -80,6 +80,7 @@ const WanderMap = (() => {
     forage: [".....", ".g...", "grG..", ".Grg.", "..G.."],
     chest: [".....", "nnnnn", "nonon", "nnnnn", "....."],
     shrine: ["..y..", ".sSs.", ".S.S.", ".S.S.", "sssss"],
+    arena: ["n...n", "nrrrn", "r...r", "nrrrn", "n...n"], // a sparring ring: posts and rope
     lost: ["..y..", ".yoy.", "yooOy", ".yoy.", "..y.."],
     elder: ["..y..", ".rrr.", "rrrrr", ".wnw.", ".wnw."],
     board: ["nnnnn", "nwwwn", "nwwwn", "nnnnn", ".n.n."],

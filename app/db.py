@@ -286,7 +286,8 @@ CREATE TABLE IF NOT EXISTS pet_gift (
     name TEXT NOT NULL,
     genes TEXT NOT NULL,
     sent_at TEXT NOT NULL,
-    pet_id INTEGER  -- the pet, once opened
+    pet_id INTEGER,  -- the pet, once opened
+    note TEXT  -- what it's for (reward pets, app/pet_rewards.py)
 );
 
 -- Decoratable rooms (app/room.py): surfaces (wallpaper, flooring) and
@@ -453,6 +454,7 @@ _ADDED_COLUMNS = [
     ("pet", "joy", "INTEGER NOT NULL DEFAULT 0"),  # hearts (app/pet_supplies.py)
     ("pet", "joy_on", "TEXT"),  # the day they were last set
     ("room_item", "wide", "INTEGER NOT NULL DEFAULT 0"),  # 1: placed on the 160x90 room grid
+    ("pet_gift", "note", "TEXT"),  # what it's for (reward pets, app/pet_rewards.py)
 ]
 
 
@@ -1592,10 +1594,12 @@ def pet_senders(conn: sqlite3.Connection, learner_id: int) -> dict[int, str]:
 # --- gifts from grown-ups (app/pet_gift.py) ---------------------------------------------
 
 
-def add_pet_gift(conn: sqlite3.Connection, to_learner: int, from_name: str, name: str, genes: dict) -> int:
+def add_pet_gift(
+    conn: sqlite3.Connection, to_learner: int, from_name: str, name: str, genes: dict, note: str | None = None
+) -> int:
     cur = conn.execute(
-        "INSERT INTO pet_gift (to_learner, from_name, name, genes, sent_at) VALUES (?, ?, ?, ?, ?)",
-        (to_learner, from_name, name, json.dumps(genes), _now_iso()),
+        "INSERT INTO pet_gift (to_learner, from_name, name, genes, sent_at, note) VALUES (?, ?, ?, ?, ?, ?)",
+        (to_learner, from_name, name, json.dumps(genes), _now_iso(), note),
     )
     return cur.lastrowid
 
@@ -1603,7 +1607,7 @@ def add_pet_gift(conn: sqlite3.Connection, to_learner: int, from_name: str, name
 def waiting_pet_gifts(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
     """Gifts not opened yet, oldest first."""
     rows = conn.execute(
-        "SELECT id, from_name, name, genes, sent_at FROM pet_gift WHERE to_learner = ? AND pet_id IS NULL ORDER BY id",
+        "SELECT id, from_name, name, genes, sent_at, note FROM pet_gift WHERE to_learner = ? AND pet_id IS NULL ORDER BY id",
         (learner_id,),
     )
     return [{**dict(r), "genes": json.loads(r["genes"])} for r in rows]

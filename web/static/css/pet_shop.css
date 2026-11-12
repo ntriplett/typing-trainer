@@ -547,6 +547,13 @@
   color: #c8302a;
 }
 
+.gift-tag-note {
+  display: block;
+  max-width: 22ch;
+  margin-top: 0.3rem;
+  font-size: 18px;
+}
+
 .gift-tag-hole {
   position: absolute;
   left: 0.9rem;

@@ -1783,6 +1783,17 @@ main.wander {
   image-rendering: pixelated;
 }
 
+.wander-spar {
+  display: block;
+  width: min(480px, 100%);
+  margin: 8px auto;
+  image-rendering: pixelated;
+}
+
+.wander-spar[hidden] {
+  display: none;
+}
+
 .wander-letter {
   clear: both;
   margin: 8px 0;

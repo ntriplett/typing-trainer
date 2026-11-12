@@ -222,7 +222,7 @@ function renderEntrance() {
 function showGiftTag(gift) {
   const body = $("detail-body");
   body.innerHTML = `
-    <div class="gift-tag"><span class="gift-tag-hole"></span>A gift from<b>${escapeHtml(gift.from)}</b></div>
+    <div class="gift-tag"><span class="gift-tag-hole"></span>A gift from<b>${escapeHtml(gift.from)}</b>${gift.note ? `<span class="gift-tag-note">${escapeHtml(gift.note)}</span>` : ""}</div>
     <div class="detail-pets"><figure><canvas class="gift-box-art" width="160" height="160"></canvas></figure></div>
     <div class="detail-actions"><button class="button-gold big-button">🎀 Open it!</button></div>`;
   drawGiftBox(habitatPainter(body.querySelector("canvas").getContext("2d"), 18), 0.5, 0.5, 1);

@@ -70,6 +70,7 @@ from app.wanderpaw import pets as wp
 from app.wanderpaw import quests as qs
 from app.wanderpaw import scene as sc
 from app.wanderpaw import shop as sh
+from app.wanderpaw import spar as sp
 from app.wanderpaw import story as st
 from app.wanderpaw import world as wd
 from app.wanderpaw.hexes import Hex
@@ -88,6 +89,7 @@ DEFAULTS = {
 }
 TUTORIAL_NEXT = {"intro": "party", "party": "walk", "walk": "door", "door": "map", "map": "guide", "guide": "fight", "fight": "bye", "bye": "done"}
 TUTORIAL_WALK_STEPS = 3
+SPAR_CHOICES = 9  # spars offered at a ring (keys 1-9)
 TUTORIAL_CRITTER = "tutorial:0,0"
 
 
@@ -1062,8 +1064,8 @@ def place(save: dict) -> dict | None:
         if role.startswith(lc.HERMIT_ROLE):
             return {"kind": "hermit", "region": here.region, "hermit": role[len(lc.HERMIT_ROLE):]}
         return {"kind": role, "region": here.region}
-    if local.pois.get(spot) == "shrine":
-        return {"kind": "shrine", "region": here.region}
+    if local.pois.get(spot) in ("shrine", lc.ARENA):
+        return {"kind": local.pois[spot], "region": here.region}
     if spot in local.nooks:
         return {"kind": "nook", "region": here.region, "nook": local.nooks[spot]}
     if spot == local.campfire:
@@ -1131,6 +1133,8 @@ def screen(save: dict) -> dict | None:
                 "stock": sh.stock(region, save["bought"].get(region, {}), save["items"], bool(save["finished"]))}
     if kind == "house":
         return _talk(save, where, _bridge_topic(save, region), {"bridge": _bridge_reply(save, region)})
+    if kind == lc.ARENA:
+        return _arena_screen(save)
     if kind == "shrine":
         if pid in trip["used"]:
             return {"title": "Shrine", "text": "The shrine is quiet. Come back next trip.", "action": None}
@@ -1154,6 +1158,40 @@ def screen(save: dict) -> dict | None:
             return {"title": "The Heartstone", "text": f"The great hall is quiet. Five tall pillars ring the Heartstone, one for each type, each with a hollow at the top. {have} of them glow. Bring all five relics home.", "action": None}
         return {"title": "The Heartstone", "text": "Five hollows, five relics. The stone is waiting.", "action": "heartstone", "label": "Place the relics"}
     return None
+
+
+def _arena_screen(save: dict) -> dict:
+    """The sparring ring: a spar for each pair that can, best first."""
+    title = "Sparring Ring"
+    team, pets = save["team"], (save["trip"] or _trip(save["team"]))["pets"]
+    offered = sp.pairs(team, pets)[:SPAR_CHOICES]
+    if not offered:
+        real = [m for m in team if m["id"]]
+        why = ("Bring two of your own pets, one higher in level than the other." if len({m["level"] for m in real}) < 2
+               else "Your pets are too tired to spar. Come back after a rest.")
+        return {"title": title, "text": f"A ring of rope on the grass, for practice matches. {why}", "action": None}
+    options = [{"action": "spar", "arg": f"{t},{l}",
+                "label": f"{team[t]['name']} (lv {team[t]['level']}) teaches {team[l]['name']} (lv {team[l]['level']}): +{gain} {{xp}}"}
+               for t, l, gain in offered]
+    text = (f"A ring of rope on the grass, for practice matches. The higher-level pet teaches, and the other learns. "
+            f"Each spar costs both pets {round(sp.COST * 100)}% of their {{energy}}.")
+    return {"title": title, "text": text, "action": "spar", "options": options}
+
+
+def _spar(save: dict, arg: str) -> dict:
+    t, l = (int(x) for x in arg.split(","))
+    team, trip = save["team"], save["trip"]
+    pets = list(trip["pets"])
+    teacher, learner = team[t], team[l]
+    gain = sp.xp(teacher, learner)
+    costs = {t: sp.cost(teacher), l: sp.cost(learner)}
+    for i, c in costs.items():
+        pets[i] -= c
+    save = {**save, "trip": {**trip, "pets": pets, "energy": trip["walk"] + sum(pets)}}
+    save = _event(save, kind="xp", amount=gain, pets=[learner["id"]])
+    return _event(save, kind="spar", teacher=t, learner=l, xp=gain, rounds=sp.SHOTS, cost=costs[l], teacher_cost=costs[t],
+                  shots=[wp.SPECIES_TYPES[teacher["species"]][0], wp.SPECIES_TYPES[learner["species"]][0]],
+                  text=f"{teacher['name']} and {learner['name']} spar! {learner['name']} gains {gain} {{xp}}.")
 
 
 def _said_text(save: dict) -> str | None:
@@ -1454,6 +1492,8 @@ def act(save: dict, action: str, accuracy: float = 1.0, arg=None) -> dict:
                     "trip": {**trip, "side": {k: v for k, v in trip["side"].items() if k != pid}}}
             return _event(save, kind="coins", amount=st.SIDE_QUEST_COINS, text=f"Thanks! {st.SIDE_QUEST_COINS} coins.")
         return {**save, "trip": {**trip, "side": {**trip["side"], pid: item}}}
+    if action == "spar":
+        return _spar(save, arg)
     if action == "inn":
         save = _restore({**save, "trip": {**trip, "used": [*trip["used"], pid]}}, st.INN_ENERGY)
         return _event(save, kind="found", text="Yum! You feel ready to go.")

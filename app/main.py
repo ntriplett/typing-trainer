@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_gift, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_gift, pet_rewards, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -815,8 +815,9 @@ def complete_lesson(
         for d in pet_shop.DEPARTMENTS.values()
         if d.id in pet_shop.open_departments(conn, learner_id) - depts_before
     ]
+    rewards = pet_rewards.grant(conn, learner_id)
     return {
-        **done, "unlocked": unlocks.newly_unlocked(before, after), "shop_opened": opened,
+        **done, "unlocked": unlocks.newly_unlocked(before, after), "shop_opened": opened, "reward_pets": rewards,
         "pet_coupon": after["pet_coupon"] and not before["pet_coupon"], "key_bonus": lessons.KEY_BONUS,
     }
 
@@ -1610,6 +1611,7 @@ def _share_call(action, *args):
 
 @app.get("/api/pets/hub")
 def pets_hub(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    pet_rewards.grant(conn, learner_id)  # rewards earned before they existed, or by placement
     return {**_me(conn, learner_id), **pet_shop.hub_state(conn, learner_id, _today()), "gift": pet_gift.waiting(conn, learner_id) is not None}
 
 
@@ -1619,6 +1621,7 @@ def pet_shop_front(conn=Depends(get_db), learner_id: int = Depends(current_learn
 
 
 def pet_shop_front_state(conn, learner_id: int) -> dict:
+    pet_rewards.grant(conn, learner_id)
     return {
         **_me(conn, learner_id), **pet_shop.shop_state(conn, learner_id, _today()),
         "shared_waiting": len(pet_share.waiting_for(conn, learner_id, _today())),
