@@ -141,6 +141,10 @@ function render() {
   const battleBag = document.getElementById("battle-bag");
   battleBag.disabled = !usable;
   battleBag.title = usable ? "Your bag" : "Nothing in your bag can help right now";
+  const doOvers = (state.items || {})[DO_OVER] || 0;
+  const doOver = document.getElementById("battle-do-over");
+  doOver.hidden = !doOvers;
+  doOver.querySelector("b").textContent = doOvers;
   renderKeys();
   renderScreen();
   renderLevelup();
@@ -288,7 +292,7 @@ function renderBattle() {
     if (friendly) friendly.onclick = befriendIt;
     return;
   }
-  keys.innerHTML = `Type a word to pick that move. <kbd class="keycap">Esc</kbd> run away`;
+  keys.innerHTML = `Type a word to pick that move.${(state.items || {})[DO_OVER] ? ` <kbd class="keycap">Backspace</kbd> do-over` : ""} <kbd class="keycap">Esc</kbd> run away`;
 }
 
 // --- marks on the creature, drawn and moving ---------------------------------------
@@ -531,11 +535,29 @@ async function befriendIt() {
 
 // Is there anything in the bag you could use right now?
 function bagUsable() {
-  return Object.values(state.item_uses || {}).some((u) => !u.why);
+  return Object.values(state.item_uses || {}).some((u) => !u.why && u.when !== "key");
+}
+
+// A Do-Over Token: Backspace lets go of the word you're partway through and
+// clears its slips. Picks already made this round stay.
+const DO_OVER = "Do-Over Token";
+let doingOver = false;
+
+async function doOver() {
+  if (!typer.target || doingOver) return;
+  if (!(state.items || {})[DO_OVER]) return say("No Do-Over Tokens left. Any town shop sells them for 15 coins.");
+  doingOver = true;
+  const data = await send("/api/wander/use", { item: DO_OVER });
+  doingOver = false;
+  if (!data) return;
+  if (typer.target) typer.target.slips = 0;
+  typer.release();
+  apply(data);
 }
 
 async function battleKey(e) {
   if (replay) return; // let it play
+  if (doingOver) return; // wait for the token
   const b = state.battle;
   if (e.key === "2") return openMenu("guide");
   if (e.key === "1") return bagUsable() ? openMenu("bag") : say("Nothing in your bag can help right now.");
@@ -546,6 +568,11 @@ async function battleKey(e) {
       const data = await send("/api/wander/battle/leave", { run: true });
       if (data) apply(data);
     }
+    return;
+  }
+  if (e.key === "Backspace") {
+    e.preventDefault();
+    if (!b.over) return doOver();
     return;
   }
   if (b.over) {
@@ -640,7 +667,7 @@ function bagRows() {
   const uses = state.item_uses || {};
   if (menu.picking) return uses[menu.picking].choices;
   const all = Object.keys(state.items);
-  return state.battle ? all.filter((k) => uses[k] && !uses[k].why) : all;
+  return state.battle ? all.filter((k) => uses[k] && !uses[k].why && uses[k].when !== "key") : all;
 }
 
 async function useItem(name, arg = null) {

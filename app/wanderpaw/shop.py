@@ -2,7 +2,7 @@
 
 Big things are bought with coins from typing practice, which keeps them special
 for boss fights. Each of the five towns has one shop, with a flavor of its own
-(FLAVORS), plus three things every shop has: EVERY_SHOP. An item is used up or
+(FLAVORS), plus four things every shop has: EVERY_SHOP. An item is used up or
 kept (`keep`); `limit` is how many a shop ever has (None: it always restocks).
 
 Befriending takes two steps. Winning a fight and paying mana brings a creature
@@ -21,7 +21,7 @@ class Item:
     name: str  # also what the bag calls it
     price: int
     about: str
-    when: str  # battle: in a fight; walk: on the trip; any: either; pick: on a pet you choose; auto: works by itself
+    when: str  # battle: in a fight; walk: on the trip; any: either; pick: on a pet you choose; auto: works by itself; key: Backspace in a fight
     keep: bool = False  # kept for good, bought once
     limit: int | None = None  # how many a shop ever has
 
@@ -41,6 +41,7 @@ WAY_HOME = "Way-Home Charm"
 TOME = "Type Tome"
 WEIGHT = "Training Weight"
 TOKEN = "Friendship Token"
+DO_OVER = "Do-Over Token"
 
 MANA_DROP_AMOUNT = 10
 WARD_SHARE = 0.5  # of a pet's full energy
@@ -78,12 +79,13 @@ ITEMS: dict[str, Item] = {
         Item(WAY_HOME, 2000, "Yours for good: takes you to the very center of Camp, whenever you like.", "walk", keep=True),
         Item(TOME, 2000, "One pet gets a level in one of its types, but not a real level.", "pick", limit=3),
         Item(WEIGHT, 2000, "One pet gets +1 to power, speed, {energy} or {mana}.", "pick", limit=3),
+        Item(DO_OVER, 15, "In a battle, press Backspace to let go of the word you're typing and clear its slips, so you can start fresh on any word. Each do-over uses one.", "key"),
         Item(TOKEN, 1000, "Give it to a friend waiting at Camp, and they become one of your pets, ready to join your party and level up.", "auto", limit=1),
     ]
 }
 STATS = ("power", "speed", "energy", "mana")
 
-EVERY_SHOP = (TOKEN, TOME, WEIGHT)
+EVERY_SHOP = (DO_OVER, TOKEN, TOME, WEIGHT)
 FLAVORS = {
     "alchemist": ("Alchemist", (MANA_DROP, FULL_MANA, WARD, FEATHER, TONIC)),
     "outfitter": ("Outfitter", (WAY_HOME, BOOTS, MAP, CLOAK, LUCKY, TONIC)),

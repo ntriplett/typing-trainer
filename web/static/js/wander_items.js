@@ -135,6 +135,15 @@ const ITEM_ART = {
     r(8, 5, 1, 4, "#c8553d");
     r(7, 8, 1, 3, "#3a3a3a");
   },
+  "Do-Over Token": (r) => {
+    itemDisc(r, 8, 8, 6, "#b88a2a");
+    itemDisc(r, 8, 8, 5, "#e8c060");
+    // a curly arrow going back round
+    for (const [x, y] of [[6, 5], [7, 4], [8, 4], [9, 4], [10, 5], [11, 6], [11, 7], [11, 8], [10, 9], [9, 10], [8, 10], [7, 10]]) r(x, y, 1, 1, "#7a5418");
+    r(4, 5, 3, 1, "#7a5418");
+    r(5, 4, 1, 3, "#7a5418");
+    r(6, 6, 1, 1, "#ffffff");
+  },
   "Friendship Token": (r) => {
     itemDisc(r, 8, 8, 6, "#e8b33e");
     itemDisc(r, 8, 8, 4.5, "#f8d870");

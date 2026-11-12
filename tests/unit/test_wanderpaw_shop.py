@@ -295,3 +295,29 @@ def test_a_satchel_doubles_a_forage_spot():
     there = {**save, "at": list(big), "spot": list(spot)}
     assert sv._arrive(there)["items"][item] == 1
     assert sv._arrive({**there, "items": {sh.SATCHEL: 1}})["items"][item] == 2
+
+
+def test_do_over_tokens_are_cheap_endless_and_sold_in_every_shop():
+    item = sh.ITEMS[sh.DO_OVER]
+    assert (item.price, item.limit, item.keep, item.when) == (15, None, False, "key")
+    assert sh.DO_OVER in sh.EVERY_SHOP
+    row = next(x for x in sh.stock("leaf", {sh.DO_OVER: 500}, {}, False) if x["name"] == sh.DO_OVER)
+    assert row["left"] is None and not row["sold_out"]  # buy as many as you like
+
+
+def test_a_do_over_works_only_mid_battle_and_uses_one_each_time():
+    walking = _trip()
+    walking = {**walking, "items": {sh.DO_OVER: 3}}
+    assert sv.item_uses(walking)[sh.DO_OVER]["why"]
+    with pytest.raises(sv.WanderError):
+        sv.use_item(walking, sh.DO_OVER)
+    save = _battle(walking)
+    assert sv.item_uses(save)[sh.DO_OVER] == {"when": "key", "keep": False, "why": None}
+    round_before = save["battle"]["round"]
+    once = sv.use_item(save, sh.DO_OVER)
+    twice = sv.use_item(once, sh.DO_OVER)
+    assert (once["items"][sh.DO_OVER], twice["items"][sh.DO_OVER]) == (2, 1)
+    assert twice["battle"]["round"] == round_before and twice["trip"] == save["trip"]  # no turn, no energy
+    over = {**twice, "battle": {**twice["battle"], "over": "won"}}
+    with pytest.raises(sv.WanderError):
+        sv.use_item(over, sh.DO_OVER)

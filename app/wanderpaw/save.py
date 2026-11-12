@@ -2074,6 +2074,8 @@ def _cant_use(save: dict, item: sh.Item) -> str | None:
     b = save.get("battle")
     if item.when == "auto":
         return "It works by itself."
+    if item.when == "key":
+        return None if b and not b["over"] else "Press Backspace in a battle, partway through a word."
     if not save["trip"]:
         return "Set off on a trip first."
     if b and b["over"]:
@@ -2150,6 +2152,8 @@ def use_item(save: dict, name: str, arg: str | None = None) -> dict:
         key = _plan(save).keys[region]
         save = {**save, "rumors": [*save["rumors"], region]}
         text = f"The map marks where the {st.STORIES[region].key} is hidden: {world_of(save).hexes[key.big].name}. It's in your journal."
+    elif name == sh.DO_OVER:
+        text = "A deep breath, and a fresh start on a new word."
     elif name == sh.WAY_HOME:
         save = _see({**save, "at": list(CAMP), "spot": [0, 0]}, CAMP, (0, 0))
         text = "The charm hums, and you're home at Camp."

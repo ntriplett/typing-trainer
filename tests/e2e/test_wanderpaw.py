@@ -481,6 +481,37 @@ def test_the_bag_and_guidebook_open_mid_fight_and_dont_cost_a_turn(page: Page, l
     assert not errors
 
 
+def test_backspace_spends_a_do_over_token_to_drop_the_word_and_its_slips(page: Page, live_server, tmp_path):
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    _in_a_fight(page, live_server, tmp_path, {"Do-Over Token": 2})
+    page.goto(f"{live_server}/wanderpaw")
+    expect(page.locator("#battle")).to_be_visible()
+    counter = page.locator("#battle-do-over")
+    expect(counter).to_be_visible()
+    expect(counter).to_contain_text("2")
+    page.keyboard.press("Backspace")  # no word started: nothing to undo, nothing spent
+    expect(counter).to_contain_text("2")
+    word = page.evaluate("fight.targets[0].word")
+    page.keyboard.press(word[0])
+    wrong = next(c for c in "zqxj" if c != word[1])
+    page.keyboard.press(wrong)
+    assert page.evaluate("typer.target && typer.target.slips") == 1
+    page.keyboard.press("Backspace")
+    expect(counter).to_contain_text("1")
+    assert page.evaluate("typer.target") is None
+    assert page.evaluate("fight.targets[0].slips") == 0 and page.evaluate("fight.targets[0].typed") == 0
+    expect(page.locator("#battle-bag")).to_be_disabled()  # it's not a thing to pick from the bag
+    page.keyboard.press(word[0])
+    page.keyboard.press("Backspace")  # the last one
+    expect(counter).to_be_hidden()
+    page.keyboard.press(word[0])
+    page.keyboard.press("Backspace")  # none left: the word stays
+    expect(page.locator("#news #wander-message")).to_contain_text("No Do-Over Tokens")
+    assert page.evaluate("typer.target !== null")
+    assert not errors
+
+
 def test_the_guidebook_turns_pages_and_shows_match_ups(page: Page, live_server, tmp_path):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))

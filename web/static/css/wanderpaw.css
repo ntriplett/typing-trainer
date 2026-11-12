@@ -1458,6 +1458,18 @@ main.wander {
 .wander-battle-tools .keycap {
   color: #3b2417;
 }
+.wander-battle-tools .wander-do-over {
+  order: -1; /* left of the bag */
+  align-self: center;
+  font-size: 16px;
+  padding: 0.15rem 0.45rem;
+  background: #f4e4c4;
+  color: #3b2417;
+  border: 2px solid #c8a878;
+}
+.wander-do-over[hidden] {
+  display: none;
+}
 
 /* The guidebook */
 .wander-guide-tabs {
