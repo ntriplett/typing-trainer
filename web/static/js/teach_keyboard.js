@@ -13,6 +13,8 @@
 //   kb.focusChar("r");        // same thing, worked out from the character
 //   kb.focusChar("R");        // a capital also lights the other hand's Shift
 //   kb.flashKey("r", true);   // pressed it (false = wrong key)
+//   kb.focusStaged("r", { fingerMs: 1500, keyMs: 1900 }); // finger lights later, key later still
+//   kb.setLabels(new Set(["r"])); // only R shows its letter (null: all do)
 //
 // Finger names: left_pinky ... right_pinky (as in keyboard_data.js), plus
 // left_thumb, right_thumb, and "thumb" for both thumbs.
@@ -94,6 +96,8 @@ const TeachKeyboard = (function () {
       this.pose = structuredClone(this.rest); // what's drawn right now
       this.lit = new Set(); // lit fingers
       this.anim = null;
+      this.timers = []; // focusStaged's pending lights
+      this.shown = "none"; // what focusStaged has lit so far: "none" | "finger" | "key"
       svg.setAttribute("viewBox", `0 0 ${WIDTH} ${HEIGHT}`);
       this.build();
       this.drawHands();
@@ -186,7 +190,54 @@ const TeachKeyboard = (function () {
       this.setFocus({ fingers, keys, reach });
     }
 
+    // Only the finger(s) for a character: no key, no reach (that would point at the key).
+    focusFingers(ch) {
+      const finger = fingerForChar(ch);
+      if (!finger) return;
+      const shift = shiftForChar(ch);
+      this.setFocus({ fingers: shift ? [finger, shift.finger] : [finger] });
+    }
+
+    // The fading hint (practice_stage.js): nothing at first, the finger after
+    // fingerMs, the key (and the reach) after keyMs. null means never.
+    focusStaged(ch, { fingerMs = 0, keyMs = 0 } = {}) {
+      this.cancelStaged();
+      this.shown = "none";
+      const at = (ms, fn) => {
+        if (ms === null || ms === undefined) return;
+        if (ms <= 0) fn();
+        else this.timers.push(setTimeout(fn, ms));
+      };
+      if (!(keyMs !== null && keyMs <= 0)) this.setFocus({});
+      at(fingerMs, () => {
+        if (this.shown === "none") {
+          this.shown = "finger";
+          this.focusFingers(ch);
+        }
+      });
+      at(keyMs, () => {
+        this.shown = "key";
+        this.focusChar(ch);
+      });
+    }
+
+    cancelStaged() {
+      this.timers.forEach(clearTimeout);
+      this.timers = [];
+    }
+
+    // Which typeable keys show their letter (a Set of key ids), or null for
+    // all of them. Shift, Tab and the like always keep theirs.
+    setLabels(shown) {
+      for (const el of this.svg.querySelectorAll(".tk-label")) {
+        const id = el.dataset.key;
+        el.classList.toggle("tk-label-hidden", shown !== null && TYPEABLE.has(id) && !shown.has(id));
+      }
+    }
+
     clearFocus() {
+      this.cancelStaged();
+      this.shown = "none";
       this.setFocus({});
     }
 

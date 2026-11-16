@@ -394,8 +394,11 @@ then a few capitals at a time. They get strung together into lessons once enough
   catcher (misses = gust), star map (words light a constellation), campfire (keys feed the fire, toast a
   marshmallow), lily pad hop (each word is a hop).
 - Shared stage (`practice_stage.js`) for every session step and the practice lab, in the teach look.
-  A "Keyboard hint" button spends `config.KEYBOARD_HINT_PRICE` (10) coins to show the keyboard with
-  hands for the rest of that lesson (`POST /api/hint/keyboard`).
+  The keyboard with hands is a free, fading hint the brain controls per key (`app/hint_model.py`,
+  `app/hints.py`): letters and instant lights at first, then later lights, blank keys, finger only,
+  hands only, no keyboard. A per-lesson rescue, random solo lines, More/Less help buttons, coins for
+  needing less help, and a lift report + auto/full/off override for grown-ups (`/api/parent/hints`).
+  It replaced a 10-coin-per-lesson "Keyboard hint" (v1.4).
 - `/practice-lab` lists every module with its scene playing; options for letters, focus letters, length
   (short/medium/long) and difficulty (easy/medium/hard). Lab runs pay coins but don't feed the skill model.
 - Later: tune difficulty per learner (e.g. ramp within a session), smarter weak-pair chaining.

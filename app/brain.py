@@ -233,7 +233,7 @@ def unsolid_keys(inp: BrainInput) -> list[tuple[str, str]]:
         if record.recent_attempts < MIN_RECENT_ATTEMPTS:
             if key in inp.placement_keys and record.recent_attempts == 0:
                 continue
-            out.append((key, f"{record.recent_attempts}/{MIN_RECENT_ATTEMPTS} tries"))
+            out.append((key, f"{round(record.recent_attempts)}/{MIN_RECENT_ATTEMPTS} tries"))
         elif record.recent_accuracy < bar:
             out.append((key, f"{record.recent_accuracy:.0%} < {bar:.0%}"))
     return out

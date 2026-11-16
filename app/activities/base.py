@@ -23,6 +23,11 @@ class KeystrokeEvent:
     typed_char: str
     correct: bool
     latency_ms: int
+    # The fading keyboard hint (app/hint_model.py): the key's support when it
+    # was typed (None: typed without the hint system), and whether it was on
+    # a solo line (no hints at all).
+    hint_support: float | None = None
+    solo: bool = False
 
 
 @dataclass(frozen=True, slots=True)

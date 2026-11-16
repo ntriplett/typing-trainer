@@ -154,3 +154,29 @@
   font-family: var(--font-type);
   font-size: 14px;
 }
+
+/* --- keyboard help (the fading hint) --- */
+
+.hint-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.hint-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 18px;
+}
+
+.hint-table th,
+.hint-table td {
+  text-align: left;
+  padding: 0.2rem 0.5rem;
+  border-bottom: 1px solid var(--ink-soft);
+}
+
+.hint-table small {
+  color: var(--ink-soft);
+}

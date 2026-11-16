@@ -60,6 +60,21 @@
   color: var(--type-wrong);
 }
 
+.stage-hint.yay {
+  color: var(--moss);
+}
+
+/* More help / Less help: small, out of the way of typing */
+.stage-help {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.stage-help button {
+  font-size: 18px;
+  padding: 0.25rem 0.75rem;
+}
+
 .stage-tools {
   display: flex;
   align-items: center;

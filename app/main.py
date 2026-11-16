@@ -17,13 +17,14 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, lessons, pet_care, pet_genes, pet_gift, pet_rewards, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
+from app import analytics, appearance, aquarium, arcade, brain, config, crow_king, daily, db, desktop, farm_stand, garden, grownup_pin, hints, lessons, pet_care, pet_genes, pet_gift, pet_rewards, pet_share, pet_shop, pet_supplies, profiles, room, skill_model, store, unlocks
 from app.catalog import group_places, night_item_id
 from app.activities.base import ActivityContent, KeystrokeEvent, score_attempt
 from app.activities.hello_world import HelloWorldActivity
@@ -321,6 +322,8 @@ class KeystrokeIn(BaseModel):
     typed_char: str
     correct: bool
     latency_ms: int
+    hint_support: float | None = Field(default=None, ge=0, le=5)  # app/hint_model.py
+    solo: bool = False
 
 
 class TeachCompleteRequest(BaseModel):
@@ -405,21 +408,22 @@ def teach_complete(
     }
 
 
-# --- keyboard hint (any short lesson) ------------------------------------------
+# --- the fading keyboard hint (app/hints.py) -----------------------------------
+# Free, and the brain decides how much of it each key gets. (It used to cost
+# 10 coins a lesson; those old "keyboard_hint" ledger rows stay as they are.)
 
 
-class HintIn(BaseModel):
-    ref: str = Field(default="", max_length=200)  # which lesson it was bought for
+class NudgeIn(BaseModel):
+    direction: Literal["more", "less"]
+    keys: str = Field(default="", max_length=200)  # the lesson's characters, for the new supports
 
 
-@app.post("/api/hint/keyboard")
-def buy_keyboard_hint(body: HintIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
-    """Spend coins to show the keyboard with hands for the rest of one lesson."""
-    price = config.KEYBOARD_HINT_PRICE
-    if db.get_coin_balance(conn, learner_id) < price:
-        raise HTTPException(status_code=402, detail=f"A keyboard hint costs {price} coins.")
-    db.add_coins(conn, learner_id, -price, "keyboard_hint", ref=body.ref or None)
-    return {"spent": price, "coin_balance": db.get_coin_balance(conn, learner_id)}
+@app.post("/api/hint/nudge")
+def hint_nudge(body: NudgeIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The More help / Less help buttons (app/hints.py)."""
+    if hints.override(conn, learner_id) != "auto":
+        raise HTTPException(status_code=409, detail="A grown-up has set the keyboard help.")
+    return hints.nudge(conn, learner_id, body.direction, hints.lesson_keys(body.keys))
 
 
 # --- pet lab (grow and roll pets for free; dev only; saved only if you adopt one) ---
@@ -562,7 +566,8 @@ def practice_content(
         difficulty=PRACTICE_DIFFICULTIES[difficulty],
         skill=snapshot_from_stats(key_stats, db.list_bigram_stats(conn, learner_id)),
     )
-    return asdict(content)
+    # The lab shows the hint as the learner has it, but never moves it.
+    return asdict(content) | {"hints": hints.lesson_plan(conn, learner_id, content.prompt, solo=False)}
 
 
 class PracticeCompleteRequest(BaseModel):
@@ -905,6 +910,22 @@ def parent_extra(conn=Depends(get_db), learner_id: int = Depends(current_learner
     except daily.ExtraError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return _parent_entry(conn, learner_id)
+
+
+class HintModeIn(BaseModel):
+    mode: Literal["auto", "full", "off"]
+
+
+@app.get("/api/parent/hints", dependencies=[Depends(require_grownup)])
+def parent_hints(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The keyboard hint: each key's support and how much the hint helps it."""
+    return hints.report(conn, learner_id)
+
+
+@app.put("/api/parent/hints", dependencies=[Depends(require_grownup)])
+def parent_hints_mode(body: HintModeIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    hints.set_override(conn, learner_id, body.mode)
+    return hints.report(conn, learner_id)
 
 
 class GiftIn(BaseModel):

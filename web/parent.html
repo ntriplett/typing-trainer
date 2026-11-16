@@ -28,6 +28,25 @@
       <p><button id="update-go" hidden>Update now</button></p>
     </section>
     <div id="players"></div>
+    <section class="panel" id="hints">
+      <h2 class="panel-title">Keyboard help</h2>
+      <p class="parent-intro">
+        The keyboard with hands is free, and fades as each key is learned: first letters and lights at once,
+        then later lights, blank keys, only the finger, only the hands, then no keyboard. It comes back
+        for a while when a lesson goes badly.
+      </p>
+      <div class="hint-mode" role="radiogroup" aria-label="Keyboard help">
+        <label><input type="radio" name="hint-mode" value="auto" /> Let it fade by itself (best)</label>
+        <label><input type="radio" name="hint-mode" value="full" /> Always full help</label>
+        <label><input type="radio" name="hint-mode" value="off" /> No keyboard</label>
+      </div>
+      <p class="hint-summary"></p>
+      <table class="hint-table" hidden>
+        <thead><tr><th>Key</th><th>Help now</th><th>Right with help</th><th>Right without</th><th>Lift</th><th>Before the light</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="saved hint-saved" role="status"></p>
+    </section>
     <section class="panel" id="gift">
       <h2 class="panel-title">Gift a pet</h2>
       <p class="parent-intro">Paste a pet designed in the pet lab (its JSON). It waits wrapped up at the Pet Shop for them to open, name and take home, free, as a baby.</p>

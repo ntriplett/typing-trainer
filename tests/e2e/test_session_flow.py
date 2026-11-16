@@ -40,7 +40,7 @@ def test_a_warmup_opens_the_day_and_enter_goes_to_the_next_lesson(page: Page, li
     expect(page.locator(".stage-label")).to_have_text("Warmup")
     first = page.evaluate("lesson.lesson_id")
     type_current_lesson(page)
-    expect(page.locator("#result-rewards")).to_contain_text("+100 coins")
+    expect(page.locator("#result-rewards")).to_contain_text("+150 coins")
     page.keyboard.press("Enter")
     page.wait_for_function(f"contentLoaded && lesson.lesson_id !== {first}")
     expect(page.locator(".stage-label")).to_have_text("Practice")
@@ -141,3 +141,13 @@ def test_learning_letters_ends_with_a_fanfare(page: Page, live_server):
     expect(fanfare.locator(".fanfare-big")).to_contain_text("You learned")
     expect(fanfare.locator(".fanfare-big .keycap")).to_have_text(["F", "J"])
     expect(fanfare).to_contain_text("500 coin bonus")
+
+
+def test_a_lesson_logs_the_hint_each_key_was_typed_with(page: Page, live_server, tmp_path):
+    start_practice_lesson(page, live_server)  # home row from placement: support 3, blank keys
+    expect(page.locator(".stage-keyboard")).to_be_visible()
+    type_current_lesson(page)
+    expect(page.locator("#result-rewards")).to_contain_text("remembering keys before the hint")
+    with db.open_db(tmp_path / "e2e.db") as conn:
+        rows = conn.execute("SELECT hint_support, hint_seen FROM keystroke_log").fetchall()
+    assert rows and {(r["hint_support"], r["hint_seen"]) for r in rows} == {(3.0, "free")}

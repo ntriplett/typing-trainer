@@ -188,6 +188,68 @@ function openPage() {
     .then(render);
   showChangePin();
   showGift();
+  fetch("/api/parent/hints")
+    .then((r) => r.json())
+    .then(renderHints);
+}
+
+// --- the fading keyboard help (app/hints.py) -----------------------------------
+
+function helpLevel(s) {
+  if (s >= 5) return "letters, lit at once";
+  if (s >= 4) return "letters, lit after a wait";
+  if (s >= 3) return "blank keys, lit after a wait";
+  if (s >= 2) return "finger only, late";
+  if (s >= 1) return "hands only";
+  return "no keyboard";
+}
+
+const pct = (right, n) => (n ? `${Math.round((100 * right) / n)}%` : "–");
+const keyName = (k) => (k === " " ? "Space" : k.toUpperCase());
+
+function renderHints(r) {
+  const section = $("hints");
+  for (const radio of section.querySelectorAll('input[name="hint-mode"]')) {
+    radio.checked = radio.value === r.mode;
+    radio.onchange = async () => {
+      const res = await fetch("/api/parent/hints", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: radio.value }),
+      });
+      renderHints(await res.json());
+      section.querySelector(".hint-saved").textContent = "Saved!";
+    };
+  }
+  const rows = Object.entries(r.keys);
+  const sum = (f) => rows.reduce((n, [, v]) => n + v[f], 0);
+  const aided = sum("aided"), free = sum("free"), solo = sum("solo"), waited = sum("waited_for");
+  section.querySelector(".hint-summary").innerHTML = rows.length
+    ? `Right <b>${pct(sum("aided_correct"), aided)}</b> after a light came on, <b>${pct(sum("free_correct"), free)}</b> before any light` +
+      (solo ? `, <b>${pct(sum("solo_correct"), solo)}</b> on solo lines (no hints at all)` : "") +
+      `. Pressed before the light <b>${pct(sum("early"), waited)}</b> of the time it was coming.` +
+      (r.nudge ? ` More/Less help is ${r.nudge > 0 ? "adding" : "taking away"} ${Math.abs(r.nudge).toFixed(1)} for now.` : "")
+    : "Nothing typed with the keyboard help yet.";
+  const table = section.querySelector(".hint-table");
+  table.hidden = !rows.length;
+  const order = (k) => (k in r.supports ? -r.supports[k] : 1);
+  table.querySelector("tbody").innerHTML = rows
+    .sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))
+    .map(([k, v]) => {
+      const s = r.supports[k];
+      const tries = v.aided + v.free + v.solo;
+      const lift =
+        v.lift === null ? "–" : tries < r.min_presses ? "<small>few tries</small>" : `${v.lift > 0 ? "+" : ""}${Math.round(v.lift * 100)}`;
+      return `<tr>
+        <td>${escapeHtml(keyName(k))}</td>
+        <td>${s === undefined ? "–" : `${helpLevel(s)} <small>(${s.toFixed(1)})</small>`}</td>
+        <td>${pct(v.aided_correct, v.aided)} <small>of ${v.aided}</small></td>
+        <td>${pct(v.free_correct + v.solo_correct, v.free + v.solo)} <small>of ${v.free + v.solo}</small></td>
+        <td>${lift}</td>
+        <td>${pct(v.early, v.waited_for)}</td>
+      </tr>`;
+    })
+    .join("");
 }
 
 // A pet designed in the pet lab, wrapped up for a player (app/pet_gift.py).

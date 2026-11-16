@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS keystroke_log (
 );
 CREATE INDEX IF NOT EXISTS idx_keystroke_log_event ON keystroke_log(session_event_id);
 
+-- The fading keyboard hint (app/hint_model.py): each key's support, 0..5.
+CREATE TABLE IF NOT EXISTS key_hint (
+    learner_id INTEGER NOT NULL REFERENCES learner(id),
+    key TEXT NOT NULL,
+    support REAL NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (learner_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS streak (
     learner_id INTEGER PRIMARY KEY REFERENCES learner(id),
     current_streak_days INTEGER NOT NULL DEFAULT 0,
@@ -455,6 +464,11 @@ _ADDED_COLUMNS = [
     ("pet", "joy_on", "TEXT"),  # the day they were last set
     ("room_item", "wide", "INTEGER NOT NULL DEFAULT 0"),  # 1: placed on the 160x90 room grid
     ("pet_gift", "note", "TEXT"),  # what it's for (reward pets, app/pet_rewards.py)
+    # The fading keyboard hint (app/hint_model.py); NULL on older rows and on
+    # keystrokes typed without it (teach pages, games).
+    ("keystroke_log", "hint_support", "REAL"),  # the key's support as it was typed
+    ("keystroke_log", "hint_seen", "TEXT"),  # 'free' | 'finger' | 'key': what was lit when pressed
+    ("keystroke_log", "solo", "INTEGER NOT NULL DEFAULT 0"),  # on a solo line (no hints)
 ]
 
 
@@ -702,14 +716,19 @@ def log_keystroke(
     typed_char: str,
     correct: bool,
     latency_ms: int,
+    hint_support: float | None = None,
+    hint_seen: str | None = None,
+    solo: bool = False,
 ) -> None:
     conn.execute(
         """
         INSERT INTO keystroke_log
-            (session_event_id, seq, expected_char, typed_char, correct, latency_ms, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (session_event_id, seq, expected_char, typed_char, correct, latency_ms, timestamp,
+             hint_support, hint_seen, solo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (session_event_id, seq, expected_char, typed_char, int(correct), latency_ms, _now_iso()),
+        (session_event_id, seq, expected_char, typed_char, int(correct), latency_ms, _now_iso(),
+         hint_support, hint_seen, int(solo)),
     )
 
 
@@ -1069,12 +1088,13 @@ def recent_lesson_events(conn: sqlite3.Connection, learner_id: int, limit: int =
 
 def recent_keystrokes(
     conn: sqlite3.Connection, learner_id: int, limit: int = 8000, practice_only: bool = False
-) -> list[tuple[str, bool]]:
-    """(expected_char, correct) for the learner's newest keystrokes, newest
-    first; practice_only leaves out the learn lessons' (teach pages)."""
+) -> list[tuple[str, bool, int, float | None, bool]]:
+    """(expected_char, correct, latency_ms, hint_support, solo) for the learner's
+    newest keystrokes, newest first; practice_only leaves out the learn lessons'
+    (teach pages)."""
     rows = conn.execute(
         f"""
-        SELECT k.expected_char, k.correct
+        SELECT k.expected_char, k.correct, k.latency_ms, k.hint_support, k.solo
         FROM keystroke_log k
         JOIN session_event se ON k.session_event_id = se.id
         JOIN session s ON se.session_id = s.id
@@ -1083,7 +1103,33 @@ def recent_keystrokes(
         """,
         (learner_id, limit),
     ).fetchall()
-    return [(r["expected_char"], bool(r["correct"])) for r in rows]
+    return [
+        (r["expected_char"], bool(r["correct"]), r["latency_ms"], r["hint_support"], bool(r["solo"])) for r in rows
+    ]
+
+
+def key_day_presses(conn: sqlite3.Connection, learner_id: int, days: int = 7) -> dict[str, float]:
+    """Hint key -> presses per practice day, typed with the keyboard hint, over
+    the newest `days` days but the latest one (which may be today, not over yet).
+    Empty until there's a finished day."""
+    rows = conn.execute(
+        """
+        WITH k AS (
+            SELECT lower(k.expected_char) AS key, substr(k.timestamp, 1, 10) AS d
+            FROM keystroke_log k
+            JOIN session_event se ON k.session_event_id = se.id
+            JOIN session s ON se.session_id = s.id
+            WHERE s.learner_id = ? AND k.hint_support IS NOT NULL
+        ),
+        finished AS (
+            SELECT DISTINCT d FROM k WHERE d < (SELECT MAX(d) FROM k) ORDER BY d DESC LIMIT ?
+        )
+        SELECT key, COUNT(*) * 1.0 / (SELECT COUNT(*) FROM finished) AS per_day
+        FROM k WHERE d IN finished GROUP BY key
+        """,
+        (learner_id, days),
+    ).fetchall()
+    return {r["key"]: r["per_day"] for r in rows}
 
 
 def practice_lesson_counts(conn: sqlite3.Connection, learner_id: int, keys: list[str]) -> dict[str, int]:
@@ -1214,6 +1260,21 @@ def profile_stats(conn: sqlite3.Connection, learner_id: int) -> dict:
 
 
 # --- settings -------------------------------------------------------------------
+
+
+def get_key_hints(conn: sqlite3.Connection, learner_id: int) -> dict[str, float]:
+    rows = conn.execute("SELECT key, support FROM key_hint WHERE learner_id = ?", (learner_id,)).fetchall()
+    return {r["key"]: r["support"] for r in rows}
+
+
+def set_key_hint(conn: sqlite3.Connection, learner_id: int, key: str, support: float) -> None:
+    conn.execute(
+        """
+        INSERT INTO key_hint (learner_id, key, support, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(learner_id, key) DO UPDATE SET support = excluded.support, updated_at = excluded.updated_at
+        """,
+        (learner_id, key, support, _now_iso()),
+    )
 
 
 def get_setting(conn: sqlite3.Connection, learner_id: int, key: str) -> str | None:

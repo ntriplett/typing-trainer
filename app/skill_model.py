@@ -33,6 +33,8 @@ TARGET_MS_PER_KEYSTROKE = 400.0
 
 EMA_ALPHA_TIME = 0.1
 EMA_ALPHA_ACCURACY = 0.15
+# An attempt counts toward sample_count (and so mastery) only at this weight or more.
+MIN_COUNTED_WEIGHT = 0.5
 
 ACCURACY_FLOOR = 0.95
 MIN_SAMPLES_FOR_MASTERY = 20
@@ -80,8 +82,17 @@ def _confidence(ema_time_ms: float | None) -> float:
     return TARGET_MS_PER_KEYSTROKE / ema_time_ms
 
 
-def record_attempt(stat: KeyStat, *, correct: bool, latency_ms: int, now: datetime) -> KeyStat:
-    """Fold one keystroke attempt into a key's stats. Returns a new KeyStat."""
+def record_attempt(stat: KeyStat, *, correct: bool, latency_ms: int, now: datetime, weight: float = 1.0) -> KeyStat:
+    """Fold one keystroke attempt into a key's stats. Returns a new KeyStat.
+
+    `weight` (0..1) is how much the attempt counts: typed with the keyboard
+    hint's help it counts less, or not at all (hint_model.mastery_weight).
+    Both EMAs move by weight x their alpha; only attempts weighing at least
+    MIN_COUNTED_WEIGHT add to sample_count."""
+    if weight <= 0:
+        return stat
+    alpha_time = EMA_ALPHA_TIME * weight
+    alpha_accuracy = EMA_ALPHA_ACCURACY * weight
     # Timing only reflects error-free keystrokes -- an error's latency
     # includes hesitation/correction time that isn't representative of
     # how fast the key is actually known.
@@ -89,7 +100,7 @@ def record_attempt(stat: KeyStat, *, correct: bool, latency_ms: int, now: dateti
         new_ema = (
             latency_ms
             if stat.ema_time_ms is None
-            else EMA_ALPHA_TIME * latency_ms + (1 - EMA_ALPHA_TIME) * stat.ema_time_ms
+            else alpha_time * latency_ms + (1 - alpha_time) * stat.ema_time_ms
         )
     else:
         new_ema = stat.ema_time_ms
@@ -98,10 +109,10 @@ def record_attempt(stat: KeyStat, *, correct: bool, latency_ms: int, now: dateti
     new_accuracy = (
         accuracy_sample
         if stat.accuracy_rolling is None
-        else EMA_ALPHA_ACCURACY * accuracy_sample + (1 - EMA_ALPHA_ACCURACY) * stat.accuracy_rolling
+        else alpha_accuracy * accuracy_sample + (1 - alpha_accuracy) * stat.accuracy_rolling
     )
 
-    new_sample_count = stat.sample_count + 1
+    new_sample_count = stat.sample_count + (weight >= MIN_COUNTED_WEIGHT)
     new_confidence = _confidence(new_ema)
 
     candidate = KeyStat(

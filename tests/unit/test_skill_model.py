@@ -266,3 +266,20 @@ def test_next_keys_to_teach_empty_when_everything_allowed():
 def test_space_is_the_first_key_and_active_from_the_start():
     assert sm.KEY_ORDER[0] == " "
     assert " " in sm.active_keys({})
+
+
+# --- record_attempt: hint weight (app/hint_model.py) ---------------------------------
+
+
+def test_weight_zero_changes_nothing():
+    stat = make_stat(ema_time_ms=500.0, accuracy_rolling=0.5, sample_count=3)
+    assert sm.record_attempt(stat, correct=True, latency_ms=200, now=NOW, weight=0) == stat
+
+
+def test_a_light_weight_moves_the_averages_less_and_isnt_a_sample():
+    stat = make_stat(ema_time_ms=500.0, accuracy_rolling=0.5, sample_count=3)
+    full = sm.record_attempt(stat, correct=True, latency_ms=200, now=NOW)
+    light = sm.record_attempt(stat, correct=True, latency_ms=200, now=NOW, weight=0.3)
+    assert 0.5 < light.accuracy_rolling < full.accuracy_rolling
+    assert 200 < full.ema_time_ms < light.ema_time_ms < 500
+    assert (full.sample_count, light.sample_count) == (4, 3)

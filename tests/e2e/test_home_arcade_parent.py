@@ -150,8 +150,8 @@ def test_lines_fit_and_clicks_land_when_zoomed(page: Page, live_server):
       return [...document.querySelectorAll('.stage-lines .prompt-line')].every((l) => !l.lastElementChild || l.lastElementChild.getBoundingClientRect().right <= box.right + 1);
     }""")
     assert fits and page.evaluate(NO_SIDEWAYS_SCROLL)
-    page.click(".stage-hint-buy")  # a real click lands on the zoomed button
-    expect(page.locator(".stage-hint")).to_contain_text("You need 10 coins")
+    page.click(".stage-help-more")  # a real click lands on the zoomed button
+    expect(page.locator(".stage-hint")).to_contain_text("A little more help")
 
 
 def test_a_grownup_allows_extra_practice_and_the_tracker_shows_it(page: Page, live_server, tmp_path):
@@ -292,3 +292,22 @@ def test_switch_user_can_be_read_in_the_menu(page: Page, live_server):
     )
     assert color == link  # looks like the links beside it
     assert page.evaluate("document.querySelector('.switch-player').getBoundingClientRect().height") > 10
+
+
+def test_grownups_see_the_keyboard_help_and_can_set_it(page: Page, live_server):
+    from tests.e2e.conftest import start_practice_lesson, type_current_lesson
+
+    start_practice_lesson(page, live_server)
+    type_current_lesson(page)  # home row at support 3, typed before any light
+    _open_grownups(page, live_server)
+    panel = page.locator("#hints")
+    expect(panel.locator('input[value="auto"]')).to_be_checked()
+    expect(panel.locator(".hint-summary")).to_contain_text("before any light")
+    expect(panel.locator(".hint-table tbody tr")).not_to_have_count(0)
+    expect(panel.locator(".hint-table")).to_contain_text("finger only")  # 3.0 eased a little
+    panel.locator('input[value="full"]').check()
+    expect(panel.locator(".hint-saved")).to_have_text("Saved!")
+    page.reload()
+    page.locator("#pin").fill(GROWNUP_PIN)
+    page.keyboard.press("Enter")
+    expect(page.locator('#hints input[value="full"]')).to_be_checked()

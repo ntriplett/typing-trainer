@@ -223,3 +223,48 @@ def test_coins_never_mix_between_learners(conn):
     assert db.get_coin_balance(conn, sam.id) == 100
     assert db.get_coin_balance(conn, alex.id) == 7
     assert [e.amount for e in db.list_coin_history(conn, alex.id)] == [7]
+
+
+def test_old_keystroke_logs_get_the_hint_columns():
+    """A DB from before the fading hint keeps its keystrokes and gains the columns."""
+    import sqlite3
+
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.execute(
+        "CREATE TABLE keystroke_log (id INTEGER PRIMARY KEY AUTOINCREMENT, session_event_id INTEGER NOT NULL,"
+        " seq INTEGER NOT NULL, expected_char TEXT NOT NULL, typed_char TEXT NOT NULL, correct INTEGER NOT NULL,"
+        " latency_ms INTEGER NOT NULL, timestamp TEXT NOT NULL)"
+    )
+    c.execute("INSERT INTO keystroke_log VALUES (1, 1, 0, 'f', 'f', 1, 200, '2026-11-01T00:00:00')")
+    db.init_schema(c)
+    row = c.execute("SELECT * FROM keystroke_log").fetchone()
+    assert (row["expected_char"], row["hint_support"], row["hint_seen"], row["solo"]) == ("f", None, None, 0)
+
+
+def test_key_hint_round_trip(conn):
+    learner = db.create_learner(conn, "Kid")
+    db.set_key_hint(conn, learner.id, "f", 4.5)
+    db.set_key_hint(conn, learner.id, "f", 4.2)
+    db.set_key_hint(conn, learner.id, "j", 5.0)
+    assert db.get_key_hints(conn, learner.id) == {"f": 4.2, "j": 5.0}
+
+
+def test_key_day_presses_counts_finished_days_only(conn):
+    learner = db.create_learner(conn, "Kid")
+    session = db.start_session(conn, learner.id)
+    event = db.log_session_event(conn, session.id, "practice", "x")
+    for day, n in (("2026-11-01", 10), ("2026-11-02", 30), ("2026-11-03", 99)):
+        for i in range(n):
+            db.log_keystroke(conn, event.id, i, "F" if i % 2 else "f", "f", True, 200, hint_support=3.0)
+            conn.execute("UPDATE keystroke_log SET timestamp = ? WHERE id = last_insert_rowid()", (f"{day}T12:00:00",))
+    db.log_keystroke(conn, event.id, 0, "j", "j", True, 200)  # no hint: not counted
+    conn.execute("UPDATE keystroke_log SET timestamp = '2026-11-02T12:00:00' WHERE id = last_insert_rowid()")
+    assert db.key_day_presses(conn, learner.id) == {"f": 20.0}  # (10 + 30) / 2; the 3rd is today
+
+
+def test_key_day_presses_empty_on_the_first_day(conn):
+    learner = db.create_learner(conn, "Kid")
+    event = db.log_session_event(conn, db.start_session(conn, learner.id).id, "practice", "x")
+    db.log_keystroke(conn, event.id, 0, "f", "f", True, 200, hint_support=3.0)
+    assert db.key_day_presses(conn, learner.id) == {}

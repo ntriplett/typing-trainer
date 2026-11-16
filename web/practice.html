@@ -80,7 +80,7 @@
       .then((r) => r.json())
       .then((c) => {
         content = c;
-        stage.load(c, { label: "Practice lab", hintRef: `practice_lab:${moduleId}` });
+        stage.load(c, { label: "Practice lab", hints: c.hints });
       });
   </script>
 </body>

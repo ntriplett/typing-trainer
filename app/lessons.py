@@ -19,7 +19,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 
-from app import analytics, bigram_model, brain, daily, db, garden, profiles, skill_model
+from app import analytics, bigram_model, brain, daily, db, garden, hint_model, hints, profiles, skill_model
 from app.activities.base import ActivityContent, ActivityResult, KeystrokeEvent
 from app.activities.practice_modules import PRACTICE_MODULES
 from app.activities.practice_text import SkillSnapshot, snapshot_from_stats
@@ -63,6 +63,7 @@ class ServedLesson:
     plan: LessonPlan
     content: ActivityContent
     served_at: datetime
+    hints: dict | None = None  # hints.lesson_plan(); None for learn lessons (the teach page has its own)
 
 
 _LESSONS: dict[int, ServedLesson] = {}
@@ -114,16 +115,21 @@ def record_placement(conn: sqlite3.Connection, learner_id: int, known_keys: set[
 
 
 def key_records(conn: sqlite3.Connection, learner_id: int, practice_only: bool = False) -> dict[str, KeyRecord]:
-    counts: dict[str, list[int]] = {}  # key -> [recent n, recent ok, older n, older ok]
-    for key, correct in db.recent_keystrokes(conn, learner_id, practice_only=practice_only):
-        c = counts.setdefault(key, [0, 0, 0, 0])
+    """Each attempt counts by its hint weight (hint_model.mastery_weight): typed
+    with heavy help it doesn't count, with a little help it counts a little."""
+    counts: dict[str, list[float]] = {}  # key -> [recent n, recent ok, older n, older ok]
+    for key, correct, latency, support, solo in db.recent_keystrokes(conn, learner_id, practice_only=practice_only):
+        w = hint_model.mastery_weight(hint_model.Press(key, correct, latency, support, solo))
+        if w <= 0:
+            continue
+        c = counts.setdefault(key, [0.0, 0.0, 0.0, 0.0])
         if c[0] < RECENT_WINDOW:
-            c[0] += 1
-            c[1] += correct
+            c[0] += w
+            c[1] += w * correct
         elif c[2] < OLDER_WINDOW:
-            c[2] += 1
-            c[3] += correct
-    return {k: KeyRecord(*c) for k, c in counts.items()}
+            c[2] += w
+            c[3] += w * correct
+    return {k: KeyRecord(*(round(x, 3) for x in c)) for k, c in counts.items()}
 
 
 def _kind(phase: str) -> str | None:
@@ -216,7 +222,14 @@ def serve_next(
     plan = brain.plan_next_lesson(inp, rng)
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     snapshot = snapshot_from_stats(key_stats, inp.bigrams)
-    lesson = ServedLesson(next(_ids), learner_id, plan, _content(plan, snapshot, rng), now)
+    content = _content(plan, snapshot, rng)
+    plan_hints = None
+    if plan.kind != "learn":
+        plan_hints = hints.lesson_plan(
+            conn, learner_id, content.prompt, comfort=plan.comfort, rng=rng,
+            solo=plan.kind != "warmup",
+        )
+    lesson = ServedLesson(next(_ids), learner_id, plan, content, now, plan_hints)
     # One unfinished lesson per learner is plenty.
     for old in [k for k, v in _LESSONS.items() if v.learner_id == learner_id]:
         del _LESSONS[old]
@@ -250,6 +263,7 @@ def describe(lesson: ServedLesson) -> dict:
         "predicted_wpm": round(p.predicted_wpm, 1),
         "comfort": p.comfort,
         "reasons": list(p.reasons),
+        "hints": lesson.hints,
     }
 
 
@@ -290,9 +304,15 @@ def key_bonuses(
 
 
 def apply_skill_model(
-    conn: sqlite3.Connection, learner_id: int, new_keys: list[str], keystrokes: list[KeystrokeEvent], now: datetime
+    conn: sqlite3.Connection,
+    learner_id: int,
+    new_keys: list[str],
+    keystrokes: list[KeystrokeEvent],
+    now: datetime,
+    weights: list[float] | None = None,
 ) -> None:
-    """Fold keystrokes into each key's stats (marking new_keys unlocked) and persist."""
+    """Fold keystrokes into each key's stats (marking new_keys unlocked) and persist.
+    `weights` (one per keystroke, default 1) is how much each counts: hint_model.mastery_weight."""
     touched: dict[str, KeyStat] = {}
 
     def get_or_new(key: str) -> KeyStat:
@@ -303,9 +323,9 @@ def apply_skill_model(
 
     for key in new_keys:
         touched[key] = skill_model.mark_unlocked(get_or_new(key), now)
-    for ke in keystrokes:
+    for ke, w in zip(keystrokes, weights or [1.0] * len(keystrokes)):
         touched[ke.expected_char] = skill_model.record_attempt(
-            get_or_new(ke.expected_char), correct=ke.correct, latency_ms=ke.latency_ms, now=now
+            get_or_new(ke.expected_char), correct=ke.correct, latency_ms=ke.latency_ms, now=now, weight=w
         )
 
     for stat in touched.values():
@@ -355,8 +375,12 @@ def complete(
 
     session_id = _sitting(conn, learner_id, now)
     event = db.log_session_event(conn, session_id, p.kind, p.activity_id)
-    for seq, ke in enumerate(keystrokes):
-        db.log_keystroke(conn, event.id, seq, ke.expected_char, ke.typed_char, ke.correct, ke.latency_ms)
+    lesson_presses = hints.presses(keystrokes, lesson.hints)
+    for seq, (ke, hp) in enumerate(zip(keystrokes, lesson_presses)):
+        db.log_keystroke(
+            conn, event.id, seq, ke.expected_char, ke.typed_char, ke.correct, ke.latency_ms,
+            hint_support=hp.support, hint_seen=hint_model.press_kind(hp.support, hp.latency_ms, hp.solo), solo=hp.solo,
+        )
     summary = asdict(result) | {
         "kind": p.kind,
         "finished_share": round(finished_share, 3),
@@ -376,7 +400,8 @@ def complete(
     if p.kind == "learn":
         new_keys = sorted(_lesson_keys(lesson_ref(p.activity_id, p.teach_keys)))
         db.mark_taught(conn, learner_id, lesson_ref(p.activity_id, p.teach_keys), "lesson")
-    apply_skill_model(conn, learner_id, new_keys, keystrokes, now)
+        hints.taught(conn, learner_id, new_keys)
+    apply_skill_model(conn, learner_id, new_keys, keystrokes, now, [hint_model.mastery_weight(hp) for hp in lesson_presses])
     apply_bigram_model(conn, learner_id, keystrokes)
 
     earned = [_coins(conn, learner_id, lesson, result, typed_part)]
@@ -389,11 +414,13 @@ def complete(
             db.coin_rows_paid(conn, learner_id, KEY_BONUS_REASONS),
             db.practice_lesson_counts(conn, learner_id, keys),
         )
+        earned += hints.finish(conn, learner_id, f"lesson:{lesson_id}", lesson_presses, lesson.hints)
     coins_earned = []
     for amount, reason, ref in earned:
         if amount > 0:
             db.add_coins(conn, learner_id, amount, reason, ref=ref)
-            coins_earned.append({"amount": amount, "reason": reason} | ({"key": ref} if reason in KEY_BONUS_REASONS else {}))
+            keyed = reason in KEY_BONUS_REASONS or reason in hints.GRADUATION_REASONS
+            coins_earned.append({"amount": amount, "reason": reason} | ({"key": ref} if keyed else {}))
 
     milestones = daily.add_practice(conn, learner_id, active_seconds, now, learned=p.kind == "learn")
     coins_earned += [{"amount": m["coins"], "reason": f"daily_{m['milestone']}"} for m in milestones if m["coins"]]

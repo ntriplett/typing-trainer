@@ -29,7 +29,7 @@ def test_header_shows_coins_and_avatar_on_home(page: Page, live_server):
 def test_finishing_a_lesson_pays_coins_in_the_header(page: Page, live_server):
     start_practice_lesson(page, live_server)
     type_current_lesson(page)
-    expect(page.locator("#result-rewards")).to_contain_text("+100")
+    expect(page.locator("#result-rewards")).to_contain_text("+150")
     expect(page.locator("#coin-count")).not_to_have_text("0")
 
 

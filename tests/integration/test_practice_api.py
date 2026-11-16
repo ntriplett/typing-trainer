@@ -1,9 +1,9 @@
-"""Integration tests for the practice lab API and the keyboard hint purchase."""
+"""Integration tests for the practice lab API."""
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, main
+from app import main
 
 client = TestClient(main.app)
 FISH = "practice_fishing_v1"
@@ -15,11 +15,6 @@ def isolated_db(tmp_path, monkeypatch):
     client.cookies.clear()
     client.post("/api/profiles", json={"name": "Tester"})
     yield
-
-
-def _give_coins(amount: int) -> None:
-    with db.open_db(main.DB_PATH) as conn:
-        db.add_coins(conn, 1, amount, "test")
 
 
 def test_modules_lists_plain_plus_ten_themes():
@@ -59,19 +54,6 @@ def test_complete_pays_coins_counting_wrap_spaces_as_done():
         json={"keys": ["a"], "prompt_length": 10, "skipped_chars": 2, "keystrokes": strokes},
     ).json()
     assert data["coins_earned"] == [{"amount": 100, "reason": "lesson"}]
-
-
-def test_keyboard_hint_costs_ten_coins():
-    _give_coins(25)
-    data = client.post("/api/hint/keyboard", json={"ref": "session:1:2"}).json()
-    assert data == {"spent": 10, "coin_balance": 15}
-
-
-def test_keyboard_hint_needs_enough_coins():
-    _give_coins(5)
-    resp = client.post("/api/hint/keyboard", json={})
-    assert resp.status_code == 402
-    assert client.get("/api/me").json()["coins"] == 5
 
 
 def test_pages_are_served():

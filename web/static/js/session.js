@@ -68,7 +68,7 @@ function startLesson() {
   $("end-now-button").hidden = false;
   stage.load(content, {
     label: lesson.comfort ? "An easy one" : KIND_LABELS[lesson.kind] || "Practice",
-    hintRef: `lesson:${lesson.lesson_id}`,
+    hints: lesson.hints,
   });
   contentLoaded = true;
 }
@@ -89,11 +89,27 @@ function rewardsHtml(data) {
   const keyLines = data.coins_earned.filter((c) => KEY_BONUS_SAYS[c.reason]).map(
     (c) => `<span class="key-bonus">⭐ ${keycap(c.key)} ${KEY_BONUS_SAYS[c.reason]}</span>`,
   );
+  keyLines.push(
+    ...data.coins_earned.filter((c) => HINT_SAYS[c.reason]).map((c) => `<span class="key-bonus">${HINT_SAYS[c.reason](c.amount)}</span>`),
+  );
   return parts.join(" ") + (keyLines.length ? `<span class="key-bonuses">${keyLines.join(" ")}</span>` : "");
 }
 
+// Typing without the keyboard hint's help (app/hints.py), cheered on the result.
+const HINT_SAYS = {
+  hint_free: (n) => `🧠 +${n} for remembering keys before the hint lit up!`,
+  hint_solo: (n) => `🌟 +${n} solo line star!`,
+};
+
 // A key's milestone bonuses (app/lessons.py key_bonuses), named on the result.
-const KEY_BONUS_SAYS = { key_solid: "is solid!", key_halfway: "hit 15 WPM!", key_mastered: "is mastered: 30 WPM!" };
+// ...and the keyboard hint's (app/hint_model.py GRADUATIONS): needing less help.
+const KEY_BONUS_SAYS = {
+  key_solid: "is solid!",
+  key_halfway: "hit 15 WPM!",
+  key_mastered: "is mastered: 30 WPM!",
+  hint_letters_off: "knows its own way now: its letter is hiding!",
+  hint_by_heart: "is typed by heart!",
+};
 
 function dayLine(day) {
   if (day.extra && day.extra.active) {
