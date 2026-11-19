@@ -20,7 +20,7 @@ class Locked(PermissionError):
 
 def status(conn: sqlite3.Connection, learner_id: int) -> dict:
     """{room: open?, ..., "pet_coupon": bool, "missing": {room: keys still to learn}, "hints": ...}."""
-    taught = lessons.taught_keys(conn, learner_id)
+    taught = lessons.earned_keys(conn, learner_id)
     missing = {room: "".join(k for k in keys if k not in taught) for room, (keys, _) in NEEDS.items()}
     return {
         **{room: not keys for room, keys in missing.items()},

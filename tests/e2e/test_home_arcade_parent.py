@@ -311,3 +311,21 @@ def test_grownups_see_the_keyboard_help_and_can_set_it(page: Page, live_server):
     page.locator("#pin").fill(GROWNUP_PIN)
     page.keyboard.press("Enter")
     expect(page.locator('#hints input[value="full"]')).to_be_checked()
+
+
+def test_grownups_hold_back_a_key_and_put_it_back(page: Page, live_server):
+    place_on_home_row(page, live_server)
+    _open_grownups(page, live_server)
+    board = page.locator("#key-pool .pool-keyboard")
+    expect(board.locator('[data-key="q"]')).to_be_disabled()  # not learned yet
+    board.locator('[data-key="d"]').click()
+    expect(page.locator("#key-pool .pool-saved")).to_contain_text("D and K held back")
+    expect(board.locator('[data-key="k"]')).to_have_class(re.compile("pool-held"))
+    expect(board.locator('[data-key="f"]')).to_have_class(re.compile("pool-pool"))
+    page.reload()
+    page.locator("#pin").fill(GROWNUP_PIN)
+    page.keyboard.press("Enter")
+    board.locator('[data-key="k"]').click()
+    expect(page.locator("#key-pool .pool-saved")).to_contain_text("back in practice")
+    expect(board.locator('[data-key="d"]')).to_have_class(re.compile("pool-pool"))
+    assert page.evaluate(NO_SIDEWAYS_SCROLL)

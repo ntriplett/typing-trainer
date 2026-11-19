@@ -985,6 +985,10 @@ def mark_taught(conn: sqlite3.Connection, learner_id: int, ref: str, source: str
     )
 
 
+def unmark_taught(conn: sqlite3.Connection, learner_id: int, ref: str) -> None:
+    conn.execute("DELETE FROM taught_lesson WHERE learner_id = ? AND ref = ?", (learner_id, ref))
+
+
 def list_taught(conn: sqlite3.Connection, learner_id: int) -> dict[str, str]:
     """ref -> source."""
     rows = conn.execute("SELECT ref, source FROM taught_lesson WHERE learner_id = ?", (learner_id,))

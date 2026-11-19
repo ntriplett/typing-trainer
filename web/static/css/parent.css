@@ -180,3 +180,79 @@
 .hint-table small {
   color: var(--ink-soft);
 }
+
+/* --- keys in practice (holding keys back) --- */
+
+.pool-keyboard {
+  font-family: var(--font-type);
+  margin: 0.6rem 0;
+}
+
+.pool-row {
+  display: flex;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.pool-key {
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--outline);
+  color: #fff;
+  font: inherit;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+button.pool-key:not([disabled]) {
+  cursor: pointer;
+}
+
+button.pool-key:not([disabled]):hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.pool-key.pool-space {
+  width: 14rem;
+  margin-left: 2.5rem;
+  text-transform: none;
+  background: var(--muted-fill);
+  color: var(--ink-soft);
+}
+
+.pool-key.pool-new {
+  background: var(--muted-fill);
+  color: var(--ink-soft);
+  opacity: 0.6;
+}
+
+.pool-key.pool-held {
+  background: repeating-linear-gradient(45deg, var(--muted-fill), var(--muted-fill) 4px, transparent 4px, transparent 8px);
+  border-style: dashed;
+  color: var(--ink);
+}
+
+.pool-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  font-size: 0.9em;
+}
+
+.pool-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--outline);
+  vertical-align: middle;
+}
+
+.pool-swatch.pool-good { background: linear-gradient(90deg, hsl(0, 60%, 42%), hsl(120, 60%, 42%)); }
+.pool-swatch.pool-held { background: repeating-linear-gradient(45deg, var(--muted-fill), var(--muted-fill) 3px, transparent 3px, transparent 6px); border-style: dashed; }
+.pool-swatch.pool-new { background: var(--muted-fill); opacity: 0.6; }

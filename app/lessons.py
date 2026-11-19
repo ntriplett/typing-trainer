@@ -14,6 +14,7 @@ restart just means asking for a new one.
 from __future__ import annotations
 
 import itertools
+import json
 import random
 import sqlite3
 from dataclasses import asdict, dataclass, replace
@@ -99,6 +100,85 @@ def taught(conn: sqlite3.Connection, learner_id: int, key_stats: dict[str, KeySt
 def taught_keys(conn: sqlite3.Connection, learner_id: int) -> set[str]:
     key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
     return set().union(*(_lesson_keys(r) for r in taught(conn, learner_id, key_stats)))
+
+
+# --- held back by a grown-up -------------------------------------------------------
+# A grown-up can take a key pair out of the pool when it was learned too fast: its
+# lesson is no longer taught, so practice leaves it out, and the brain teaches it again
+# (the teach page, full keyboard help) once every key still in the pool is solid.
+# What it opened stays open (earned_keys): the Pet Shop, reward pets, sharing.
+
+HELD_BACK_SETTING = "held_back_lessons"
+
+
+class HoldBackError(ValueError):
+    pass
+
+
+def held_back(conn: sqlite3.Connection, learner_id: int) -> list[str]:
+    """Pair lesson refs a grown-up took out and the brain hasn't taught again yet."""
+    raw = db.get_setting(conn, learner_id, HELD_BACK_SETTING)
+    refs = json.loads(raw) if raw else []
+    taught_now = db.list_taught(conn, learner_id)
+    return [r for r in refs if r not in taught_now]
+
+
+def _save_held(conn: sqlite3.Connection, learner_id: int, refs: list[str]) -> None:
+    db.set_setting(conn, learner_id, HELD_BACK_SETTING, json.dumps(refs))
+
+
+def _pair_ref(key: str) -> str:
+    lesson = next((l for l in curriculum_lessons() if l["module"] == PAIR_ID and key in l["keys"]), None)
+    if lesson is None:
+        raise HoldBackError(f"{key!r} isn't a key with its own lesson.")
+    return lesson_ref(PAIR_ID, lesson["keys"])
+
+
+def hold_back(conn: sqlite3.Connection, learner_id: int, key: str) -> str:
+    """Take `key`'s lesson (both of its keys) out of the pool. Returns the lesson's keys."""
+    ref = _pair_ref(key)
+    key_stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    if ref not in taught(conn, learner_id, key_stats):
+        raise HoldBackError("That key isn't learned yet.")
+    held = held_back(conn, learner_id)
+    db.unmark_taught(conn, learner_id, ref)
+    _save_held(conn, learner_id, [*held, ref])
+    return ref.split(":", 1)[1]
+
+
+def let_back(conn: sqlite3.Connection, learner_id: int, key: str) -> str:
+    """Put a held-back lesson straight back in the pool, without teaching it again."""
+    ref = _pair_ref(key)
+    held = held_back(conn, learner_id)
+    if ref not in held:
+        raise HoldBackError("That key isn't held back.")
+    db.mark_taught(conn, learner_id, ref, "grownup")
+    _save_held(conn, learner_id, [r for r in held if r != ref])
+    return ref.split(":", 1)[1]
+
+
+def earned_keys(conn: sqlite3.Connection, learner_id: int) -> set[str]:
+    """Keys learned at some point, held back or not: what opens rooms, shops and rewards."""
+    return taught_keys(conn, learner_id).union(*(_lesson_keys(r) for r in held_back(conn, learner_id)))
+
+
+def key_pool(conn: sqlite3.Connection, learner_id: int) -> list[dict]:
+    """For the grown-ups' keyboard: each real key's state and accuracy."""
+    pool, held = taught_keys(conn, learner_id), set().union(*(_lesson_keys(r) for r in held_back(conn, learner_id)))
+    stats = {s.key: s for s in db.list_key_stats(conn, learner_id)}
+    records = key_records(conn, learner_id)
+    out = []
+    for key in skill_model.KEY_ORDER:
+        state = "held" if key in held else "pool" if key in pool else "new"
+        stat, record = stats.get(key), records.get(key)
+        out.append({
+            "key": key,
+            "state": state,
+            "pair": "" if key == " " else _pair_ref(key).split(":", 1)[1],
+            "accuracy": stat.accuracy_rolling if stat else None,
+            "recent_accuracy": record.recent_accuracy if record else None,
+        })
+    return out
 
 
 def record_placement(conn: sqlite3.Connection, learner_id: int, known_keys: set[str]) -> None:

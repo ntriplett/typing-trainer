@@ -48,7 +48,7 @@ def _name(conn, learner_id: int) -> str:
 def blocker(conn, sender: int, friend: int, species: str) -> str | None:
     """Why this friend can't be sent this pet now, or None."""
     name = _name(conn, friend)
-    taught = lessons.taught_keys(conn, friend)
+    taught = lessons.earned_keys(conn, friend)
     for dept in (DEPARTMENTS["orders"], species_dept(species)):
         if not pet_shop.is_open(dept, taught):
             return f"{name} needs to learn the {ROW_NAMES.get(dept.needs, 'keys')} first."

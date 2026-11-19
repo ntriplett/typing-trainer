@@ -912,6 +912,36 @@ def parent_extra(conn=Depends(get_db), learner_id: int = Depends(current_learner
     return _parent_entry(conn, learner_id)
 
 
+class KeyIn(BaseModel):
+    key: str = Field(min_length=1, max_length=1)
+
+
+@app.get("/api/parent/keys", dependencies=[Depends(require_grownup)])
+def parent_keys(conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """The key pool: which keys are in practice, held back, or not learned yet."""
+    return {"keys": lessons.key_pool(conn, learner_id)}
+
+
+@app.post("/api/parent/keys/hold", dependencies=[Depends(require_grownup)])
+def parent_hold_key(body: KeyIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Take a key (and its lesson partner) out of the pool until accuracy is better."""
+    try:
+        pair = lessons.hold_back(conn, learner_id, body.key.lower())
+    except lessons.HoldBackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"pair": pair, "keys": lessons.key_pool(conn, learner_id), "player": _parent_entry(conn, learner_id)}
+
+
+@app.post("/api/parent/keys/release", dependencies=[Depends(require_grownup)])
+def parent_release_key(body: KeyIn, conn=Depends(get_db), learner_id: int = Depends(current_learner)) -> dict:
+    """Put a held-back key straight back in the pool."""
+    try:
+        pair = lessons.let_back(conn, learner_id, body.key.lower())
+    except lessons.HoldBackError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"pair": pair, "keys": lessons.key_pool(conn, learner_id), "player": _parent_entry(conn, learner_id)}
+
+
 class HintModeIn(BaseModel):
     mode: Literal["auto", "full", "off"]
 

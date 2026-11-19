@@ -191,6 +191,63 @@ function openPage() {
   fetch("/api/parent/hints")
     .then((r) => r.json())
     .then(renderHints);
+  fetch("/api/parent/keys")
+    .then((r) => r.json())
+    .then((r) => renderPool(r.keys));
+}
+
+// --- holding keys back (app/lessons.py hold_back) ----------------------------------
+
+function poolColor(k) {
+  const acc = k.recent_accuracy ?? k.accuracy;
+  if (acc === null || acc === undefined) return "hsl(40, 30%, 55%)";
+  return `hsl(${Math.max(0, Math.min(1, (acc - 0.5) * 2)) * 120}, 60%, 42%)`;
+}
+
+function renderPool(keys) {
+  const byKey = Object.fromEntries(keys.map((k) => [k.key, k]));
+  const box = document.querySelector("#key-pool .pool-keyboard");
+  box.innerHTML = KEYBOARD_ROWS.map((row, i) => {
+    const cells = row
+      .map((c) => {
+        const k = byKey[c];
+        if (!k) return "";
+        const acc = k.recent_accuracy ?? k.accuracy;
+        const name = keyName(c);
+        const how = acc === null || acc === undefined ? "" : `, ${Math.round(acc * 100)}% right lately`;
+        if (c === " ") return `<span class="pool-key pool-space pool-${k.state}" title="Space${how}">space</span>`;
+        const title = { pool: `${name}: in practice${how}. Click to hold back.`, held: `${name}: held back. Click to put it back.`, new: `${name}: not learned yet` }[k.state];
+        const style = k.state === "pool" ? `style="background:${poolColor(k)}"` : "";
+        return `<button type="button" class="pool-key pool-${k.state}" data-key="${escapeHtml(c)}" ${style}
+          title="${escapeHtml(title)}"${k.state === "new" ? " disabled" : ""}>${escapeHtml(c)}</button>`;
+      })
+      .join("");
+    return `<div class="pool-row" style="margin-left:${i * 0.8}rem">${cells}</div>`;
+  }).join("");
+  box.querySelectorAll("button.pool-key:not([disabled])").forEach((b) => {
+    b.onclick = () => toggleKey(b.dataset.key, byKey[b.dataset.key].state);
+  });
+}
+
+async function toggleKey(key, state) {
+  const hold = state === "pool";
+  const res = await fetch(`/api/parent/keys/${hold ? "hold" : "release"}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  const data = await res.json();
+  const msg = document.querySelector("#key-pool .pool-saved");
+  if (!res.ok) {
+    msg.textContent = data.detail;
+    return;
+  }
+  renderPool(data.keys);
+  render(data.player);
+  const pair = [...data.pair].map(keyName).join(" and ");
+  msg.textContent = hold
+    ? `${pair} held back. They'll be taught again once every key in practice is above ${Math.round(data.player.solid_bar * 100)}%.`
+    : `${pair} are back in practice.`;
 }
 
 // --- the fading keyboard help (app/hints.py) -----------------------------------

@@ -45,7 +45,7 @@ def note(reward: Reward) -> str:
 
 def grant(conn, learner_id: int, rng: random.Random | None = None) -> list[dict]:
     """Wrap up every reward earned and not given yet. Returns the new ones."""
-    taught = lessons.taught_keys(conn, learner_id)
+    taught = lessons.earned_keys(conn, learner_id)
     rng = rng or random.Random()
     given = []
     for reward in REWARDS:
